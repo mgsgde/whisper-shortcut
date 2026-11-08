@@ -8,54 +8,62 @@ struct WritingStyleTests {
 
   // MARK: - Profile due rule
 
-  @Test("Never offered with enough samples is due")
-  func neverOfferedIsDue() {
-    #expect(WritingStyleAutoUpdater.isProfileDue(since: 0, total: 25, hasProfile: false, dismissed: false))
+  private struct DueCase: Sendable {
+    let since: Int
+    let total: Int
+    let dismissed: Bool
+    let isDue: Bool
+    let label: String
   }
 
-  @Test("Dismissed with fewer than 20 new samples is not due")
-  func dismissedFewNewNotDue() {
-    #expect(!WritingStyleAutoUpdater.isProfileDue(since: 5, total: 25, hasProfile: false, dismissed: true))
-  }
-
-  @Test("Dismissed with 20 new samples is due again")
-  func dismissedManyNewDue() {
-    #expect(WritingStyleAutoUpdater.isProfileDue(since: 20, total: 40, hasProfile: false, dismissed: true))
+  @Test(
+    "isProfileDue: offered once enough samples exist, and again after 20 new samples once dismissed",
+    arguments: [
+      DueCase(since: 0, total: 25, dismissed: false, isDue: true, label: "never offered with enough samples"),
+      DueCase(since: 5, total: 25, dismissed: true, isDue: false, label: "dismissed with fewer than 20 new samples"),
+      DueCase(since: 20, total: 40, dismissed: true, isDue: true, label: "dismissed with 20 new samples"),
+    ])
+  private func profileDue(_ c: DueCase) {
+    #expect(
+      WritingStyleAutoUpdater.isProfileDue(
+        since: c.since, total: c.total, hasProfile: false, dismissed: c.dismissed) == c.isDue,
+      "\(c.label)")
   }
 
   // MARK: - Cleaning sent mail
 
-  @Test("German reply header and quoted text are cut")
-  func cutsGermanReplyHeader() {
-    let raw = """
-      Hi Anna,
-
-      passt, Donnerstag geht.
-
-      Grüße Magnus
-
-      Am Mo., 1. Sept. 2026 um 10:00 Uhr schrieb Anna Muster <anna@example.com>:
-      > Geht Mittwoch oder Donnerstag?
-      """
-    #expect(WritingStyleImporter.cleanSentBody(raw) == "Hi Anna,\n\npasst, Donnerstag geht.\n\nGrüße Magnus")
+  private struct CleanCase: Sendable {
+    let raw: String
+    let expected: String
+    let label: String
   }
 
-  @Test("English reply header wrapped over two lines is cut")
-  func cutsWrappedEnglishReplyHeader() {
-    let raw = "Sounds good, see you Thursday.\n\nOn Mon, Sep 1, 2026 at 10:00 AM Anna Muster <\nanna@example.com> wrote:\n> Wednesday or Thursday?"
-    #expect(WritingStyleImporter.cleanSentBody(raw) == "Sounds good, see you Thursday.")
-  }
-
-  @Test("Signature delimiter, device footer and quote lines are dropped")
-  func dropsSignatureAndQuotes() {
-    let withSignature = "Thanks, I'll send it tomorrow.\n-- \nMagnus Gödde\nSome Street 1"
-    #expect(WritingStyleImporter.cleanSentBody(withSignature) == "Thanks, I'll send it tomorrow.")
-
-    let withFooter = "Klar, mache ich morgen früh.\n\nVon meinem iPhone gesendet"
-    #expect(WritingStyleImporter.cleanSentBody(withFooter) == "Klar, mache ich morgen früh.")
-
-    let withQuotes = "Yes, that works for me.\n> earlier line\n> another"
-    #expect(WritingStyleImporter.cleanSentBody(withQuotes) == "Yes, that works for me.")
+  @Test(
+    "cleanSentBody cuts reply headers, quotes, signature delimiters and device footers, and turns HTML into text",
+    arguments: [
+      CleanCase(
+        raw: "Hi Anna,\n\npasst, Donnerstag geht.\n\nGrüße Magnus\n\nAm Mo., 1. Sept. 2026 um 10:00 Uhr schrieb Anna Muster <anna@example.com>:\n> Geht Mittwoch oder Donnerstag?",
+        expected: "Hi Anna,\n\npasst, Donnerstag geht.\n\nGrüße Magnus",
+        label: "German reply header and quoted text"),
+      CleanCase(
+        raw: "Sounds good, see you Thursday.\n\nOn Mon, Sep 1, 2026 at 10:00 AM Anna Muster <\nanna@example.com> wrote:\n> Wednesday or Thursday?",
+        expected: "Sounds good, see you Thursday.",
+        label: "English reply header wrapped over two lines"),
+      CleanCase(
+        raw: "Thanks, I'll send it tomorrow.\n-- \nMagnus Gödde\nSome Street 1",
+        expected: "Thanks, I'll send it tomorrow.", label: "signature delimiter"),
+      CleanCase(
+        raw: "Klar, mache ich morgen früh.\n\nVon meinem iPhone gesendet",
+        expected: "Klar, mache ich morgen früh.", label: "device footer"),
+      CleanCase(
+        raw: "Yes, that works for me.\n> earlier line\n> another",
+        expected: "Yes, that works for me.", label: "quote lines"),
+      CleanCase(
+        raw: "<div dir=\"ltr\">Hi Anna,<br><br>passt &amp; danke.</div><div class=\"gmail_quote\">Am Mo. schrieb Anna:<blockquote>alt</blockquote></div>",
+        expected: "Hi Anna,\n\npasst & danke.", label: "HTML body becomes plain text"),
+    ])
+  private func cleansSentBody(_ c: CleanCase) {
+    #expect(WritingStyleImporter.cleanSentBody(c.raw) == c.expected, "\(c.label)")
   }
 
   @Test("A sentence of the user's that starts with Am/On and has a digit is not a reply header")
@@ -121,12 +129,6 @@ struct WritingStyleTests {
     #expect(!WritingStyleImporter.isForward(subject: "Re: invoice"))
   }
 
-  @Test("HTML body becomes plain text")
-  func htmlBody() {
-    let raw = "<div dir=\"ltr\">Hi Anna,<br><br>passt &amp; danke.</div><div class=\"gmail_quote\">Am Mo. schrieb Anna:<blockquote>alt</blockquote></div>"
-    #expect(WritingStyleImporter.cleanSentBody(raw) == "Hi Anna,\n\npasst & danke.")
-  }
-
   @Test("Recipient is the first address, lowercased")
   func firstAddress() {
     #expect(WritingStyleImporter.firstAddress(in: "Anna Muster <Anna@Example.com>, bob@x.de") == "anna@example.com")
@@ -179,22 +181,20 @@ struct WritingStyleTests {
     #expect(WritingStyleStore.profileSection(in: profile, for: .defaultContext) == "")
   }
 
-  @Test("Re-derive keeps hand-written sections of contexts without samples")
-  func mergeKeepsUnsampledSection() {
+  @Test("Re-derive keeps hand-written sections of contexts without samples, and leaves unsampled ones empty")
+  func mergeUnsampledSections() {
     let current = "=== Default ===\nhand-written\n\n=== Email ===\nold email\n"
     let merged = WritingStyleImporter.mergedProfile(
       derived: [.email: " new email \n", .defaultContext: "filler"],
       current: current, contextsWithSamples: [.email])
     #expect(WritingStyleStore.profileSection(in: merged, for: .defaultContext) == "hand-written")
     #expect(WritingStyleStore.profileSection(in: merged, for: .email) == "new email")
-  }
 
-  @Test("Re-derive without samples and without an existing section stays empty")
-  func mergeUnsampledEmptyStaysEmpty() {
-    let merged = WritingStyleImporter.mergedProfile(
+    // Without samples and without an existing section the section stays empty.
+    let empty = WritingStyleImporter.mergedProfile(
       derived: [.messenger: "No examples."], current: "=== Email ===\nold\n", contextsWithSamples: [])
-    #expect(WritingStyleStore.profileSection(in: merged, for: .messenger) == "")
-    #expect(WritingStyleStore.profileSection(in: merged, for: .email) == "old")
+    #expect(WritingStyleStore.profileSection(in: empty, for: .messenger) == "")
+    #expect(WritingStyleStore.profileSection(in: empty, for: .email) == "old")
   }
 
   @Test("Duplicates by id and by text are skipped")

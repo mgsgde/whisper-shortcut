@@ -10,35 +10,37 @@ struct CustomEndpointCredentialTests {
 
   private typealias Prefs = OpenAIChatPreferences
 
-  @Test("The key entered for the server wins over the OpenAI key")
-  func proxyKeyWins() throws {
-    let resolved = try #require(
-      Prefs.resolveCredential(proxyKey: "sk-oi-openinference", openAIKey: "sk-openai"))
-
-    #expect(resolved.key == "sk-oi-openinference")
-    #expect(resolved.source == .proxyKey)
+  struct CredentialCase: Sendable {
+    let note: String
+    let proxyKey: String?
+    let openAIKey: String?
+    let key: String?
+    let source: OpenAIChatPreferences.ResolvedCredential?
   }
 
-  @Test("A proxy that accepts OpenAI keys still falls back to one")
-  func openAIKeyRemainsTheGenericFallback() throws {
-    let resolved = try #require(Prefs.resolveCredential(proxyKey: nil, openAIKey: "sk-openai"))
-
-    #expect(resolved.key == "sk-openai")
-    #expect(resolved.source == .openAIKey)
-  }
-
-  @Test("Whitespace-only keys count as absent rather than as a key")
-  func blankKeysAreIgnored() throws {
-    let resolved = try #require(
-      Prefs.resolveCredential(proxyKey: "   ", openAIKey: "  sk-openai-padded \n"))
-
-    #expect(resolved.key == "sk-openai-padded")
-    #expect(resolved.source == .openAIKey)
-  }
-
-  @Test("Nothing configured resolves to nothing")
-  func noKeysResolveToNil() {
-    #expect(Prefs.resolveCredential(proxyKey: nil, openAIKey: nil) == nil)
-    #expect(Prefs.resolveCredential(proxyKey: "", openAIKey: "") == nil)
+  @Test("The endpoint key wins, otherwise the OpenAI key, and blanks count as absent", arguments: [
+    CredentialCase(
+      note: "the key entered for the server wins",
+      proxyKey: "sk-oi-openinference", openAIKey: "sk-openai",
+      key: "sk-oi-openinference", source: .proxyKey),
+    CredentialCase(
+      note: "a proxy that accepts OpenAI keys still falls back to one",
+      proxyKey: nil, openAIKey: "sk-openai",
+      key: "sk-openai", source: .openAIKey),
+    CredentialCase(
+      note: "whitespace-only keys count as absent",
+      proxyKey: "   ", openAIKey: "  sk-openai-padded \n",
+      key: "sk-openai-padded", source: .openAIKey),
+    CredentialCase(
+      note: "nothing configured resolves to nothing",
+      proxyKey: nil, openAIKey: nil, key: nil, source: nil),
+    CredentialCase(
+      note: "empty strings are absent",
+      proxyKey: "", openAIKey: "", key: nil, source: nil),
+  ])
+  func resolveCredential(_ row: CredentialCase) throws {
+    let resolved = Prefs.resolveCredential(proxyKey: row.proxyKey, openAIKey: row.openAIKey)
+    #expect(resolved?.key == row.key, "\(row.note)")
+    #expect(resolved?.source == row.source, "\(row.note)")
   }
 }

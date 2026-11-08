@@ -18,19 +18,15 @@ struct StatusMenuTitleTests {
     #expect(StatusMenuTitle.render(base: "Dictate", isEnabled: false, keyEquivalent: "", display: "F5") == "Dictate")
   }
 
-  @Test("Complex keys are padded into a column")
+  @Test("Complex keys are padded into a column; retitled rows keep it")
   func padded() {
     let title = StatusMenuTitle.render(base: "Dictate", isEnabled: true, keyEquivalent: "", display: "F5")
     #expect(title == "Dictate".padding(toLength: 26, withPad: " ", startingAt: 0) + "F5")
     let long = String(repeating: "x", count: 30)
     #expect(StatusMenuTitle.render(base: long, isEnabled: true, keyEquivalent: "", display: "F5") == long + "  F5")
-  }
-
-  @Test("Retitled rows keep the shortcut column")
-  func stopTitleKeepsColumn() {
-    let start = StatusMenuTitle.render(base: "Dictate", isEnabled: true, keyEquivalent: "", display: "F5")
+    // Retitled rows keep the shortcut column.
     let stop = StatusMenuTitle.render(base: "Stop Dictate", isEnabled: true, keyEquivalent: "", display: "F5")
-    #expect(start.count == stop.count)
+    #expect(title.count == stop.count)
     #expect(stop.hasSuffix("F5"))
   }
 }

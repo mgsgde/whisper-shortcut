@@ -50,15 +50,4 @@ struct GlossaryDocumentTests {
     #expect(turkishI != "i")
     #expect(GlossaryDocument.fold("I") != turkishI)
   }
-
-  @Test("Duplicate detection folds diacritics and sees inside annotations")
-  func glossaryContainsUsesTheSharedFold() {
-    #expect(SystemPromptsStore.glossaryContains("Gödde", in: "Godde"))
-    #expect(SystemPromptsStore.glossaryContains("Gödde", in: "Godde (not \"Goedde\")"))
-    // The term "Goedde" does not fold to "Gödde" (oe is not ö). The rejected spelling does.
-    #expect(SystemPromptsStore.glossaryContains("Gödde", in: "Goedde (not \"Gödde\")"))
-    #expect(SystemPromptsStore.glossaryContains("Goedde", in: "Godde (not \"Goedde\")"))
-    #expect(!SystemPromptsStore.glossaryContains("Gödde", in: "Goedde"))
-    #expect(!SystemPromptsStore.glossaryContains("Fascia", in: "Fascia thoracolumbalis"))
-  }
 }

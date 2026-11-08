@@ -14,101 +14,51 @@ struct TranscriptMergerTests {
     ChunkTranscript(text: text, index: index, startTime: start, endTime: end)
   }
 
-  @Test("An empty list merges to an empty string")
-  func emptyInput() {
-    #expect(TranscriptMerger.merge([]) == "")
+  private struct MergeCase: Sendable {
+    let chunks: [(String, Int)]
+    let expected: String
+    let label: String
   }
 
-  @Test("A single chunk is trimmed and otherwise unchanged")
-  func singleChunkIsTrimmed() {
-    #expect(
-      TranscriptMerger.merge([chunk("  hello world  ", index: 0)])
-        == "hello world")
-  }
-
-  @Test("Chunks with no shared tail are joined with a single space")
-  func noOverlapJoinsWithSpace() {
-    let merged = TranscriptMerger.merge([
-      chunk("hello there", index: 0),
-      chunk("next sentence starts here", index: 1),
+  @Test(
+    "Merge dedups overlapping tails, sorts by index, skips empties and normalizes spaces",
+    arguments: [
+      MergeCase(chunks: [], expected: "", label: "empty list merges to empty string"),
+      MergeCase(chunks: [("  hello world  ", 0)], expected: "hello world", label: "single chunk is trimmed"),
+      MergeCase(
+        chunks: [("hello there", 0), ("next sentence starts here", 1)],
+        expected: "hello there next sentence starts here", label: "no shared tail joins with a space"),
+      MergeCase(
+        chunks: [("hello world this is a test", 0), ("this is a test of the system", 1)],
+        expected: "hello world this is a test of the system", label: "3+ word shared tail is dropped"),
+      MergeCase(
+        chunks: [("one two three four.", 0), ("Two Three Four five six", 1)],
+        expected: "one two three four. five six", label: "overlap ignores case and boundary punctuation"),
+      // Both sides need >=3 words for the overlap scan. "there friend" is only two,
+      // so the repeated "there" must survive rather than being guessed away.
+      MergeCase(
+        chunks: [("hi there", 0), ("there friend", 1)],
+        expected: "hi there there friend", label: "overlap shorter than three words is kept"),
+      MergeCase(
+        chunks: [("keep this", 0), ("   ", 1), ("and this", 2)],
+        expected: "keep this and this", label: "empty later chunk is skipped"),
+      MergeCase(
+        chunks: [("second half of the sentence", 1), ("first half of the sentence", 0)],
+        expected: "first half of the sentence second half of the sentence",
+        label: "chunks sorted by index before merging"),
+      MergeCase(
+        chunks: [("one two three four", 0), ("two three four", 1)],
+        expected: "one two three four", label: "later chunk that is only the previous tail adds nothing"),
+      // Overlap detection needs >=3 shared words, so each window repeats a 3-word tail.
+      MergeCase(
+        chunks: [("the quick brown fox jumps", 0), ("brown fox jumps over the", 1), ("jumps over the lazy dog", 2)],
+        expected: "the quick brown fox jumps over the lazy dog", label: "three overlapping windows collapse"),
+      MergeCase(
+        chunks: [("hello    world", 0), ("next    words here", 1)],
+        expected: "hello world next words here", label: "runs of spaces collapse to one"),
     ])
-    #expect(merged == "hello there next sentence starts here")
-  }
-
-  @Test("A shared tail of at least three words is dropped from the next chunk")
-  func exactWordOverlapIsDeduped() {
-    let merged = TranscriptMerger.merge([
-      chunk("hello world this is a test", index: 0),
-      chunk("this is a test of the system", index: 1),
-    ])
-    #expect(merged == "hello world this is a test of the system")
-  }
-
-  @Test("Overlap matching is case-insensitive and ignores boundary punctuation")
-  func overlapIgnoresCaseAndPunctuation() {
-    let merged = TranscriptMerger.merge([
-      chunk("one two three four.", index: 0),
-      chunk("Two Three Four five six", index: 1),
-    ])
-    #expect(merged == "one two three four. five six")
-  }
-
-  @Test("An overlap shorter than three words is not treated as a duplicate")
-  func shortOverlapIsKept() {
-    // Both sides need ≥3 words for the overlap scan. "there friend" is only two,
-    // so the repeated "there" must survive rather than being guessed away.
-    let merged = TranscriptMerger.merge([
-      chunk("hi there", index: 0),
-      chunk("there friend", index: 1),
-    ])
-    #expect(merged == "hi there there friend")
-  }
-
-  @Test("An empty later chunk is skipped")
-  func emptyChunkIsSkipped() {
-    let merged = TranscriptMerger.merge([
-      chunk("keep this", index: 0),
-      chunk("   ", index: 1),
-      chunk("and this", index: 2),
-    ])
-    #expect(merged == "keep this and this")
-  }
-
-  @Test("Chunks are sorted by index before merging")
-  func outOfOrderChunksAreSorted() {
-    let merged = TranscriptMerger.merge([
-      chunk("second half of the sentence", index: 1),
-      chunk("first half of the sentence", index: 0),
-    ])
-    #expect(merged == "first half of the sentence second half of the sentence")
-  }
-
-  @Test("A later chunk that is only the previous tail adds nothing")
-  func completeOverlapAddsNothing() {
-    let merged = TranscriptMerger.merge([
-      chunk("one two three four", index: 0),
-      chunk("two three four", index: 1),
-    ])
-    #expect(merged == "one two three four")
-  }
-
-  @Test("Three overlapping windows collapse to one sentence")
-  func threeWindows() {
-    // Overlap detection needs ≥3 shared words, so each window repeats a 3-word tail.
-    let merged = TranscriptMerger.merge([
-      chunk("the quick brown fox jumps", index: 0),
-      chunk("brown fox jumps over the", index: 1),
-      chunk("jumps over the lazy dog", index: 2),
-    ])
-    #expect(merged == "the quick brown fox jumps over the lazy dog")
-  }
-
-  @Test("Runs of spaces in the joined result collapse to one")
-  func whitespaceIsNormalized() {
-    let merged = TranscriptMerger.merge([
-      chunk("hello    world", index: 0),
-      chunk("next    words here", index: 1),
-    ])
-    #expect(merged == "hello world next words here")
+  private func merges(_ c: MergeCase) {
+    let merged = TranscriptMerger.merge(c.chunks.map { chunk($0.0, index: $0.1) })
+    #expect(merged == c.expected, "\(c.label)")
   }
 }

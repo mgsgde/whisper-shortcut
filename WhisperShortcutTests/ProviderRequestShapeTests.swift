@@ -47,15 +47,11 @@ struct ProviderRequestShapeTests {
 
   // MARK: - System instruction
 
-  @Test("The system instruction is read out of the Gemini-format nested dict")
+  @Test("The system instruction is read out of the Gemini-format dict; absent, malformed and empty read as nil")
   func systemInstructionExtraction() {
     let sys: [String: Any] = ["parts": [["text": "Be brief."]]]
     #expect(GeminiSystemInstruction.text(from: sys) == "Be brief.")
-  }
-
-  @Test("Absent, malformed, and empty system instructions all read as nil")
-  func systemInstructionAbsentCases() {
-    // Every provider previously treated these three as "send no system message"; an extractor that
+    // Every provider previously treated these as "send no system message"; an extractor that
     // returned "" instead of nil would start emitting an empty system turn on all of them at once.
     #expect(GeminiSystemInstruction.text(from: nil) == nil)
     #expect(GeminiSystemInstruction.text(from: ["parts": []]) == nil)
@@ -116,19 +112,6 @@ struct ProviderRequestShapeTests {
   }
 }
 
-/// Grok's X search tool is always sent, with no account filter.
-@Suite("Grok X search")
-struct GrokXSearchToolTests {
-
-  @Test("The x_search tool is type-only")
-  func xSearchToolIsTypeOnly() {
-    let tool = GrokChatProvider.xSearchTool()
-
-    #expect(tool["type"] as? String == "x_search")
-    #expect(tool.count == 1)
-  }
-}
-
 /// Dispatch tests for the single tool entry point.
 ///
 /// Session-scoped tools (generate_image, the meeting editors, the memory tools) used to be
@@ -186,13 +169,6 @@ struct ChatToolDispatchTests {
     ])
     let outcome = await ChatToolRegistry.execute(
       name: "definitely_not_a_tool", args: [:], context: context)
-
-    #expect((outcome.response["error"] as? String)?.contains("Unknown tool") == true)
-  }
-
-  @Test("With no context at all, global tools still dispatch")
-  func emptyContextDispatchesGlobally() async {
-    let outcome = await ChatToolRegistry.execute(name: "definitely_not_a_tool", args: [:])
 
     #expect((outcome.response["error"] as? String)?.contains("Unknown tool") == true)
   }

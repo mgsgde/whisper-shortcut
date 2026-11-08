@@ -8,35 +8,23 @@ import Foundation
 @Suite("Read Aloud text sanitizing")
 struct SpeechTextSanitizerTests {
 
-  @Test("Citation links are removed entirely, prose is kept")
-  func stripsCitationLinks() {
-    let markdown = "…long-term civilizational strategy.[[1]](https://samoburja.com/)"
-    let spoken = SpeechTextSanitizer.plainSpeech(from: markdown)
-    #expect(spoken == "…long-term civilizational strategy.")
-  }
-
-  @Test("Link labels survive, targets do not")
-  func keepsLinkLabels() {
-    let spoken = SpeechTextSanitizer.plainSpeech(from: "See [the report](https://example.com/a/b) now")
-    #expect(spoken == "See the report now")
-  }
-
-  @Test("Emphasis and inline code markers are dropped, content stays")
-  func stripsEmphasis() {
-    let spoken = SpeechTextSanitizer.plainSpeech(
-      from: "**Samo Burja** chairs *Palladium Magazine* and runs `bismarck --analyze`")
-    #expect(spoken == "Samo Burja chairs Palladium Magazine and runs bismarck --analyze")
-  }
-
-  @Test("Headings, bullets and numbered list markers are dropped")
-  func stripsBlockMarkers() {
-    let spoken = SpeechTextSanitizer.plainSpeech(from: """
-      ## Recent hot takes
-      - First point
-      * Second point
-      1. Third point
-      """)
-    #expect(spoken == "Recent hot takes\nFirst point\nSecond point\nThird point")
+  @Test("Markdown is reduced to plain speech: citations, link labels, emphasis, block markers", arguments: [
+    // Citation links are removed entirely, prose is kept.
+    ("…long-term civilizational strategy.[[1]](https://samoburja.com/)", "…long-term civilizational strategy."),
+    // Link labels survive, targets do not.
+    ("See [the report](https://example.com/a/b) now", "See the report now"),
+    // Emphasis and inline code markers are dropped, content stays.
+    ("**Samo Burja** chairs *Palladium Magazine* and runs `bismarck --analyze`",
+     "Samo Burja chairs Palladium Magazine and runs bismarck --analyze"),
+    // Headings, bullets and numbered list markers are dropped.
+    ("## Recent hot takes\n- First point\n* Second point\n1. Third point",
+     "Recent hot takes\nFirst point\nSecond point\nThird point"),
+    // Plain prose passes through untouched.
+    ("He is consistently optimistic about bold tech-driven human advancement.",
+     "He is consistently optimistic about bold tech-driven human advancement."),
+  ])
+  func plainSpeech(markdown: String, expected: String) {
+    #expect(SpeechTextSanitizer.plainSpeech(from: markdown) == expected)
   }
 
   @Test("Bare URLs are removed")
@@ -69,12 +57,6 @@ struct SpeechTextSanitizerTests {
       from: "Body text.\n\n[1] samoburja.com   [2] x.com   [3] brief.bismarckanalysis.com")
     #expect(spoken.hasPrefix("Body text."))
     #expect(!spoken.contains("[1]"))
-  }
-
-  @Test("Plain prose passes through untouched")
-  func leavesProseAlone() {
-    let prose = "He is consistently optimistic about bold tech-driven human advancement."
-    #expect(SpeechTextSanitizer.plainSpeech(from: prose) == prose)
   }
 
   @Test("An unterminated final fence is dropped rather than voiced")
@@ -113,137 +95,73 @@ struct SpeechTextSanitizerTests {
   }
 }
 
+private let echoGlossary = ["Sabaki", "Dance", "Magnus Gödde", "EnBW"]
+
+private let meetingGlossary = [
+  "Claude Code", "MCP", "Bachata", "sabaki.dance", "Wianco", "Datev", "Regulon", "Lemniskus",
+  "Parakeet", "Vibe-Coding", "KMU", "Odoo", "Johanna", "Pia", "Codex", "Wellensteyn", "Goedde",
+  "Claude", "Christoph", "Michelbach", "Cursor", "EnBW", "Grok", "GrokBot", "Opus", "Sonnet",
+  "Gemini", "Implementer Queue", "Karlsruhe", "Kizomba", "Salsa", "AutoMagic", "Onepager",
+  "Whisper Shortcut", "Schönstein",
+]
+
+private let meetingEchoList =
+  "Claude Code, MCP und Bachata. sabaki.dance, Wianco und Datev. Regulon, Lemniskus und Parakeet. Vibe-Coding, KMU und Odoo. Johanna, Pia und Codex. Wellensteyn, Goedde und Claude. Christoph, Michelbach und Cursor. EnBW, Grok und GrokBot. Opus, Sonnet und Gemini. Implementer Queue, Karlsruhe und Kizomba. Salsa, AutoMagic und Onepager. Whisper Shortcut und Schönstein."
+
+private let longEchoList = "Claude, Christoph, Michelbach, Cursor, EnBW, Grok, GrokBot, Opus, Sonnet, Gemini, Implementer Queue, Karlsruhe, Kizomba, Salsa, AutoMagic, Onepager, Whisper Shortcut, Schönstein, BlockInfinity, Claude Code, MCP, Bachata, sabaki.dance, Wianco, Datev, Regulon, Lemniskus, Parakeet, Vibe-Coding, KMU, Odoo, Johanna, Pia, Codex, Wellensteyn, Goedde"
+private let longEchoGlossary = longEchoList.components(separatedBy: ", ")
+
+private let trailingEchoGlossary = ["Joschka", "SumUp", "lemniscus", "WhisperShortcut"]
+
 @Suite("Transcript plausibility gates")
 struct TranscriptPlausibilityTests {
 
-  private static let glossary = ["Sabaki", "Dance", "Magnus Gödde", "EnBW"]
-
-  @Test("Glossary echo on a long near-silent chunk is discarded")
-  func discardsGlossaryEcho() {
+  @Test("A glossary echo is discarded to an empty transcript", arguments: [
     // The real failure: 6.3 s of tail audio came back as exactly this.
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "sabaki.dance", audioDurationSeconds: 6.3, glossaryTerms: Self.glossary, mode: "TEST")
-    #expect(result == "")
+    ("sabaki.dance", 6.3, echoGlossary, "echo on a long near-silent chunk"),
+    ("Claude Code, MCP und Bachata.", 12.0, meetingGlossary, "short echo with 'und' between terms"),
+    (meetingEchoList, 29.0, meetingGlossary, "full echo with 'und' between terms"),
+    ("Speaker A: " + meetingEchoList, 29.0, meetingGlossary, "speaker-labelled full echo with connectors"),
+    // 2026-10-28: 11.4 s of near-silent meeting audio came back as exactly this.
+    ("Speaker A: Claude Code.", 11.4, ["Claude", "Claude Code", "MCP"], "speaker-labelled echo on near-silent chunk"),
+    ("Speaker A: Claude, MCP, Bachata, Odoo.", 25.0, ["Claude", "Christoph", "MCP", "Bachata", "Odoo"],
+     "speaker-labelled list in glossary order"),
+    // Above the 3 chars/s floor, so only the ordered-list rule can catch it.
+    ("Speaker A: Claude, Christoph, Michelbach, Cursor, EnBW, Grok, Opus, Sonnet, Gemini.", 10.0,
+     ["Claude", "Christoph", "Michelbach", "Cursor", "EnBW", "Grok", "Opus", "Sonnet", "Gemini"],
+     "long speaker-labelled ordered list clears the length floor"),
+    ("Speaker A:", 10.0, ["Claude Code"], "speaker label with nothing after it"),
+    (longEchoList + ".", 25.0, longEchoGlossary, "whole glossary read out in order, whatever its length"),
+    // Audio is 5 s, not 25 s: at 25 s these ~25 chars sit under the 3 chars/s floor and the
+    // pre-existing short-text rule would fire, so the ordered-list rule would go untested.
+    ("Claude, Cursor, Grok, Opus", 5.0, longEchoGlossary, "four glossary terms in glossary order"),
+  ])
+  func discardsGlossaryEcho(text: String, duration: Double, glossary: [String], label: String) {
+    #expect(
+      TextProcessingUtility.discardingGlossaryEchoTranscript(
+        text, audioDurationSeconds: duration, glossaryTerms: glossary, mode: "TEST") == "", "\(label)")
   }
 
-  @Test("The same words survive when the audio is short enough to be them")
-  func keepsPlausibleGlossaryUtterance() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Sabaki Dance", audioDurationSeconds: 1.5, glossaryTerms: Self.glossary, mode: "TEST")
-    #expect(result == "Sabaki Dance")
-  }
-
-  @Test("Short non-glossary speech is never discarded")
-  func keepsShortRealSpeech() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Ja, genau.", audioDurationSeconds: 8.0, glossaryTerms: Self.glossary, mode: "TEST")
-    #expect(result == "Ja, genau.")
-  }
-
-  @Test("A glossary term inside a real sentence is never discarded")
-  func keepsGlossaryTermInSentence() {
-    let text = "Ich möchte das Sabaki Dance Feature verbessern und dann noch einmal testen."
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 6.0, glossaryTerms: Self.glossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("Diacritics and case don't matter for the echo match")
-  func foldsDiacritics() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "magnus goedde", audioDurationSeconds: 20.0,
-      glossaryTerms: ["Magnus Gödde"], mode: "TEST")
-    // "goedde" is not a diacritic fold of "Gödde", so this must survive rather than vanish.
-    #expect(result == "magnus goedde")
-  }
-
-  @Test("An empty glossary disables the gate")
-  func noGlossaryNoGate() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "sabaki.dance", audioDurationSeconds: 6.3, glossaryTerms: [], mode: "TEST")
-    #expect(result == "sabaki.dance")
-  }
-
-  private static let openAIGlossary = [
-    "Claude Code", "MCP", "Bachata", "sabaki.dance", "Datev", "Regulon", "Parakeet", "Codex",
-  ]
-
-  @Test("OpenAI-compatible path: a glossary echo from 11 s of audio is discarded")
-  func discardsGlossaryEchoOnOpenAIPath() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Claude Code.", audioDurationSeconds: 11.0,
-      glossaryTerms: Self.openAIGlossary, mode: "OPENAI-TRANSCRIPTION")
-    #expect(result == "")
-  }
-
-  @Test("OpenAI-compatible path: a real sentence with glossary terms stays")
-  func keepsRealSentenceOnOpenAIPath() {
-    let text = "Wir besprechen morgen die Datev-Anbindung mit Claude Code."
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 4.0,
-      glossaryTerms: Self.openAIGlossary, mode: "OPENAI-TRANSCRIPTION")
-    #expect(result == text)
-  }
-
-  private static let meetingGlossary = [
-    "Claude Code", "MCP", "Bachata", "sabaki.dance", "Wianco", "Datev", "Regulon", "Lemniskus",
-    "Parakeet", "Vibe-Coding", "KMU", "Odoo", "Johanna", "Pia", "Codex", "Wellensteyn", "Goedde",
-    "Claude", "Christoph", "Michelbach", "Cursor", "EnBW", "Grok", "GrokBot", "Opus", "Sonnet",
-    "Gemini", "Implementer Queue", "Karlsruhe", "Kizomba", "Salsa", "AutoMagic", "Onepager",
-    "Whisper Shortcut", "Schönstein",
-  ]
-
-  private static let meetingEchoList =
-    "Claude Code, MCP und Bachata. sabaki.dance, Wianco und Datev. Regulon, Lemniskus und Parakeet. Vibe-Coding, KMU und Odoo. Johanna, Pia und Codex. Wellensteyn, Goedde und Claude. Christoph, Michelbach und Cursor. EnBW, Grok und GrokBot. Opus, Sonnet und Gemini. Implementer Queue, Karlsruhe und Kizomba. Salsa, AutoMagic und Onepager. Whisper Shortcut und Schönstein."
-
-  @Test("A short glossary echo with 'und' between terms is discarded")
-  func discardsShortEchoWithConnector() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Claude Code, MCP und Bachata.", audioDurationSeconds: 12.0,
-      glossaryTerms: Self.meetingGlossary, mode: "TEST")
-    #expect(result == "")
-  }
-
-  @Test("A full glossary echo with 'und' between terms is discarded")
-  func discardsLongEchoWithConnectors() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      Self.meetingEchoList, audioDurationSeconds: 29.0,
-      glossaryTerms: Self.meetingGlossary, mode: "TEST")
-    #expect(result == "")
-  }
-
-  @Test("A speaker-labelled full echo with connectors is discarded")
-  func discardsSpeakerLabelledEchoWithConnectors() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Speaker A: " + Self.meetingEchoList, audioDurationSeconds: 29.0,
-      glossaryTerms: Self.meetingGlossary, mode: "TEST")
-    #expect(result == "")
-  }
-
-  @Test("A real sentence with glossary names and 'und' stays")
-  func keepsRealSentenceWithConnectors() {
-    let text = "Ich spreche mit Johanna und Pia über Odoo und die KMU-Kunden."
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 5.0,
-      glossaryTerms: Self.meetingGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A transcript of only connectors is not an echo")
-  func keepsConnectorOnlyTranscript() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "und.", audioDurationSeconds: 6.0,
-      glossaryTerms: Self.meetingGlossary, mode: "TEST")
-    #expect(result == "und.")
-  }
-
-  @Test("Known limit: a fabricated sentence around glossary terms is not caught")
-  func keepsFabricatedSentenceKnownLimit() {
-    let text = "Claude Code hilft beim Vibe-Coding."
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 12.0,
-      glossaryTerms: Self.meetingGlossary, mode: "TEST")
-    #expect(result == text)
+  @Test("Real speech that merely contains glossary terms is kept unchanged", arguments: [
+    ("Sabaki Dance", 1.5, echoGlossary, "same words survive when the audio is short enough to be them"),
+    ("Ja, genau.", 8.0, echoGlossary, "short non-glossary speech"),
+    ("Ich möchte das Sabaki Dance Feature verbessern und dann noch einmal testen.", 6.0, echoGlossary,
+     "glossary term inside a real sentence"),
+    ("sabaki.dance", 6.3, [String](), "empty glossary disables the gate"),
+    ("Ich spreche mit Johanna und Pia über Odoo und die KMU-Kunden.", 5.0, meetingGlossary,
+     "real sentence with glossary names and 'und'"),
+    ("und.", 6.0, meetingGlossary, "transcript of only connectors is not an echo"),
+    ("Speaker A: Ja, genau.\nSpeaker B: Claude Code ist gut.", 8.0, ["Claude Code"], "real speech with speaker labels"),
+    ("Speaker A: Claude Code.", 1.5, ["Claude Code"], "short real glossary utterance with a speaker label"),
+    ("Opus, Grok, Cursor, Claude", 5.0, longEchoGlossary, "glossary terms in reverse order"),
+    ("Claude Cursor Grok", 5.0, longEchoGlossary, "three ordered terms"),
+    ("Wir haben Claude, Cursor, Grok, Opus und Sonnet heute verglichen und dann entschieden.", 25.0,
+     longEchoGlossary, "real sentence with glossary names and other words"),
+  ])
+  func keepsRealSpeech(text: String, duration: Double, glossary: [String], label: String) {
+    #expect(
+      TextProcessingUtility.discardingGlossaryEchoTranscript(
+        text, audioDurationSeconds: duration, glossaryTerms: glossary, mode: "TEST") == text, "\(label)")
   }
 
   @Test("Only live-meeting chunks drop the glossary keywords")
@@ -253,249 +171,52 @@ struct TranscriptPlausibilityTests {
     #expect(SpeechService.shouldSendGlossaryKeywords(origin: nil))
   }
 
-  @Test("A speaker-labelled glossary echo on a long near-silent chunk is discarded")
-  func discardsSpeakerLabelledGlossaryEcho() {
-    // 2026-10-28: 11.4 s of near-silent meeting audio came back as exactly this.
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Speaker A: Claude Code.", audioDurationSeconds: 11.4,
-      glossaryTerms: ["Claude", "Claude Code", "MCP"], mode: "TEST")
-    #expect(result == "")
-  }
-
-  @Test("A speaker-labelled glossary list in glossary order is discarded")
-  func discardsSpeakerLabelledOrderedGlossary() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Speaker A: Claude, MCP, Bachata, Odoo.", audioDurationSeconds: 25.0,
-      glossaryTerms: ["Claude", "Christoph", "MCP", "Bachata", "Odoo"], mode: "TEST")
-    #expect(result == "")
-  }
-
-  @Test("A long speaker-labelled glossary list clears the length floor and is still discarded")
-  func discardsLongSpeakerLabelledOrderedGlossary() {
-    // Above the 3 chars/s floor, so only the ordered-list rule can catch it.
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Speaker A: Claude, Christoph, Michelbach, Cursor, EnBW, Grok, Opus, Sonnet, Gemini.",
-      audioDurationSeconds: 10.0,
-      glossaryTerms: [
-        "Claude", "Christoph", "Michelbach", "Cursor", "EnBW", "Grok", "Opus", "Sonnet", "Gemini",
-      ],
-      mode: "TEST")
-    #expect(result == "")
-  }
-
-  @Test("Real speech with speaker labels is kept")
-  func keepsRealSpeechWithSpeakerLabels() {
-    let text = "Speaker A: Ja, genau.\nSpeaker B: Claude Code ist gut."
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 8.0, glossaryTerms: ["Claude Code"], mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A short real glossary utterance with a speaker label is kept")
-  func keepsShortSpeakerLabelledGlossaryUtterance() {
-    let text = "Speaker A: Claude Code."
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 1.5, glossaryTerms: ["Claude Code"], mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A speaker label with nothing after it is discarded")
-  func discardsBareSpeakerLabel() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Speaker A:", audioDurationSeconds: 10.0, glossaryTerms: ["Claude Code"], mode: "TEST")
-    #expect(result == "")
-  }
-
-  @Test("The upper bound still discards confabulated paragraphs")
-  func discardsImplausiblyLongTranscript() {
-    // The failure this gate exists for: 0.9 s of audio, 538 invented characters.
-    let invented = String(repeating: "erfundener Text ", count: 40)  // 640 chars
+  @Test("Implausible length ceiling: confabulated paragraphs go, 2x playback speech stays", arguments: [
+    // The failure this gate exists for: 0.9 s of audio, 538 invented characters (640 here).
+    (String(repeating: "erfundener Text ", count: 40), 0.9, false, "confabulated paragraph"),
+    // Real case: a WhatsApp voice message at 2x produced 1017 correct characters from 31.0 s and
+    // the old 30 chars/s ceiling deleted all of it.
+    (String(repeating: "a", count: 1017), 31.0, true, "2x playback speed"),
+  ])
+  func implausibleLength(text: String, duration: Double, kept: Bool, label: String) {
     let result = TextProcessingUtility.discardingImplausibleTranscript(
-      invented, audioDurationSeconds: 0.9, mode: "TEST")
-    #expect(result == "")
+      text, audioDurationSeconds: duration, mode: "TEST")
+    #expect(result == (kept ? text : ""), "\(label)")
   }
 
-  @Test("Speech recorded at 2× playback speed is not mistaken for a hallucination")
-  func keepsFastSpeech() {
-    // Real case: a WhatsApp voice message played back at 2× produced 1017 correct characters
-    // from 31.0 s of audio and the old 30 chars/s ceiling deleted all of it.
-    let fast = String(repeating: "a", count: 1017)
-    let result = TextProcessingUtility.discardingImplausibleTranscript(
-      fast, audioDurationSeconds: 31.0, mode: "TEST")
-    #expect(result == fast)
-  }
-
-  @Test("Even 3× playback survives the ceiling")
-  func keepsVeryFastSpeech() {
-    // ~50 chars/s — still under the 60 chars/s ceiling.
-    let veryFast = String(repeating: "a", count: 1500)
-    let result = TextProcessingUtility.discardingImplausibleTranscript(
-      veryFast, audioDurationSeconds: 30.0, mode: "TEST")
-    #expect(result == veryFast)
-  }
-
-  private static let longEchoList = "Claude, Christoph, Michelbach, Cursor, EnBW, Grok, GrokBot, Opus, Sonnet, Gemini, Implementer Queue, Karlsruhe, Kizomba, Salsa, AutoMagic, Onepager, Whisper Shortcut, Schönstein, BlockInfinity, Claude Code, MCP, Bachata, sabaki.dance, Wianco, Datev, Regulon, Lemniskus, Parakeet, Vibe-Coding, KMU, Odoo, Johanna, Pia, Codex, Wellensteyn, Goedde"
-  private static var longEchoGlossary: [String] { longEchoList.components(separatedBy: ", ") }
-
-  @Test("The whole glossary read out in order is discarded whatever its length")
-  func discardsFullGlossaryList() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      Self.longEchoList + ".", audioDurationSeconds: 25, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
-    #expect(result == "")
-  }
-
-  // Audio is 5 s here, not 25 s: at 25 s these ~25 chars sit under the 3 chars/s floor and the
-  // pre-existing short-text rule would fire, so the new ordered-list rule would go untested.
-  @Test("Four glossary terms in glossary order are discarded")
-  func discardsFourOrderedTerms() {
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      "Claude, Cursor, Grok, Opus", audioDurationSeconds: 5, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
-    #expect(result == "")
-  }
-
-  @Test("Glossary terms in reverse order stay")
-  func keepsReversedTerms() {
-    let text = "Opus, Grok, Cursor, Claude"
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 5, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("Three ordered terms stay")
-  func keepsThreeOrderedTerms() {
-    let text = "Claude Cursor Grok"
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 5, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A real sentence with glossary names and other words stays")
-  func keepsSentenceWithGlossaryNames() {
-    let text = "Wir haben Claude, Cursor, Grok, Opus und Sonnet heute verglichen und dann entschieden."
-    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
-      text, audioDurationSeconds: 25, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  private static let trailingEchoGlossary = ["Joschka", "SumUp", "lemniscus", "WhisperShortcut"]
-
-  @Test("Report A drops the glossary tacked on after the sentence")
-  func stripsTrailingGlossaryEchoReportA() {
-    let text = "Wir kriegen von der Personalabteilung immer Ein- und Austrittslisten, damit ausgetretene Mitarbeiter im System gesperrt werden. Joschka SumUp lemniscus"
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == "Wir kriegen von der Personalabteilung immer Ein- und Austrittslisten, damit ausgetretene Mitarbeiter im System gesperrt werden.")
-  }
-
-  @Test("Report B drops the glossary tacked on after the sentence")
-  func stripsTrailingGlossaryEchoReportB() {
-    let text = "Ein Kunde Medizintechnik Bartsch hat eine Anfrage an mich geschickt. Hintergrund, ich habe Im Flyer den Flyer für unsere Spracherkennung WhisperShortcut zugeschickt. Joschka, SumUp, lemniscus, WhisperShortcut."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == "Ein Kunde Medizintechnik Bartsch hat eine Anfrage an mich geschickt. Hintergrund, ich habe Im Flyer den Flyer für unsere Spracherkennung WhisperShortcut zugeschickt.")
-  }
-
-  @Test("A single glossary term after the sentence stays")
-  func keepsSingleTrailingGlossaryTerm() {
-    let text = "Das war's. SumUp."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A lone term after a full-length sentence is stripped")
-  func stripsSingleTermAfterLongHead() {
-    let text = "Das MacBook Air hat ein 16 zu 10 Display, das heißt, du hast in der Höhe noch mal mehr Display. Also gefühlt wie ein 14 Zoll Notebook. Joschka."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == "Das MacBook Air hat ein 16 zu 10 Display, das heißt, du hast in der Höhe noch mal mehr Display. Also gefühlt wie ein 14 Zoll Notebook.")
-  }
-
-  @Test("A sign-off name stays")
-  func keepsSignOffName() {
-    let text = "Viele Grüße. Joschka."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("Out-of-order terms after a long head stay")
-  func keepsOutOfOrderAfterLongHead() {
-    let text = "Ich habe das heute mit dem neuen Tool gebaut. SumUp lemniscus Joschka."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("The same single term twice stays")
-  func keepsRepeatedSingleTerm() {
-    let text = "Ich habe das heute mit dem neuen Tool gebaut. Joschka Joschka."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A multi-word term counts as one term")
-  func stripsMultiWordSingleTerm() {
-    let text = "Ich habe das heute mit dem neuen Tool gebaut. Claude Code."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: ["Claude Code"], mode: "TEST")
-    #expect(result == "Ich habe das heute mit dem neuen Tool gebaut.")
-  }
-
-  @Test("Glossary words out of order stay")
-  func keepsOutOfOrderGlossaryTail() {
-    let text = "Das war's. WhisperShortcut Joschka."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A real sentence that mentions glossary terms stays")
-  func keepsTailWithNonGlossaryWords() {
-    let text = "Das war's. Wir nutzen SumUp und lemniscus."
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A dictated list after a colon stays")
-  func keepsListAfterColon() {
-    let text = "Teilnehmer: Joschka, SumUp"
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("Glossary words with no sentence boundary stay")
-  func keepsGlossaryWithoutBoundary() {
-    let text = "Joschka SumUp"
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A dot inside a token is not a sentence boundary")
-  func keepsDottedToken() {
-    let text = "sabaki.dance"
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: ["Sabaki", "Dance"], mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("An empty glossary disables the trailing-echo strip")
-  func keepsTrailingEchoWhenGlossaryEmpty() {
-    let text = "Hallo. Joschka SumUp"
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: [], mode: "TEST")
-    #expect(result == text)
-  }
-
-  @Test("A newline is a sentence boundary for a trailing glossary echo")
-  func stripsGlossaryEchoAfterNewline() {
-    let text = "Erster Absatz.\nJoschka, SumUp"
-    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
-      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
-    #expect(result == "Erster Absatz.")
+  @Test("Trailing glossary echo is stripped only after a sentence boundary and only for 2+ ordered terms (or a long head)",
+        arguments: [
+    // Report A / Report B regressions: the glossary tacked on after the sentence.
+    ("Wir kriegen von der Personalabteilung immer Ein- und Austrittslisten, damit ausgetretene Mitarbeiter im System gesperrt werden. Joschka SumUp lemniscus",
+     trailingEchoGlossary,
+     "Wir kriegen von der Personalabteilung immer Ein- und Austrittslisten, damit ausgetretene Mitarbeiter im System gesperrt werden.",
+     "Report A"),
+    ("Ein Kunde Medizintechnik Bartsch hat eine Anfrage an mich geschickt. Hintergrund, ich habe Im Flyer den Flyer für unsere Spracherkennung WhisperShortcut zugeschickt. Joschka, SumUp, lemniscus, WhisperShortcut.",
+     trailingEchoGlossary,
+     "Ein Kunde Medizintechnik Bartsch hat eine Anfrage an mich geschickt. Hintergrund, ich habe Im Flyer den Flyer für unsere Spracherkennung WhisperShortcut zugeschickt.",
+     "Report B"),
+    ("Das war's. SumUp.", trailingEchoGlossary, "Das war's. SumUp.", "single glossary term after the sentence stays"),
+    ("Das MacBook Air hat ein 16 zu 10 Display, das heißt, du hast in der Höhe noch mal mehr Display. Also gefühlt wie ein 14 Zoll Notebook. Joschka.",
+     trailingEchoGlossary,
+     "Das MacBook Air hat ein 16 zu 10 Display, das heißt, du hast in der Höhe noch mal mehr Display. Also gefühlt wie ein 14 Zoll Notebook.",
+     "lone term after a full-length sentence is stripped"),
+    ("Ich habe das heute mit dem neuen Tool gebaut. SumUp lemniscus Joschka.", trailingEchoGlossary,
+     "Ich habe das heute mit dem neuen Tool gebaut. SumUp lemniscus Joschka.", "out-of-order terms after a long head stay"),
+    ("Ich habe das heute mit dem neuen Tool gebaut. Joschka Joschka.", trailingEchoGlossary,
+     "Ich habe das heute mit dem neuen Tool gebaut. Joschka Joschka.", "same single term twice stays"),
+    ("Ich habe das heute mit dem neuen Tool gebaut. Claude Code.", ["Claude Code"],
+     "Ich habe das heute mit dem neuen Tool gebaut.", "multi-word term counts as one term"),
+    ("Das war's. Wir nutzen SumUp und lemniscus.", trailingEchoGlossary,
+     "Das war's. Wir nutzen SumUp und lemniscus.", "real sentence mentioning glossary terms stays"),
+    ("Teilnehmer: Joschka, SumUp", trailingEchoGlossary, "Teilnehmer: Joschka, SumUp", "dictated list after a colon stays"),
+    ("Joschka SumUp", trailingEchoGlossary, "Joschka SumUp", "no sentence boundary stays"),
+    ("sabaki.dance", ["Sabaki", "Dance"], "sabaki.dance", "a dot inside a token is not a boundary"),
+    ("Hallo. Joschka SumUp", [String](), "Hallo. Joschka SumUp", "empty glossary disables the strip"),
+    ("Erster Absatz.\nJoschka, SumUp", trailingEchoGlossary, "Erster Absatz.", "newline is a sentence boundary"),
+  ])
+  func strippingTrailingEcho(text: String, glossary: [String], expected: String, label: String) {
+    #expect(
+      TextProcessingUtility.strippingTrailingGlossaryEcho(text, glossaryTerms: glossary, mode: "TEST") == expected,
+      "\(label)")
   }
 }

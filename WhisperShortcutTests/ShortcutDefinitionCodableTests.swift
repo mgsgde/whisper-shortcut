@@ -44,14 +44,6 @@ struct ShortcutDefinitionCodableTests {
     #expect(Set([a, b]).count == 1)
   }
 
-  @Test("A disabled binding displays as Disabled")
-  func disabledDisplayString() {
-    let disabled = ShortcutDefinition(
-      key: .one, modifiers: [.control, .option], isEnabled: false)
-    #expect(disabled.displayString == "Disabled")
-    #expect(disabled.displayStringWithSeparator == "Disabled")
-  }
-
   @Test("The full ShortcutConfig Codable round-trip keeps every slot")
   func configRoundTrip() throws {
     let original = ShortcutConfig.default

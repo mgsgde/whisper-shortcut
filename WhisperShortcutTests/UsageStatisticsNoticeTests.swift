@@ -16,29 +16,26 @@ struct UsageStatisticsNoticeTests {
     return d
   }
 
-  @Test func dueForPreTelemetryInstallThatNeverChose() {
-    #expect(UsageStatisticsNotice.isDue(defaults: defaults(), isAvailable: true))
-  }
-
-  @Test func notDueForInstallsAskedInOnboarding() {
-    #expect(!UsageStatisticsNotice.isDue(defaults: defaults(preExisting: false), isAvailable: true))
-  }
-
-  @Test func notDueOnceTheUserChoseInSettings() {
+  @Test("isDue: only a pre-telemetry install that never chose and was never shown the notice")
+  func isDue() {
+    #expect(
+      UsageStatisticsNotice.isDue(defaults: defaults(), isAvailable: true),
+      "due for pre-telemetry install that never chose")
+    #expect(
+      !UsageStatisticsNotice.isDue(defaults: defaults(preExisting: false), isAvailable: true),
+      "not due for installs asked in onboarding")
     for choice in [true, false] {
       let d = defaults()
       d.set(choice, forKey: UserDefaultsKeys.telemetryEnabled)
-      #expect(!UsageStatisticsNotice.isDue(defaults: d, isAvailable: true))
+      #expect(
+        !UsageStatisticsNotice.isDue(defaults: d, isAvailable: true),
+        "not due once the user chose \(choice) in Settings")
     }
-  }
-
-  @Test func notDueTwice() {
-    let d = defaults()
-    d.set(true, forKey: UserDefaultsKeys.usageStatisticsNoticeShown)
-    #expect(!UsageStatisticsNotice.isDue(defaults: d, isAvailable: true))
-  }
-
-  @Test func waitsWhileOfflineModeOrAdminKeyForcesSharingOff() {
-    #expect(!UsageStatisticsNotice.isDue(defaults: defaults(), isAvailable: false))
+    let shown = defaults()
+    shown.set(true, forKey: UserDefaultsKeys.usageStatisticsNoticeShown)
+    #expect(!UsageStatisticsNotice.isDue(defaults: shown, isAvailable: true), "not due twice")
+    #expect(
+      !UsageStatisticsNotice.isDue(defaults: defaults(), isAvailable: false),
+      "waits while offline mode or admin key forces sharing off")
   }
 }

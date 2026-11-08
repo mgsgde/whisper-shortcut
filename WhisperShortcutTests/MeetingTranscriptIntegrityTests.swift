@@ -10,28 +10,31 @@ struct MeetingTranscriptIntegrityTests {
 
   private let original = "[00:00] Anna: Hello\n\n[01:05] Ben: Hi there\n\n[02:10] Anna: Bye"
 
-  @Test("Identical timestamps are accepted")
-  func accepts() {
-    let consolidated = "[00:00] Speaker 1: Hello\n\n[01:05] Speaker 2: Hi there\n\n[02:10] Speaker 1: Bye"
-    #expect(LiveMeetingSession.acceptsConsolidation(original: original, consolidated: consolidated))
+  private struct Row: Sendable {
+    let consolidated: String
+    let accepted: Bool
+    let label: String
   }
 
-  @Test("A dropped block is rejected")
-  func droppedBlock() {
-    let consolidated = "[00:00] Speaker 1: Hello\n\n[02:10] Speaker 1: Bye"
-    #expect(!LiveMeetingSession.acceptsConsolidation(original: original, consolidated: consolidated))
-  }
-
-  @Test("Empty output is rejected")
-  func empty() {
-    #expect(!LiveMeetingSession.acceptsConsolidation(original: original, consolidated: ""))
-    #expect(!LiveMeetingSession.acceptsConsolidation(original: original, consolidated: "  \n "))
-  }
-
-  @Test("Reordered blocks are rejected")
-  func reordered() {
-    let consolidated = "[01:05] Ben: Hi there\n\n[00:00] Anna: Hello\n\n[02:10] Anna: Bye"
-    #expect(!LiveMeetingSession.acceptsConsolidation(original: original, consolidated: consolidated))
+  @Test(
+    "Consolidation is accepted only when every block survives in order",
+    arguments: [
+      Row(
+        consolidated: "[00:00] Speaker 1: Hello\n\n[01:05] Speaker 2: Hi there\n\n[02:10] Speaker 1: Bye",
+        accepted: true, label: "identical timestamps"),
+      Row(
+        consolidated: "[00:00] Speaker 1: Hello\n\n[02:10] Speaker 1: Bye",
+        accepted: false, label: "dropped block"),
+      Row(consolidated: "", accepted: false, label: "empty output"),
+      Row(consolidated: "  \n ", accepted: false, label: "whitespace-only output"),
+      Row(
+        consolidated: "[01:05] Ben: Hi there\n\n[00:00] Anna: Hello\n\n[02:10] Anna: Bye",
+        accepted: false, label: "reordered blocks"),
+    ])
+  private func consolidation(_ row: Row) {
+    #expect(
+      LiveMeetingSession.acceptsConsolidation(original: original, consolidated: row.consolidated) == row.accepted,
+      Comment(rawValue: row.label))
   }
 
   @Test("A timestamp inside a chunk body does not split the chunk")

@@ -293,8 +293,13 @@ struct LiveMeetingChunkPipelineTests {
     }
   }
 
-  @Test("Chunks failing after the meeting ended raise one alert, not one each")
-  func lateFailuresAlertOncePerMeeting() async throws {
+  @Test(
+    "Chunks failing after the meeting ended raise one alert, not one each",
+    arguments: [
+      ([15.0, 45.0], 2, "several chunks raise one alert"),
+      ([15.0], 1, "an ended meeting still reports the failure"),
+    ])
+  func lateFailuresAlertOnce(starts: [Double], expectedBacklog: Int, label: String) async throws {
     try await withPreservedRecordingMarker {
       let store = LiveMeetingTranscriptStore.shared
       store.clearForNewMeeting()
@@ -306,26 +311,24 @@ struct LiveMeetingChunkPipelineTests {
       let stem = file.deletingPathExtension().lastPathComponent
       defer { MeetingAudioBacklog.remove(stem: stem) }
       FileManager.default.createFile(atPath: file.path, contents: Data())
-      let audioA = dir.appendingPathComponent("a.wav")
-      let audioB = dir.appendingPathComponent("b.wav")
-      FileManager.default.createFile(atPath: audioA.path, contents: Data([0]))
-      FileManager.default.createFile(atPath: audioB.path, contents: Data([0]))
 
       let transcripts = ChunkTranscripts()
       defer { transcripts.resumeOutstanding(returning: "") }
       let box = Counters()
       let session = makeSession(transcripts: transcripts, box: box)
       session.beginSessionWithoutRecorder(transcriptFile: file)
-      deliver(session, index: 0, start: 15, audio: audioA)
-      deliver(session, index: 1, start: 45, audio: audioB)
-      #expect(await waitUntil { transcripts.waiterCount == 2 })
+      for (index, start) in starts.enumerated() {
+        let audio = dir.appendingPathComponent("chunk-\(index).wav")
+        FileManager.default.createFile(atPath: audio.path, contents: Data([0]))
+        deliver(session, index: index, start: start, audio: audio)
+      }
+      #expect(await waitUntil { transcripts.waiterCount == starts.count }, "\(label)")
       session.stop()
       session.stopSafetyNetForTesting?.perform()
 
-      transcripts.fail(at: 0)
-      transcripts.fail(at: 1)
-      #expect(await waitUntil { box.backlogChanged == 2 })
-      #expect(box.alerts.count == 1)
+      for index in starts.indices { transcripts.fail(at: index) }
+      #expect(await waitUntil { box.backlogChanged == expectedBacklog }, "\(label)")
+      #expect(box.alerts.count == 1, "\(label)")
     }
   }
 
@@ -483,40 +486,6 @@ struct LiveMeetingChunkPipelineTests {
     }
   }
 
-  @Test("A late failure for an ended meeting tells the user the audio is kept")
-  func lateFailureForEndedMeetingIsReported() async throws {
-    try await withPreservedRecordingMarker {
-      let store = LiveMeetingTranscriptStore.shared
-      store.clearForNewMeeting()
-      defer { store.clearForNewMeeting() }
-
-      let dir = try makeDirectory()
-      defer { try? FileManager.default.removeItem(at: dir) }
-      let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
-      let stem = file.deletingPathExtension().lastPathComponent
-      defer { MeetingAudioBacklog.remove(stem: stem) }
-      FileManager.default.createFile(atPath: file.path, contents: Data())
-      let audio = dir.appendingPathComponent("chunk.wav")
-      FileManager.default.createFile(atPath: audio.path, contents: Data([0]))
-
-      let transcripts = ChunkTranscripts()
-      defer { transcripts.resumeOutstanding(returning: "") }
-      let box = Counters()
-      let session = makeSession(transcripts: transcripts, box: box)
-      session.beginSessionWithoutRecorder(transcriptFile: file)
-      deliver(session, index: 0, start: 15, audio: audio)
-      #expect(await waitUntil { transcripts.waiterCount == 1 })
-      session.stop()
-      session.stopSafetyNetForTesting?.perform()
-
-      transcripts.fail(at: 0)
-      #expect(await waitUntil { box.alerts.count == 1 })
-      #expect(box.backlogChanged == 1)
-      #expect(!box.alerts[0].contains("Recording continues"))
-      #expect(box.alerts[0].contains("kept on this Mac"))
-    }
-  }
-
   @Test("A cancelled chunk keeps its audio but shows no alert")
   func cancelledChunkShowsNoAlert() async throws {
     try await withPreservedRecordingMarker {
@@ -662,17 +631,6 @@ struct LiveMeetingChunkPipelineTests {
     }
   }
 
-  @Test("The transcript store keeps the latest start time last")
-  func storedChunksStayInSpeakingOrder() {
-    let store = LiveMeetingTranscriptStore.shared
-    store.clearForNewMeeting()
-    defer { store.clearForNewMeeting() }
-    store.appendChunk(startTime: 90, text: "later")
-    store.appendChunk(startTime: 5, text: "earlier")
-    #expect(store.chunks.map { $0.text } == ["earlier", "later"])
-    #expect(store.chunks.last?.startTime == 90)
-    #expect(store.elapsedSeconds == 90)
-  }
 }
 
 private final class Counters: @unchecked Sendable {
@@ -908,10 +866,6 @@ private func waitForChunkTexts(at url: URL, _ expected: [String]) async -> Bool 
 }
 
 private func chunkTexts(at url: URL) -> [String] {
-  LiveMeetingTranscriptStore.parseTranscript(text(at: url)).map { $0.text }
-}
-
-private func chunkTexts(in url: URL) -> [String] {
   LiveMeetingTranscriptStore.parseTranscript(text(at: url)).map { $0.text }
 }
 

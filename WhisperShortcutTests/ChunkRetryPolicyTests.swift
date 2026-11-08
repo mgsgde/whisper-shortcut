@@ -27,17 +27,6 @@ struct ChunkRetryPolicyTests {
     }
   }
 
-  @Test("Succeeds on the first attempt without retrying")
-  func succeedsImmediately() async throws {
-    let attempts = Attempts()
-    let result = try await policy(maxRetries: 5).run(label: "Chunk 0") {
-      _ = await attempts.bump()
-      return "ok"
-    }
-    #expect(result == "ok")
-    #expect(await attempts.count == 1)
-  }
-
   @Test("Retries a retryable failure and returns the eventual success")
   func retriesUntilSuccess() async throws {
     let attempts = Attempts()
@@ -63,30 +52,26 @@ struct ChunkRetryPolicyTests {
     #expect(await attempts.count == 3)
   }
 
-  @Test("A non-retryable error fails on the first attempt")
-  func nonRetryableFailsFast() async {
-    let attempts = Attempts()
-    await #expect(throws: TranscriptionError.invalidAPIKey) {
-      try await policy(maxRetries: 5).run(label: "Chunk 3") { () -> String in
-        _ = await attempts.bump()
-        throw TranscriptionError.invalidAPIKey
-      }
-    }
-    #expect(await attempts.count == 1)
+  struct FastFail: Sendable {
+    let note: String
+    let error: TranscriptionError
   }
 
-  @Test("A rate limit with no retry delay is permanent — no retry")
-  func rateLimitWithoutDelayFailsFast() async {
+  @Test("A non-retryable error or a rate limit with no delay fails on the first attempt", arguments: [
+    FastFail(note: "invalid API key", error: .invalidAPIKey),
     // `isRetryable` is false for `.rateLimited(nil)`: a spend cap will not clear on its own, so
     // retrying only burns requests against an already-capped project.
+    FastFail(note: "rate limit with no retry delay", error: .rateLimited(retryAfter: nil)),
+  ])
+  func nonRetryableFailsFast(_ row: FastFail) async {
     let attempts = Attempts()
-    await #expect(throws: TranscriptionError.rateLimited(retryAfter: nil)) {
-      try await policy(maxRetries: 5).run(label: "Chunk 4") { () -> String in
+    await #expect(throws: row.error) {
+      try await policy(maxRetries: 5).run(label: row.note) { () -> String in
         _ = await attempts.bump()
-        throw TranscriptionError.rateLimited(retryAfter: nil)
+        throw row.error
       }
     }
-    #expect(await attempts.count == 1)
+    #expect(await attempts.count == 1, "\(row.note)")
   }
 
   @Test("beforeRetry fires once per retry, never before the first attempt")

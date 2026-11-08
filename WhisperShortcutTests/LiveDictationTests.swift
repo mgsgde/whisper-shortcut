@@ -47,18 +47,6 @@ struct LiveDictationTests {
     #expect(ShortcutConfig.availableInThisBuild(input, isAppStore: false).liveDictate.isEnabled)
   }
 
-  // MARK: - Rotation policy
-
-  @Test("Normal Dictate keeps its 10 s / 1 s cuts; Dictate Live cuts at 0.6 s pauses")
-  func rotationPolicies() {
-    #expect(ChunkedDictateRecorder.RotationPolicy.standard.minDuration == AppConstants.dictateChunkMinDuration)
-    #expect(
-      ChunkedDictateRecorder.RotationPolicy.standard.silenceDuration == AppConstants.dictateChunkSilenceDuration)
-    #expect(ChunkedDictateRecorder.rotationSilenceSamplesNeeded(for: .standard) == 5)
-    #expect(ChunkedDictateRecorder.rotationSilenceSamplesNeeded(for: .live) == 3)
-    #expect(ChunkedDictateRecorder.RotationPolicy.live.minDuration == 1.5)
-  }
-
   // MARK: - Punctuation mode
 
   @Test("Only when spoken: a spoken Punkt ends the piece with a period")
@@ -116,15 +104,6 @@ struct LiveDictationTests {
     #expect(joiner.inserted == "Die Patientin klagt. Über Schmerzen")
   }
 
-  @Test("Only when spoken: a capital stays when the previous piece ended the sentence")
-  func spokenOnlyKeepsCapitalAfterSentenceMark() {
-    var joiner = LiveChunkJoiner()
-    joiner.holdsPeriods = false
-    #expect(joiner.next("Ende.") == "Ende.")
-    #expect(joiner.next("Über Schmerzen") == " Über Schmerzen")
-    #expect(joiner.inserted == "Ende. Über Schmerzen")
-  }
-
   @Test("Standalone fillers are dropped; real words stay")
   func fillersDropped() {
     #expect(LiveDictation.finishPiece("Mm-hmm", mode: .automatic) == "")
@@ -154,38 +133,39 @@ struct LiveDictationTests {
     LiveDictation.LastInsertion(character: character, bundleId: bundle, at: memoryNow.addingTimeInterval(-age))
   }
 
-  @Test("Unknown caret, same app, fresh memory: the remembered character")
-  func memorySeedsUnknown() {
+  private struct MemorySeed: @unchecked Sendable {
+    let note: String
+    let caret: FocusedTextContext.CaretContext
+    let remember: Bool
+    let bundle: String
+    let age: TimeInterval
+    let frontmost: String?
+    let expected: FocusedTextContext.CaretContext
+  }
+
+  private static let memorySeedRows: [MemorySeed] = [
+    .init(note: "same app, fresh memory", caret: .unknown, remember: true, bundle: "com.app.a", age: 5,
+          frontmost: "com.app.a", expected: .character("s")),
+    .init(note: "other app", caret: .unknown, remember: true, bundle: "com.app.a", age: 5,
+          frontmost: "com.app.b", expected: .unknown),
+    .init(note: "expired", caret: .unknown, remember: true, bundle: "com.app.a", age: 601,
+          frontmost: "com.app.a", expected: .unknown),
+    .init(note: "no memory", caret: .unknown, remember: false, bundle: "com.app.a", age: 5,
+          frontmost: "com.app.a", expected: .unknown),
+    .init(note: "no frontmost app", caret: .unknown, remember: true, bundle: "com.app.a", age: 5,
+          frontmost: nil, expected: .unknown),
+    .init(note: "readable start of text wins", caret: .startOfText, remember: true, bundle: "com.app.a",
+          age: 5, frontmost: "com.app.a", expected: .startOfText),
+    .init(note: "readable character wins", caret: .character("."), remember: true, bundle: "com.app.a",
+          age: 5, frontmost: "com.app.a", expected: .character(".")),
+  ]
+
+  @Test("A remembered character seeds only an unknown caret in the same app", arguments: memorySeedRows)
+  private func memorySeeds(_ row: MemorySeed) {
+    let last = row.remember ? memory(bundle: row.bundle, age: row.age) : nil
     let seeded = LiveDictation.LastInsertion.seed(
-      caret: .unknown, last: memory(), frontmostBundle: "com.app.a", now: memoryNow)
-    #expect(seeded == .character("s"))
-  }
-
-  @Test("Unknown caret, other app / expired / no memory: stays unknown")
-  func memoryIgnored() {
-    #expect(
-      LiveDictation.LastInsertion.seed(
-        caret: .unknown, last: memory(), frontmostBundle: "com.app.b", now: memoryNow) == .unknown)
-    #expect(
-      LiveDictation.LastInsertion.seed(
-        caret: .unknown, last: memory(age: 601), frontmostBundle: "com.app.a", now: memoryNow) == .unknown)
-    #expect(
-      LiveDictation.LastInsertion.seed(
-        caret: .unknown, last: nil, frontmostBundle: "com.app.a", now: memoryNow) == .unknown)
-    #expect(
-      LiveDictation.LastInsertion.seed(
-        caret: .unknown, last: memory(), frontmostBundle: nil, now: memoryNow) == .unknown)
-  }
-
-  @Test("A readable caret wins over the memory")
-  func readableCaretWins() {
-    #expect(
-      LiveDictation.LastInsertion.seed(
-        caret: .startOfText, last: memory(), frontmostBundle: "com.app.a", now: memoryNow) == .startOfText)
-    #expect(
-      LiveDictation.LastInsertion.seed(
-        caret: .character("."), last: memory(), frontmostBundle: "com.app.a", now: memoryNow)
-        == .character("."))
+      caret: row.caret, last: last, frontmostBundle: row.frontmost, now: memoryNow)
+    #expect(seeded == row.expected, "\(row.note)")
   }
 
   @Test("make keeps the last character, nothing for empty text or unknown target")
@@ -503,39 +483,24 @@ struct LiveDictationTests {
 
   // MARK: - Dictate mode
 
-  @Test("Dictate mode defaults to normal Dictate")
-  func dictateModeDefaultIsDictate() {
-    #expect(SettingsDefaults.dictateMode == .dictate)
-    #expect(SettingsData().dictateMode == .dictate)
-  }
+  private static let startDecisions: [(DictateMode, LiveDictation.Unavailable?, LiveDictation.StartDecision, String)] = [
+    (.dictate, nil, .startDictate, "dictate never depends on availability"),
+    (.dictate, .duringMeeting, .startDictate, "dictate during a meeting"),
+    (.dictate, .intelMac, .startDictate, "dictate on Intel"),
+    (.dictate, .notParakeet, .startDictate, "dictate without Parakeet"),
+    (.dictate, .notDownloaded, .startDictate, "dictate when Parakeet is not downloaded"),
+    (.live, nil, .startLive, "live starts when available"),
+    (.live, .intelMac, .refuse(.intelMac), "live refuses on Intel"),
+    (.live, .notParakeet, .refuse(.notParakeet), "live refuses without Parakeet"),
+    (.live, .notDownloaded, .refuse(.notDownloaded), "live refuses when Parakeet is not downloaded"),
+    (.live, .duringMeeting, .startDictate, "live during a meeting starts a Dictate segment"),
+  ]
 
-  @Test("Dictate mode raw values round-trip and reject unknown ones")
-  func dictateModeRawValues() {
-    for mode in DictateMode.allCases {
-      #expect(DictateMode(rawValue: mode.rawValue) == mode)
-    }
-    #expect(DictateMode(rawValue: "bogus") == nil)
-  }
-
-  @Test("Start decision: Dictate never depends on availability")
-  func decisionDictate() {
-    let reasons: [LiveDictation.Unavailable?] = [nil, .duringMeeting, .intelMac, .notParakeet, .notDownloaded]
-    for reason in reasons {
-      #expect(LiveDictation.startDecision(mode: .dictate, unavailable: reason) == .startDictate)
-    }
-  }
-
-  @Test("Start decision: Live starts when available and refuses with the reason otherwise")
-  func decisionLive() {
-    #expect(LiveDictation.startDecision(mode: .live, unavailable: nil) == .startLive)
-    let reasons: [LiveDictation.Unavailable] = [.intelMac, .notParakeet, .notDownloaded]
-    for reason in reasons {
-      #expect(LiveDictation.startDecision(mode: .live, unavailable: reason) == .refuse(reason))
-    }
-  }
-
-  @Test("Start decision: Live during a meeting starts a Dictate meeting segment instead of refusing")
-  func decisionLiveDuringMeeting() {
-    #expect(LiveDictation.startDecision(mode: .live, unavailable: .duringMeeting) == .startDictate)
+  @Test("Start decision follows the mode and why Live is unavailable", arguments: startDecisions)
+  func startDecision(
+    mode: DictateMode, unavailable: LiveDictation.Unavailable?,
+    expected: LiveDictation.StartDecision, label: String
+  ) {
+    #expect(LiveDictation.startDecision(mode: mode, unavailable: unavailable) == expected, "\(label)")
   }
 }

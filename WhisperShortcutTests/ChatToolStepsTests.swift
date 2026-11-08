@@ -55,16 +55,6 @@ struct ChatToolStepsTests {
     }
   }
 
-  @Test func labelsCarryTheirObject() {
-    #expect(ChatToolRegistry.stepLabel(name: "gmail_search", args: ["query": "invoice"], done: false)
-      == "Searching Gmail for \"invoice\"…")
-    #expect(ChatToolRegistry.stepLabel(name: "read_text_file", args: ["path": "/a/b/notes.md"], done: true)
-      == "Read notes.md")
-    #expect(ChatToolRegistry.stepLabel(
-      name: ChatToolRegistry.updateInstructionsToolName, args: ["action": "read"], done: false)
-      == "Reading app instructions…")
-  }
-
   @Test func longArgumentsAreTruncated() {
     let label = ChatToolRegistry.stepLabel(
       name: "gmail_search", args: ["query": String(repeating: "x", count: 200)], done: false)

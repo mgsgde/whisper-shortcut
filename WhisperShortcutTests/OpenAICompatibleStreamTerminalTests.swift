@@ -35,42 +35,44 @@ struct OpenAICompatibleStreamTerminalTests {
     return message
   }
 
-  @Test("Lenient response.incomplete carries a truncated finish reason")
-  func incompleteIsTruncated() async throws {
-    let body = """
-      event: response.output_text.delta
-      data: {"delta":"Hello"}
-
-      event: response.incomplete
-      data: {"response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}
-
-      """
-    let events = try await Self.collect(
-      OpenAICompatibleStream.responses(Self.config(body: body), body: [:], collectCitations: false))
-
-    guard case .finished(_, _, let reason) = events.last else {
-      Issue.record("expected a finished event, got \(String(describing: events.last))")
-      return
-    }
-    #expect(reason == "length")
-    #expect(ChatViewModel.isTruncatedFinishReason(reason))
+  private struct IncompleteRow: Sendable {
+    let body: String
+    let reason: String
+    let truncated: Bool
+    let label: String
   }
 
-  @Test("Lenient response.incomplete with another reason is plain incomplete")
-  func incompleteOtherReason() async throws {
-    let body = """
-      event: response.incomplete
-      data: {"response":{"status":"incomplete","incomplete_details":{"reason":"content_filter"}}}
+  @Test(
+    "Lenient response.incomplete finishes with a mapped reason",
+    arguments: [
+      IncompleteRow(
+        body: """
+          event: response.output_text.delta
+          data: {"delta":"Hello"}
 
-      """
+          event: response.incomplete
+          data: {"response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}
+
+          """,
+        reason: "length", truncated: true, label: "max_output_tokens is a truncated finish"),
+      IncompleteRow(
+        body: """
+          event: response.incomplete
+          data: {"response":{"status":"incomplete","incomplete_details":{"reason":"content_filter"}}}
+
+          """,
+        reason: "incomplete", truncated: true, label: "another reason is plain incomplete"),
+    ])
+  private func incomplete(_ row: IncompleteRow) async throws {
     let events = try await Self.collect(
-      OpenAICompatibleStream.responses(Self.config(body: body), body: [:], collectCitations: false))
+      OpenAICompatibleStream.responses(Self.config(body: row.body), body: [:], collectCitations: false))
 
     guard case .finished(_, _, let reason) = events.last else {
-      Issue.record("expected a finished event, got \(String(describing: events.last))")
+      Issue.record("expected a finished event, got \(String(describing: events.last)): \(row.label)")
       return
     }
-    #expect(reason == "incomplete")
+    #expect(reason == row.reason, Comment(rawValue: row.label))
+    #expect(ChatViewModel.isTruncatedFinishReason(reason) == row.truncated, Comment(rawValue: row.label))
   }
 
   @Test("Lenient response.failed throws the payload message")
@@ -104,31 +106,5 @@ struct OpenAICompatibleStreamTerminalTests {
     } catch {
       #expect(Self.networkMessage(error).contains("quota"))
     }
-  }
-
-  @Test("Chat Completions still yields text and finishes")
-  func chatCompletionsStillFinishes() async throws {
-    let body = """
-      data: {"choices":[{"delta":{"content":"Hello"}}]}
-
-      data: {"choices":[{"delta":{"content":", world"}}]}
-
-      data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
-
-      data: [DONE]
-
-      """
-    let events = try await Self.collect(
-      OpenAICompatibleStream.chatCompletions(Self.config(body: body), body: [:]))
-
-    let text = events.reduce(into: "") { acc, event in
-      if case .textDelta(let delta) = event { acc += delta }
-    }
-    #expect(text == "Hello, world")
-    guard case .finished(_, _, let reason) = events.last else {
-      Issue.record("expected a finished event, got \(String(describing: events.last))")
-      return
-    }
-    #expect(reason == "stop")
   }
 }

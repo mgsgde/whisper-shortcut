@@ -5,23 +5,16 @@ import Testing
 @Suite("Globe key usage")
 struct GlobeKeyUsageTests {
 
-  @Test("AppleFnUsageType 0, 1, 2 and 3 map to the documented cases")
-  func documentedValues() {
-    #expect(GlobeKeyUsage.usage(fromRawValue: 0) == .doNothing)
-    #expect(GlobeKeyUsage.usage(fromRawValue: 1) == .changeInputSource)
-    #expect(GlobeKeyUsage.usage(fromRawValue: 2) == .emojiAndSymbols)
-    #expect(GlobeKeyUsage.usage(fromRawValue: 3) == .startDictation)
-  }
-
-  @Test("An undocumented or missing value is unknown, never Do Nothing")
-  func unknownValues() {
-    #expect(GlobeKeyUsage.usage(fromRawValue: 7) == .unknown)
-    #expect(GlobeKeyUsage.usage(fromRawValue: nil) == .unknown)
-  }
-
-  @Test("Do Nothing has no System Settings label to change")
-  func doNothingHasNoLabel() {
-    #expect(GlobeKeyUsage.doNothing.systemSettingsLabel == nil)
+  @Test("AppleFnUsageType 0-3 map to the documented cases; an undocumented or missing value is unknown, never Do Nothing", arguments: [
+    (0 as Int?, GlobeKeyUsage.doNothing),
+    (1, .changeInputSource),
+    (2, .emojiAndSymbols),
+    (3, .startDictation),
+    (7, .unknown),
+    (nil, .unknown),
+  ])
+  func usageFromRawValue(raw: Int?, expected: GlobeKeyUsage) {
+    #expect(GlobeKeyUsage.usage(fromRawValue: raw) == expected, "raw \(String(describing: raw))")
   }
 
   @Test("Only a known system action counts as a conflict; Do Nothing and unknown do not")

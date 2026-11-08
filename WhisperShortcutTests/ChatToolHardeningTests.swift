@@ -10,40 +10,27 @@ struct ChatToolHardeningTests {
 
   // MARK: correct_transcript_term
 
-  @Test func wholeTermLeavesSubstringsAlone() {
-    let (out, n) = ChatViewModel.replacingWholeTerm("Ana met Banana", from: "Ana", to: "Anna")
-    #expect(out == "Anna met Banana")
-    #expect(n == 1)
+  struct WholeTerm: Sendable {
+    let note: String
+    let text: String
+    let from: String
+    let to: String
+    let expected: String
+    var count: Int? = nil
   }
 
-  @Test func wholeTermReplacesBeforePunctuation() {
-    let (out, n) = ChatViewModel.replacingWholeTerm("Hi Ana. Then Ana, and (Ana)", from: "Ana", to: "Anna")
-    #expect(out == "Hi Anna. Then Anna, and (Anna)")
-    #expect(n == 3)
-  }
-
-  @Test func wholeTermIsCaseSensitive() {
-    let (out, n) = ChatViewModel.replacingWholeTerm("ana Ana", from: "Ana", to: "Anna")
-    #expect(out == "ana Anna")
-    #expect(n == 1)
-  }
-
-  @Test func wholeTermMultiWordPhrase() {
-    let (out, n) = ChatViewModel.replacingWholeTerm(
-      "Park Depot and Park Depots", from: "Park Depot", to: "ParkDepot")
-    #expect(out == "ParkDepot and Park Depots")
-    #expect(n == 1)
-  }
-
-  @Test func wholeTermRespectsUnicodeBoundaries() {
-    let (out, n) = ChatViewModel.replacingWholeTerm("Ärger und rger", from: "rger", to: "X")
-    #expect(out == "Ärger und X")
-    #expect(n == 1)
-  }
-
-  @Test func wholeTermTreatsReplacementLiterally() {
-    let (out, _) = ChatViewModel.replacingWholeTerm("cost A", from: "A", to: "$1 \\n")
-    #expect(out == "cost $1 \\n")
+  @Test("Whole-term replacement leaves substrings, case and template characters alone", arguments: [
+    WholeTerm(note: "substrings stay", text: "Ana met Banana", from: "Ana", to: "Anna", expected: "Anna met Banana", count: 1),
+    WholeTerm(note: "punctuation is a boundary", text: "Hi Ana. Then Ana, and (Ana)", from: "Ana", to: "Anna", expected: "Hi Anna. Then Anna, and (Anna)", count: 3),
+    WholeTerm(note: "case sensitive", text: "ana Ana", from: "Ana", to: "Anna", expected: "ana Anna", count: 1),
+    WholeTerm(note: "multi-word phrase", text: "Park Depot and Park Depots", from: "Park Depot", to: "ParkDepot", expected: "ParkDepot and Park Depots", count: 1),
+    WholeTerm(note: "unicode boundaries", text: "Ärger und rger", from: "rger", to: "X", expected: "Ärger und X", count: 1),
+    WholeTerm(note: "replacement is literal, not a template", text: "cost A", from: "A", to: "$1 \\n", expected: "cost $1 \\n"),
+  ])
+  func wholeTerm(_ row: WholeTerm) {
+    let (out, n) = ChatViewModel.replacingWholeTerm(row.text, from: row.from, to: row.to)
+    #expect(out == row.expected, "\(row.note)")
+    if let count = row.count { #expect(n == count, "\(row.note)") }
   }
 
   // MARK: persistent-write tools are gated

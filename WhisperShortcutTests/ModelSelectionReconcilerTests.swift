@@ -14,47 +14,38 @@ struct ModelSelectionReconcilerTests {
     .gemini38Flash, .openaiGPT6Sol, .grok43,
   ]
 
-  @Test("Preferred prompt model follows Gemini → OpenAI → Grok")
-  func preferredPromptFollowsProviderOrder() {
-    #expect(
-      ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .gemini })
-        == .gemini38Flash)
-    #expect(
-      ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .openai })
-        == .openaiGPT6Sol)
-    #expect(
-      ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .grok })
-        == .grok43)
-
-    // Gemini wins when more than one key is present.
-    #expect(
-      ModelSelectionReconciler.preferredPromptModel(
-        among: chatCandidates,
-        hasKey: { $0 == .gemini || $0 == .openai }
-      ) == .gemini38Flash)
+  private struct PreferredRow: Sendable {
+    let hasKey: @Sendable (ChatModelProvider) -> Bool
+    let withOpenRouter: Bool
+    let expected: PromptModel?
+    let label: String
   }
 
-  @Test("An OpenRouter-only user is moved onto OpenRouter, but only as the last resort")
-  func preferredPromptFallsBackToOpenRouter() {
-    let withOpenRouter = chatCandidates + [.openRouterChat]
+  @Test(
+    "Preferred prompt model follows Gemini → OpenAI → Grok, OpenRouter last, nil without a key",
+    arguments: [
+      PreferredRow(hasKey: { $0 == .gemini }, withOpenRouter: false, expected: .gemini38Flash, label: "Gemini key"),
+      PreferredRow(hasKey: { $0 == .openai }, withOpenRouter: false, expected: .openaiGPT6Sol, label: "OpenAI key"),
+      PreferredRow(hasKey: { $0 == .grok }, withOpenRouter: false, expected: .grok43, label: "Grok key"),
+      // Gemini wins when more than one key is present.
+      PreferredRow(
+        hasKey: { $0 == .gemini || $0 == .openai }, withOpenRouter: false, expected: .gemini38Flash,
+        label: "Gemini wins over OpenAI"),
+      // An OpenRouter-only user is moved onto OpenRouter, but only as the last resort.
+      PreferredRow(
+        hasKey: { $0 == .openRouter }, withOpenRouter: true, expected: .openRouterChat, label: "OpenRouter only"),
+      PreferredRow(
+        hasKey: { $0 == .openRouter || $0 == .grok }, withOpenRouter: true, expected: .grok43,
+        label: "Grok beats OpenRouter"),
+      PreferredRow(hasKey: { _ in false }, withOpenRouter: false, expected: nil, label: "no key"),
+      // Anthropic is never a substitute — `providerPreference` does not include it.
+      PreferredRow(hasKey: { $0 == .anthropic }, withOpenRouter: false, expected: nil, label: "Anthropic only"),
+    ])
+  private func preferredPrompt(_ row: PreferredRow) {
+    let candidates = row.withOpenRouter ? chatCandidates + [.openRouterChat] : chatCandidates
     #expect(
-      ModelSelectionReconciler.preferredPromptModel(among: withOpenRouter, hasKey: { $0 == .openRouter })
-        == .openRouterChat)
-    #expect(
-      ModelSelectionReconciler.preferredPromptModel(
-        among: withOpenRouter, hasKey: { $0 == .openRouter || $0 == .grok }
-      ) == .grok43)
-  }
-
-  @Test("No key among the preferred providers yields no replacement")
-  func preferredPromptIsNilWithoutAKey() {
-    #expect(
-      ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { _ in false })
-        == nil)
-    // Anthropic is never a substitute — `providerPreference` does not include it.
-    #expect(
-      ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .anthropic })
-        == nil)
+      ModelSelectionReconciler.preferredPromptModel(among: candidates, hasKey: row.hasKey) == row.expected,
+      Comment(rawValue: row.label))
   }
 
   @Test("Falls back to the first candidate of a keyed provider")

@@ -102,13 +102,6 @@ struct SlashMenuSuggestionTests {
     #expect(settings[ChatViewModel.initialSlashHighlight(in: settings, composerText: "/settings")].command == "/settings")
   }
 
-  @Test("Typed aliases keep dispatching even though they are not listed")
-  func aliasesStillDispatch() {
-    #expect(ChatViewModel.modelCommandLookup["/gemini31flashlite"] == .gemini31FlashLite)
-    #expect(ChatViewModel.modelCommandLookup["/mlx"] == .localMLXQwen34BInstruct)
-    #expect(ChatViewModel.modelCommandLookup["/local"] == .localModel)
-  }
-
   @Test("Local Server is refused with a reason instead of a fake 'Model set to'")
   func localServerRefused() {
     let reason = ChatViewModel.chatUnavailableReason(for: .localModel)

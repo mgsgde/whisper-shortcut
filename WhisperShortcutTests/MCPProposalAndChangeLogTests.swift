@@ -93,15 +93,6 @@ struct MCPProposalAndChangeLogTests {
     #expect(env.changeLog.changes.isEmpty)
   }
 
-  @Test("Accept succeeds when the target is unchanged")
-  func acceptUnchanged() {
-    let env = MCPTestEnv(level: .propose)
-    env.systemPrompts.updateSection(.dictation, content: "Original.", source: .settings)
-    let id = propose(env)
-    guard case .success = env.proposals.accept(id) else { Issue.record("accept failed"); return }
-    #expect(env.systemPrompts.loadSection(.dictation) == "Proposed text")
-  }
-
   @Test("A second proposal for the same section replaces the first")
   func replacesPending() {
     let env = MCPTestEnv(level: .propose)

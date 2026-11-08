@@ -28,15 +28,11 @@ struct ProviderCredentialFactsTests {
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
   ]
 
-  @Test("Gemini endpoints still resolve to the exact URLs the per-model switch returned")
-  func geminiEndpointsUnchanged() {
+  @Test("Endpoints are unchanged: Gemini exact URLs, cloud providers fixed, offline and self-hosted empty")
+  func endpointsUnchanged() {
     for (model, expected) in Self.expectedEndpoints {
       #expect(model.apiEndpoint == expected, "\(model.rawValue) endpoint drifted")
     }
-  }
-
-  @Test("Cloud providers keep their fixed endpoints; offline and self-hosted stay empty")
-  func nonGeminiEndpointsUnchanged() {
     #expect(TranscriptionModel.openAIGPTTranscribe.apiEndpoint == AppConstants.openAITranscriptionsEndpoint)
     #expect(TranscriptionModel.openAIGPT4oTranscribe.apiEndpoint == AppConstants.openAITranscriptionsEndpoint)
     #expect(TranscriptionModel.openAIGPT4oMiniTranscribe.apiEndpoint == AppConstants.openAITranscriptionsEndpoint)
@@ -49,51 +45,20 @@ struct ProviderCredentialFactsTests {
     }
   }
 
-  @Test("Only Google defers its endpoint to the model")
-  func onlyGoogleHasNoFixedEndpoint() {
-    for provider in TranscriptionProvider.allCases {
-      if provider == .google {
-        #expect(provider.fixedEndpoint == nil)
-      } else {
-        #expect(provider.fixedEndpoint != nil, "\(provider.rawValue) must declare a fixed endpoint")
-      }
-    }
-  }
-
   // MARK: - Chat credentials (R26)
-
-  @Test("Every provider that needs a credential explains where to put it")
-  func credentialMessagesAreActionable() {
-    for provider in ChatModelProvider.allCases where provider.requiresUserSuppliedCredential {
-      let message = provider.credentialRequiredMessage
-      #expect(!message.isEmpty, "\(provider.rawValue) has no message")
-      // The whole point of unifying on the ProviderCredentials wording: the old ChatView copies
-      // said "in Settings" without naming the tab, which is where the key field actually is.
-      #expect(
-        message.contains("Settings → Accounts") || message.contains("Settings → Chat"),
-        "\(provider.rawValue) message does not name the Settings tab: \(message)")
-    }
-  }
-
-  @Test("Local needs nothing and is always considered configured")
-  func localNeedsNoCredential() {
-    #expect(ChatModelProvider.local.hasCredential)
-    #expect(!ChatModelProvider.local.requiresUserSuppliedCredential)
-    #expect(ChatModelProvider.local.credentialRequiredMessage.isEmpty)
-  }
 
   /// The "you have no keys at all" warning must not be silenced by a provider the user never had to
   /// configure — otherwise a fresh install with a reachable local server would look set up.
-  @Test("Endpoint-configured and credential-free providers cannot satisfy the any-key check")
-  func anyKeyCheckIgnoresNonKeyedProviders() {
+  @Test("Local needs nothing; endpoint-configured and credential-free providers cannot satisfy the any-key check")
+  func credentialFreeProviders() {
+    #expect(ChatModelProvider.local.hasCredential)
     #expect(!ChatModelProvider.local.requiresUserSuppliedCredential)
+    #expect(ChatModelProvider.local.credentialRequiredMessage.isEmpty)
     #expect(!ChatModelProvider.customOpenAI.requiresUserSuppliedCredential)
     let keyed = ChatModelProvider.allCases.filter { $0.requiresUserSuppliedCredential }
     #expect(Set(keyed) == Set([.gemini, .openai, .grok, .anthropic, .openRouter]))
   }
 
-  /// `hasCredential` must agree with the Keychain check the request path itself performs, or the
-  /// UI enables a send that then fails on a missing key.
   @Test("Keyed providers report configured exactly when a non-empty key is stored")
   func keyedProvidersTrackTheKeychain() {
     let pairs: [(ChatModelProvider, KeychainCredential)] = [

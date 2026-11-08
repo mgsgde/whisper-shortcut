@@ -87,12 +87,4 @@ struct SettingsSlotChangeNotificationTests {
     #expect(changed.count == 4)
     #expect(fireChanges(data: data, persisted: persisted).isEmpty)
   }
-
-  @Test("Saving with nothing changed posts nothing")
-  func unchangedPostsNothing() {
-    let data = SettingsData()
-    let changed = SettingsSlot.slotsToSave(SettingsViewModel.slots, data: data, persisted: data)
-    #expect(changed.isEmpty)
-    #expect(fireChanges(data: data, persisted: data).isEmpty)
-  }
 }

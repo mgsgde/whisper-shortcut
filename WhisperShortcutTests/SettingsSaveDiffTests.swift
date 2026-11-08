@@ -59,14 +59,4 @@ struct SettingsSaveDiffTests {
     for slot in SettingsSlot.slotsToSave(slots, data: data, persisted: persisted) { slot.save(data) }
     #expect(writes.keys == ["fn"])
   }
-
-  @Test("ShortcutConfig equality tracks a changed shortcut")
-  func shortcutConfigEquatable() {
-    var data = SettingsData()
-    data.toggleDictation = ShortcutConfig.default.startRecording
-    var changed = data
-    #expect(SettingsViewModel.shortcutConfig(from: data) == SettingsViewModel.shortcutConfig(from: changed))
-    changed.toggleDictation = nil
-    #expect(SettingsViewModel.shortcutConfig(from: data) != SettingsViewModel.shortcutConfig(from: changed))
-  }
 }

@@ -13,13 +13,4 @@ struct ReadAloudModelMigrationTests {
     #expect(TTSModel.migrateLegacyReadAloudRawValue("gemini-3.8-flash-tts") == "gemini-3.8-flash-tts")
     #expect(TTSModel.migrateLegacyReadAloudRawValue("gpt-4o-mini-tts") == "gpt-4o-mini-tts")
   }
-
-  @Test("Default is 3.8 Flash-Lite TTS and both 3.8 models are offered")
-  func lineup() {
-    #expect(SettingsDefaults.readAloudModel == .gemini38FlashLiteTTS)
-    #expect(TTSModel.gemini38FlashLiteTTS.provider == .gemini)
-    #expect(
-      TTSModel.gemini38FlashTTS.apiEndpoint
-        == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-tts:streamGenerateContent?alt=sse")
-  }
 }

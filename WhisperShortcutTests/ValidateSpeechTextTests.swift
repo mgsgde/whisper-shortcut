@@ -5,28 +5,75 @@ import Foundation
 @Suite("validateSpeechText", .serialized)
 struct ValidateSpeechTextTests {
 
-  @Test("A normal transcript is accepted")
-  func normalTranscriptAccepted() throws {
-    try TextProcessingUtility.validateSpeechText(
-      "Please transcribe this meeting for Sara tomorrow at three.",
-      mode: "TRANSCRIPTION-MODE")
+  private struct AcceptedCase: Sendable {
+    let text: String
+    let mode: String
+    let label: String
   }
 
-  @Test("A short assistant refusal is rejected as no speech")
-  func shortRefusalIsNoSpeech() {
-    #expect(throws: TranscriptionError.noSpeechDetected) {
-      try TextProcessingUtility.validateSpeechText(
-        "I can transcribe that for you.",
-        mode: "TRANSCRIPTION-MODE")
+  private enum Expected: Sendable { case noSpeech, promptLeak }
+
+  private struct RejectedCase: Sendable {
+    let text: String
+    let expected: Expected
+    let label: String
+  }
+
+  private static let longTranscript =
+    String(repeating: "We discussed the budget and next steps. ", count: 8)
+    + "I can transcribe those notes later if needed."
+
+  @Test(
+    "Real speech is accepted",
+    arguments: [
+      AcceptedCase(
+        text: "Please transcribe this meeting for Sara tomorrow at three.",
+        mode: "TRANSCRIPTION-MODE", label: "normal transcript"),
+      // >= 160 chars, so a refusal phrase inside it does not make it a refusal.
+      AcceptedCase(
+        text: longTranscript, mode: "TRANSCRIPTION-MODE",
+        label: "long transcript that merely contains a refusal phrase"),
+      AcceptedCase(
+        text: "Bitte geben Sie mir die Audiodatei, den ich transkribieren soll.",
+        mode: "PROMPT-MODE", label: "German refusal only counts as no-speech in transcription modes"),
+      AcceptedCase(
+        text: "Please convert speech to text and use proper punctuation when you can.",
+        mode: "TRANSCRIPTION-MODE", label: "two prompt keywords are not enough for a leak"),
+    ])
+  private func accepts(_ c: AcceptedCase) throws {
+    if c.label.hasPrefix("long") { #expect(c.text.count >= 160) }
+    try TextProcessingUtility.validateSpeechText(c.text, mode: c.mode)
+  }
+
+  @Test(
+    "Refusals, empties and prompt leaks are rejected with the matching error",
+    arguments: [
+      RejectedCase(
+        text: "I can transcribe that for you.", expected: .noSpeech,
+        label: "short assistant refusal"),
+      RejectedCase(text: "   ", expected: .noSpeech, label: "empty result"),
+      RejectedCase(text: "Context: foo", expected: .promptLeak, label: "context leak"),
+      RejectedCase(
+        text: "Bitte geben Sie mir die Audiodatei, den ich transkribieren soll.",
+        expected: .noSpeech, label: "short German refusal"),
+      RejectedCase(
+        text: "Gib mir die Audiodatei zum Transkribieren.", expected: .noSpeech,
+        label: "short German refusal, informal"),
+      RejectedCase(
+        text: "Please convert speech to text and clean text with proper punctuation afterwards.",
+        expected: .promptLeak, label: "three or more prompt keywords"),
+    ])
+  private func rejects(_ c: RejectedCase) {
+    switch c.expected {
+    case .noSpeech:
+      #expect(throws: TranscriptionError.noSpeechDetected, "\(c.label)") {
+        try TextProcessingUtility.validateSpeechText(c.text, mode: "TRANSCRIPTION-MODE")
+      }
+    case .promptLeak:
+      #expect(throws: TranscriptionError.promptLeakDetected, "\(c.label)") {
+        try TextProcessingUtility.validateSpeechText(c.text, mode: "TRANSCRIPTION-MODE")
+      }
     }
-  }
-
-  @Test("A long transcript that merely contains a refusal phrase is kept")
-  func longTranscriptWithRefusalSubstringKept() throws {
-    let text = String(repeating: "We discussed the budget and next steps. ", count: 8)
-      + "I can transcribe those notes later if needed."
-    #expect(text.count >= 160)
-    try TextProcessingUtility.validateSpeechText(text, mode: "TRANSCRIPTION-MODE")
   }
 
   @Test("A system pattern only matches as a prefix or the whole string")
@@ -41,20 +88,6 @@ struct ValidateSpeechTextTests {
     }
   }
 
-  @Test("Empty result is no speech")
-  func emptyIsNoSpeech() {
-    #expect(throws: TranscriptionError.noSpeechDetected) {
-      try TextProcessingUtility.validateSpeechText("   ", mode: "TRANSCRIPTION-MODE")
-    }
-  }
-
-  @Test("A context leak is rejected regardless of capitalization")
-  func contextPrefixIsPromptLeak() {
-    #expect(throws: TranscriptionError.promptLeakDetected) {
-      try TextProcessingUtility.validateSpeechText("Context: foo", mode: "TRANSCRIPTION-MODE")
-    }
-  }
-
   @Test("A prompt suffix is stripped only at a word boundary")
   func suffixStripsOnlyAtWordBoundary() {
     #expect(
@@ -64,44 +97,6 @@ struct ValidateSpeechTextTests {
       TextProcessingUtility.normalizeTranscriptionText("Please remove filler words")
         == "Please")
   }
-
-  @Test("A short German assistant refusal is no speech")
-  func germanRefusalIsNoSpeech() {
-    #expect(throws: TranscriptionError.noSpeechDetected) {
-      try TextProcessingUtility.validateSpeechText(
-        "Bitte geben Sie mir die Audiodatei, den ich transkribieren soll.",
-        mode: "TRANSCRIPTION-MODE")
-    }
-    #expect(throws: TranscriptionError.noSpeechDetected) {
-      try TextProcessingUtility.validateSpeechText(
-        "Gib mir die Audiodatei zum Transkribieren.",
-        mode: "TRANSCRIPTION-MODE")
-    }
-  }
-
-  @Test("A German refusal is only treated as no-speech in transcription modes")
-  func germanRefusalSkippedOutsideTranscription() throws {
-    try TextProcessingUtility.validateSpeechText(
-      "Bitte geben Sie mir die Audiodatei, den ich transkribieren soll.",
-      mode: "PROMPT-MODE")
-  }
-
-  @Test("Three or more prompt keywords are a leak")
-  func threePromptKeywordsAreALeak() {
-    #expect(throws: TranscriptionError.promptLeakDetected) {
-      try TextProcessingUtility.validateSpeechText(
-        "Please convert speech to text and clean text with proper punctuation afterwards.",
-        mode: "TRANSCRIPTION-MODE")
-    }
-  }
-
-  @Test("Two prompt keywords are not enough to count as a leak")
-  func twoPromptKeywordsAreKept() throws {
-    try TextProcessingUtility.validateSpeechText(
-      "Please convert speech to text and use proper punctuation when you can.",
-      mode: "TRANSCRIPTION-MODE")
-  }
-
   // MARK: - Whisper silence hallucinations
 
   /// The filter is a whole-transcript match against a closed set. These are the phrases measured

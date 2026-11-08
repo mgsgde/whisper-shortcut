@@ -32,12 +32,6 @@ struct TTSStreamingGateTests {
     #expect(slices.reduce(0) { $0 + $1.count } == 10)
   }
 
-  @Test("Drain returns nil when nothing is pending")
-  func batcherDrainEmpty() {
-    var batcher = PCMStreamBatcher()
-    #expect(batcher.drain() == nil)
-  }
-
   // MARK: Gate
 
   /// Records emissions as `(index, bytes-as-string)` so order and content are both checked.

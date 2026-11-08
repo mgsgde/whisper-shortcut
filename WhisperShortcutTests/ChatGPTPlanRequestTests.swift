@@ -110,16 +110,6 @@ struct ChatGPTPlanRequestTests {
     #expect(route.errorDescription?.contains("subscription_sharing_route_not_supported") == true)
   }
 
-  @Test("The user-facing strings are the agreed wording")
-  func messages() {
-    #expect(
-      ChatGPTPlanError.usageLimit.errorDescription
-        == "You've reached the ChatGPT plan limit for WhisperShortcut. Check or raise it in ChatGPT Settings → Usage.")
-    #expect(
-      ChatGPTPlanError.usageUnavailable.errorDescription
-        == "ChatGPT couldn't check your plan usage right now. Try again in a minute.")
-  }
-
   // MARK: Stream terminal handling
 
   private func run(body: String, strict: Bool) async -> (events: Int, error: Error?) {

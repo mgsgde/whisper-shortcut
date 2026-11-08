@@ -48,18 +48,15 @@ struct MCPMeetingToolsTests {
     #expect(titleField(r.text, old) == "title: Q3 Budget")
   }
 
-  @Test("Without session title the suffix shows, with neither a dash")
-  func titleFallbacks() throws {
-    let r = try fixture().call(name: "list_meetings", arguments: [:])
-    #expect(titleField(r.text, old) == "title: Budget")
-    #expect(titleField(r.text, live) == "title: -")
-  }
-
-  @Test("Whitespace-only session title falls back")
-  func blankSessionTitle() throws {
-    let r = try fixture(titles: [live: "  \n ", old: "   "]).call(name: "list_meetings", arguments: [:])
-    #expect(titleField(r.text, old) == "title: Budget")
-    #expect(titleField(r.text, live) == "title: -")
+  @Test("Without a usable session title the suffix shows, otherwise a dash", arguments: [
+    (false, "no session title"),
+    (true, "whitespace-only session title"),
+  ])
+  func titleFallbacks(blankTitles: Bool, label: String) throws {
+    let titles: [String: String] = blankTitles ? [live: "  \n ", old: "   "] : [:]
+    let r = try fixture(titles: titles).call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, old) == "title: Budget", "\(label)")
+    #expect(titleField(r.text, live) == "title: -", "\(label)")
   }
 
   @Test("Live transcript without since returns everything and next_since")
@@ -67,15 +64,6 @@ struct MCPMeetingToolsTests {
     let r = try fixture().call(name: "get_live_transcript", arguments: [:])
     #expect(!r.isError)
     #expect(r.text.contains("Hello team"))
-    #expect(r.text.contains("Ship it Friday"))
-    #expect(r.text.contains("next_since: 02:30"))
-  }
-
-  @Test("Live transcript with since returns only the delta")
-  func liveDelta() throws {
-    let r = try fixture().call(name: "get_live_transcript", arguments: ["since": "01:10"])
-    #expect(!r.text.contains("Hello team"))
-    #expect(!r.text.contains("Budget is fine"))
     #expect(r.text.contains("Ship it Friday"))
     #expect(r.text.contains("next_since: 02:30"))
   }

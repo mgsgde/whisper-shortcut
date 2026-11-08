@@ -7,25 +7,26 @@ import Testing
 @Suite("System prompt section editor reload")
 struct SystemPromptSectionEditorReloadTests {
 
-  @Test("An emptied field comes back empty and is our own save")
-  func emptiedField() {
-    #expect(SystemPromptSectionEditor.isOwnSave(onDisk: "", lastSaved: ""))
-    #expect(SystemPromptSectionEditor.isOwnSave(onDisk: nil, lastSaved: ""))
+  private struct OwnSaveCase: Sendable {
+    let onDisk: String?
+    let lastSaved: String
+    let isOwn: Bool
+    let label: String
   }
 
-  @Test("A trailing newline trimmed on disk is still our own save")
-  func trailingNewline() {
-    #expect(SystemPromptSectionEditor.isOwnSave(onDisk: "abc", lastSaved: "abc\n"))
-  }
-
-  @Test("A different body is an outside change")
-  func outsideChange() {
-    #expect(!SystemPromptSectionEditor.isOwnSave(onDisk: "other text", lastSaved: "abc"))
-  }
-
-  @Test("Disk text against an emptied field is an outside change")
-  func diskTextAgainstEmptyField() {
-    #expect(!SystemPromptSectionEditor.isOwnSave(onDisk: "abc", lastSaved: ""))
+  @Test(
+    "isOwnSave: trimmed or emptied round trips are our save, anything else is an outside change",
+    arguments: [
+      OwnSaveCase(onDisk: "", lastSaved: "", isOwn: true, label: "emptied field comes back empty"),
+      OwnSaveCase(onDisk: nil, lastSaved: "", isOwn: true, label: "emptied field comes back nil"),
+      OwnSaveCase(onDisk: "abc", lastSaved: "abc\n", isOwn: true, label: "trailing newline trimmed on disk"),
+      OwnSaveCase(onDisk: "other text", lastSaved: "abc", isOwn: false, label: "different body"),
+      OwnSaveCase(onDisk: "abc", lastSaved: "", isOwn: false, label: "disk text against emptied field"),
+    ])
+  private func isOwnSave(_ c: OwnSaveCase) {
+    #expect(
+      SystemPromptSectionEditor.isOwnSave(onDisk: c.onDisk, lastSaved: c.lastSaved) == c.isOwn,
+      "\(c.label)")
   }
 
   @Test("Save keeps a glossary term appended during the autosave window and honours deletions")

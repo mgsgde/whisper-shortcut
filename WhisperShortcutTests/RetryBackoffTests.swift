@@ -12,20 +12,14 @@ struct RetryBackoffTests {
 
   // MARK: - Permanent vs transient
 
-  @Test("A rate limit without a retryAfter is permanent")
-  func rateLimitWithoutDelayIsPermanent() {
+  @Test("Rate limits without retryAfter are permanent; with retryAfter transient; other errors are neither")
+  func permanentRateLimitClassification() {
     #expect(RetryBackoff.isPermanentRateLimit(TranscriptionError.rateLimited(retryAfter: nil)))
     #expect(RetryBackoff.isPermanentRateLimit(TranscriptionError.quotaExceeded(retryAfter: nil)))
-  }
-
-  @Test("A rate limit WITH a retryAfter is transient and must still be retried")
-  func rateLimitWithDelayIsTransient() {
+    // A retryAfter makes it transient and it must still be retried.
     #expect(!RetryBackoff.isPermanentRateLimit(TranscriptionError.rateLimited(retryAfter: 3)))
     #expect(!RetryBackoff.isPermanentRateLimit(TranscriptionError.quotaExceeded(retryAfter: 30)))
-  }
-
-  @Test("Ordinary failures are not mistaken for a spending cap")
-  func otherErrorsAreNotPermanentRateLimits() {
+    // Ordinary failures are not mistaken for a spending cap.
     #expect(!RetryBackoff.isPermanentRateLimit(TranscriptionError.invalidAPIKey))
     #expect(!RetryBackoff.isPermanentRateLimit(TranscriptionError.serverError(503)))
     #expect(!RetryBackoff.isPermanentRateLimit(TranscriptionError.networkError("offline")))
@@ -45,31 +39,19 @@ struct RetryBackoffTests {
 
   // MARK: - Delay
 
-  @Test("An API-supplied retryAfter always wins, with its buffer")
-  func retryAfterWins() {
+  @Test("Delay: retryAfter wins (with buffer), exponential doubles, fixed stays, attempts below 1 clamp")
+  func delay() {
     // Guessing shorter than the server's own answer just earns another 429.
     #expect(RetryBackoff.delay(attempt: 1, retryAfter: 7, base: 1, exponential: true) == 7)
     #expect(RetryBackoff.delay(attempt: 4, retryAfter: 7, base: 99, exponential: true) == 7)
     #expect(RetryBackoff.delay(attempt: 1, retryAfter: 7, base: 1, exponential: true, buffer: 2) == 9)
-  }
-
-  @Test("Without a retryAfter, exponential backoff doubles per attempt")
-  func exponentialBackoff() {
     #expect(RetryBackoff.delay(attempt: 1, retryAfter: nil, base: 2, exponential: true) == 2)
     #expect(RetryBackoff.delay(attempt: 2, retryAfter: nil, base: 2, exponential: true) == 4)
     #expect(RetryBackoff.delay(attempt: 3, retryAfter: nil, base: 2, exponential: true) == 8)
-  }
-
-  @Test("Non-exponential callers get their fixed delay unchanged")
-  func fixedBackoff() {
+    // Non-exponential callers get their fixed delay unchanged.
     #expect(RetryBackoff.delay(attempt: 1, retryAfter: nil, base: 1.5, exponential: false) == 1.5)
     #expect(RetryBackoff.delay(attempt: 5, retryAfter: nil, base: 1.5, exponential: false) == 1.5)
-  }
-
-  /// A loop that starts counting at 0 rather than 1 must not be punished with a fractional first
-  /// delay — the clamp keeps the first wait equal to `base` either way.
-  @Test("Attempt numbering below 1 still yields the base delay")
-  func attemptClamping() {
+    // A loop counting from 0 must not get a fractional first delay: the clamp keeps it at `base`.
     #expect(RetryBackoff.delay(attempt: 0, retryAfter: nil, base: 2, exponential: true) == 2)
     #expect(RetryBackoff.delay(attempt: -3, retryAfter: nil, base: 2, exponential: true) == 2)
   }

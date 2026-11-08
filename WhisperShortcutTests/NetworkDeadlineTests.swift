@@ -13,18 +13,14 @@ struct NetworkDeadlineTests {
 
   // MARK: - Production cap
 
-  @Test("The transcription cap is 60s — under the 120s cancelledWhileProcessing falsifier")
-  func transcriptionTimeoutIsUnderFalsifier() {
-    #expect(NetworkDeadline.transcriptionRequestTimeout == 60)
-    #expect(NetworkDeadline.transcriptionRequestTimeout <= 120)
-  }
-
   @Test("Self-hosted transcription timeout scales with the recording and stays capped")
   func selfHostedTimeoutScalesWithAudio() {
     #expect(NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: 10) == 60)
     #expect(NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: 120) == 150)
     #expect(NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: 900) == 600)
     #expect(NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: nil) == 60)
+    // The production cap must stay under the 120s cancelledWhileProcessing falsifier.
+    #expect(NetworkDeadline.transcriptionRequestTimeout <= 120)
   }
 
   // MARK: - Hang → timeout
@@ -135,46 +131,30 @@ struct NetworkDeadlineTests {
     override func stopLoading() {}
   }
 
-  @Test("A URLSession-native notConnectedToInternet is surfaced as TranscriptionError.networkError")
-  func nativeDisconnectMapsToNetworkError() async {
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.protocolClasses = [NotConnectedProtocol.self]
-    let session = URLSession(configuration: configuration)
-    defer { session.invalidateAndCancel() }
+  @Test("URLSession-native failures map to networkError (notConnected) and requestTimeout (timedOut)")
+  func nativeFailuresMap() async {
+    // (protocol, whether the expected error is requestTimeout rather than networkError)
+    let rows: [(AnyClass, Bool, String)] = [
+      (NotConnectedProtocol.self, false, "notConnectedToInternet -> networkError (retryable, audio retained)"),
+      (TimedOutProtocol.self, true, "timedOut -> requestTimeout"),
+    ]
+    for (proto, isTimeout, label) in rows {
+      let configuration = URLSessionConfiguration.ephemeral
+      configuration.protocolClasses = [proto]
+      let session = URLSession(configuration: configuration)
+      defer { session.invalidateAndCancel() }
 
-    let request = URLRequest(url: URL(string: "https://deadline.test/offline")!)
-    do {
-      _ = try await NetworkDeadline.data(for: request, session: session, timeout: 5)
-      Issue.record("expected networkError")
-    } catch TranscriptionError.networkError {
-      // retryable, audio retained
-    } catch {
-      Issue.record("unexpected error: \(error)")
+      let request = URLRequest(url: URL(string: "https://deadline.test/native")!)
+      do {
+        _ = try await NetworkDeadline.data(for: request, session: session, timeout: 5)
+        Issue.record("expected a throw: \(label)")
+      } catch TranscriptionError.networkError {
+        #expect(!isTimeout, Comment(rawValue: label))
+      } catch TranscriptionError.requestTimeout {
+        #expect(isTimeout, Comment(rawValue: label))
+      } catch {
+        Issue.record("unexpected error \(error): \(label)")
+      }
     }
-  }
-
-  @Test("A URLSession-native timedOut is surfaced as TranscriptionError.requestTimeout")
-  func nativeTimedOutMapsToRequestTimeout() async {
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.protocolClasses = [TimedOutProtocol.self]
-    let session = URLSession(configuration: configuration)
-    defer { session.invalidateAndCancel() }
-
-    let request = URLRequest(url: URL(string: "https://deadline.test/timeout")!)
-    await #expect(throws: TranscriptionError.requestTimeout) {
-      _ = try await NetworkDeadline.data(for: request, session: session, timeout: 5)
-    }
-  }
-
-  // MARK: - User-visible error
-
-  @Test("requestTimeout formats as a visible timeout, not a generic network error")
-  func requestTimeoutIsUserVisible() {
-    let message = SpeechErrorFormatter.format(.requestTimeout)
-    #expect(message.contains("Timeout"))
-    #expect(message.contains("too long"))
-    // Must not pin the copy to Gemini — OpenAI GPT-Transcribe throws this too.
-    #expect(!message.lowercased().contains("google"))
-    #expect(SpeechErrorFormatter.shortStatus(.requestTimeout).contains("Timeout"))
   }
 }

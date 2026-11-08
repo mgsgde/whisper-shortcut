@@ -242,8 +242,8 @@ struct UsageReportTests {
 
   // MARK: - Shape
 
-  @Test("Glossary echoes removed inside the window are counted")
-  func glossaryEchoesRemoved() throws {
+  @Test("Glossary echoes removed inside the window are counted; no line when none were removed")
+  func glossaryEchoLine() throws {
     let text = try report(
       interactions: [dictation()],
       signals: [
@@ -251,12 +251,9 @@ struct UsageReportTests {
         glossaryEcho(ts: "2026-08-01T10:00:20.000Z"),
       ])
     #expect(text.contains("2 glossary echoes removed"))
-  }
 
-  @Test("No glossary-echo line when none were removed")
-  func noGlossaryEchoes() throws {
-    let text = try report(interactions: [dictation()], signals: [pasted()])
-    #expect(!text.contains("glossary echo"))
+    let none = try report(interactions: [dictation()], signals: [pasted()])
+    #expect(!none.contains("glossary echo"))
   }
 
   @Test("Sections with no data are omitted rather than rendered empty")

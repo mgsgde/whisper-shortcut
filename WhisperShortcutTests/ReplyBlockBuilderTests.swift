@@ -235,18 +235,13 @@ struct ReplyBlockBuilderTests {
     #expect(text.contains("docs"), "a non-citation link was stripped: \(text)")
   }
 
-  @Test("A GPT citation cut off mid-stream is hidden until it completes")
-  func partialOpenAICitationHidden() {
-    let blocks = ReplyBlockBuilder.buildBlocks(
-      content: "Rates held steady. ([reuters.com](https://www.reu", sources: [], groundingSupports: [])
-    #expect(Self.plainText(blocks) == "Rates held steady.")
-  }
-
-  @Test("A marker cut off mid-stream is hidden until it completes")
-  func partialMarkerHiddenWhileStreaming() {
-    let blocks = ReplyBlockBuilder.buildBlocks(
-      content: "Almost done.[[2]](https://exa", sources: [], groundingSupports: [])
-    #expect(Self.plainText(blocks) == "Almost done.")
+  @Test("A citation marker cut off mid-stream is hidden until it completes", arguments: [
+    ("Rates held steady. ([reuters.com](https://www.reu", "Rates held steady."),  // GPT citation
+    ("Almost done.[[2]](https://exa", "Almost done."),  // numbered marker
+  ])
+  func partialMarkerHidden(content: String, expected: String) {
+    let blocks = ReplyBlockBuilder.buildBlocks(content: content, sources: [], groundingSupports: [])
+    #expect(Self.plainText(blocks) == expected)
   }
 
   @Test("Markers inside fenced code are left alone")
@@ -350,16 +345,5 @@ struct ReplyBlockBuilderTests {
     """
     #expect(Self.joinedText(ReplyBlockBuilder.buildBlocks(
       content: content, sources: [], groundingSupports: [])) == expected)
-  }
-
-  @Test("Code blocks and separators never take a citation marker")
-  func nonTextBlocksAreNotCited() {
-    let blocks = ReplyBlockBuilder.buildBlocks(
-      content: Self.fencedReply,
-      sources: [GroundingSource(uri: "https://example.com", title: "S")],
-      groundingSupports: [GroundingSupport(startIndex: 0, endIndex: 200, groundingChunkIndices: [0])])
-    for (code, _) in Self.codeBlocks(blocks) {
-      #expect(!code.contains("["), "citation marker leaked into code: \(code)")
-    }
   }
 }

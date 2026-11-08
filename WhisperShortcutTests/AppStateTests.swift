@@ -4,28 +4,24 @@ import Testing
 @Suite("AppState transitions")
 struct AppStateTests {
 
-  @Test("Idle can start recording and stop into processing")
-  func idleToRecordingToProcessing() {
-    var state = AppState.idle
-    state = state.startRecording(.transcription)
-    #expect(state == .recording(.transcription))
-    state = state.stopRecording()
-    #expect(state == .processing(.transcribing))
-    state = state.finish()
-    #expect(state == .idle)
-  }
-
-  @Test("Busy states refuse a second startRecording")
-  func busyRefusesSecondStart() {
-    let recording = AppState.idle.startRecording(.prompt)
-    #expect(recording.startRecording(.transcription) == recording)
-    let processing = recording.stopRecording()
-    #expect(processing.startRecording(.transcription) == processing)
-  }
-
-  @Test("stopRecording is a no-op outside recording")
-  func stopFromIdleIsNoOp() {
-    #expect(AppState.idle.stopRecording() == .idle)
+  @Test(
+    "Busy states refuse a second startRecording, and stopRecording is a no-op outside recording",
+    arguments: [
+      ("idle", "stopRecording is a no-op outside recording"),
+      ("recording", "recording refuses a second start"),
+      ("processing", "processing refuses a second start"),
+    ])
+  func busyRefusesSecondStart(state: String, note: String) {
+    switch state {
+    case "idle":
+      #expect(AppState.idle.stopRecording() == .idle, "\(note)")
+    case "recording":
+      let recording = AppState.idle.startRecording(.prompt)
+      #expect(recording.startRecording(.transcription) == recording, "\(note)")
+    default:
+      let processing = AppState.idle.startRecording(.prompt).stopRecording()
+      #expect(processing.startRecording(.transcription) == processing, "\(note)")
+    }
   }
 
   @Test("Speaking is not busy, so a new recording can start over playback")

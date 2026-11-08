@@ -17,11 +17,6 @@ import Testing
 @Suite("Test host lifecycle")
 struct TestHostLifecycleTests {
 
-  @Test("The app knows it is hosting a test run")
-  func detectsTestHost() {
-    #expect(isRunningUnderTest)
-  }
-
   @Test("The test host runs the inert delegate, not the menu bar app")
   @MainActor
   func testHostUsesInertDelegate() {

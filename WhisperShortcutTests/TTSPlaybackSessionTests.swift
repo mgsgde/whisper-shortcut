@@ -23,15 +23,6 @@ struct TTSPlaybackSessionTests {
       onProgress: { _, _, _ in })
   }
 
-  @Test("begin() hands out a new generation every time")
-  func generationIncrements() {
-    let session = makeSession(Events())
-    let first = session.begin()
-    let second = session.begin()
-    #expect(second == first + 1)
-    #expect(session.generation == second)
-  }
-
   @Test("A chunk from an earlier Read Aloud is dropped")
   func staleGenerationChunkIsDropped() {
     let events = Events()

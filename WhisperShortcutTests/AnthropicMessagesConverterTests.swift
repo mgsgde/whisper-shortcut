@@ -124,16 +124,31 @@ struct AnthropicMessagesConverterTests {
     #expect(blocks[1]["id"] as? String == "toolu_1")
   }
 
-  @Test("tool_choice none is only the final round, and only when client tools are present")
-  func finalRoundUsesToolChoiceNone() {
-    let choice = AnthropicChatProvider.messagesToolChoice(isFinalRound: true, clientToolCount: 3)
-    #expect(choice?["type"] as? String == "none")
-    #expect(AnthropicChatProvider.messagesToolChoice(isFinalRound: false, clientToolCount: 3) == nil)
-    #expect(AnthropicChatProvider.messagesToolChoice(isFinalRound: true, clientToolCount: 0) == nil)
+  struct FinalRound: Sendable {
+    let note: String
+    let isFinalRound: Bool
+    let clientToolCount: Int
+    /// Nil means `messagesToolChoice` returns nil.
+    let choiceType: String?
   }
 
-  @Test("The final-round request body keeps tools and sets tool_choice to none")
-  func finalRoundBodyKeepsToolsAndRefusesCalls() throws {
+  @Test(
+    "tool_choice none is only the final round when client tools are present, and the body keeps those tools",
+    arguments: [
+      FinalRound(note: "final round with client tools", isFinalRound: true, clientToolCount: 3, choiceType: "none"),
+      FinalRound(note: "earlier round stays callable", isFinalRound: false, clientToolCount: 3, choiceType: nil),
+      FinalRound(note: "final round without client tools", isFinalRound: true, clientToolCount: 0, choiceType: nil),
+    ])
+  func finalRoundUsesToolChoiceNone(_ row: FinalRound) throws {
+    let choice = AnthropicChatProvider.messagesToolChoice(
+      isFinalRound: row.isFinalRound, clientToolCount: row.clientToolCount)
+    if let choiceType = row.choiceType {
+      #expect(choice?["type"] as? String == choiceType, "\(row.note)")
+    } else {
+      #expect(choice == nil, "\(row.note)")
+    }
+    guard row.clientToolCount > 0 else { return }
+
     let tool = LLMToolDeclaration(
       name: "fake_lookup", description: "Look something up",
       parameters: ["type": "object", "properties": [:] as [String: Any]])
@@ -145,23 +160,17 @@ struct AnthropicMessagesConverterTests {
       contents: contents,
       systemInstruction: nil,
       tools: [tool],
-      options: ChatRequestOptions(disableBuiltInTools: true, isFinalRound: true),
+      options: ChatRequestOptions(disableBuiltInTools: true, isFinalRound: row.isFinalRound),
       includesWebSearch: false)
     let tools = try #require(body["tools"] as? [[String: Any]])
-    #expect(tools.contains { ($0["name"] as? String) == "fake_lookup" })
-    let choice = try #require(body["tool_choice"] as? [String: Any])
-    #expect(choice["type"] as? String == "none")
-
-    // Dictate Prompt sets disableBuiltInTools on every round. That is not the final round,
-    // so the tools stay callable.
-    let earlier = AnthropicChatProvider.requestBody(
-      model: "claude-sonnet-5",
-      contents: contents,
-      systemInstruction: nil,
-      tools: [tool],
-      options: ChatRequestOptions(disableBuiltInTools: true, isFinalRound: false),
-      includesWebSearch: false)
-    #expect((earlier["tools"] as? [[String: Any]])?.isEmpty == false)
-    #expect(earlier["tool_choice"] == nil)
+    #expect(tools.contains { ($0["name"] as? String) == "fake_lookup" }, "\(row.note)")
+    if row.isFinalRound {
+      let bodyChoice = try #require(body["tool_choice"] as? [String: Any])
+      #expect(bodyChoice["type"] as? String == "none", "\(row.note)")
+    } else {
+      // Dictate Prompt sets disableBuiltInTools on every round. That is not the final round,
+      // so the tools stay callable.
+      #expect(body["tool_choice"] == nil, "\(row.note)")
+    }
   }
 }

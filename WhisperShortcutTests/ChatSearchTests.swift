@@ -12,10 +12,22 @@ struct ChatSearchTests {
 
   // MARK: - Ranking
 
-  @Test("Every occurrence of a term counts toward the score")
-  func scoreCountsOccurrences() {
-    #expect(ChatSearch.score(haystack: "alpha", title: "", terms: ["alpha"]) == 1)
-    #expect(ChatSearch.score(haystack: "alpha alpha alpha", title: "", terms: ["alpha"]) == 3)
+  struct ScoreRow: Sendable {
+    let note: String
+    let haystack: String
+    let title: String
+    let terms: [String]
+    let expected: Int
+  }
+
+  @Test("Term occurrences accumulate, and a term that appears nowhere adds nothing", arguments: [
+    ScoreRow(note: "one occurrence", haystack: "alpha", title: "", terms: ["alpha"], expected: 1),
+    ScoreRow(note: "every occurrence of a term counts", haystack: "alpha alpha alpha", title: "", terms: ["alpha"], expected: 3),
+    ScoreRow(note: "multi-term queries accumulate across terms", haystack: "alpha beta", title: "", terms: ["alpha", "beta"], expected: 2),
+    ScoreRow(note: "a term that appears nowhere adds nothing", haystack: "alpha", title: "alpha", terms: ["zeta"], expected: 0),
+  ])
+  func termScores(_ row: ScoreRow) {
+    #expect(ChatSearch.score(haystack: row.haystack, title: row.title, terms: row.terms) == row.expected, "\(row.note)")
   }
 
   /// A title match is what makes "the chat actually about X" outrank "the chat that mentioned X
@@ -26,17 +38,6 @@ struct ChatSearchTests {
     let titled = ChatSearch.score(haystack: "we discussed budgets", title: "budgets", terms: ["budgets"])
     #expect(titled > bodyOnly)
     #expect(titled - bodyOnly == 5)
-  }
-
-  @Test("Multi-term queries accumulate across terms")
-  func multipleTermsAccumulate() {
-    let score = ChatSearch.score(haystack: "alpha beta", title: "", terms: ["alpha", "beta"])
-    #expect(score == 2)
-  }
-
-  @Test("A term that appears nowhere adds nothing")
-  func absentTermScoresZero() {
-    #expect(ChatSearch.score(haystack: "alpha", title: "alpha", terms: ["zeta"]) == 0)
   }
 
   // MARK: - Snippets

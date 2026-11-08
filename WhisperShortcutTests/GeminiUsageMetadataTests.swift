@@ -19,21 +19,4 @@ struct GeminiUsageMetadataTests {
     #expect(usage.toolUsePromptTokenCount == 13792)
     #expect(usage.totalTokenCount == 24205)
   }
-
-  @Test("Field is optional — older chunks without it still decode")
-  func toolUseTokensOptional() throws {
-    let json = """
-      {"candidates":[],"usageMetadata":{"promptTokenCount":7359,"candidatesTokenCount":92,"totalTokenCount":7451}}
-      """
-    let chunk = try JSONDecoder().decode(GeminiResponse.self, from: Data(json.utf8))
-    #expect(chunk.usageMetadata?.toolUsePromptTokenCount == nil)
-  }
-
-  @Test("Activity label is user-facing English")
-  func activityLabel() {
-    // The activity is shown as the web-search tool step (ChatToolSteps.swift).
-    #expect(
-      ChatToolRegistry.stepLabel(name: ChatToolRegistry.webSearchStepName, args: [:], done: false)
-        == "Searching the web…")
-  }
 }

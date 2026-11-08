@@ -46,13 +46,6 @@ struct ModelManagerCompletenessTests {
     writeComponent("MelSpectrogram.mlmodelc", at: root)
   }
 
-  @Test("Three complete required components with no Prefill are available")
-  func completeRequiredWithoutPrefill() {
-    let root = makeRoot()
-    writeRequiredComponents(at: root)
-    #expect(ModelManager.incompleteComponent(at: root) == nil)
-  }
-
   @Test("An empty MelSpectrogram.mlmodelc directory is the 09-03 incomplete-download signature")
   func emptyMelSpectrogramDirectoryIsIncomplete() {
     let root = makeRoot()

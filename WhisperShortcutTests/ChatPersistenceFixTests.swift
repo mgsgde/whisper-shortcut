@@ -159,39 +159,21 @@ struct ChatComposerPasteTests {
     #expect(part?.filename == "photo.jpg")
   }
 
-  @Test("A pasted PNG is not renamed to screenshot.png")
-  func pastedPngKeepsItsName() throws {
-    let url = try writeTemp(name: "diagram.png", bytes: Data("png".utf8))
+  @Test("Pasted PNG, PDF and plain text keep their MIME type and filename", arguments: [
+    ("diagram.png", "png", "image/png", "diagram.png"),
+    ("notes.pdf", "%PDF", "application/pdf", "notes.pdf"),
+    ("notes.txt", "hello", "text/plain", "notes.txt"),
+  ])
+  func pastedDocumentTypes(name: String, bytes: String, mime: String, filename: String) throws {
+    let url = try writeTemp(name: name, bytes: Data(bytes.utf8))
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-    let decision = ComposerFilePaste.decision(for: url, maxBytes: AppConstants.maxFileSizeBytes)
-    guard case .attach(_, let mime, let filename) = decision else {
-      Issue.record("expected attach, got \(decision)")
+    guard case .attach(_, let gotMime, let gotName) =
+      ComposerFilePaste.decision(for: url, maxBytes: AppConstants.maxFileSizeBytes) else {
+      Issue.record("expected attach for \(name)")
       return
     }
-    #expect(mime == "image/png")
-    #expect(filename == "diagram.png")
-  }
-
-  @Test("PDF and plain text use their real MIME types")
-  func pastedDocumentTypes() throws {
-    let pdf = try writeTemp(name: "notes.pdf", bytes: Data("%PDF".utf8))
-    let txt = try writeTemp(name: "notes.txt", bytes: Data("hello".utf8))
-    defer {
-      try? FileManager.default.removeItem(at: pdf.deletingLastPathComponent())
-      try? FileManager.default.removeItem(at: txt.deletingLastPathComponent())
-    }
-    guard case .attach(_, let pdfMime, let pdfName) = ComposerFilePaste.decision(for: pdf, maxBytes: 1024) else {
-      Issue.record("pdf rejected")
-      return
-    }
-    guard case .attach(_, let txtMime, let txtName) = ComposerFilePaste.decision(for: txt, maxBytes: 1024) else {
-      Issue.record("txt rejected")
-      return
-    }
-    #expect(pdfMime == "application/pdf")
-    #expect(pdfName == "notes.pdf")
-    #expect(txtMime == "text/plain")
-    #expect(txtName == "notes.txt")
+    #expect(gotMime == mime, "\(name)")
+    #expect(gotName == filename, "\(name)")
   }
 
   private func bitmap(alpha: Bool) -> NSBitmapImageRep {

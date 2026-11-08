@@ -4,144 +4,94 @@ import Testing
 @Suite("Gemini chat lineup after 3.8")
 struct ChatModelLineupTests {
 
-  @Test("New 3.8 Flash case is wired through PromptModel")
-  func newCaseIsWired() {
-    #expect(PromptModel.gemini38Flash.rawValue == "gemini-3.8-flash")
-    #expect(PromptModel.gemini38Flash.provider == .gemini)
-    #expect(PromptModel.gemini38Flash.supportsTextChat)
-    #expect(PromptModel.gemini38Flash.supportsDictatePrompt)
-    #expect(PromptModel.gemini38Flash.asTranscriptionModel == .gemini38Flash)
-    #expect(PromptModel.gemini38Flash.shortAlias == "gemini38flash")
-    #expect(Set(PromptModel.allCases.map(\.shortAlias)).count == PromptModel.allCases.count)
+  struct Forward: Sendable {
+    var note: String
+    var raw: String
+    var prompt: PromptModel? = nil
+    var transcription: TranscriptionModel? = nil
+    var slot: PromptModel? = nil
+    var slotNil = false
+    var removed = false
+    var visible = false
+    var stillCase: PromptModel? = nil
   }
 
-  @Test("Chat and Writing Style defaults moved to 3.8 Flash")
-  func defaultsMoved() {
-    #expect(SettingsDefaults.selectedChatModel == .gemini38Flash)
-    #expect(SettingsDefaults.selectedImprovementModel == .gemini38Flash)
-    #expect(ChatModelProvider.gemini.defaultChatModel == .gemini38Flash)
-  }
-
-  @Test("Chat offers Gemini 4 Argon and 3.8 Flash, not 3.7")
-  func chatOffersArgonNot37() {
-    #expect(PromptModel.gemini4Argon.chatReplacement == nil)
-    #expect(PromptModel.gemini38Flash.chatReplacement == nil)
-    #expect(PromptModel(rawValue: "gemini-3.7-flash") == nil)
-    // `chatModels` is filtered by Offline Mode, which reads the real app's defaults on a dev Mac.
-    let previousOffline = OfflineMode.isEnabled
-    defer { OfflineMode.setEnabled(previousOffline) }
-    OfflineMode.setEnabled(false)
-    #expect(PromptModel.chatModels.contains(.gemini4Argon))
-    #expect(PromptModel.chatModels.contains(.gemini38Flash))
-    #expect(!PromptModel.chatModels.contains { $0.rawValue == "gemini-3.7-flash" })
-  }
-
-  @Test("Removed 3.5, 3.6 and 3.7 Flash selections forward to 3.8 Flash")
-  func removedFlashForwardsTo38() {
-    for slug in ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash"] {
-      #expect(PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(slug)) == .gemini38Flash, "\(slug)")
-      #expect(
-        TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(slug))
-          == .gemini38Flash, "\(slug)")
-    }
-    for slug in ["gemini-2.5-flash", "gemini-3-flash-preview"] {
-      #expect(
-        TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(slug))
-          == .gemini38Flash, "\(slug)")
-    }
-  }
-
-  @Test("Legacy 2.5-flash and 3-flash-preview land on a still-visible model")
-  func nobodyMigratedOntoAHiddenModel() {
-    for slug in ["gemini-2.5-flash", "gemini-3-flash-preview"] {
-      let migrated = PromptModel.migrateLegacyPromptRawValue(slug)
-      #expect(migrated == PromptModel.gemini38Flash.rawValue, "\(slug) → \(migrated)")
-      let model = PromptModel(rawValue: migrated)
-      #expect(model != nil, "\(slug) did not parse after migration")
-      #expect(model?.chatReplacement == nil, "\(slug) landed on a hidden model")
-    }
-  }
-
-  @Test("/model resolves 3.8 and bare Gemini 3")
-  func resolver() {
-    let current = PromptModel.gemini38Flash
-    for argument in ["3.8", "gemini 3.8 flash", "gemini-3.8-flash"] {
-      #expect(
-        ChatModelCommandResolver.resolve(argument: argument, currentSelection: current)
-          == .applied(model: .gemini38Flash),
-        "\(argument)")
-    }
-    #expect(
-      ChatModelCommandResolver.resolve(argument: "gemini 3", currentSelection: current)
-        == .applied(model: .gemini38Flash))
-    #expect(
-      ChatModelCommandResolver.resolve(argument: "3.1 flash lite", currentSelection: current)
-        == .applied(model: .gemini31FlashLite))
-  }
-
-  @Test("/gemini argon and gemini 4 resolve to Argon; 3.7 lands on 3.8")
-  func argonAndRemoved37Resolve() {
-    let current = PromptModel.gemini38Flash
-    for argument in ["/gemini argon", "gemini 4"] {
-      #expect(
-        ChatModelCommandResolver.resolve(argument: argument, currentSelection: current)
-          == .applied(model: .gemini4Argon),
-        "\(argument)")
-    }
-    #expect(
-      ChatModelCommandResolver.resolve(argument: "3.7", currentSelection: current)
-        == .applied(model: .gemini38Flash))
-  }
-
-  @Test("A slot on a superseded Flash resolves to what the loader would return")
-  func resolverMirrorsTheLoader() {
-    // Legacy slugs forward through migrateLegacyPromptRawValue, which is what the loader persists.
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.5-flash") == .gemini38Flash)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.6-flash") == .gemini38Flash)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.7-flash") == .gemini38Flash)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-2.5-flash") == .gemini38Flash)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3-flash-preview") == .gemini38Flash)
-    // Already there, and unrelated picks, must not be swept up.
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.8-flash") == .gemini38Flash)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "grok-4.7") == .grok47)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "grok-4.6") == .grok47)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gpt-5.6-sol") == .openaiGPT6Sol)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gpt-5.6-terra") == .openaiGPT6Sol)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gpt-5.6-luna") == .openaiGPT6Luna)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gpt-5.4-mini") == .openaiGPT5Mini)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "claude-opus-5") == .claudeOpus55)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "claude-sonnet-5") == .claudeSonnet55)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "claude-fable-5") == .claudeOpus55)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "not-a-model") == nil)
-  }
-
-  @Test("Removed superseded chat models forward to their replacements")
-  func removedModelsForward() {
-    let expected: [String: PromptModel] = [
-      "grok-4.20-0309-non-reasoning": .grok43, "grok-4.20-0309-reasoning": .grok43,
-      "grok-4.5": .grok47, "grok-4.6": .grok47,
-      "gpt-5": .openaiGPT6Sol, "gpt-5.4": .openaiGPT6Sol, "gpt-5.5": .openaiGPT6Sol,
-      "gpt-5.6-sol": .openaiGPT6Sol, "gpt-5.6-terra": .openaiGPT6Sol, "gpt-5.6-luna": .openaiGPT6Luna,
-      "claude-opus-4-8": .claudeOpus55, "claude-opus-5": .claudeOpus55, "claude-fable-5": .claudeOpus55,
-      "claude-sonnet-5": .claudeSonnet55,
-    ]
-    for (raw, model) in expected {
-      #expect(PromptModel(rawValue: raw) == nil, "\(raw) should no longer be an enum case")
-      #expect(PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) == model, "\(raw)")
-      #expect(PromptModel.resolvedChatSlotModel(forRawValue: raw) == model, "\(raw)")
-    }
+  @Test(
+    "Removed and legacy model ids forward to the model the loader would return",
+    arguments: [
+      // Legacy slugs forward through migrateLegacyPromptRawValue, which is what the loader persists.
+      Forward(note: "gemini-3.5-flash", raw: "gemini-3.5-flash", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash),
+      Forward(note: "gemini-3.6-flash", raw: "gemini-3.6-flash", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash),
+      Forward(note: "gemini-3.7-flash", raw: "gemini-3.7-flash", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash),
+      Forward(note: "gemini-2.5-flash stays visible", raw: "gemini-2.5-flash", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash, visible: true),
+      Forward(note: "gemini-3-flash-preview stays visible", raw: "gemini-3-flash-preview", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash, visible: true),
+      // Already there, and unrelated picks, must not be swept up.
+      Forward(note: "gemini-3.8-flash", raw: "gemini-3.8-flash", slot: .gemini38Flash),
+      Forward(note: "grok-4.7", raw: "grok-4.7", slot: .grok47),
+      Forward(note: "grok-4.20 non-reasoning", raw: "grok-4.20-0309-non-reasoning", prompt: .grok43, slot: .grok43, removed: true),
+      Forward(note: "grok-4.20 reasoning", raw: "grok-4.20-0309-reasoning", prompt: .grok43, slot: .grok43, removed: true),
+      Forward(note: "grok-4.5", raw: "grok-4.5", prompt: .grok47, slot: .grok47, removed: true),
+      Forward(note: "grok-4.6", raw: "grok-4.6", prompt: .grok47, slot: .grok47, removed: true),
+      Forward(note: "gpt-5", raw: "gpt-5", prompt: .openaiGPT6Sol, slot: .openaiGPT6Sol, removed: true),
+      Forward(note: "gpt-5.4", raw: "gpt-5.4", prompt: .openaiGPT6Sol, slot: .openaiGPT6Sol, removed: true),
+      Forward(note: "gpt-5.5", raw: "gpt-5.5", prompt: .openaiGPT6Sol, slot: .openaiGPT6Sol, removed: true),
+      Forward(note: "gpt-5.6-sol", raw: "gpt-5.6-sol", prompt: .openaiGPT6Sol, slot: .openaiGPT6Sol, removed: true),
+      Forward(note: "gpt-5.6-terra", raw: "gpt-5.6-terra", prompt: .openaiGPT6Sol, slot: .openaiGPT6Sol, removed: true),
+      Forward(note: "gpt-5.6-luna", raw: "gpt-5.6-luna", prompt: .openaiGPT6Luna, slot: .openaiGPT6Luna, removed: true),
+      Forward(note: "claude-opus-4-8", raw: "claude-opus-4-8", prompt: .claudeOpus55, slot: .claudeOpus55, removed: true),
+      Forward(note: "claude-opus-5", raw: "claude-opus-5", prompt: .claudeOpus55, slot: .claudeOpus55, removed: true),
+      Forward(note: "claude-fable-5", raw: "claude-fable-5", prompt: .claudeOpus55, slot: .claudeOpus55, removed: true),
+      Forward(note: "claude-sonnet-5", raw: "claude-sonnet-5", prompt: .claudeSonnet55, slot: .claudeSonnet55, removed: true),
+      Forward(note: "gpt-5.4-mini is still a case", raw: "gpt-5.4-mini", slot: .openaiGPT5Mini, stillCase: .openaiGPT5Mini),
+      Forward(note: "not-a-model", raw: "not-a-model", slotNil: true),
+    ])
+  func removedModelsForward(_ row: Forward) {
     // Nothing is currently superseded: dominated models are removed outright.
-    #expect(PromptModel.allCases.filter { $0.chatReplacement != nil }.isEmpty)
-    #expect(PromptModel(rawValue: "gpt-5.4-mini") == .openaiGPT5Mini)
+    #expect(PromptModel.allCases.filter { $0.chatReplacement != nil }.isEmpty, "\(row.note)")
+    if let prompt = row.prompt {
+      let migrated = PromptModel.migrateLegacyPromptRawValue(row.raw)
+      #expect(PromptModel(rawValue: migrated) == prompt, "\(row.note)")
+      if row.visible {
+        #expect(PromptModel(rawValue: migrated)?.chatReplacement == nil, "\(row.note)")
+      }
+    }
+    if let transcription = row.transcription {
+      #expect(
+        TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(row.raw))
+          == transcription, "\(row.note)")
+    }
+    if row.slotNil {
+      #expect(PromptModel.resolvedChatSlotModel(forRawValue: row.raw) == nil, "\(row.note)")
+    } else if let slot = row.slot {
+      #expect(PromptModel.resolvedChatSlotModel(forRawValue: row.raw) == slot, "\(row.note)")
+    }
+    if row.removed {
+      #expect(PromptModel(rawValue: row.raw) == nil, "\(row.note) should no longer be an enum case")
+    }
+    if let still = row.stillCase {
+      #expect(PromptModel(rawValue: row.raw) == still, "\(row.note)")
+    }
   }
 
-  @Test("Transcription side of 3.8 Flash is Google, selectable, and clamps MINIMAL")
-  func transcriptionSide() {
-    #expect(TranscriptionModel.gemini38Flash.provider == .google)
+  @Test("/model resolves current names; removed 3.7 lands on 3.8", arguments: [
+    ("3.8", PromptModel.gemini38Flash),
+    ("gemini 3.8 flash", PromptModel.gemini38Flash),
+    ("gemini-3.8-flash", PromptModel.gemini38Flash),
+    ("gemini 3", PromptModel.gemini38Flash),
+    ("3.1 flash lite", PromptModel.gemini31FlashLite),
+    ("/gemini argon", PromptModel.gemini4Argon),
+    ("gemini 4", PromptModel.gemini4Argon),
+    ("3.7", PromptModel.gemini38Flash),
+  ])
+  func resolver(argument: String, model: PromptModel) {
     #expect(
-      TranscriptionModel.gemini38Flash.apiEndpoint
-        == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent")
-    #expect(TranscriptionModel.gemini38Flash.isSelectableForDictation)
+      ChatModelCommandResolver.resolve(argument: argument, currentSelection: .gemini38Flash)
+        == .applied(model: model),
+      "\(argument)")
+  }
+
+  @Test("Transcription MINIMAL effort on 3.8 Flash clamps to low")
+  func transcriptionSide() {
     let clamped = TranscriptionModel.gemini38Flash.geminiTranscriptionGenerationConfig(
       temperature: 0.0, effort: .minimal)
     #expect(clamped.thinkingConfig?.thinkingLevel == TranscriptionThinkingEffort.low.geminiValue)

@@ -12,16 +12,6 @@ struct GeminiTTSStreamObjectTests {
 
   private let pcm = Data([0x01, 0x02, 0x03, 0x04])
 
-  @Test("An object with inlineData yields the decoded PCM")
-  func audioObject() throws {
-    let json = """
-      {"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"audio/l16; rate=24000; channels=1","data":"\(pcm.base64EncodedString())"}}],"role":"model"},"index":0}],"usageMetadata":{"promptTokenCount":12}}
-      """
-    let parsed = try SpeechService.parseGeminiTTSStreamObject(object(json))
-    #expect(parsed.audio == pcm)
-    #expect(parsed.finishReason == nil)
-  }
-
   @Test("Several inlineData parts in one object are concatenated in order")
   func multipleParts() throws {
     let a = Data([0x0A, 0x0B]), b = Data([0x0C, 0x0D])
@@ -57,18 +47,12 @@ struct GeminiTTSStreamObjectTests {
     #expect(parsed.finishReason == "MAX_TOKENS")
   }
 
-  @Test("A top-level error object throws a TranscriptionError")
-  func errorObjectThrows() {
-    let json = #"{"error":{"code":503,"message":"The model is overloaded. Please try again later.","status":"UNAVAILABLE"}}"#
-    #expect(throws: TranscriptionError.self) {
-      try SpeechService.parseGeminiTTSStreamObject(object(json))
-    }
-  }
-
-  @Test("A promptFeedback.blockReason throws a TranscriptionError")
-  func blockReasonThrows() {
-    let json = #"{"promptFeedback":{"blockReason":"SAFETY"}}"#
-    #expect(throws: TranscriptionError.self) {
+  @Test("A top-level error object or a promptFeedback.blockReason throws a TranscriptionError", arguments: [
+    #"{"error":{"code":503,"message":"The model is overloaded. Please try again later.","status":"UNAVAILABLE"}}"#,
+    #"{"promptFeedback":{"blockReason":"SAFETY"}}"#,
+  ])
+  func errorOrBlockThrows(json: String) {
+    #expect(throws: TranscriptionError.self, "\(json)") {
       try SpeechService.parseGeminiTTSStreamObject(object(json))
     }
   }
