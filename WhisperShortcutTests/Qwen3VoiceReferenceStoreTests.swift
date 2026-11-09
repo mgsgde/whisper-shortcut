@@ -120,6 +120,32 @@ struct Qwen3CustomPersonasTests {
     #expect(ids.first == Qwen3VoicePersona.all.first?.id)
   }
 
+  private struct ImportFailed: Error {}
+
+  @Test("A failed voice-clip import does not leave the persona saved")
+  func failedImportDoesNotSave() async {
+    let persona = makePersona(name: "Importfail \(UUID().uuidString)")
+    defer { Qwen3CustomPersonas.delete(id: persona.id) }
+
+    await #expect(throws: ImportFailed.self) {
+      try await Qwen3CustomPersonas.save(persona) { throw ImportFailed() }
+    }
+    #expect(Qwen3CustomPersonas.persona(for: persona.id) == nil)
+  }
+
+  @Test("The voice clip is imported before the persona is persisted")
+  func importRunsBeforePersist() async throws {
+    let persona = makePersona(name: "Importok \(UUID().uuidString)")
+    defer { Qwen3CustomPersonas.delete(id: persona.id) }
+    var sawUnsaved = false
+
+    try await Qwen3CustomPersonas.save(persona) {
+      sawUnsaved = Qwen3CustomPersonas.persona(for: persona.id) == nil
+    }
+    #expect(sawUnsaved)
+    #expect(Qwen3CustomPersonas.persona(for: persona.id) == persona)
+  }
+
   @Test("Deleting a persona removes its frozen voice")
   func deleteRemovesReference() {
     let persona = makePersona(name: "Reflösch \(UUID().uuidString)")

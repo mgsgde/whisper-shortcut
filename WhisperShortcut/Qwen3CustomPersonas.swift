@@ -33,6 +33,17 @@ enum Qwen3CustomPersonas {
     return load().first { $0.id == trimmed }
   }
 
+  /// Imports the voice clip, then persists the persona. The other way round left a cloned
+  /// persona saved with an empty description when the import threw: the next Read Aloud
+  /// calibrated VoiceDesign from that empty prompt and froze a random voice.
+  static func save(
+    _ persona: Qwen3VoicePersona,
+    referenceImport: () async throws -> Void
+  ) async throws {
+    try await referenceImport()
+    save(persona)
+  }
+
   /// Adds or replaces a persona. New ids get a stable, unique slug derived from the name.
   static func save(_ persona: Qwen3VoicePersona) {
     var personas = load()
