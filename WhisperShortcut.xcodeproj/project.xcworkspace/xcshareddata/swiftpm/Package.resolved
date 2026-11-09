@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Neywa-Labs/mlx-audio-swift.git",
       "state" : {
-        "revision" : "6fd938669e45412f5c35e011e7086ecd20397dbd",
-        "version" : "0.1.7"
+        "revision" : "df2a2546705f50ca267037702a34cd63aa6e35a6",
+        "version" : "0.1.8"
       }
     },
     {
