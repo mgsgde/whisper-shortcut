@@ -66,6 +66,49 @@ enum MarkdownParsing {
     return nil
   }
 
+  /// A parsed list line: content without the marker, the number as written (ordered lists only),
+  /// and the indentation in columns (a tab counts as 4).
+  struct ParsedListLine: Equatable {
+    let content: String
+    let ordinal: Int?
+    let indent: Int
+  }
+
+  /// Like `parseBullet`, but tolerates leading indentation and keeps the ordinal (R213).
+  static func parseListLine(_ line: String) -> ParsedListLine? {
+    var indent = 0
+    var idx = line.startIndex
+    while idx < line.endIndex, line[idx] == " " || line[idx] == "\t" {
+      indent += line[idx] == "\t" ? 4 : 1
+      idx = line.index(after: idx)
+    }
+    let rest = String(line[idx...])
+    guard let content = parseBullet(rest) else { return nil }
+    var ordinal: Int?
+    if let first = rest.first, first.isNumber, let dot = rest.firstIndex(of: ".") {
+      ordinal = Int(rest[rest.startIndex..<dot])
+    }
+    return ParsedListLine(content: content, ordinal: ordinal, indent: indent)
+  }
+
+  /// Maps raw indents of consecutive list items to nesting levels (0...3). An item nests one level
+  /// deeper when it is indented at least 2 columns past the previous level's indent; dedenting
+  /// returns to the matching (or nearest shallower) level.
+  static func listLevels(forIndents indents: [Int]) -> [Int] {
+    var stack: [Int] = []
+    var levels: [Int] = []
+    for indent in indents {
+      while let top = stack.last, indent < top { stack.removeLast() }
+      if let top = stack.last {
+        if indent >= top + 2 { stack.append(indent) }
+      } else {
+        stack.append(indent)
+      }
+      levels.append(min(stack.count - 1, 3))
+    }
+    return levels
+  }
+
   /// True if the paragraph is a horizontal-rule line, optionally with trailing citation markers.
   static func isSeparatorParagraph(_ trimmed: String) -> Bool {
     let t = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -78,38 +121,66 @@ enum MarkdownParsing {
 
   static let separatorLineContent = String(repeating: "─", count: 28)
 
-  /// True if the paragraph has multiple lines and at least two lines contain a pipe (Markdown table).
+  /// GFM table delimiter row, e.g. `| --- | :---: |`.
+  private static let tableDelimiterPattern = #"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$"#
+
+  static func isTableDelimiterRow(_ line: String) -> Bool {
+    line.range(of: tableDelimiterPattern, options: .regularExpression) != nil
+  }
+
+  /// True if the paragraph is a GFM table: a header line containing a pipe followed by a
+  /// delimiter row (R214). Two lines that merely contain "|" are prose, not a table.
   static func looksLikeMarkdownTable(_ trimmed: String) -> Bool {
     let lines = trimmed.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     guard lines.count >= 2 else { return false }
-    let withPipe = lines.filter { $0.contains("|") }
-    return withPipe.count >= 2
+    return lines[0].contains("|") && isTableDelimiterRow(lines[1])
+  }
+
+  /// Splits one table row into trimmed cells; `\|` is a literal pipe, a leading/trailing
+  /// border pipe yields no empty edge cell.
+  static func splitTableRow(_ line: String) -> [String] {
+    var cells: [String] = []
+    var current = ""
+    var chars = Array(line)
+    var i = 0
+    while i < chars.count {
+      let c = chars[i]
+      if c == "\\", i + 1 < chars.count, chars[i + 1] == "|" {
+        current.append("|")
+        i += 2
+        continue
+      }
+      if c == "|" {
+        cells.append(current)
+        current = ""
+      } else {
+        current.append(c)
+      }
+      i += 1
+    }
+    cells.append(current)
+    chars = []
+    var trimmed = cells.map { $0.trimmingCharacters(in: .whitespaces) }
+    if trimmed.count >= 2, trimmed.first == "", trimmed.last == "" {
+      trimmed = Array(trimmed.dropFirst().dropLast())
+    }
+    return trimmed
   }
 
   static func parseMarkdownTable(_ trimmed: String) -> ParsedTable? {
     let lines = trimmed.components(separatedBy: .newlines)
       .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-    guard lines.count >= 2 else { return nil }
+    guard lines.count >= 2, isTableDelimiterRow(lines[1]) else { return nil }
     var dataRows: [[String]] = []
-    for line in lines {
-      let cells = line
-        .split(separator: "|", omittingEmptySubsequences: false)
-        .map { $0.trimmingCharacters(in: .whitespaces) }
-      var row: [String]
-      if cells.first == "" && cells.last == "" && cells.count >= 2 {
-        row = Array(cells.dropFirst().dropLast())
-      } else {
-        row = cells
-      }
-      let isSeparator = !row.isEmpty && row.allSatisfy { cell in
-        let t = cell.trimmingCharacters(in: .whitespaces)
-        return !t.isEmpty && t.allSatisfy { $0 == "-" || $0 == ":" }
-      }
-      if isSeparator { continue }
-      dataRows.append(row)
+    for (index, line) in lines.enumerated() where index != 1 {
+      dataRows.append(splitTableRow(line))
     }
-    guard dataRows.count >= 2 else { return nil }
-    return ParsedTable(headers: dataRows[0], rows: Array(dataRows.dropFirst()))
+    guard dataRows.count >= 1 else { return nil }
+    // Never drop cells beyond the header count: widen the header with empty cells instead.
+    let width = dataRows.map(\.count).max() ?? 0
+    var headers = dataRows[0]
+    while headers.count < width { headers.append("") }
+    return ParsedTable(headers: headers, rows: Array(dataRows.dropFirst()))
   }
 
   /// Inserts a paragraph break before — and a space after — a bold section header
@@ -149,8 +220,16 @@ enum MarkdownParsing {
     // headers that already sit at a line start.
     let lines = splitInlineSectionHeadings(content).components(separatedBy: "\n")
     var result: [String] = []
+    // True while the previous non-blank line is a list item or an indented continuation of one.
+    var inListContext = false
     for (i, line) in lines.enumerated() {
       let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+      let isBullet = parseBullet(trimmedLine) != nil
+      defer {
+        if isBullet { inListContext = true }
+        else if let f = line.first, f.isWhitespace, !trimmedLine.isEmpty, inListContext { /* continuation */ }
+        else { inListContext = false }
+      }
       if i > 0,
          let last = result.last,
          !last.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -159,8 +238,7 @@ enum MarkdownParsing {
           result.append("")
         }
         // Blank line before a bullet list that follows non-bullet text
-        else if parseBullet(trimmedLine) != nil,
-                parseBullet(last.trimmingCharacters(in: .whitespaces)) == nil {
+        else if isBullet, !inListContext {
           result.append("")
         }
       }
@@ -404,11 +482,11 @@ struct MarkdownTableView: View {
   var fontSize: CGFloat = 14
 
   var body: some View {
-    let colCount = headers.count
+    let colCount = max(headers.count, rows.map(\.count).max() ?? 0)
     Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
       GridRow {
         ForEach(0..<colCount, id: \.self) { col in
-          Text(Self.parseCellText(headers[col], isHeader: true, fontSize: fontSize))
+          Text(Self.parseCellText(col < headers.count ? headers[col] : "", isHeader: true, fontSize: fontSize))
             .foregroundColor(ChatTheme.primaryText)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)

@@ -364,8 +364,11 @@ final class GeminiComposerController: ObservableObject {
     let space = NSAttributedString(string: " ", attributes: baseAttrs)
     let insertion = tv.selectedRange().location
     let clamped = min(max(0, insertion), storage.length)
-    storage.insert(attrStr, at: clamped)
-    storage.insert(space, at: clamped + attrStr.length)
+    let combined = NSMutableAttributedString(attributedString: attrStr)
+    combined.append(space)
+    // Route through shouldChangeText so the undo manager records the edit (R211).
+    guard tv.shouldChangeText(in: NSRange(location: clamped, length: 0), replacementString: combined.string) else { return }
+    storage.replaceCharacters(in: NSRange(location: clamped, length: 0), with: combined)
     let cursorAfter = clamped + attrStr.length + space.length
     tv.setSelectedRange(NSRange(location: cursorAfter, length: 0))
     // Reset typing attributes so newly typed text is plain (no inherited .attachment).
@@ -399,7 +402,9 @@ final class GeminiComposerController: ObservableObject {
       start -= 1
     }
     if start < len {
-      storage.deleteCharacters(in: NSRange(location: start, length: len - start))
+      let range = NSRange(location: start, length: len - start)
+      guard tv.shouldChangeText(in: range, replacementString: "") else { return }
+      storage.deleteCharacters(in: range)
       tv.setSelectedRange(NSRange(location: start, length: 0))
       tv.didChangeText()
       tv.needsDisplay = true
@@ -442,6 +447,7 @@ final class GeminiComposerController: ObservableObject {
     }
 
     let removeRange = NSRange(location: start, length: len - start)
+    guard tv.shouldChangeText(in: removeRange, replacementString: "") else { return }
     storage.deleteCharacters(in: removeRange)
     tv.setSelectedRange(NSRange(location: start, length: 0))
     tv.didChangeText()
@@ -450,9 +456,16 @@ final class GeminiComposerController: ObservableObject {
   }
 
   func clearAll() {
-    guard let tv = textView else { return }
-    tv.textStorage?.setAttributedString(NSAttributedString())
+    guard let tv = textView, let storage = tv.textStorage else { return }
+    let full = NSRange(location: 0, length: storage.length)
+    if full.length > 0, tv.shouldChangeText(in: full, replacementString: "") {
+      storage.deleteCharacters(in: full)
+    } else {
+      storage.setAttributedString(NSAttributedString())
+    }
     tv.didChangeText()
+    // A sent message must not be undoable back into the composer.
+    tv.undoManager?.removeAllActions()
     tv.needsDisplay = true
     refreshState()
   }

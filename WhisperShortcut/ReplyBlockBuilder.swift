@@ -82,6 +82,36 @@ enum InlineCitationExtractor {
   private static let partialMarker = try! NSRegularExpression(
     pattern: #"[ \t]*(?:\[(?:\[\d*\]?\]?(?:\([^()\s]*)?|(?:web|x|post|news)(?::\d*)?)|\(\[[^\]\n]*(?:\]\([^()\s]*)?)$"#)
 
+  /// UTF-16 ranges of closed inline code spans (a backtick run closed by a run of the same
+  /// length). An unclosed run is not a span.
+  static func inlineCodeSpans(in text: String) -> [NSRange] {
+    let ns = text as NSString
+    var spans: [NSRange] = []
+    var i = 0
+    while i < ns.length {
+      guard ns.character(at: i) == 0x60 else { i += 1; continue }
+      var open = i
+      while open < ns.length, ns.character(at: open) == 0x60 { open += 1 }
+      let runLength = open - i
+      var j = open
+      var closed: Int?
+      while j < ns.length {
+        guard ns.character(at: j) == 0x60 else { j += 1; continue }
+        var end = j
+        while end < ns.length, ns.character(at: end) == 0x60 { end += 1 }
+        if end - j == runLength { closed = end; break }
+        j = end
+      }
+      if let closed {
+        spans.append(NSRange(location: i, length: closed - i))
+        i = closed
+      } else {
+        i = open
+      }
+    }
+    return spans
+  }
+
   /// The paragraph with every marker removed, plus the cited sources in first-cited order.
   /// A URL that is also in the reply's footer list reuses that entry's title.
   static func extract(
@@ -114,12 +144,25 @@ enum InlineCitationExtractor {
       removals.append(match.range)
     }
 
+    // Markers inside an inline code span are literal text the model is showing (`[web:1]`), not
+    // citations (R217).
+    let codeSpans = inlineCodeSpans(in: paragraph)
+    if !codeSpans.isEmpty {
+      removals.removeAll { removal in
+        codeSpans.contains { NSIntersectionRange($0, removal).length > 0 }
+      }
+      cited.removeAll { entry in codeSpans.contains { NSLocationInRange(entry.location, $0) } }
+    }
+
     var text = paragraph
     for range in removals.sorted(by: { $0.location > $1.location }) {
       text = (text as NSString).replacingCharacters(in: range, with: "")
     }
-    text = partialMarker.stringByReplacingMatches(
-      in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+    // A trailing partial marker is only a cut-off citation outside an (unclosed) code span.
+    if text.filter({ $0 == "`" }).count % 2 == 0 {
+      text = partialMarker.stringByReplacingMatches(
+        in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+    }
 
     var seen: Set<String> = []
     // Enumerated tie-break: `sorted` is not stable, and a group's URLs share one location.
@@ -137,9 +180,30 @@ enum InlineCitationExtractor {
 
 // MARK: - Markdown Table / Block types (shared via MarkdownParsing.swift)
 
+/// One list entry. `ordinal` is the number as written (nil for `-`/`*` bullets); `level` is the
+/// nesting depth, 0...3.
+struct ReplyListItem {
+  let content: AttributedString
+  let ordinal: Int?
+  let level: Int
+
+  /// "\(ordinal). " for numbered items, "◦ " for nested bullets, "• " otherwise.
+  var marker: String {
+    if let ordinal { return "\(ordinal). " }
+    return level >= 1 ? "◦ " : "• "
+  }
+}
+
+/// Marks the marker run of a list item with its nesting level so the AppKit prose renderer can
+/// apply a per-level indent.
+enum ListLevelHint: AttributedStringKey {
+  typealias Value = Int
+  static let name = "chat.listLevelHint"
+}
+
 enum ReplyContentBlock {
   case text(AttributedString)
-  case bulletList([AttributedString]) // each item is one bullet
+  case bulletList([ReplyListItem]) // each item is one list entry (bullet or numbered, with nesting)
   case table(ParsedTable)
   case separator
   case codeBlock(String, String?) // code content, optional language
@@ -195,32 +259,22 @@ struct CodeBlockExtractor {
   ) {
     var blocks: [ExtractedCodeBlock] = []
     var result = content
-    // Match ```language\n...code...\n``` (multiline, non-greedy)
-    let pattern = "```(\\w*)\\n([\\s\\S]*?)\\n```"
-    guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-      return (content, [], .identity)
-    }
     let nsContent = content as NSString
-    let matches = regex.matches(in: content, range: NSRange(location: 0, length: nsContent.length))
+    let fences = scanFences(in: content)
     // Process matches in reverse order so replacement indices stay valid
     var placeholderLengths: [Int] = []
     var originalRanges: [(start: Int, length: Int)] = []
-    for match in matches.reversed() {
-      let langRange = match.range(at: 1)
-      let codeRange = match.range(at: 2)
-      let language = langRange.location != NSNotFound ? nsContent.substring(with: langRange) : nil
-      let code = codeRange.location != NSNotFound ? nsContent.substring(with: codeRange) : ""
-      let lang = (language?.isEmpty ?? true) ? nil : language
+    for fence in fences.reversed() {
       let index = blocks.count
-      blocks.insert(ExtractedCodeBlock(code: code, language: lang), at: 0)
+      blocks.insert(ExtractedCodeBlock(code: fence.code, language: fence.language), at: 0)
       let placeholder = "\n\n\(placeholderPrefix)\(index)\(placeholderSuffix)\n\n"
       // Character (not UTF-16) units, to match the paragraph offsets in ParagraphCitationBuilder.
       placeholderLengths.insert(placeholder.count, at: 0)
       originalRanges.insert(
-        (start: nsContent.substring(to: match.range.location).count,
-         length: nsContent.substring(with: match.range).count),
+        (start: nsContent.substring(to: fence.range.location).count,
+         length: nsContent.substring(with: fence.range).count),
         at: 0)
-      result = (result as NSString).replacingCharacters(in: match.range, with: placeholder)
+      result = (result as NSString).replacingCharacters(in: fence.range, with: placeholder)
     }
 
     var shifts: [(processedEnd: Int, delta: Int)] = []
@@ -233,6 +287,96 @@ struct CodeBlockExtractor {
       shifts.append((processedEnd: processedStart + placeholderLength, delta: running))
     }
     return (result, blocks, OffsetMap(shifts: shifts))
+  }
+
+  /// One fenced block found by `scanFences`: the UTF-16 range it occupies in the source (opening
+  /// fence line through the end of the closing fence line, or the end of the text when unclosed).
+  struct FenceMatch {
+    let range: NSRange
+    let code: String
+    let language: String?
+  }
+
+  /// Line-based CommonMark-style fence scanner (R212). Opening fence: optional indentation, then
+  /// 3+ backticks or tildes and an optional info string (first word = language; a backtick fence's
+  /// info string may not contain a backtick). Closing fence: same character, at least as long,
+  /// only whitespace after. Unclosed fences run to the end of the text (streaming, truncation).
+  /// CRLF is tolerated; indentation of the opening fence is stripped from the code lines.
+  static func scanFences(in content: String) -> [FenceMatch] {
+    let ns = content as NSString
+    let total = ns.length
+    // Line table: (start, contentEnd excluding "\n"/"\r\n", next line start).
+    var lines: [(start: Int, end: Int, next: Int)] = []
+    var pos = 0
+    while pos < total {
+      var nl = ns.range(of: "\n", range: NSRange(location: pos, length: total - pos)).location
+      if nl == NSNotFound { nl = total }
+      var end = nl
+      if end > pos, ns.character(at: end - 1) == 0x0D { end -= 1 }
+      lines.append((pos, end, min(nl + 1, total)))
+      pos = nl + 1
+    }
+
+    func fenceHead(_ line: String) -> (indent: Int, char: Character, length: Int, info: String)? {
+      var indent = 0
+      var idx = line.startIndex
+      while idx < line.endIndex, line[idx] == " " || line[idx] == "\t" {
+        indent += 1
+        idx = line.index(after: idx)
+      }
+      guard idx < line.endIndex, line[idx] == "`" || line[idx] == "~" else { return nil }
+      let ch = line[idx]
+      var len = 0
+      while idx < line.endIndex, line[idx] == ch {
+        len += 1
+        idx = line.index(after: idx)
+      }
+      guard len >= 3 else { return nil }
+      let info = String(line[idx...]).trimmingCharacters(in: .whitespaces)
+      if ch == "`", info.contains("`") { return nil }
+      return (indent, ch, len, info)
+    }
+
+    var result: [FenceMatch] = []
+    var i = 0
+    while i < lines.count {
+      let line = ns.substring(with: NSRange(location: lines[i].start, length: lines[i].end - lines[i].start))
+      guard let head = fenceHead(line) else { i += 1; continue }
+      let language = head.info.split(whereSeparator: { $0 == " " || $0 == "\t" }).first.map(String.init)
+      var codeLines: [String] = []
+      var j = i + 1
+      var closedAt: Int?
+      while j < lines.count {
+        let text = ns.substring(with: NSRange(location: lines[j].start, length: lines[j].end - lines[j].start))
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if trimmed.count >= head.length, trimmed.allSatisfy({ $0 == head.char }) {
+          closedAt = j
+          break
+        }
+        // Strip up to the opening fence's indentation from the code line.
+        var drop = 0
+        var k = text.startIndex
+        while drop < head.indent, k < text.endIndex, text[k] == " " || text[k] == "\t" {
+          drop += 1
+          k = text.index(after: k)
+        }
+        codeLines.append(String(text[k...]))
+        j += 1
+      }
+      let endOffset: Int
+      if let c = closedAt {
+        // Include a trailing "\r" of the closing line so no stray CR is left behind.
+        endOffset = min(lines[c].end + (lines[c].next - lines[c].end > 1 ? 1 : 0), total)
+      } else {
+        endOffset = total
+      }
+      result.append(FenceMatch(
+        range: NSRange(location: lines[i].start, length: endOffset - lines[i].start),
+        code: codeLines.joined(separator: "\n"),
+        language: (language?.isEmpty ?? true) ? nil : language))
+      i = (closedAt ?? lines.count) + 1
+    }
+    return result
   }
 
   /// Checks if a trimmed paragraph is a code block placeholder and returns the index.
@@ -464,33 +608,33 @@ enum ReplyBlockBuilder {
 
   /// Parses a paragraph block that consists entirely of bullet/numbered-list lines.
   /// Returns individual attributed strings for each bullet item, or nil if not a bullet block.
-  private static func parseBulletItems(_ trimmed: String) -> [AttributedString]? {
+  private static func parseBulletItems(_ trimmed: String) -> [ReplyListItem]? {
     // Group indented continuation lines under the previous bullet so multi-line list items
     // (a common pattern in numbered lists like `1. **Heading:**\n   continuation`) are
     // rendered as a single bullet instead of being rejected by an all-or-nothing check.
     let rawLines = trimmed.components(separatedBy: .newlines)
-    var groups: [String] = []
+    var groups: [(parsed: MarkdownParsing.ParsedListLine, text: String)] = []
     for line in rawLines {
       let trimmedLine = line.trimmingCharacters(in: .whitespaces)
       if trimmedLine.isEmpty { continue }
-      if MarkdownParsing.parseBullet(trimmedLine) != nil {
-        groups.append(trimmedLine)
+      if let parsed = MarkdownParsing.parseListLine(line) {
+        groups.append((parsed, parsed.content))
       } else if let first = line.first, first.isWhitespace {
         if groups.isEmpty { return nil }
-        groups[groups.count - 1] += " " + trimmedLine
+        groups[groups.count - 1].text += " " + trimmedLine
       } else {
         return nil
       }
     }
     guard !groups.isEmpty else { return nil }
+    let levels = MarkdownParsing.listLevels(forIndents: groups.map { $0.parsed.indent })
     let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    return groups.compactMap { group in
-      guard let parsed = MarkdownParsing.parseBullet(group) else { return nil }
-      let rawContent = parsed.trimmingCharacters(in: .whitespaces)
+    return groups.enumerated().map { index, group in
+      let rawContent = group.text.trimmingCharacters(in: .whitespaces)
       let content = MarkdownParsing.renderLatexToUnicode(rawContent)
       var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)
       contentAttr.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
-      return contentAttr
+      return ReplyListItem(content: contentAttr, ordinal: group.parsed.ordinal, level: levels[index])
     }
   }
 

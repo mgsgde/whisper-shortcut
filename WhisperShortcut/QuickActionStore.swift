@@ -32,28 +32,40 @@ enum QuickActionKind: Equatable {
   /// "formuliere neu kürzer" lands on shorten, not rewrite.
   static func classify(_ key: String) -> QuickActionKind {
     let lowered = key.lowercased()
+    // Whole-word matching (R217): a token must start a word, so "information" is not "format"
+    // and "comfortable" is not "table". Tokens are stems ("kürz" → "kürzer"), so the word may
+    // continue — except for the few words that merely begin with a token.
+    let words = lowered
+      .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "-") })
+      .map(String.init)
+    let notVerbs = ["shortcut", "shortage", "tablet", "fixture", "bulletin", "formation"]
+    func hasToken(_ tokens: [String]) -> Bool {
+      words.contains { word in
+        !notVerbs.contains(where: { word.hasPrefix($0) }) && tokens.contains(where: { word.hasPrefix($0) })
+      }
+    }
 
     let shortenTokens = ["kürz", "kurz", "short", "concise", "condense", "raccourc", "acorta"]
-    if shortenTokens.contains(where: lowered.contains) { return .shorten }
+    if hasToken(shortenTokens) { return .shorten }
 
     let translateTokens = ["übersetz", "translat", "tradui", "tradu"]
-    if translateTokens.contains(where: lowered.contains) { return .translate }
+    if hasToken(translateTokens) { return .translate }
 
     let formatTokens = [
       "format", "to-do", "todo", "bullet", "aufzähl", "markdown", "tabelle", "table",
     ]
-    if formatTokens.contains(where: lowered.contains) { return .format }
+    if hasToken(formatTokens) { return .format }
 
     let correctTokens = [
       "korrig", "corrig", "correct", "fix", "grammat", "grammar", "rechtschreib", "spelling",
       "tippfehler", "typo", "proofread",
     ]
-    if correctTokens.contains(where: lowered.contains) { return .correct }
+    if hasToken(correctTokens) { return .correct }
 
     let rewriteTokens = [
       "formulier", "rewrite", "rephrase", "reword", "umschreib", "reformul", "klarer", "clearer",
     ]
-    if rewriteTokens.contains(where: lowered.contains) { return .rewrite }
+    if hasToken(rewriteTokens) { return .rewrite }
 
     return .other
   }
