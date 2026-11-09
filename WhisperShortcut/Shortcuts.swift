@@ -49,6 +49,9 @@ class Shortcuts {
   /// True while the Settings recorder has asked the global hotkeys to step aside. A template-list
   /// save during that pause must not register them again, or the recorder never sees the key.
   private var hotkeysSuspended = false
+  /// What the template hotkeys were last registered from. A save that leaves it unchanged (a
+  /// name or instruction edit) does not touch the hotkeys.
+  private var registeredTemplateFingerprint: DictationTemplateStore.ShortcutFingerprint?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -101,6 +104,8 @@ class Shortcuts {
   @objc private func dictationTemplatesChanged() {
     let apply = { [weak self] in
       guard let self, !self.hotkeysSuspended else { return }
+      guard DictationTemplateStore.currentShortcutFingerprint() != self.registeredTemplateFingerprint
+      else { return }
       self.setupShortcuts(with: self.currentConfig)
     }
     if Thread.isMainThread {
@@ -206,8 +211,10 @@ class Shortcuts {
   /// shortcut stays off too, so a key saved for it does nothing until a template exists.
   private func registerTemplateShortcuts(_ config: ShortcutConfig) {
     let templates = DictationTemplateStore.load()
-    guard !templates.isEmpty else { return }
     let pickerShortcut = DictationTemplateStore.loadPickerShortcut()
+    registeredTemplateFingerprint = DictationTemplateStore.shortcutFingerprint(
+      templates: templates, picker: pickerShortcut)
+    guard !templates.isEmpty else { return }
     let bindings = TemplateShortcuts.activeBindings(
       templates: templates, appConfig: config, pickerShortcut: pickerShortcut)
     var boundIDs = Set<UUID>()

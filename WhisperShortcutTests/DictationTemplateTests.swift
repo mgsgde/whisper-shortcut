@@ -529,3 +529,26 @@ struct DictationTemplateTests {
 private final class NotificationFlag: @unchecked Sendable {
   var posted = false
 }
+
+@Suite("Template shortcut fingerprint")
+struct TemplateShortcutFingerprintTests {
+  @Test("Name and instruction edits keep the fingerprint; id, usability and shortcut change it")
+  func fingerprintTracksOnlyShortcutRelevantFields() {
+    let id = UUID()
+    let base = DictationTemplate(id: id, name: "A", instructions: "x")
+    let before = DictationTemplateStore.shortcutFingerprint(templates: [base], picker: nil)
+
+    var renamed = base
+    renamed.name = "AB"
+    renamed.instructions = "xy"
+    #expect(DictationTemplateStore.shortcutFingerprint(templates: [renamed], picker: nil) == before)
+
+    var unusable = base
+    unusable.instructions = " "
+    #expect(DictationTemplateStore.shortcutFingerprint(templates: [unusable], picker: nil) != before)
+    #expect(DictationTemplateStore.shortcutFingerprint(templates: [], picker: nil) != before)
+    #expect(
+      DictationTemplateStore.shortcutFingerprint(
+        templates: [DictationTemplate(id: UUID(), name: "A", instructions: "x")], picker: nil) != before)
+  }
+}
