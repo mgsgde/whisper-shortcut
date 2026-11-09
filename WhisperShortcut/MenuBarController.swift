@@ -2235,24 +2235,34 @@ class MenuBarController: NSObject {
       case .resume(let stem):
         DebugLogger.log("LIVE-MEETING-MARKER: Resuming interrupted meeting \(stem)")
         if self.resumeMeeting(stem: stem) {
+          // Audio that was being recorded or transcribed at quit time is in the backlog. Transcribe
+          // it now (it goes into the live transcript at its original time) and say so.
+          let hasKeptAudio = !MeetingAudioBacklog.items(stem: stem).isEmpty
+          let text: LocalizedStringResource = hasKeptAudio
+            ? "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. The last seconds before the restart were kept and are being transcribed now; they will be added to the transcript."
+            : "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. Only the few seconds of the restart itself are missing."
           PopupNotificationWindow.showInfo(
-            "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. Only the few seconds of the restart itself are missing.",
-            title: "Meeting Recording Resumed", customDisplayDuration: 8)
+            text, title: "Meeting Recording Resumed", customDisplayDuration: 8)
+          if hasKeptAudio {
+            Task { @MainActor in await self.liveMeeting.retryBacklog(stems: [stem], announce: false) }
+          }
         } else {
           DebugLogger.logWarning("LIVE-MEETING-MARKER: Could not resume \(stem), notifying instead")
-          self.showMeetingInterruptedNotice()
+          self.showMeetingInterruptedNotice(stem: stem)
         }
       case .notifyInterrupted(let stem):
         DebugLogger.log("LIVE-MEETING-MARKER: Meeting \(stem) was interrupted, notifying")
-        self.showMeetingInterruptedNotice()
+        self.showMeetingInterruptedNotice(stem: stem)
       }
     }
   }
 
-  private func showMeetingInterruptedNotice() {
+  private func showMeetingInterruptedNotice(stem: String) {
+    let text: LocalizedStringResource = MeetingAudioBacklog.items(stem: stem).isEmpty
+      ? "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved. To continue the meeting, open it and click Resume."
+      : "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved, and the last seconds of audio were kept on this Mac. Choose Retry Meeting Transcription in the menu bar menu to add them. To continue the meeting, open it and click Resume."
     PopupNotificationWindow.showInfo(
-      "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved. To continue the meeting, open it and click Resume.",
-      title: "Meeting Recording Interrupted", customDisplayDuration: 10)
+      text, title: "Meeting Recording Interrupted", customDisplayDuration: 10)
   }
 
   /// Rehydrates the live store from disk (as the Resume button does) and restarts recording.

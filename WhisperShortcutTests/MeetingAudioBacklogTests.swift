@@ -42,6 +42,17 @@ struct MeetingAudioBacklogTests {
     #expect(merged.map(\.text) == ["hello", "a", "b", "same second", "end"])
   }
 
+  @Test("A chunk spliced twice with the same start and text is kept once")
+  func mergeSkipsIdenticalChunk() {
+    let existing = [LiveMeetingChunk(startTime: 60, text: "already here")]
+    let recovered = [
+      LiveMeetingChunk(startTime: 60, text: "already here"),
+      LiveMeetingChunk(startTime: 60, text: "different words"),
+    ]
+    let merged = MeetingAudioBacklog.merge(recovered, into: existing)
+    #expect(merged.map(\.text) == ["different words", "already here"])
+  }
+
   @Test("Merged transcript renders in the format the parser reads back")
   func transcriptTextRoundTrip() {
     let chunks = [

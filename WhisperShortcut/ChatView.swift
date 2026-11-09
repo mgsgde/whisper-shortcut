@@ -2942,8 +2942,17 @@ class ChatViewModel: ObservableObject {
           let stem = session.meetingStem,
           !attemptedMeetingSummaryStems.contains(stem)
     else { return }
-    // Already have a summary (on disk or just recovered)? Nothing to do.
-    guard endedMeetingSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true else { return }
+    // Already have a summary (on disk or just recovered) that still covers the transcript? Nothing
+    // to do. One built from an older transcript (resumed, late chunk, recovered audio whose
+    // regeneration failed) is regenerated; a summary without a sidecar counts as current.
+    let hasSummary = !(endedMeetingSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    if hasSummary {
+      let transcriptURL = MeetingListService.transcriptURL(forStem: stem)
+      // Audio still waiting for a retry: the summary is redone after that, not from a fragment.
+      guard MeetingListService.shared.summaryIsStale(transcriptFileURL: transcriptURL),
+            MeetingAudioBacklog.items(stem: stem).isEmpty else { return }
+      MeetingListService.shared.invalidateCache(for: nil)
+    }
     // Need a transcript to summarize.
     let transcript = loadMeetingTranscriptFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     guard !transcript.isEmpty else { return }
@@ -3030,6 +3039,7 @@ class ChatViewModel: ObservableObject {
     guard !transcript.isEmpty else {
       return ["error": "This meeting has no transcript to base a summary on."]
     }
+    let transcriptMeta = MeetingListService.summaryMeta(forTranscript: transcript)
     if transcript.count > MeetingListService.meetingContextMaxChars {
       transcript = String(transcript.suffix(MeetingListService.meetingContextMaxChars))
     }
@@ -3042,7 +3052,8 @@ class ChatViewModel: ObservableObject {
       guard !refined.isEmpty else {
         return ["error": "The model returned an empty summary. Try rephrasing the instruction."]
       }
-      MeetingListService.shared.saveSummary(refined, transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
+      MeetingListService.shared.saveSummary(
+        refined, transcriptFileURL: MeetingListService.transcriptURL(forStem: stem), meta: transcriptMeta)
       summaryRevision &+= 1
       DebugLogger.logSuccess("GEMINI-CHAT: Refined meeting summary for \(stem)")
       return ["ok": true,

@@ -21,6 +21,9 @@ enum MeetingAudioBacklog {
 
   static let directoryName = "MeetingAudio"
 
+  /// Serializes the exists / remove / move sequence of `retain`.
+  private static let retainLock = NSLock()
+
   static var rootURL: URL {
     AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(directoryName)
   }
@@ -45,6 +48,11 @@ enum MeetingAudioBacklog {
   /// the caller then still owns `audioURL`.
   @discardableResult
   static func retain(_ audioURL: URL, stem: String, startTime: TimeInterval) -> Bool {
+    // A failure path off the main thread and the termination hook can retain the same file at once.
+    retainLock.lock()
+    defer { retainLock.unlock() }
+    // Nothing to keep (already moved or deleted): do not clear an existing chunk for it below.
+    guard FileManager.default.fileExists(atPath: audioURL.path) else { return false }
     let dir = directory(stem: stem)
     let target = dir.appendingPathComponent(filename(startTime: startTime))
     do {
@@ -109,9 +117,14 @@ enum MeetingAudioBacklog {
   static func merge(_ recovered: [LiveMeetingChunk], into existing: [LiveMeetingChunk])
     -> [LiveMeetingChunk]
   {
+    // A recovered chunk identical to an existing one (same start, same text) is the same audio
+    // spliced twice; keep one. Different text at the same second is kept: chunks can share a second.
+    let fresh = recovered.filter { chunk in
+      !existing.contains { $0.startTime == chunk.startTime && $0.text == chunk.text }
+    }
     // Stable on equal timestamps: a recovered chunk goes before an existing one that shares its
     // second, since the recovered audio started at or before it.
-    (recovered.map { (0, $0) } + existing.map { (1, $0) })
+    return (fresh.map { (0, $0) } + existing.map { (1, $0) })
       .enumerated()
       .sorted { a, b in
         if a.element.1.startTime != b.element.1.startTime {

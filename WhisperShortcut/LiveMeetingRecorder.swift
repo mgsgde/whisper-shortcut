@@ -100,6 +100,20 @@ class LiveMeetingRecorder: NSObject {
     wallStart: Date?, systemAudio: SystemAudioBuffer?
   )?
 
+  /// Chunks cut by rotation whose delivery to the delegate is still queued behind `stop()` and
+  /// mixing on `audioQueue`. If the process ends in that window the delegate never sees them;
+  /// `stopForTermination` hands them back so the audio is not lost. Main thread only.
+  private var undeliveredChunks: [URL: (startTime: TimeInterval, isSilent: Bool)] = [:]
+
+  /// True while a chunk cut by rotation is still queued behind `stop()` / mixing and has not been
+  /// handed to the delegate. A failure reported in that window arrives before the chunk does.
+  var hasUndeliveredChunks: Bool { !undeliveredChunks.isEmpty }
+
+  #if DEBUG
+  func markUndeliveredChunkForTesting(_ url: URL) { undeliveredChunks[url] = (0, false) }
+  func clearUndeliveredChunksForTesting() { undeliveredChunks = [:] }
+  #endif
+
   /// Flag indicating if session is active
   private(set) var isSessionActive: Bool = false
 
@@ -234,14 +248,15 @@ class LiveMeetingRecorder: NSObject {
     }
   }
 
-  /// Ends the session synchronously because the process is about to exit, and hands back the chunk
-  /// that was being recorded so the caller can keep it instead of losing it with the app.
+  /// Ends the session synchronously because the process is about to exit, and hands back every chunk
+  /// that has audio the delegate has not received: the one being recorded (also the final chunk of a
+  /// Stop that was still draining) and chunks cut by rotation whose delivery was still queued.
   ///
-  /// The delegate is detached first: the normal path delivers the final chunk asynchronously,
-  /// which would race process exit. `AVAudioRecorder.stop()` finalizes the WAV before returning,
-  /// so the file is complete when this returns. Returns nil for a chunk under a second (not worth
-  /// keeping; the file is deleted).
-  func stopForTermination() -> (url: URL, startTime: TimeInterval)? {
+  /// The delegate is detached first: the normal path delivers chunks asynchronously, which would
+  /// race process exit. `AVAudioRecorder.stop()` finalizes the WAV before returning, and a barrier
+  /// on `audioQueue` waits for queued `stop()`s and mixing, so every returned file is complete.
+  /// Chunks under a second or silent are not worth keeping; their files are deleted.
+  func stopForTermination() -> [(url: URL, startTime: TimeInterval)] {
     delegate = nil
     isSessionActive = false
     chunkTimer?.invalidate()
@@ -249,29 +264,48 @@ class LiveMeetingRecorder: NSObject {
     meteringTimer?.invalidate()
     meteringTimer = nil
 
+    // A Stop in progress carries the metadata of its final chunk; otherwise the live chunk's.
+    let final = finalRecorder
+    finalRecorder = nil
     let url = activeRecordingURL
-    let startTime = max(0, currentChunkStartTime)
-    let wallStart = currentChunkWallStart
+    let startTime = max(0, final?.startTime ?? currentChunkStartTime)
+    let wallStart = final?.wallStart ?? currentChunkWallStart
     let age = wallStart.map { Date().timeIntervalSince($0) } ?? 0
-    let systemBuffer = systemAudio
+    let systemBuffer = final?.systemAudio ?? systemAudio
     activeRecorder?.stop()
     for other in [recorderA, recorderB] where other !== activeRecorder {
       other?.stop()
     }
     activeRecorder = nil
     activeRecordingURL = nil
+    // Waits for the rotation work already queued (stop + mixing of the chunks cut before this).
+    let drained = DispatchSemaphore(value: 0)
+    audioQueue.async { drained.signal() }
+    _ = drained.wait(timeout: .now() + 3)
 
-    guard let url else { return nil }
+    var kept: [(url: URL, startTime: TimeInterval)] = []
+    for (rotatedURL, info) in undeliveredChunks {
+      let size = (try? FileManager.default.attributesOfItem(atPath: rotatedURL.path))?[.size] as? Int64 ?? 0
+      if size > 0, !info.isSilent {
+        kept.append((rotatedURL, info.startTime))
+      } else {
+        try? FileManager.default.removeItem(at: rotatedURL)
+      }
+    }
+    undeliveredChunks = [:]
+
+    guard let url, !kept.contains(where: { $0.url == url }) else { return kept }
     let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64 ?? 0
     guard size > 0, age >= 1 else {
       try? FileManager.default.removeItem(at: url)
-      return nil
+      return kept
     }
     if let systemBuffer, let wallStart {
       Self.mixSystemAudioLogged(
-        into: url, buffer: systemBuffer, wallStart: wallStart, chunkIndex: chunkIndex)
+        into: url, buffer: systemBuffer, wallStart: wallStart, chunkIndex: final?.index ?? chunkIndex)
     }
-    return (url, startTime)
+    kept.append((url, startTime))
+    return kept
   }
 
   // MARK: - System audio mixing
@@ -503,6 +537,8 @@ class LiveMeetingRecorder: NSObject {
       // Still deliver the completed chunk so in-flight audio isn't silently lost.
       // Mark it final because no further chunks will come (session torn down).
       if let url = completedRecordingURL {
+        undeliveredChunks[url] = (completedChunkStartTime, chunkWasSilent)
+        activeRecordingURL = nil
         // Delivery waits for stop() — it is what closes the WAV, and the delegate reads
         // the file as soon as it is handed the URL.
         audioQueue.async { [weak self] in
@@ -513,6 +549,7 @@ class LiveMeetingRecorder: NSObject {
               chunkIndex: completedChunkIndex)
           }
           DispatchQueue.main.async {
+            self?.undeliveredChunks.removeValue(forKey: url)
             self?.delegate?.liveMeetingRecorder(
               didFinishChunk: url,
               chunkIndex: completedChunkIndex,
@@ -535,6 +572,9 @@ class LiveMeetingRecorder: NSObject {
     // Queued behind the new recorder's record(), so the seam stays gap-free. Delivery is
     // chained after stop() because stop() is what closes the WAV the delegate will read.
     let stopped = wasRecorderAActive ? recorderA : recorderB
+    if let completedRecordingURL {
+      undeliveredChunks[completedRecordingURL] = (completedChunkStartTime, chunkWasSilent)
+    }
     audioQueue.async { [weak self] in
       stopped?.stop()
       guard let url = completedRecordingURL else { return }
@@ -544,6 +584,7 @@ class LiveMeetingRecorder: NSObject {
           chunkIndex: completedChunkIndex)
       }
       DispatchQueue.main.async {
+        self?.undeliveredChunks.removeValue(forKey: url)
         self?.delegate?.liveMeetingRecorder(
           didFinishChunk: url,
           chunkIndex: completedChunkIndex,
@@ -580,6 +621,8 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
         return
       }
       self.finalRecorder = nil
+      // This chunk is now the delegate's (or gone); a termination must not keep it a second time.
+      if self.activeRecordingURL == url { self.activeRecordingURL = nil }
       var deliver = false
       if flag {
         let fileSize =
