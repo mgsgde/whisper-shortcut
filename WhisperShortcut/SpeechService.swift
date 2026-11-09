@@ -597,8 +597,13 @@ class SpeechService {
 
         let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
         let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
+        // The Glossary as a term list in the model's context slot — the same list Parakeet and
+        // `gpt-transcribe` get. Live-meeting chunks carry none (loud system audio gets answered
+        // with the keywords themselves). Capped so a long Glossary cannot swamp the prompt.
+        let glossaryContext = Self.shouldSendGlossaryKeywords(origin: NoSpeechContext.current?.origin)
+          ? String(glossaryKeywords().joined(separator: ", ").prefix(1500)) : ""
         let result = try await Qwen3ASRService.shared.transcribe(
-          audioURL: audioURL, language: savedLanguage.qwen3LanguageName)
+          audioURL: audioURL, language: savedLanguage.qwen3LanguageName, context: glossaryContext)
         let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
         DebugLogger.logSpeech("SPEED: Qwen3-ASR transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
         return result

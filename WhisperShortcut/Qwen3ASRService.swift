@@ -80,7 +80,7 @@ actor Qwen3ASRModelLoader {
   /// out for the prewarm, and `Qwen3ASRModel.generate` is not safe to call twice at once — two
   /// transcriptions would otherwise overlap on the one MLX model. Once `model()` has returned,
   /// decoding and `generate` do not suspend, so the next caller waits until this one finishes.
-  func generate(audioURL: URL, language: String?) async throws -> String {
+  func generate(audioURL: URL, language: String?, context: String = "") async throws -> String {
     let model = try await model()
     let (_, samples) = try AudioFileMonoLoader.loadMonoSamples(
       from: audioURL, targetRate: model.sampleRate)
@@ -88,7 +88,7 @@ actor Qwen3ASRModelLoader {
     guard audio.size > 0 else { throw Qwen3ASRError.emptyAudio }
 
     let start = Date()
-    let output = model.generate(audio: audio, language: language)
+    let output = model.generate(audio: audio, context: context, language: language)
     DebugLogger.log(
       "QWEN3-ASR: transcribed \(String(format: "%.1f", Double(samples.count) / Double(model.sampleRate)))s "
         + "in \(String(format: "%.1f", Date().timeIntervalSince(start)))s → \(output.text.count) chars")
@@ -130,7 +130,10 @@ struct Qwen3ASRService {
   /// The model wants a mono float waveform at its own sample rate, so the file is decoded and
   /// resampled first — the recorder writes 16 kHz mono, the model reads at 16 kHz, but a
   /// user-supplied file need not match (and may be stereo, which the loader mixes to mono).
-  func transcribe(audioURL: URL, language: String?) async throws -> String {
-    try await Qwen3ASRModelLoader.shared.generate(audioURL: audioURL, language: language)
+  ///
+  /// `context` is the library's system-context slot: a plain list of terms the audio may contain
+  /// (the Glossary). It biases recognition only; the model takes no instructions.
+  func transcribe(audioURL: URL, language: String?, context: String = "") async throws -> String {
+    try await Qwen3ASRModelLoader.shared.generate(audioURL: audioURL, language: language, context: context)
   }
 }
