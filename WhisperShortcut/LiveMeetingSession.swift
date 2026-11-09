@@ -237,8 +237,10 @@ final class LiveMeetingSession: NSObject {
   private var postProcessingInFlight: Set<String> = []
   /// Stems that asked for a pass while one was running; one rerun follows it.
   private var postProcessingDirty: [String: URL] = [:]
-  /// ID of the last chunk already covered by a live note. Robust against chunk trimming.
-  private var lastNotedChunkID: UUID? = nil
+  /// IDs of the chunks a live note already covers (or that were already on disk when the meeting
+  /// was resumed). A set rather than a "last noted" cursor: a chunk that finishes transcribing late
+  /// is inserted *before* the cursor by start time and would never be noted. Reset per meeting.
+  private var notedChunkIDs: Set<UUID> = []
   /// When non-nil, `finish()` renames the transcript file to this stem (or timestamp-suffix) before ending.
   private var preferredName: String?
   /// Set to true after showing the rate-limit popup once this session so we don't spam.
@@ -265,7 +267,7 @@ final class LiveMeetingSession: NSObject {
   private let noteFailureThreshold = 3
   /// Single-flight guard: true while a live-note API call is in flight. Notes are small (a segment
   /// in, two bullets out) so calls are fast, but a slow response must not let a second call start
-  /// and race on `lastNotedChunkID` — that would either duplicate or skip a segment.
+  /// and race on `notedChunkIDs` — that would either duplicate or skip a segment.
   private var noteUpdateInFlight: Bool = false
   /// Bumped on every session start. A Task that can outlive the meeting (live notes, a chunk
   /// transcription, the stop safety net) captures the generation it launched under and leaves the
@@ -362,10 +364,10 @@ final class LiveMeetingSession: NSObject {
     if resuming && !existingChunks.isEmpty {
       LiveMeetingTranscriptStore.shared.resumeSession()
       // Everything already on disk has been noted; only new chunks need a note.
-      lastNotedChunkID = existingChunks.last?.id
+      notedChunkIDs = Set(existingChunks.map(\.id))
     } else {
       LiveMeetingTranscriptStore.shared.startSession()
-      lastNotedChunkID = nil
+      notedChunkIDs = []
     }
 
     // Schedule duration safeguard if enabled
@@ -576,7 +578,7 @@ final class LiveMeetingSession: NSObject {
     recorder = nil
     pendingChunks = 0
     transcriptURL = nil
-    lastNotedChunkID = nil
+    notedChunkIDs = []
     // The meeting is over, so nothing further will arrive for a waiter to wait on.
     signalFlushCompleted(completedChunkIndex: nil)
     onFinished()
@@ -1168,13 +1170,13 @@ final class LiveMeetingSession: NSObject {
     // is still attempted once in finish().
     guard !noteCircuitOpen else { return }
 
-    // Single-flight: a second concurrent call would race on `lastNotedChunkID` and either duplicate
+    // Single-flight: a second concurrent call would race on `notedChunkIDs` and either duplicate
     // or skip a segment. Whatever is pending is picked up by the next append.
     guard !noteUpdateInFlight else { return }
 
     let store = LiveMeetingTranscriptStore.shared
-    let pending = store.chunks(afterID: lastNotedChunkID)
-    guard let newLastID = pending.last?.id, let firstStart = pending.first?.startTime else { return }
+    let pending = Self.unnotedChunks(store.chunks, noted: notedChunkIDs)
+    guard let firstStart = pending.first?.startTime else { return }
 
     let segment = pending.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n")
     guard !segment.isEmpty else { return }
@@ -1183,8 +1185,8 @@ final class LiveMeetingSession: NSObject {
     }
 
     let recentNotes = store.liveNotes.suffix(3).flatMap { $0.bullets }
-    let previousLastID = lastNotedChunkID
-    lastNotedChunkID = newLastID
+    let pendingIDs = Set(pending.map(\.id))
+    notedChunkIDs.formUnion(pendingIDs)
     noteUpdateInFlight = true
     let generation = sessionGeneration
 
@@ -1193,7 +1195,7 @@ final class LiveMeetingSession: NSObject {
         segment: segment,
         recentNotes: Array(recentNotes),
         noteStartTime: firstStart,
-        previousLastID: previousLastID,
+        pendingIDs: pendingIDs,
         generation: generation
       )
       await MainActor.run {
@@ -1207,7 +1209,7 @@ final class LiveMeetingSession: NSObject {
 
   /// Generates one note for the given segment and appends it to the store. Call from a Task.
   private func runLiveNoteUpdate(
-    segment: String, recentNotes: [String], noteStartTime: TimeInterval, previousLastID: UUID?,
+    segment: String, recentNotes: [String], noteStartTime: TimeInterval, pendingIDs: Set<UUID>,
     generation: Int
   ) async {
     let model = PromptModel.loadSelectedMeetingSummary()
@@ -1247,7 +1249,7 @@ final class LiveMeetingSession: NSObject {
       await MainActor.run {
         guard generation == self.sessionGeneration else { return }
         // Roll back so the next attempt covers the same segment.
-        self.lastNotedChunkID = previousLastID
+        self.notedChunkIDs.subtract(pendingIDs)
         self.consecutiveNoteFailures += 1
         // Trip the circuit-breaker after sustained failures: stop hammering the model for the
         // rest of the session and tell the user once (the final summary is still attempted at end).
@@ -1273,6 +1275,12 @@ final class LiveMeetingSession: NSObject {
     guard let url = transcriptURL else { return }
     MeetingListService.shared.saveNotes(
       LiveMeetingTranscriptStore.shared.liveNotes, transcriptFileURL: url)
+  }
+
+  /// Chunks no live note covers yet, in start-time order (the store already keeps that order, but a
+  /// pure function must not depend on it).
+  static func unnotedChunks(_ chunks: [LiveMeetingChunk], noted: Set<UUID>) -> [LiveMeetingChunk] {
+    chunks.filter { !noted.contains($0.id) }.sorted { $0.startTime < $1.startTime }
   }
 
   /// Extracts bullet lines from a live-note response. Models occasionally answer with a bare
