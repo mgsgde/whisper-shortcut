@@ -267,7 +267,8 @@ struct LocalLLMTests {
     #expect(layout.localDirectory(for: repo) == nil)
 
     try Data("{}".utf8).write(to: snap.appendingPathComponent("model-00001-of-00002.safetensors"))
-    #expect(layout.localDirectory(for: repo) == snap)
+    // Compared by path: the snapshot URL comes back from a directory listing with a trailing slash.
+    #expect(layout.localDirectory(for: repo)?.standardizedFileURL.path == snap.standardizedFileURL.path)
     #expect(
       layout.deletionTarget(for: snap)
         == snap.deletingLastPathComponent().deletingLastPathComponent())
