@@ -733,12 +733,7 @@ class SpeechService {
     // Self-hosted OpenAI-compatible endpoint
     if model == .selfHostedTranscription {
       try validateAudioFileFormat(at: audioURL)
-      // Same hint as the OpenAI/xAI branches (`honorsSystemPrompt` is true for this model).
-      let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
-      let result = try await transcribeWithSelfHostedEndpoint(
-        audioURL: audioURL,
-        dictationHint: dictationHint.isEmpty ? nil : dictationHint
-      )
+      let result = try await transcribeWithSelfHostedEndpoint(audioURL: audioURL)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [Self-hosted Transcription] completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -3185,7 +3180,7 @@ class SpeechService {
 
   // MARK: - Self-hosted Transcription Endpoint
 
-  private func transcribeWithSelfHostedEndpoint(audioURL: URL, dictationHint: String? = nil) async throws -> String {
+  private func transcribeWithSelfHostedEndpoint(audioURL: URL) async throws -> String {
     let audioData = try Data(contentsOf: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = mimeTypeForAudioExtension(fileExtension)
@@ -3251,9 +3246,6 @@ class SpeechService {
             extraHeaders: extraHeaders,
             session: session,
             logPrefix: "SELF-HOSTED-TRANSCRIPTION",
-            // whisper-1 and whisper-asr-webservice prime on `prompt` (224-token limit): the shared
-            // helper's contract is that those callers do not pass the instruction-style hint.
-            dictationHint: (fieldName == "file" && modelID != "whisper-1") ? dictationHint : nil,
             audioDurationSeconds: audioDuration,
             requestTimeout: requestTimeout
           )
@@ -3300,7 +3292,6 @@ class SpeechService {
         extraHeaders: extraHeaders,
         session: session,
         logPrefix: "SELF-HOSTED-TRANSCRIPTION",
-        dictationHint: modelID == "whisper-1" ? nil : dictationHint,
         audioDurationSeconds: audioDuration,
         requestTimeout: requestTimeout
       )
