@@ -20190,6 +20190,16 @@
         }
       }
     },
+    "%@ changed since the AI app suggested it. Decline it and ask the AI app again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat sich geändert, seit die KI-App es vorgeschlagen hat. Lehnen Sie den Vorschlag ab und fragen Sie die KI-App erneut."
+          }
+        }
+      }
+    },
     "This changed since the AI app suggested it. Decline it and ask the AI app again." : {
       "localizations" : {
         "de" : {
