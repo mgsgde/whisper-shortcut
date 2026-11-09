@@ -27,6 +27,8 @@ struct LocalLLMModelsSection: View {
           .foregroundColor(.red)
           .textSelection(.enabled)
       }
+
+      ModelImportSection(onError: { errorMessage = $0 })
     }
   }
 
