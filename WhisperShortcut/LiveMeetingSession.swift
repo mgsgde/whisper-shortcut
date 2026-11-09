@@ -283,6 +283,15 @@ final class LiveMeetingSession: NSObject {
   /// Callers of `flushPendingAudio()` waiting for the chunk that flush cut to be transcribed, keyed
   /// so a timeout can drop its own waiter without disturbing the others.
   private var flushWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+  /// Chunks handed to transcription whose call has not settled, by token. Their audio exists only as
+  /// a file until the call returns; `preserveForTermination` moves them into the backlog.
+  private struct InFlightChunk {
+    let url: URL
+    let startTime: TimeInterval
+    let generation: Int
+    let capturedURL: URL?
+  }
+  private var inFlightChunks: [UUID: InFlightChunk] = [:]
   /// Index of the chunk the pending flush cut; see `signalFlushCompleted`.
   private var flushAwaitedChunkIndex: Int?
 
@@ -465,27 +474,47 @@ final class LiveMeetingSession: NSObject {
     stop()
   }
 
-  /// Called when the app is about to exit while a meeting is recording (system quit, update
-  /// script, logout). Keeps the chunk in progress in the audio backlog so it is transcribed when the
-  /// meeting is resumed or ended, instead of vanishing with the process. The recording marker is
-  /// left in place on purpose: the next launch reads it to resume or report the interruption.
+  /// Called when the app is about to exit (system quit, update script, logout). Moves every chunk
+  /// whose audio has no transcript yet into the audio backlog, so the existing retry recovers it
+  /// instead of it vanishing with the process: the chunk being recorded (also a Stop's final chunk
+  /// that was still draining), chunks cut by rotation and not yet delivered, and chunks handed to
+  /// transcription whose call is still running. Also covers a meeting that already finished but
+  /// still has a chunk transcribing. The recording marker is left as it is: while recording it stays
+  /// so the next launch resumes or reports the interruption; after a Stop it was already cleared.
   func preserveForTermination() {
-    guard let recorder, !stopping, !finalized else { return }
-    let stem = transcriptURL?.deletingPathExtension().lastPathComponent
-    let chunk = recorder.stopForTermination()
-    stopOutputRouteMonitor()
-    tearDownSystemCapture()
-    self.recorder = nil
-    guard let chunk else {
-      DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, no chunk worth keeping")
+    var chunks: [(url: URL, startTime: TimeInterval, stem: String?)] = []
+    let liveStem = transcriptURL?.deletingPathExtension().lastPathComponent
+    if let recorder, !finalized {
+      let fromRecorder = recorder.stopForTermination()
+      stopOutputRouteMonitor()
+      tearDownSystemCapture()
+      self.recorder = nil
+      // A Stop's final chunk can already be on its way to transcription; that entry knows its meeting.
+      let inFlightURLs = Set(inFlightChunks.values.map(\.url))
+      chunks += fromRecorder.filter { !inFlightURLs.contains($0.url) }
+        .map { ($0.url, $0.startTime, liveStem) }
+    }
+    let inFlight = inFlightChunks
+    inFlightChunks = [:]
+    for entry in inFlight.values {
+      // The meeting's name as it is now; nil when it was discarded or its transcript is gone.
+      let stem = destination(forChunkOf: entry.generation, capturedURL: entry.capturedURL)?.url
+        .deletingPathExtension().lastPathComponent
+      chunks.append((entry.url, entry.startTime, stem))
+    }
+    guard !chunks.isEmpty else {
+      DebugLogger.log("LIVE-MEETING: Terminating, no audio worth keeping")
       return
     }
-    guard let stem else {
-      DebugLogger.logWarning("LIVE-MEETING: Terminating mid-meeting, no stem known; chunk left at \(chunk.url.lastPathComponent)")
-      return
+    var kept = 0
+    for chunk in chunks {
+      guard let stem = chunk.stem else {
+        DebugLogger.logWarning("LIVE-MEETING: Terminating, no meeting known for \(chunk.url.lastPathComponent); audio left in place")
+        continue
+      }
+      if MeetingAudioBacklog.retain(chunk.url, stem: stem, startTime: chunk.startTime) { kept += 1 }
     }
-    let kept = MeetingAudioBacklog.retain(chunk.url, stem: stem, startTime: chunk.startTime)
-    DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, in-progress chunk kept in backlog: \(kept)")
+    DebugLogger.log("LIVE-MEETING: Terminating, kept \(kept) of \(chunks.count) untranscribed chunk(s) in the backlog")
   }
 
   func stop() {
@@ -1518,6 +1547,9 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     // object). A late success must not write into the new meeting or decrement its pending count.
     let generation = sessionGeneration
     let chunkTranscriptURL = transcriptURL
+    let inFlightToken = UUID()
+    inFlightChunks[inFlightToken] = InFlightChunk(
+      url: audioURL, startTime: startTime, generation: generation, capturedURL: chunkTranscriptURL)
 
     Task {
       do {
@@ -1532,6 +1564,8 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
             // Appending also evaluates whether the accumulated segment is worth a live note.
             self.appendToTranscript(
               trimmedText, chunkStartTime: startTime, url: chunkTranscriptURL, generation: generation)
+            // In the same turn as the write: the text is on disk, so the audio is not "untranscribed".
+            self.inFlightChunks.removeValue(forKey: inFlightToken)
           }
         }
 
@@ -1597,6 +1631,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
       }
 
       await MainActor.run {
+        self.inFlightChunks.removeValue(forKey: inFlightToken)
         guard self.isLive(generation) else {
           DebugLogger.log(
             "LIVE-MEETING: Chunk \(chunkIndex) finished after its meeting ended; leaving pending count and flush state alone"

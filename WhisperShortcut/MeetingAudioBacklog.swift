@@ -45,6 +45,8 @@ enum MeetingAudioBacklog {
   /// the caller then still owns `audioURL`.
   @discardableResult
   static func retain(_ audioURL: URL, stem: String, startTime: TimeInterval) -> Bool {
+    // Nothing to keep (already moved or deleted): do not clear an existing chunk for it below.
+    guard FileManager.default.fileExists(atPath: audioURL.path) else { return false }
     let dir = directory(stem: stem)
     let target = dir.appendingPathComponent(filename(startTime: startTime))
     do {

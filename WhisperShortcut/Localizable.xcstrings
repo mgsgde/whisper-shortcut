@@ -22044,12 +22044,32 @@
         }
       }
     },
+    "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. The last seconds before the restart were kept and are being transcribed now; they will be added to the transcript." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut wurde während der Meeting-Aufnahme neu gestartet und hat dort weitergemacht, wo es aufgehört hat. Die letzten Sekunden vor dem Neustart wurden aufbewahrt und werden jetzt transkribiert; sie werden dem Transkript hinzugefügt."
+          }
+        }
+      }
+    },
     "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. Only the few seconds of the restart itself are missing." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut wurde während der Meeting-Aufnahme neu gestartet und hat dort weitergemacht, wo es aufgehört hat. Es fehlen nur die wenigen Sekunden des Neustarts."
+          }
+        }
+      }
+    },
+    "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved, and the last seconds of audio were kept on this Mac. Choose Retry Meeting Transcription in the menu bar menu to add them. To continue the meeting, open it and click Resume." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut wurde während der Meeting-Aufnahme beendet, deshalb wurde die Aufnahme gestoppt. Das Transkript bis dahin ist gespeichert, und die letzten Sekunden Audio wurden auf diesem Mac aufbewahrt. Wählen Sie im Menüleistenmenü „Meeting-Transkription wiederholen“, um sie hinzuzufügen. Um das Meeting fortzusetzen, öffnen Sie es und klicken Sie auf „Resume“."
           }
         }
       }
