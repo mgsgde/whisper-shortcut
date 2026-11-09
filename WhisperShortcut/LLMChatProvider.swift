@@ -150,6 +150,13 @@ enum ThinkingLevel: String, Codable, CaseIterable {
   case medium
   case high
 
+  /// Unknown values (a newer build's level, read after a downgrade) decode as `.default` instead
+  /// of failing the whole session file (R216).
+  init(from decoder: Decoder) throws {
+    let raw = try decoder.singleValueContainer().decode(String.self)
+    self = ThinkingLevel(rawValue: raw) ?? .default
+  }
+
   /// OpenAI `reasoning_effort` / Responses `reasoning.effort`, or nil to omit (model default).
   /// gpt-5.5 rejects `minimal` (allowed: none/low/medium/high), so map minimal → `none` (the floor).
   var openAIReasoningEffort: String? {

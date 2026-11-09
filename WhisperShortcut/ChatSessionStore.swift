@@ -242,6 +242,21 @@ private struct SessionsFile: Codable {
   var tabOrder: [UUID]?
 }
 
+/// Decodes the sessions file element by element so one undecodable session does not hide the
+/// others (R216). `session` is nil for an element that failed to decode.
+private struct LenientSessionElement: Decodable {
+  let session: ChatSession?
+  init(from decoder: Decoder) throws {
+    session = try? ChatSession(from: decoder)
+  }
+}
+
+private struct LenientSessionsFile: Decodable {
+  var currentSessionId: UUID
+  var sessions: [LenientSessionElement]
+  var tabOrder: [UUID]?
+}
+
 // MARK: - Store
 
 @MainActor
@@ -269,6 +284,10 @@ class ChatSessionStore {
   private static let archivedRetentionDays: Double = 30
 
   private var cachedFile: SessionsFile?
+  /// Set when the sessions file exists but could not be read (permissions, I/O). Nothing is written
+  /// for the rest of this launch so a transient read error never replaces the user's history with
+  /// an empty default session (R216).
+  private var writesDisabled = false
   private let diskWriteQueue = DispatchQueue(label: "com.whispershortcut.session.io", qos: .utility)
   /// Debounce disk writes: coalesce rapid saves into a single write after a short delay.
   private var debounceWorkItem: DispatchWorkItem?
@@ -316,16 +335,45 @@ class ChatSessionStore {
       return file
     }
 
-    if let data = try? Data(contentsOf: fileURL) {
+    let data: Data?
+    if FileManager.default.fileExists(atPath: fileURL.path) {
       do {
-        var file = try JSONDecoder().decode(SessionsFile.self, from: data)
+        data = try Data(contentsOf: fileURL)
+      } catch {
+        // Present but unreadable: not the same as "missing". Keep the file untouched.
+        DebugLogger.logError(
+          "GEMINI-CHAT: Sessions file exists but could not be read, persistence disabled for this launch: \(error.logDescription)")
+        writesDisabled = true
+        let defaultSession = ChatSession()
+        let file = SessionsFile(currentSessionId: defaultSession.id, sessions: [defaultSession])
+        cachedFile = file
+        return file
+      }
+    } else {
+      data = nil
+    }
+
+    if let data {
+      do {
+        let lenient = try JSONDecoder().decode(LenientSessionsFile.self, from: data)
+        let decoded = lenient.sessions.compactMap(\.session)
+        let skipped = lenient.sessions.count - decoded.count
+        if skipped > 0 {
+          backUpSessionsFile(reason: "\(skipped) session(s) could not be decoded")
+        }
+        var file = SessionsFile(
+          currentSessionId: lenient.currentSessionId, sessions: decoded, tabOrder: lenient.tabOrder)
         if !file.sessions.isEmpty {
+          if !file.sessions.contains(where: { $0.id == file.currentSessionId }),
+             let first = file.sessions.first {
+            file.currentSessionId = first.id
+          }
           // A quit or crash mid-stream persists the empty model placeholder `performSend`
           // appends before the first token. Drop it on load so the next Gemini request
           // is not rejected for an empty model turn. In-flight placeholders are not
           // stripped on save — that would remove the bubble while the reply is streaming.
           let droppedPlaceholders = dropEmptyAssistantPlaceholders(&file)
-          if purgeExpiredArchivedSessions(&file) || droppedPlaceholders {
+          if purgeExpiredArchivedSessions(&file) || droppedPlaceholders || skipped > 0 {
             saveSessionsFile(file)
             return cachedFile ?? file
           }
@@ -333,14 +381,9 @@ class ChatSessionStore {
           return file
         }
       } catch {
-        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let backupName = fileName.replacingOccurrences(of: ".json", with: ".corrupt-\(stamp).json")
-        let backupURL = appSupportDir.appendingPathComponent(backupName)
-        try? FileManager.default.moveItem(at: fileURL, to: backupURL)
+        let backupName = backUpSessionsFile(reason: error.localizedDescription, move: true)
         ChatSessionStore.lastCorruptionNotice =
           String(localized: "Chat history could not be read and was set aside as \(backupName). A new empty chat was started.")
-        DebugLogger.logError(
-          "GEMINI-CHAT: Failed to decode sessions file, moved to \(backupName): \(error.localizedDescription)")
       }
     }
 
@@ -348,6 +391,25 @@ class ChatSessionStore {
     let file = SessionsFile(currentSessionId: defaultSession.id, sessions: [defaultSession])
     saveSessionsFile(file)
     return file
+  }
+
+  /// Keeps the on-disk sessions file under a `.corrupt-<stamp>.json` name. Copies by default (the
+  /// file is rewritten right after without the bad sessions); `move` is for a file that is wholly
+  /// unusable. Returns the backup file name.
+  @discardableResult
+  private func backUpSessionsFile(reason: String, move: Bool = false) -> String {
+    let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+    let backupName = fileName.replacingOccurrences(of: ".json", with: ".corrupt-\(stamp).json")
+    let backupURL = appSupportDir.appendingPathComponent(backupName)
+    if move {
+      try? FileManager.default.moveItem(at: fileURL, to: backupURL)
+    } else {
+      try? FileManager.default.copyItem(at: fileURL, to: backupURL)
+      ChatSessionStore.lastCorruptionNotice =
+        String(localized: "Some chats could not be read and were left out. The original file was kept as \(backupName).")
+    }
+    DebugLogger.logError("GEMINI-CHAT: Sessions file backed up to \(backupName): \(reason)")
+    return backupName
   }
 
   /// Permanently deletes archived, non-pinned, non-meeting sessions whose lastUpdated is older than
@@ -446,6 +508,7 @@ class ChatSessionStore {
     lastNormalized = lastNormalized.filter { liveIds.contains($0.key) }
 
     cachedFile = file
+    guard !writesDisabled else { return }
     scheduleDiskWrite(file)
   }
 
@@ -479,7 +542,7 @@ class ChatSessionStore {
   /// sync with `DispatchQueue.main.sync` anywhere in this path — an earlier `nonisolated`
   /// version did and deadlocked on every quit.)
   func flushToDisk() {
-    guard let file = cachedFile else { return }
+    guard let file = cachedFile, !writesDisabled else { return }
     debounceWorkItem?.cancel()
     diskWriteQueue.sync { writeNow(file, label: "Flush to disk") }
   }
