@@ -45,7 +45,7 @@ struct ReplyBlockBuilderTests {
     blocks.map { block -> String in
       switch block {
       case .text(let attr): return String(attr.characters)
-      case .bulletList(let items): return items.map { String($0.characters) }.joined(separator: "\n")
+      case .bulletList(let items): return items.map { String($0.content.characters) }.joined(separator: "\n")
       default: return ""
       }
     }.joined(separator: "\n")
@@ -162,7 +162,7 @@ struct ReplyBlockBuilderTests {
     guard let i = blocks.firstIndex(where: { block in
       if case .text(let a) = block { return String(a.characters).contains(needle) }
       if case .bulletList(let items) = block {
-        return items.contains { String($0.characters).contains(needle) }
+        return items.contains { String($0.content.characters).contains(needle) }
       }
       return false
     }), i + 1 < blocks.count, case .sources(let sources) = blocks[i + 1] else { return nil }

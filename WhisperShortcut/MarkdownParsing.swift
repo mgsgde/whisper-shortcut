@@ -66,6 +66,49 @@ enum MarkdownParsing {
     return nil
   }
 
+  /// A parsed list line: content without the marker, the number as written (ordered lists only),
+  /// and the indentation in columns (a tab counts as 4).
+  struct ParsedListLine: Equatable {
+    let content: String
+    let ordinal: Int?
+    let indent: Int
+  }
+
+  /// Like `parseBullet`, but tolerates leading indentation and keeps the ordinal (R213).
+  static func parseListLine(_ line: String) -> ParsedListLine? {
+    var indent = 0
+    var idx = line.startIndex
+    while idx < line.endIndex, line[idx] == " " || line[idx] == "\t" {
+      indent += line[idx] == "\t" ? 4 : 1
+      idx = line.index(after: idx)
+    }
+    let rest = String(line[idx...])
+    guard let content = parseBullet(rest) else { return nil }
+    var ordinal: Int?
+    if let first = rest.first, first.isNumber, let dot = rest.firstIndex(of: ".") {
+      ordinal = Int(rest[rest.startIndex..<dot])
+    }
+    return ParsedListLine(content: content, ordinal: ordinal, indent: indent)
+  }
+
+  /// Maps raw indents of consecutive list items to nesting levels (0...3). An item nests one level
+  /// deeper when it is indented at least 2 columns past the previous level's indent; dedenting
+  /// returns to the matching (or nearest shallower) level.
+  static func listLevels(forIndents indents: [Int]) -> [Int] {
+    var stack: [Int] = []
+    var levels: [Int] = []
+    for indent in indents {
+      while let top = stack.last, indent < top { stack.removeLast() }
+      if let top = stack.last {
+        if indent >= top + 2 { stack.append(indent) }
+      } else {
+        stack.append(indent)
+      }
+      levels.append(min(stack.count - 1, 3))
+    }
+    return levels
+  }
+
   /// True if the paragraph is a horizontal-rule line, optionally with trailing citation markers.
   static func isSeparatorParagraph(_ trimmed: String) -> Bool {
     let t = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -149,8 +192,16 @@ enum MarkdownParsing {
     // headers that already sit at a line start.
     let lines = splitInlineSectionHeadings(content).components(separatedBy: "\n")
     var result: [String] = []
+    // True while the previous non-blank line is a list item or an indented continuation of one.
+    var inListContext = false
     for (i, line) in lines.enumerated() {
       let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+      let isBullet = parseBullet(trimmedLine) != nil
+      defer {
+        if isBullet { inListContext = true }
+        else if let f = line.first, f.isWhitespace, !trimmedLine.isEmpty, inListContext { /* continuation */ }
+        else { inListContext = false }
+      }
       if i > 0,
          let last = result.last,
          !last.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -159,8 +210,7 @@ enum MarkdownParsing {
           result.append("")
         }
         // Blank line before a bullet list that follows non-bullet text
-        else if parseBullet(trimmedLine) != nil,
-                parseBullet(last.trimmingCharacters(in: .whitespaces)) == nil {
+        else if isBullet, !inListContext {
           result.append("")
         }
       }

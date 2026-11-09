@@ -5769,6 +5769,8 @@ private struct ModelReplyView: View {
     prose.append(dashes)
   }
 
+  static let listLevelKey = NSAttributedString.Key("chat.listLevel")
+
   /// Translates a prose `AttributedString` (built for SwiftUI) into an `NSAttributedString` for the
   /// selectable text view. SwiftUI fonts/colors do not bridge to AppKit, so we rebuild each run's
   /// `NSFont`/`NSColor` from the attributes we can still read: the `ProseFontHint` (headings, rule
@@ -5814,6 +5816,10 @@ private struct ModelReplyView: View {
         attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
       }
 
+      if let level = run[ListLevelHint.self] {
+        attrs[Self.listLevelKey] = level
+      }
+
       result.append(NSAttributedString(string: text, attributes: attrs))
     }
 
@@ -5843,7 +5849,14 @@ private struct ModelReplyView: View {
     let full = result.string as NSString
     full.enumerateSubstrings(in: NSRange(location: 0, length: full.length), options: .byParagraphs) { substring, range, enclosingRange, _ in
       guard let substring else { return }
-      if substring.hasPrefix("• ") {
+      if range.length > 0, let level = result.attribute(Self.listLevelKey, at: range.location, effectiveRange: nil) as? Int {
+        let style = NSMutableParagraphStyle()
+        style.lineSpacing = ChatTheme.bodyLineSpacing
+        style.paragraphSpacing = 6
+        style.firstLineHeadIndent = CGFloat(level) * Self.listIndentPerLevel
+        style.headIndent = CGFloat(level) * Self.listIndentPerLevel + 16
+        result.addAttribute(.paragraphStyle, value: style, range: range)
+      } else if substring.hasPrefix("• ") {
         result.addAttribute(.paragraphStyle, value: bulletParagraph, range: range)
       } else if substring.isEmpty {
         result.addAttribute(.paragraphStyle, value: blankParagraph, range: enclosingRange)
@@ -5851,6 +5864,9 @@ private struct ModelReplyView: View {
     }
     return result
   }
+
+  /// Indent added per nesting level, in points.
+  static let listIndentPerLevel: CGFloat = 16
 
   /// Merges consecutive `.text`, `.bulletList`, and `.separator` blocks into one `AttributedString` so
   /// `textSelection` can span multiple paragraphs. Tables, fenced code, and images stay as separate views.
@@ -5900,11 +5916,12 @@ private struct ModelReplyView: View {
           if itemIndex > 0 {
             prose.append(AttributedString("\n"))
           }
-          var bullet = AttributedString("• ")
+          var bullet = AttributedString(item.marker)
           bullet.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
           bullet.foregroundColor = ChatTheme.primaryText.opacity(0.5)
+          bullet[ListLevelHint.self] = item.level
           prose.append(bullet)
-          prose.append(item)
+          prose.append(item.content)
         }
         hasProse = true
       case .text(let attrStr):

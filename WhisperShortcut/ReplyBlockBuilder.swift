@@ -137,9 +137,30 @@ enum InlineCitationExtractor {
 
 // MARK: - Markdown Table / Block types (shared via MarkdownParsing.swift)
 
+/// One list entry. `ordinal` is the number as written (nil for `-`/`*` bullets); `level` is the
+/// nesting depth, 0...3.
+struct ReplyListItem {
+  let content: AttributedString
+  let ordinal: Int?
+  let level: Int
+
+  /// "\(ordinal). " for numbered items, "◦ " for nested bullets, "• " otherwise.
+  var marker: String {
+    if let ordinal { return "\(ordinal). " }
+    return level >= 1 ? "◦ " : "• "
+  }
+}
+
+/// Marks the marker run of a list item with its nesting level so the AppKit prose renderer can
+/// apply a per-level indent.
+enum ListLevelHint: AttributedStringKey {
+  typealias Value = Int
+  static let name = "chat.listLevelHint"
+}
+
 enum ReplyContentBlock {
   case text(AttributedString)
-  case bulletList([AttributedString]) // each item is one bullet
+  case bulletList([ReplyListItem]) // each item is one list entry (bullet or numbered, with nesting)
   case table(ParsedTable)
   case separator
   case codeBlock(String, String?) // code content, optional language
@@ -544,33 +565,33 @@ enum ReplyBlockBuilder {
 
   /// Parses a paragraph block that consists entirely of bullet/numbered-list lines.
   /// Returns individual attributed strings for each bullet item, or nil if not a bullet block.
-  private static func parseBulletItems(_ trimmed: String) -> [AttributedString]? {
+  private static func parseBulletItems(_ trimmed: String) -> [ReplyListItem]? {
     // Group indented continuation lines under the previous bullet so multi-line list items
     // (a common pattern in numbered lists like `1. **Heading:**\n   continuation`) are
     // rendered as a single bullet instead of being rejected by an all-or-nothing check.
     let rawLines = trimmed.components(separatedBy: .newlines)
-    var groups: [String] = []
+    var groups: [(parsed: MarkdownParsing.ParsedListLine, text: String)] = []
     for line in rawLines {
       let trimmedLine = line.trimmingCharacters(in: .whitespaces)
       if trimmedLine.isEmpty { continue }
-      if MarkdownParsing.parseBullet(trimmedLine) != nil {
-        groups.append(trimmedLine)
+      if let parsed = MarkdownParsing.parseListLine(line) {
+        groups.append((parsed, parsed.content))
       } else if let first = line.first, first.isWhitespace {
         if groups.isEmpty { return nil }
-        groups[groups.count - 1] += " " + trimmedLine
+        groups[groups.count - 1].text += " " + trimmedLine
       } else {
         return nil
       }
     }
     guard !groups.isEmpty else { return nil }
+    let levels = MarkdownParsing.listLevels(forIndents: groups.map { $0.parsed.indent })
     let opts = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    return groups.compactMap { group in
-      guard let parsed = MarkdownParsing.parseBullet(group) else { return nil }
-      let rawContent = parsed.trimmingCharacters(in: .whitespaces)
+    return groups.enumerated().map { index, group in
+      let rawContent = group.text.trimmingCharacters(in: .whitespaces)
       let content = MarkdownParsing.renderLatexToUnicode(rawContent)
       var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)
       contentAttr.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
-      return contentAttr
+      return ReplyListItem(content: contentAttr, ordinal: group.parsed.ordinal, level: levels[index])
     }
   }
 
