@@ -510,7 +510,15 @@ enum ModelSelectionReconciler {
     // selection here would silently send the user's text to a cloud provider they did not pick,
     // which is the same failure `reconcileTranscription` documents for offline Whisper.
     if current.provider == .system || current.provider == .localMLX { return }
-    guard let replacement = TTSModel.readAloudModels.first(where: { hasKey($0.provider) }) else { return }
+    // An own server that lost its URL was a deliberate non-cloud choice: fall back to the macOS
+    // voice, never straight to a cloud voice the user happens to have a key for.
+    let replacement: TTSModel
+    if current.provider == .custom {
+      replacement = .systemMacOS
+    } else {
+      guard let keyed = TTSModel.readAloudModels.first(where: { hasKey($0.provider) }) else { return }
+      replacement = keyed
+    }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     if recordsReadAloudFallback(current: current, replacement: replacement) {
       UserDefaults.standard.set(current.rawValue, forKey: recordKey)
