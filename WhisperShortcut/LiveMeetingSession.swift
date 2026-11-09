@@ -294,6 +294,11 @@ final class LiveMeetingSession: NSObject {
   /// Chunks whose transcription has not finished.
   var pendingChunkCount: Int { pendingChunks }
 
+  /// Gives the session an inactive recorder, as it holds after a recorder failure.
+  func attachInactiveRecorderForTesting() { recorder = LiveMeetingRecorder() }
+
+  func endMeetingAfterRecorderFailureForTesting() { endMeetingAfterRecorderFailure() }
+
   /// The stop safety net `stop()` armed, so a test can fire one from an earlier meeting.
   var stopSafetyNetForTesting: DispatchWorkItem? { stopSafetyNet }
   #endif
@@ -484,6 +489,14 @@ final class LiveMeetingSession: NSObject {
   }
 
   func stop() {
+    stop(afterRecorderFailure: false)
+  }
+
+  /// `afterRecorderFailure`: the recorder died by itself (record() failed, rotation failed, no
+  /// microphone permission). It is already inactive and will deliver no final chunk, so waiting for
+  /// one would only leave the meeting on "Recording" until the safety net. The meeting ends as if
+  /// the user pressed Stop, with whatever was captured so far.
+  private func stop(afterRecorderFailure: Bool) {
     // A second Stop while the final chunk is still draining re-arms the recorder. No second
     // finish callback arrives, so the meeting sits until the safety net. The name and discard
     // choice are applied by `end()` before this returns.
@@ -504,8 +517,15 @@ final class LiveMeetingSession: NSObject {
     // AVAudioRecorder delivers its final chunk async via audioRecorderDidFinishRecording,
     // so wait for it before finalizing (prevents a race where post-processing rewrites
     // the transcript file while a late chunk is still being appended).
-    awaitingFinalChunk = true
-    recorder?.stopSession()
+    if afterRecorderFailure {
+      awaitingFinalChunk = false
+      // Nothing more is expected from a dead recorder; a stray callback must not reach this
+      // session (or the next meeting).
+      recorder?.delegate = nil
+    } else {
+      awaitingFinalChunk = true
+      recorder?.stopSession()
+    }
     stopOutputRouteMonitor()
     tearDownSystemCapture()
 
@@ -522,6 +542,24 @@ final class LiveMeetingSession: NSObject {
     }
     stopSafetyNet = work
     DispatchQueue.main.asyncAfter(deadline: .now() + stopSafetyNetDelay, execute: work)
+
+    // Nothing left to wait for (no final chunk coming, nothing transcribing): finish now.
+    maybeFinishAfterChunkCompletion()
+  }
+
+  /// A recorder failure ends the meeting. Chunks already handed over (the rotation failure delivers
+  /// the completed one first) are transcribed before it finishes; a meeting that captured nothing
+  /// is discarded rather than left as an empty transcript.
+  private func endMeetingAfterRecorderFailure() {
+    guard !stopping, !finalized, let recorder, !recorder.isSessionActive else { return }
+    let stem = transcriptURL?.deletingPathExtension().lastPathComponent
+    let nothingCaptured = LiveMeetingTranscriptStore.shared.chunks.isEmpty
+      && pendingChunks == 0
+      && (stem.map { MeetingAudioBacklog.items(stem: $0).isEmpty } ?? true)
+      && (transcriptURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) }?.isEmpty ?? true)
+    if nothingCaptured { discard = true }
+    DebugLogger.logWarning("LIVE-MEETING: Recorder failed; ending the meeting (discard=\(discard))")
+    stop(afterRecorderFailure: true)
   }
 
   private func showSafeguardAlert(thresholdMinutes: Int) {
@@ -1596,11 +1634,18 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
 
-      // Don't abort immediately - just log the error
-      // If it's a critical error, the recorder will stop on its own
       if !self.isActive {
         return
       }
+
+      // A recorder that is no longer active has died: end the meeting instead of leaving the UI on
+      // "Recording" with nothing being captured. An encode error on a recorder that is still active
+      // is not fatal and only gets the popup.
+      var recorderDied = false
+      if let recorder = self.recorder, !recorder.isSessionActive, !self.stopping, !self.finalized {
+        recorderDied = true
+      }
+      defer { if recorderDied { self.endMeetingAfterRecorderFailure() } }
 
       // Microphone permission denied/restricted: offer a direct jump to the Microphone
       // privacy pane instead of leaving the user with only "Contact Support".
@@ -1616,9 +1661,12 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         return
       }
 
-      // Show error but don't stop the session
+      let reason = SpeechErrorFormatter.formatForUser(error)
       PopupNotificationWindow.showError(
-        verbatim: SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
+        verbatim: recorderDied
+          ? reason + "\n\n" + String(localized: "The meeting was stopped. Everything recorded up to this point is saved.")
+          : reason,
+        title: "Live Meeting")
     }
   }
 }

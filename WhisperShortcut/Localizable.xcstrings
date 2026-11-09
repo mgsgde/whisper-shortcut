@@ -19804,6 +19804,16 @@
         }
       }
     },
+    "The meeting was stopped. Everything recorded up to this point is saved." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Meeting wurde beendet. Alles bis hierher Aufgenommene ist gespeichert."
+          }
+        }
+      }
+    },
     "The kept meeting audio contained no speech." : {
       "localizations" : {
         "de" : {
