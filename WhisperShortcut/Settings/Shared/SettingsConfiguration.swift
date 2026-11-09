@@ -947,7 +947,19 @@ enum TTSProvider {
     switch self {
     case .system, .localMLX: return true
     case .gemini, .openai, .xai: return false
-    case .custom: return OfflineMode.allows(URL(string: CustomEndpointPreferences.baseURL ?? ""))
+    // A server, even on the LAN: same call `.selfHostedTranscription` makes. Offline Mode's own
+    // host rule is `allowedInOfflineMode`.
+    case .custom: return false
+    }
+  }
+
+  /// Whether Offline Mode may keep this provider. On-device ones always; the own server only when
+  /// its URL is on this machine or network (the rule the network guard uses); cloud never.
+  var allowedInOfflineMode: Bool {
+    switch self {
+    case .system, .localMLX: return true
+    case .gemini, .openai, .xai: return false
+    case .custom: return OfflineMode.allows(CustomEndpointPreferences.baseURL.flatMap { URL(string: $0) })
     }
   }
 
@@ -956,9 +968,9 @@ enum TTSProvider {
   /// OpenAI and xAI through their key kinds, on-device macOS with nothing to configure.
   /// A second switch here called `hasNonEmpty` and treated a whitespace-only key as present.
   ///
-  /// `.custom` is always usable: a key is optional (keyless self-hosted servers exist), the same
-  /// rule `CustomEndpointPreferences.isTranscriptionConfigured` applies to Dictate. A missing URL
-  /// surfaces as an actionable error from the synthesizer instead of hiding the model.
+  /// `.custom` is usable once the shared own-server base URL is set. A key is optional (keyless
+  /// self-hosted servers exist), so only the URL counts. Without one the picker does not offer it
+  /// and the reconciler moves a stored selection away.
   var hasCredential: Bool {
     switch self {
     case .gemini: return ChatModelProvider.gemini.hasCredential
@@ -971,7 +983,7 @@ enum TTSProvider {
     case .localMLX:
       return Qwen3ModelManager.shared.isModelAvailable(.voiceDesign)
         || Qwen3ModelManager.shared.isModelAvailable(.customVoice)
-    case .custom: return true
+    case .custom: return CustomEndpointPreferences.baseURL != nil
     }
   }
 
@@ -1287,17 +1299,17 @@ enum TTSModel: String, CaseIterable {
   /// Whether this TTS model may be offered while Offline Mode is on.
   var isSelectableUnderOfflineMode: Bool {
     guard OfflineMode.isEnabled else { return true }
-    // `.custom` counts as local only when its URL is local (`TTSProvider.isOnDevice`); a remote
-    // URL is a cloud provider in Offline Mode's eyes.
-    return provider.isOnDevice
+    // The own server counts as local only when its URL is local; a remote URL is a cloud provider
+    // in Offline Mode's eyes.
+    return provider.allowedInOfflineMode
   }
 
-  /// Models grouped for display in the Read Aloud picker (local options first, then cloud).
+  /// Models grouped for display in the Read Aloud picker (on-device first, then cloud, then your own server).
   /// Qwen3 needs Apple silicon and 16 GB of RAM (CustomVoice) or 32 GB (VoiceDesign) — below that
   /// the tiles would end in a multi-gigabyte download the model then cannot run.
   static var readAloudModels: [TTSModel] {
-    [.systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice, .ownServerTTS, .gemini38FlashLiteTTS,
-     .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
+    [.systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice, .gemini38FlashLiteTTS,
+     .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS, .ownServerTTS]
       .filter(\.isSelectableUnderOfflineMode)
       .filter { $0.qwen3ModelType?.isOfferable ?? true }
   }

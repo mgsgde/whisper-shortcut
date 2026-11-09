@@ -18359,16 +18359,6 @@
         }
       }
     },
-    "Shared with Dictate, Dictate Prompt and Chat. Changing the server changes it for all three." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemeinsam für Diktieren, Dictate Prompt und Chat. Eine Änderung am Server gilt für alle drei."
-          }
-        }
-      }
-    },
     "Shift alone won't fire — add ⌘/⌥/⌃" : {
       "localizations" : {
         "de" : {
@@ -26247,16 +26237,6 @@
         }
       }
     },
-    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions, which LM Studio and mlx_lm.server do not serve." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbinde deinen eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt und Chat; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions, das LM Studio und mlx_lm.server nicht anbieten."
-          }
-        }
-      }
-    },
     "MLX" : {
       "localizations" : {
         "de" : {
@@ -26316,8 +26296,7 @@
           }
         }
       }
-    }
-,
+    },
     "Own server (OpenAI-compatible)" : {
       "localizations" : {
         "de" : {
@@ -26368,82 +26347,62 @@
         }
       }
     },
-    "http://localhost:8000/v1" : {
+    "One OpenAI-compatible server for Dictate, Dictate Prompt, Chat and Read Aloud: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all of them use the same URL and key." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "http://localhost:8000/v1"
+            "value" : "Ein OpenAI-kompatibler Server für Diktieren, Dictate Prompt, Chat und Vorlesen: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder selbst betrieben. Sie richten ihn einmal ein; alle nutzen dieselbe URL und denselben Schlüssel."
           }
         }
       }
     },
-    "Voice id" : {
+    "Shared with Dictate, Dictate Prompt, Chat and Read Aloud. Changing the server changes it for all of them." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stimm-ID"
+            "value" : "Gemeinsam für Diktieren, Dictate Prompt, Chat und Vorlesen. Eine Änderung am Server gilt für alle."
           }
         }
       }
     },
-    "The voice id your server accepts. mlx-audio lists them at /v1/audio/voices; LiteLLM and LM Studio pass the id through to the model behind them." : {
+    "The text-to-speech model your server serves, e.g. tts-1 or the model name in your LiteLLM config." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Stimm-ID, die Ihr Server akzeptiert. mlx-audio listet sie unter /v1/audio/voices; LiteLLM und LM Studio reichen die ID an das dahinterliegende Modell weiter."
+            "value" : "Das Sprachausgabe-Modell Ihres Servers, z. B. tts-1 oder der Modellname in Ihrer LiteLLM-Konfiguration."
           }
         }
       }
     },
-    "Up to /v1, including the port: http://localhost:8000/v1 for mlx-audio, http://localhost:1234/v1 for LM Studio, http://localhost:4000/v1 for LiteLLM." : {
+    "The voice id your server accepts, e.g. alloy. mlx-audio lists them at /v1/audio/voices." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bis /v1, einschließlich Port: http://localhost:8000/v1 für mlx-audio, http://localhost:1234/v1 für LM Studio, http://localhost:4000/v1 für LiteLLM."
+            "value" : "Die Stimm-ID, die Ihr Server akzeptiert, z. B. alloy. mlx-audio listet sie unter /v1/audio/voices auf."
           }
         }
       }
     },
-    "The model id your server synthesizes with, e.g. mlx-community/Qwen3-TTS-12Hz-0.6B for mlx-audio." : {
+    "No API key for your own server. Enter the server's key in Settings → Read Aloud, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Modell-ID, mit der Ihr Server synthetisiert, z. B. mlx-community/Qwen3-TTS-12Hz-0.6B für mlx-audio."
+            "value" : "Kein API-Schlüssel für Ihren eigenen Server. Tragen Sie den Schlüssel des Servers unter Einstellungen → Vorlesen ein oder hinterlegen Sie unter Einstellungen → Konten einen OpenAI-Schlüssel, falls der Server an OpenAI weiterleitet."
           }
         }
       }
     },
-    "Optional. A keyless server on your own machine works without one." : {
+    "Offline Mode is on and your own server URL is not on this machine or network." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Optional. Ein Server ohne Schlüssel auf Ihrem eigenen Rechner funktioniert auch ohne."
-          }
-        }
-      }
-    },
-    "The same URL and key serve Dictate, Dictate Prompt and Chat, so setting it once is enough." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieselbe URL und derselbe Schlüssel gelten für Diktieren, Diktier-Prompt und Chat – einmal einrichten genügt."
-          }
-        }
-      }
-    },
-    "The same server Dictate, Dictate Prompt and Chat use. Setting the URL and key once is enough." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Derselbe Server, den Diktieren, Diktier-Prompt und Chat verwenden. URL und Schlüssel einmal einzurichten genügt."
+            "value" : "Der Offline-Modus ist aktiv und die URL Ihres eigenen Servers liegt nicht auf diesem Rechner oder in diesem Netzwerk."
           }
         }
       }

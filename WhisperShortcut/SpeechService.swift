@@ -2971,12 +2971,13 @@ class SpeechService {
   /// The cost is that the whole chunk arrives at once instead of streaming — the same trade xAI
   /// already makes (`synthesizeXAITTS`).
   ///
-  /// The key is optional: keyless self-hosted servers exist, so this reads the Keychain directly
-  /// instead of `ProviderCredentials.require(...)`, which throws when there is none.
+  /// Key, extra headers and Azure `api-key` come from the shared own-server settings, resolved the
+  /// way Chat and Dictate Prompt resolve them (`customTTSRequest`).
   private func synthesizeCustomTTS(text: String, voice: String, model: TTSModel) async throws -> Data {
-    guard let url = URL(string: model.apiEndpoint), !model.apiEndpoint.isEmpty else {
-      // No base URL yet. `hasCredential` is true for `.custom` (a key is optional), so this is the
-      // only place that can tell the user what is actually missing — "Invalid Request" would not.
+    guard let baseURL = CustomEndpointPreferences.baseURL, let shaped = CustomEndpointPreferences.ttsURL,
+      let url = URL(string: shaped)
+    else {
+      // No base URL yet. The picker hides the model without one, so this is a stale selection.
       throw TranscriptionError.networkError(
         String(
           localized:
@@ -2987,20 +2988,14 @@ class SpeechService {
       throw TranscriptionError.networkError(
         String(localized: "Offline Mode is on and your own server URL is not on this machine or network."))
     }
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    let key = KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? ""
-    for (name, value) in CustomEndpointAuth.headers(baseURL: model.apiEndpoint, apiKey: key) {
-      request.setValue(value, forHTTPHeaderField: name)
-    }
-    let body: [String: Any] = [
-      "model": CustomEndpointPreferences.ttsModelID,
-      "input": text,
-      "voice": voice,
-      "response_format": "wav",
-    ]
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    let apiKey = try Self.customTTSCredential(
+      baseURL: baseURL,
+      proxyKey: KeychainManager.shared.get(.customOpenAIChatAPIKey),
+      openAIKey: KeychainManager.shared.get(.openAI))
+    let request = try Self.customTTSRequest(
+      url: url, baseURL: baseURL, apiKey: apiKey,
+      extraHeaders: CustomEndpointPreferences.extraHeaders,
+      model: CustomEndpointPreferences.ttsModelID, voice: voice, text: text)
 
     let (data, http) = try await Self.performWithRetryOn429(
       request: request, session: makeTranscriptionURLSession(), logPrefix: "TTS-CUSTOM")
@@ -3009,6 +3004,38 @@ class SpeechService {
       throw TranscriptionError.networkError("Own server TTS failed (HTTP \(http.statusCode)): \(bodyText)")
     }
     return try Self.wavToS16le24k(data)
+  }
+
+  /// The key Read Aloud sends: the shared own-server key, else the OpenAI key from Accounts when
+  /// the server may take it (`OpenAIChatPreferences.resolveCredential`, the Chat rule). Empty means
+  /// no header, allowed only for a local host. Anything else is a clear error instead of a 401.
+  static func customTTSCredential(baseURL: String, proxyKey: String?, openAIKey: String?) throws -> String {
+    let resolved = OpenAIChatPreferences.resolveCredential(
+      proxyKey: proxyKey, openAIKey: openAIKey,
+      allowsOpenAIKeyFallback: CustomEndpointAuth.acceptsOpenAIAPIKey(baseURL: baseURL))
+    if let resolved { return resolved.key }
+    if OpenAIChatPreferences.allowsKeylessRequests(baseURL: baseURL) { return "" }
+    throw TranscriptionError.networkError(
+      String(localized: "No API key for your own server. Enter the server's key in Settings → Read Aloud, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI."))
+  }
+
+  /// The `/audio/speech` request. Extra headers go on first, then the auth headers
+  /// (`Authorization: Bearer`, or only `api-key` on Azure), so a configured extra header can not
+  /// displace the key.
+  static func customTTSRequest(
+    url: URL, baseURL: String, apiKey: String, extraHeaders: [String: String],
+    model: String, voice: String, text: String
+  ) throws -> URLRequest {
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    for (name, value) in extraHeaders { request.setValue(value, forHTTPHeaderField: name) }
+    for (name, value) in CustomEndpointAuth.headers(baseURL: baseURL, apiKey: apiKey) {
+      request.setValue(value, forHTTPHeaderField: name)
+    }
+    let body: [String: Any] = ["model": model, "input": text, "voice": voice, "response_format": "wav"]
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    return request
   }
 
   /// Decodes a WAV body into the s16le 24 kHz mono layout `AudioMerger` / `TTSPlaybackSession`

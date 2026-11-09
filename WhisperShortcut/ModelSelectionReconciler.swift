@@ -206,9 +206,9 @@ enum ModelSelectionReconciler {
     let ttsRaw = UserDefaults.standard.string(forKey: ttsKey) ?? SettingsDefaults.readAloudModel.rawValue
     let ttsCurrent = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(ttsRaw))
       ?? SettingsDefaults.readAloudModel
-    // On-device voices stay: Offline Mode is exactly what they are for. Only a cloud voice has to
-    // move to the macOS voice.
-    if !ttsCurrent.provider.isOnDevice {
+    // On-device voices stay: Offline Mode is exactly what they are for, and so is an own server on
+    // this machine or network. Only a cloud voice has to move to the macOS voice.
+    if !ttsCurrent.provider.allowedInOfflineMode {
       UserDefaults.standard.set(TTSModel.systemMacOS.rawValue, forKey: ttsKey)
       DebugLogger.log(
         "MODEL-RECONCILE: \(ttsKey): \(ttsCurrent.rawValue) → \(TTSModel.systemMacOS.rawValue) (Offline Mode)")

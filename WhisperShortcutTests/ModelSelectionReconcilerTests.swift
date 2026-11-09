@@ -323,8 +323,8 @@ struct ModelSelectionReconcilerTests {
         case .xai: return keyed.contains("xai")
         case .system: return true
         case .localMLX: return true
-        // Mirrors `TTSProvider.hasCredential`: the own server needs no key, so it is always usable.
-        case .custom: return true
+        // Own server is not a cloud fallback; usable only with a base URL.
+        case .custom: return keyed.contains("custom")
         }
       }
     }
