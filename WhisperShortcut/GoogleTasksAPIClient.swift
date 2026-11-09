@@ -5,6 +5,8 @@ actor GoogleTasksAPIClient {
 
   private let baseURL = "https://www.googleapis.com/tasks/v1"
   private let maxResultsCap = 100
+  /// Google Tasks pages with `nextPageToken`. Stop even if a token keeps arriving.
+  private let maxListPages = 10
 
   // MARK: - List Task Lists
 
@@ -31,27 +33,39 @@ actor GoogleTasksAPIClient {
   func listTasks(taskListId: String = "@default", maxResults: Int = 20, showCompleted: Bool = false) async throws -> [[String: Any]] {
     let cappedMax = min(max(maxResults, 1), maxResultsCap)
     let encodedList = encodedPathComponent(taskListId)
+    // Tasks completed in Google's own apps are hidden. showHidden must match showCompleted
+    // or those tasks never come back.
+    let show = String(showCompleted)
 
-    var components = URLComponents(string: "\(baseURL)/lists/\(encodedList)/tasks")!
-    components.setQueryItemsStrictly([
-      URLQueryItem(name: "maxResults", value: String(cappedMax)),
-      URLQueryItem(name: "showCompleted", value: String(showCompleted)),
-      URLQueryItem(name: "showHidden", value: "false"),
-    ])
+    var collected: [[String: Any]] = []
+    var pageToken: String?
+    for _ in 0..<maxListPages {
+      if collected.count >= cappedMax { break }
+      var components = URLComponents(string: "\(baseURL)/lists/\(encodedList)/tasks")!
+      var query: [URLQueryItem] = [
+        URLQueryItem(name: "maxResults", value: String(cappedMax - collected.count)),
+        URLQueryItem(name: "showCompleted", value: show),
+        URLQueryItem(name: "showHidden", value: show),
+      ]
+      if let pageToken {
+        query.append(URLQueryItem(name: "pageToken", value: pageToken))
+      }
+      components.setQueryItemsStrictly(query)
 
-    guard let url = components.url else {
-      throw TasksAPIError.invalidURL
+      guard let url = components.url else {
+        throw TasksAPIError.invalidURL
+      }
+
+      let data = try await authorizedRequest(url: url, httpMethod: "GET")
+      guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        break
+      }
+      collected.append(contentsOf: json["items"] as? [[String: Any]] ?? [])
+      guard let next = json["nextPageToken"] as? String, !next.isEmpty else { break }
+      pageToken = next
     }
 
-    let data = try await authorizedRequest(url: url, httpMethod: "GET")
-
-    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let items = json["items"] as? [[String: Any]]
-    else {
-      return []
-    }
-
-    return items.map { item in
+    return collected.prefix(cappedMax).map { item in
       var task: [String: Any] = [:]
       if let id = item["id"] as? String { task["task_id"] = id }
       if let title = item["title"] as? String { task["title"] = title }
