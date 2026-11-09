@@ -261,7 +261,9 @@ final class TTSPlaybackSession {
     guard let token = currentPlaybackToken else { return }
     let generation = segmentGeneration
     scheduledChunkCount += 1
-    playerNode.scheduleBuffer(buffer) { [weak self] in
+    // `.dataPlayedBack`, not the default "consumed" callback: the latter fires while the tail is
+    // still in the time-pitch unit / output, and teardown would then clip the last syllable.
+    playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
       Task { @MainActor in
         guard let self, self.currentPlaybackToken == token, self.segmentGeneration == generation
         else { return }
