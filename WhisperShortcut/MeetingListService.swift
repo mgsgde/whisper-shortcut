@@ -305,7 +305,7 @@ final class MeetingListService: ObservableObject {
   /// off at its output cap, and the truncated reply would replace the transcript with a
   /// fragment; offline transcripts carry no reliable speaker labels to reconcile anyway.
   static func skipsSpeakerConsolidation(provider: ChatModelProvider) -> Bool {
-    provider == .local || provider == .localMLX
+    provider.isLocal
   }
 
   // MARK: - Private

@@ -1629,6 +1629,22 @@ class MenuBarController: NSObject {
       forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
   }
 
+  /// Whether processing this recording calls a paid or cloud API. Shared by the long-recording
+  /// cost warning and the silence gate, so they cannot disagree. A Dictate Prompt is fully local
+  /// only when the prompt model is on-device and transcription is offline; anything else still
+  /// spends an API call. A live meeting stays on the cloud side of both checks.
+  private static func recordingUsesCloudAPI(_ mode: AppState.RecordingMode) -> Bool {
+    switch mode {
+    case .transcription:
+      return !TranscriptionModel.loadSelected().isOffline
+    case .prompt:
+      let promptIsLocal = selectedPromptModel().provider.isLocal
+      return !(promptIsLocal && TranscriptionModel.loadSelected().isOffline)
+    case .liveMeeting:
+      return true
+    }
+  }
+
   private static func selectedImprovementModel() -> PromptModel {
     PromptModel.loadPromptModel(
       forKey: UserDefaultsKeys.selectedImprovementModel,
@@ -4232,20 +4248,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
       // The cost warning only makes sense when the run costs money: an offline / on-device model
       // has no API bill, and a modal on a long local dictation is just a hurdle.
-      let runCostsMoney: Bool = {
-        switch recordingMode {
-        case .transcription:
-          return !TranscriptionModel.loadSelected().isOffline
-        case .prompt:
-          let promptProvider = PromptModel.loadPromptModel(
-            forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel
-          ).provider
-          let promptIsLocal = promptProvider == .local || promptProvider == .localMLX
-          return !(promptIsLocal && TranscriptionModel.loadSelected().isOffline)
-        case .liveMeeting:
-          return true
-        }
-      }()
+      let runCostsMoney = Self.recordingUsesCloudAPI(recordingMode)
 
       if quickActionInstruction == nil,
          threshold != .never,
@@ -4329,12 +4332,8 @@ extension MenuBarController: AudioRecorderDelegate {
       if self.audioRecorder.lastRecordingWasSilent, quickActionInstruction == nil {
         // Only gate cloud-backed paths — offline Whisper has no API cost to protect against,
         // and gating silently has caused real recordings to be dropped on low-gain mics.
-        let usesCloudAPI: Bool = {
-          switch recordingMode {
-          case .transcription: return !TranscriptionModel.loadSelected().isOffline
-          case .prompt, .liveMeeting: return true
-          }
-        }()
+        // Same decision as the cost warning: a fully local Dictate Prompt is not cloud.
+        let usesCloudAPI = Self.recordingUsesCloudAPI(recordingMode)
 
         if usesCloudAPI {
           // A template turn that already has a selection may be a press-and-stop: the selection
