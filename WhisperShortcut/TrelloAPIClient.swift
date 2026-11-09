@@ -21,10 +21,10 @@ actor TrelloAPIClient {
   func listBoards() async throws -> [[String: Any]] {
     DebugLogger.logNetwork("TRELLO: listBoards")
     var components = URLComponents(string: "\(baseURL)/members/me/boards")!
-    components.queryItems = [
+    components.setQueryItemsStrictly([
       URLQueryItem(name: "filter", value: "open"),
       URLQueryItem(name: "fields", value: "name,url,desc,closed"),
-    ]
+    ])
     let data = try await authorizedRequest(components: components, httpMethod: "GET")
     guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
       return []
@@ -46,10 +46,10 @@ actor TrelloAPIClient {
     DebugLogger.logNetwork("TRELLO: listLists boardId=\(boardId)")
     let path = "\(baseURL)/boards/\(encodedPathComponent(boardId))/lists"
     var components = URLComponents(string: path)!
-    components.queryItems = [
+    components.setQueryItemsStrictly([
       URLQueryItem(name: "filter", value: "open"),
       URLQueryItem(name: "fields", value: "name,pos,closed"),
-    ]
+    ])
     let data = try await authorizedRequest(components: components, httpMethod: "GET")
     guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
       return []
@@ -80,10 +80,10 @@ actor TrelloAPIClient {
     }
 
     var components = URLComponents(string: path)!
-    components.queryItems = [
+    components.setQueryItemsStrictly([
       URLQueryItem(name: "fields", value: "name,desc,due,dueComplete,closed,idList,idBoard,url,shortUrl"),
       URLQueryItem(name: "limit", value: String(min(max(maxResults, 1), 100))),
-    ]
+    ])
     let data = try await authorizedRequest(components: components, httpMethod: "GET")
     guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
       return []
@@ -127,7 +127,7 @@ actor TrelloAPIClient {
     if let due, !due.isEmpty {
       items.append(URLQueryItem(name: "due", value: due))
     }
-    components.queryItems = items
+    components.setQueryItemsStrictly(items)
     let data = try await authorizedRequest(components: components, httpMethod: "POST")
     let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
 
@@ -149,7 +149,7 @@ actor TrelloAPIClient {
   func moveCard(cardId: String, listId: String) async throws -> [String: Any] {
     DebugLogger.logNetwork("TRELLO: moveCard id=\(cardId) listId=\(listId)")
     var components = URLComponents(string: "\(baseURL)/cards/\(encodedPathComponent(cardId))")!
-    components.queryItems = [URLQueryItem(name: "idList", value: listId)]
+    components.setQueryItemsStrictly([URLQueryItem(name: "idList", value: listId)])
     let data = try await authorizedRequest(components: components, httpMethod: "PUT")
     let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     var result: [String: Any] = ["ok": true, "card_id": cardId]
@@ -173,7 +173,7 @@ actor TrelloAPIClient {
     guard !items.isEmpty else {
       throw TrelloAPIError.invalidRequest("At least one of name, description, or due is required")
     }
-    components.queryItems = items
+    components.setQueryItemsStrictly(items)
     let data = try await authorizedRequest(components: components, httpMethod: "PUT")
     let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     var result: [String: Any] = ["ok": true, "card_id": cardId]
@@ -190,7 +190,7 @@ actor TrelloAPIClient {
   func archiveCard(cardId: String) async throws -> [String: Any] {
     DebugLogger.logNetwork("TRELLO: archiveCard id=\(cardId)")
     var components = URLComponents(string: "\(baseURL)/cards/\(encodedPathComponent(cardId))")!
-    components.queryItems = [URLQueryItem(name: "closed", value: "true")]
+    components.setQueryItemsStrictly([URLQueryItem(name: "closed", value: "true")])
     _ = try await authorizedRequest(components: components, httpMethod: "PUT")
     DebugLogger.logSuccess("TRELLO: archiveCard ok id=\(cardId)")
     return ["ok": true, "card_id": cardId, "archived": true]
@@ -212,7 +212,7 @@ actor TrelloAPIClient {
     var items = components.queryItems ?? []
     items.append(URLQueryItem(name: "key", value: apiKey))
     items.append(URLQueryItem(name: "token", value: token))
-    components.queryItems = items
+    components.setQueryItemsStrictly(items)
 
     guard let url = components.url else {
       throw TrelloAPIError.invalidURL

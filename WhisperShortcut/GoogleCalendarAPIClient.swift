@@ -28,13 +28,13 @@ actor GoogleCalendarAPIClient {
     guard var components = URLComponents(string: "\(baseURL)/calendars/primary/events") else {
       throw CalendarAPIError.invalidResponse
     }
-    components.queryItems = [
+    components.setQueryItemsStrictly([
       URLQueryItem(name: "maxResults", value: String(cappedMax)),
       URLQueryItem(name: "timeMin", value: timeMin),
       URLQueryItem(name: "timeMax", value: timeMax),
       URLQueryItem(name: "singleEvents", value: "true"),
       URLQueryItem(name: "orderBy", value: "startTime"),
-    ]
+    ])
 
     guard let url = components.url else {
       throw CalendarAPIError.invalidURL

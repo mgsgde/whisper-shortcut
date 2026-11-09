@@ -33,11 +33,11 @@ actor GoogleTasksAPIClient {
     let encodedList = encodedPathComponent(taskListId)
 
     var components = URLComponents(string: "\(baseURL)/lists/\(encodedList)/tasks")!
-    components.queryItems = [
+    components.setQueryItemsStrictly([
       URLQueryItem(name: "maxResults", value: String(cappedMax)),
       URLQueryItem(name: "showCompleted", value: String(showCompleted)),
       URLQueryItem(name: "showHidden", value: "false"),
-    ]
+    ])
 
     guard let url = components.url else {
       throw TasksAPIError.invalidURL
