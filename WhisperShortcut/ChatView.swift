@@ -1184,9 +1184,9 @@ class ChatViewModel: ObservableObject {
               showsModelReadinessPopup: false)
           },
           toolContext: { self.makeToolContext(sessionId: sessionId) },
-          approve: { name, summary, stepId in
+          approve: { name, summary, preview, stepId in
             await self.confirmToolCall(
-              name: name, summary: summary, sessionId: sessionId, requestId: stepId)
+              name: name, summary: summary, preview: preview, sessionId: sessionId, requestId: stepId)
           },
           onDisplayText: { text, immediate in
             if immediate {
@@ -1336,7 +1336,7 @@ class ChatViewModel: ObservableObject {
   /// (task cancellation) and deleting the chat answer "deny", so the send task never leaks.
   /// "Allow for this chat" answers later calls of the same tool without asking.
   private func confirmToolCall(
-    name: String, summary: String, sessionId: UUID, requestId: UUID
+    name: String, summary: String, preview: ToolApprovalPreview?, sessionId: UUID, requestId: UUID
   ) async -> Bool {
     let stored = store.session(by: sessionId)
     if stored == nil || stored?.archived == true {
@@ -1359,6 +1359,7 @@ class ChatViewModel: ObservableObject {
           id: requestId,
           toolName: name,
           summary: summary,
+          preview: preview,
           offersAllowForChat: ChatToolRegistry.allowsChatWideApproval(name),
           continuation: continuation)
       }

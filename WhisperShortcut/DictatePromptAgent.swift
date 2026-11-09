@@ -167,7 +167,7 @@ enum DictatePromptAgent {
       },
       toolContext: { ChatToolContext(workspaceScope: .all) },
       // Every tool offered here is read-only; a call to anything else is refused, not asked about.
-      approve: { name, _, _ in
+      approve: { name, _, _, _ in
         DebugLogger.logWarning("\(logPrefix): Refused non-read-only tool \(name)")
         return false
       },

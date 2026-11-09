@@ -228,7 +228,7 @@ struct DictatePromptAgentLiveTests {
       systemInstruction: { ["parts": [["text": "You are a helpful assistant."]]] },
       options: { _ in ChatRequestOptions(useGrounding: false, disableBuiltInTools: true) },
       toolContext: { ChatToolContext(workspaceScope: .all) },
-      approve: { _, _, _ in false },
+      approve: { _, _, _, _ in false },
       onDisplayText: { _, _ in })
     let result = try await runner.run(contents: contents)
     #expect(result.executedToolCalls >= 1, "the model never called the tool")

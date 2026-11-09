@@ -43,7 +43,7 @@ final class ChatAgentRunner {
   private let options: (_ isFinalRound: Bool) -> ChatRequestOptions
   private let toolContext: () -> ChatToolContext
   /// Asks the user about a side-effectful call; `stepId` identifies the step awaiting approval.
-  private let approve: (_ name: String, _ summary: String, _ stepId: UUID) async -> Bool
+  private let approve: (_ name: String, _ summary: String, _ preview: ToolApprovalPreview?, _ stepId: UUID) async -> Bool
   /// The reply so far. `immediate` marks one-shot swaps (image fold, loop-guard notice) that must
   /// not wait for the caller's throttle.
   private let onDisplayText: (_ text: String, _ immediate: Bool) -> Void
@@ -82,7 +82,7 @@ final class ChatAgentRunner {
     systemInstruction: @escaping () -> [String: Any],
     options: @escaping (_ isFinalRound: Bool) -> ChatRequestOptions,
     toolContext: @escaping () -> ChatToolContext,
-    approve: @escaping (_ name: String, _ summary: String, _ stepId: UUID) async -> Bool,
+    approve: @escaping (_ name: String, _ summary: String, _ preview: ToolApprovalPreview?, _ stepId: UUID) async -> Bool,
     onDisplayText: @escaping (_ text: String, _ immediate: Bool) -> Void
   ) {
     self.provider = provider
@@ -336,7 +336,8 @@ final class ChatAgentRunner {
         name: call.name, args: call.args, phase: needsApproval ? .awaitingApproval : .running)
       if needsApproval {
         let summary = ChatToolRegistry.approvalSummary(name: call.name, args: call.args)
-        let allowed = await approve(call.name, summary, stepId)
+        let preview = ChatToolRegistry.approvalPreview(name: call.name, args: call.args)
+        let allowed = await approve(call.name, summary, preview, stepId)
         if allowed { steps.setPhase(stepId, .running) }
         if !allowed {
           steps.finish(stepId, phase: .denied)
