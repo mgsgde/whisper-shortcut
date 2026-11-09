@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Review windows for changes AI apps proposed (`MCPProposalStore`).
 ///
-/// Ordinary, non-modal windows, unlike Smart Improvement's panel: a proposal arrives from another
+/// Ordinary, non-modal windows, unlike the modal `ProposalReviewPanel`: a proposal arrives from another
 /// app at any moment, and an app-modal panel would freeze every other WhisperShortcut window until
 /// it is answered. One window per proposal; opening the same proposal again brings it forward.
 final class MCPProposalWindows: NSObject, NSWindowDelegate {
@@ -66,14 +66,13 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     bringForward(window, activate: activate)
   }
 
-  private func reviewView(for proposal: MCPProposal) -> SmartImprovementReviewView {
+  private func reviewView(for proposal: MCPProposal) -> ProposalReviewView {
     let id = proposal.id
-    return SmartImprovementReviewView(
+    return ProposalReviewView(
       focusDisplayName: Self.title(for: proposal),
       originalText: Self.baseline(for: proposal),
       suggestedText: proposal.proposedContent ?? "",
       rationale: Self.rationale(for: proposal),
-      section: proposal.section.flatMap(SystemPromptSection.init(rawValue:)),
       titlePrefix: "Suggested by an AI app",
       cancelTitle: "Decline",
       acceptTitle: proposal.kind == .deleteCommand ? ("Delete Command" as LocalizedStringResource) : "Accept",

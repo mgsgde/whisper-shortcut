@@ -6,7 +6,7 @@
 //  user (role, preferences, recurring context) that is injected into every chat system prompt.
 //
 //  Deliberately separate from SystemPromptsStore (UserContext/system-prompts.md): that file holds
-//  user-authored config and is rewritten wholesale by Smart Improvement. Memory is model-written
+//  user-authored config, edited section by section from Settings, the chat tool and AI apps. Memory is model-written
 //  and churns, so it lives in its own file to avoid cross-writes and keep the mental model clean.
 //
 //  Storage: UserContext/memory.md — a plain Markdown bullet list, one fact per line ("- fact").

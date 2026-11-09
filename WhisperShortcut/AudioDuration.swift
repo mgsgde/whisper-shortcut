@@ -17,4 +17,11 @@ enum AudioDuration {
     let file = try AVAudioFile(forReading: url)
     return Double(file.length) / file.fileFormat.sampleRate
   }
+
+  /// `avAudioFileSeconds` in whole milliseconds, or nil when the file cannot be read or the length
+  /// is not a finite, non-negative number. For log fields, where "unknown" beats a guess.
+  static func milliseconds(_ url: URL) -> Int? {
+    guard let seconds = try? avAudioFileSeconds(url), seconds.isFinite, seconds >= 0 else { return nil }
+    return Int((seconds * 1000).rounded())
+  }
 }

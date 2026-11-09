@@ -61,7 +61,7 @@ enum CloudModelOffer {
       (UserDefaultsKeys.selectedPromptModel, String(localized: "Dictate Prompt"), PromptModel.dictatePromptCapableModels),
       (UserDefaultsKeys.selectedChatModel, String(localized: "Chat"), PromptModel.chatModels),
       (UserDefaultsKeys.selectedMeetingSummaryModel, String(localized: "Meeting summary"), PromptModel.chatModels),
-      (UserDefaultsKeys.selectedImprovementModel, String(localized: "Smart Improvement"), PromptModel.chatModels),
+      (UserDefaultsKeys.selectedImprovementModel, String(localized: "Writing Style"), PromptModel.chatModels),
     ]
     for (key, feature, candidates) in promptSlots {
       guard let raw = selections[key],

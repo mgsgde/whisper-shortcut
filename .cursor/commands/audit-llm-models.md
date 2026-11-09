@@ -25,7 +25,7 @@ The throughline is honesty: training data is stale, so every currency recommenda
 
 2. **Pull the current model index from each provider.** Use WebFetch first; if it returns 403 / hallucinates / is JS-rendered, fall back to WebSearch with the current year. **All provider doc URLs, programmatic-list endpoints, deprecation pages, and status/forum links live in the `llm-model-docs` skill — read that skill (if you haven't this session) and use its URLs.** Cross-check every enum slug still in `current` against the Gemini deprecations table before recommending "no change."
 
-3. **Build a feature × provider coverage matrix.** This is the heart of the audit. Enumerate every feature the app exposes a model choice for — transcription (Dictate), Dictate Prompt, Chat, Meeting Summary, Smart Improvement, Read Aloud (TTS), and any vision/screenshot path — and for each, fill a row with one cell per provider:
+3. **Build a feature × provider coverage matrix.** This is the heart of the audit. Enumerate every feature the app exposes a model choice for — transcription (Dictate), Dictate Prompt, Chat, Meeting Summary, Writing Style profile, Read Aloud (TTS), and any vision/screenshot path — and for each, fill a row with one cell per provider:
 
    | Feature | OpenAI | Gemini | xAI (Grok) | Anthropic | Default today |
    |---------|--------|--------|------------|-----------|---------------|
@@ -136,7 +136,7 @@ Paste the relevant test-script output lines proving each recommended ID returns 
 
 ### Open questions
 
-Anything you couldn't decide alone — e.g. "GPT-5.5 Pro pricing is 6× GPT-5.5; do we want that price tier as a default for Smart Improvement?".
+Anything you couldn't decide alone — e.g. "GPT-5.5 Pro pricing is 6× GPT-5.5; do we want that price tier as a default for the Writing Style profile?".
 
 ## When the user follows up with "migrate" / "apply" / "alles"
 

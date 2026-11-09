@@ -517,7 +517,7 @@ struct DictationTemplateTests {
     let entry = InteractionLogEntry(
       ts: "t", mode: "prompt", model: nil, result: nil, selectedText: nil,
       userInstruction: "note", modelResponse: "formatted", text: nil, voice: nil,
-      audioRef: nil, transcriptionModel: nil, hadScreenshot: false, latencyMs: 1,
+      transcriptionModel: nil, hadScreenshot: false, latencyMs: 1,
       provider: "gemini", loadMs: nil, template: "Praxis")
     let again = try JSONDecoder().decode(InteractionLogEntry.self, from: JSONEncoder().encode(entry))
     #expect(again.mode == "prompt")

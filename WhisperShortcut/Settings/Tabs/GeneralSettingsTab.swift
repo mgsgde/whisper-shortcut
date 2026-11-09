@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// General Settings Tab - shortcuts, app behavior, updates, and Data & Reset. API keys live in
-/// Accounts, Smart Improvement in its own tab; About holds information only.
+/// Accounts; About holds information only.
 struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?

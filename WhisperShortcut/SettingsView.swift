@@ -113,12 +113,10 @@ struct SettingsView: View {
             MeetingsSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .readAloud:
             ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .improvement:
-            ImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .aiApps:
             AIAppsSettingsTab()
           case .permissions:
-            PermissionsTab()
+            PermissionsTab(viewModel: viewModel)
           case .about:
             AboutSettingsTab(viewModel: viewModel)
           }
@@ -167,8 +165,6 @@ struct SettingsView: View {
       return "record.circle"
     case .readAloud:
       return "speaker.wave.2.fill"
-    case .improvement:
-      return "wand.and.stars"
     case .aiApps:
       return "point.3.connected.trianglepath.dotted"
     case .permissions:
@@ -198,8 +194,6 @@ struct SettingsView: View {
       return "Meeting transcription and summaries"
     case .readAloud:
       return "Shortcut and smart-rewrite settings"
-    case .improvement:
-      return "Improve prompts from your usage and manage context data"
     case .aiApps:
       return "Connect Claude and other AI apps to set up WhisperShortcut and read your meetings"
     case .permissions:

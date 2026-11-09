@@ -3,7 +3,7 @@
 //  WhisperShortcut
 //
 //  Fills the writing-style pool from Gmail "Sent" and derives the per-context profile with the
-//  Smart Improvement model. Only text the user wrote is kept: quoted replies, signatures and
+//  Writing Style model (stored under `selectedImprovementModel`). Only text the user wrote is kept: quoted replies, signatures and
 //  forwards are cut before anything is stored. See plans/active/writing-style.md.
 //
 
@@ -291,7 +291,7 @@ enum WritingStyleImporter {
     No adjectives like "friendly" or "professional". At most 12 lines per context. Write the lines in English, quoted phrases in their original language. Use an empty string for a context without messages.
     """
 
-  /// Asks the Smart Improvement model for a profile, shows it for review, and saves what the
+  /// Asks the Writing Style model (`selectedImprovementModel`) for a profile, shows it for review, and saves what the
   /// user accepts. Returns the saved profile, or nil when the user cancelled.
   @discardableResult
   static func deriveProfile() async throws -> String? {
@@ -332,7 +332,7 @@ enum WritingStyleImporter {
     }
     let suggested = mergedProfile(
       derived: derived, current: current, contextsWithSamples: Set(samples.map(\.context)))
-    guard let accepted = await SmartImprovementReviewPanel.present(
+    guard let accepted = await ProposalReviewPanel.present(
       focusDisplayName: "Writing Style",
       originalText: current,
       suggestedText: suggested,

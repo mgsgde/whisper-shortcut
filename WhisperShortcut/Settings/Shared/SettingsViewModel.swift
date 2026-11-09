@@ -140,7 +140,7 @@ class SettingsViewModel: ObservableObject {
     // in the pickers instead of silently falling back to the default.
     //
     // The notice is the one the picker used to post by hand, with the same object and no
-    // userInfo. Read Aloud, Smart Improvement and both meeting models never posted one.
+    // userInfo. Read Aloud, the Writing Style model and both meeting models never posted one.
     .custom(\.selectedTranscriptionModel,
             load: { TranscriptionModel.loadSelected() },
             save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel) },

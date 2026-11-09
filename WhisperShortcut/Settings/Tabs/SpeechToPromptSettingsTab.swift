@@ -54,6 +54,14 @@ struct SpeechToPromptSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // Moved here from the removed Smart Improvement tab: the profile only shapes Dictate Prompt.
+      WritingStyleSettingsSection()
+
+      writingStyleModelSection
+        .padding(.top, 16)
+
+      SpacedSectionDivider()
+
       // Usage Instructions Section
       usageInstructionsSection
     }
@@ -68,6 +76,28 @@ struct SpeechToPromptSettingsTab: View {
       systemImage: "cpu",
       selectedModel: $viewModel.data.selectedPromptModel,
       recommendedModel: SettingsDefaults.selectedPromptModel,
+      subscriptionMode: false,
+      onModelChanged: {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
+  }
+
+  // MARK: - Writing Style model
+  /// The model that drafts the Writing Style profile. Stored under `selectedImprovementModel`, the
+  /// key Smart Improvement used before it was removed, so existing choices carry over.
+  @ViewBuilder
+  private var writingStyleModelSection: some View {
+    PromptModelSelectionView(
+      title: "Writing Style Model",
+      subtitle: "The model that drafts your writing style profile from your messages.",
+      showSectionHeader: false,
+      selectedModel: $viewModel.data.selectedImprovementModel,
+      // A text task: every text-producing chat model, no image-generation models.
+      availableModels: PromptModel.textChatModels,
+      recommendedModel: SettingsDefaults.selectedImprovementModel,
       subscriptionMode: false,
       onModelChanged: {
         Task {

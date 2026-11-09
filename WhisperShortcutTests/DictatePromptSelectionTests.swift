@@ -160,7 +160,6 @@ struct DictatePromptSelectionTests {
       modelResponse: "invented",
       text: nil,
       voice: nil,
-      audioRef: nil,
       transcriptionModel: nil,
       hadScreenshot: false,
       latencyMs: 842,

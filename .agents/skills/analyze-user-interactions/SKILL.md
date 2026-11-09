@@ -26,9 +26,12 @@ Three modes, each with its own schema:
 
 | Mode | Fields | Purpose |
 |---|---|---|
-| `transcription` | `result, transcriptionModel, model, audioRef, ts` | Dictate (speech-to-text) output |
-| `prompt` | `userInstruction, selectedText, modelResponse, model, hadScreenshot, ts` | Dictate Prompt edits |
-| `geminiChat` | `userInstruction, modelResponse, model, ts` | Chat replies |
+| `transcription` | `result, transcriptionModel, model, ts` (+ `appBundleId, appName, durationMs, language, promptVersion` since 2026-11-02; `audioRef` on older rows only) | Dictate (speech-to-text) output |
+| `prompt` | `userInstruction, selectedText, modelResponse, model, hadScreenshot, latencyMs, provider, template, ts` (+ the same context fields) | Dictate Prompt edits |
+| `geminiChat` | `userInstruction, modelResponse, model, ts` (+ `promptVersion`) | Chat replies |
+
+`promptVersion` is the first 8 hex chars of SHA-256 of the mode's system prompt section ("default"
+when empty): group rows by it to tell whether a failure predates or follows a prompt change.
 
 `hadScreenshot` matters for the Step-3 checks: when `selectedText` is empty it is the only way to
 tell screenshot-grounded output from fabrication. Without it, "No hallucinations" and "Input
@@ -148,7 +151,7 @@ Group failures with the same root cause. Threshold: **≥2 examples** before pro
 | Repeated 429s / slow round-trips | Rate-limit handling / model choice | `RateLimitCoordinator.swift`, per-provider chat providers (e.g. `GrokChatProvider.swift`) / `SettingsDefaults` |
 | Same instruction recurs verbatim across days (e.g. "korrigiere" → 12×) | Candidate for a one-tap UI preset | Menu / Settings UI |
 | Field missing from logs (genuine gap, not "older records") | Logging gap | `ContextLogger.swift` |
-| Glossary term consistently mis-transcribed | Add term to default glossary | `AppConstants.swift` (whisper glossary) or Smart Improvement run |
+| Glossary term consistently mis-transcribed | Add term to default glossary | `AppConstants.swift` (whisper glossary) or one `add_glossary_terms` / chat `update_app_instructions` call |
 
 ### Step 6 — Report
 

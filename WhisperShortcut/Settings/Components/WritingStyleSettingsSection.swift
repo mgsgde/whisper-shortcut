@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Settings → Smart Improvement → Writing Style. Learning runs on its own while the toggle is on
+/// Settings → Dictate Prompt → Writing Style. Learning runs on its own while the toggle is on
 /// (`WritingStyleAutoUpdater`); the manual paths sit in a collapsed group for users without Gmail.
 /// See plans/active/writing-style.md.
 struct WritingStyleSettingsSection: View {
@@ -182,7 +182,7 @@ struct WritingStyleSettingsSection: View {
   }
 
   private var privacyText: LocalizedStringKey {
-    "Stored on this Mac in the app's data folder. While on, what you dictate into mail, messenger and work chat apps is kept as an example, and if your Google account is connected, emails you sent are imported once a week. Each Dictate Prompt request sends your profile and a few of these messages to your Dictate Prompt model (cloud models only; local models do not get them). When about 20 new messages have come in, the Smart Improvement model drafts an updated profile from a sample of them and shows it for your review before saving."
+    "Stored on this Mac in the app's data folder. While on, what you dictate into mail, messenger and work chat apps is kept as an example, and if your Google account is connected, emails you sent are imported once a week. Each Dictate Prompt request sends your profile and a few of these messages to your Dictate Prompt model (cloud models only; local models do not get them). When about 20 new messages have come in, the Writing Style model drafts an updated profile from a sample of them and shows it for your review before saving."
   }
 
   private func caption(verbatim text: String) -> some View {

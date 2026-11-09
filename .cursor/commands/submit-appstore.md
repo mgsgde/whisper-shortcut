@@ -198,7 +198,7 @@ skill — read its "Submit a version for review" section first.
    **Where the localized text comes from:** `/release` produces the App Store "What's New" in
    **English only**. Translating it into the remaining locales is part of *this* command — keep
    each translation as short as the English, and do not translate feature names that ship in
-   English in the UI (Dictate Prompt, Read Aloud, Live Meeting, Smart Improvement).
+   English in the UI (Dictate Prompt, Read Aloud, Live Meeting).
 8. **Validate readiness** (non-mutating; expect 0 blocking errors):
    ```bash
    asc validate --app 6749648401 --platform MAC_OS --version "$VERSION" --output table

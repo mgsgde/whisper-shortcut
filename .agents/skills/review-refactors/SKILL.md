@@ -336,7 +336,7 @@ end. Long-lived: entries change status, they are not deleted.
 ## Not yet swept
 
 - `Settings/` (1,590-line `SettingsConfiguration` + per-tab views)
-- `PopupNotificationWindow.swift`, `ContextDerivation.swift`
+- `PopupNotificationWindow.swift`
 - the TTS chunking path
 ```
 

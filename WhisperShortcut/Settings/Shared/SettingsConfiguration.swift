@@ -470,7 +470,7 @@ enum PromptModel: String, CaseIterable {
   }
 
   /// Whether the user has what this model's provider needs. Used to gate chat, meeting
-  /// summary, Read Aloud smart rewrite, and Smart Improvement.
+  /// summary, Read Aloud smart rewrite, and the Writing Style profile.
   ///
   /// Forwards to `ChatModelProvider.hasCredential` — the one switch that trims. The copy here
   /// called `hasNonEmpty`, so a whitespace-only key looked configured in the picker and missing
@@ -543,7 +543,7 @@ enum PromptModel: String, CaseIterable {
   /// respect that matters for chat, or `nil` if this model is current. Superseded models stay
   /// in the enum because other features still use them (Dictate Prompt takes audio-capable
   /// Gemini models, `speakerConsolidationModel` wants the cheap tier), but every chat-facing
-  /// list (chat window picker, Settings → Chat, meeting summary, Smart Improvement) hides
+  /// list (chat window picker, Settings → Chat, meeting summary, Writing Style) hides
   /// them, and a persisted chat selection is rewritten to the replacement on load — staying
   /// with the same provider so a user with only that provider's key keeps working.
   /// The bar is *Pareto dominance*, not recency: a model is only listed here when a sibling
@@ -683,7 +683,7 @@ enum PromptModel: String, CaseIterable {
       .filter(\.isSelectableUnderOfflineMode)
   }
 
-  /// Chat models suitable for text-only tasks such as Smart Improvement: excludes
+  /// Chat models suitable for text-only tasks such as the Writing Style profile: excludes
   /// image-generation models (Nano Banana), which return images rather than the text
   /// analysis these features need.
   static var textChatModels: [PromptModel] {
@@ -838,7 +838,7 @@ enum PromptModel: String, CaseIterable {
   }
 
   /// Loads any UserDefaults slot that must hold a chat-capable model (chat window, meeting
-  /// summary, Smart Improvement). On top of `loadPromptModel` it forwards a superseded
+  /// summary, Writing Style). On top of `loadPromptModel` it forwards a superseded
   /// selection to its replacement and persists that, so the value always appears in the
   /// pickers, which list `chatModels`.
   /// What `loadChatSlotModel` would hand back for `raw`, computed WITHOUT touching UserDefaults.
@@ -1497,35 +1497,6 @@ enum MeetingSafeguardDuration: Double, CaseIterable {
   }
 }
 
-// MARK: - Improve from Usage auto-run interval
-enum ImproveFromUsageAutoRunInterval: Int, CaseIterable {
-  case off = 0
-  case every3Days = 3
-  case every7Days = 7
-  case every14Days = 14
-  case every30Days = 30
-
-  var dayCount: Int? {
-    switch self {
-    case .off: return nil
-    case .every3Days: return 3
-    case .every7Days: return 7
-    case .every14Days: return 14
-    case .every30Days: return 30
-    }
-  }
-
-  var displayName: String {
-    switch self {
-    case .off: return String(localized: "Off")
-    case .every3Days: return String(localized: "Every 3 days")
-    case .every7Days: return String(localized: "Every 7 days")
-    case .every14Days: return String(localized: "Every 14 days")
-    case .every30Days: return String(localized: "Every 30 days")
-    }
-  }
-}
-
 // MARK: - Punctuation Mode
 /// Offline dictation only. `automatic`: the model punctuates. `spokenOnly`: model punctuation is
 /// stripped and only spoken marks ("Punkt", "Komma", …) are written (`SpokenPunctuation`).
@@ -1677,7 +1648,6 @@ enum SettingsTab: String, CaseIterable {
   case readAloud = "Read Aloud"
   case chat = "Chat"
   case meetings = "Meetings"
-  case improvement = "Smart Improvement"
   case aiApps = "Claude & AI Apps"
   // Persisted selection. A stored "Privacy & Permissions" (or older "Permissions") falls back
   // to General once (`SettingsTab(rawValue:) ?? .general`). The sidebar label is `displayName`.
@@ -1696,7 +1666,6 @@ enum SettingsTab: String, CaseIterable {
     case .readAloud: return "Read Aloud"
     case .chat: return "Chat"
     case .meetings: return "Meetings"
-    case .improvement: return "Smart Improvement"
     case .aiApps: return "Claude & AI Apps"
     case .permissions: return "Permissions & Privacy"
     case .about: return "About"
@@ -1709,7 +1678,7 @@ enum SettingsTab: String, CaseIterable {
     switch self {
     case .general, .accounts, .permissions: return .general
     case .speechToText, .speechToPrompt, .templates, .readAloud: return .dictation
-    case .chat, .meetings, .improvement: return .chatAndMeetings
+    case .chat, .meetings: return .chatAndMeetings
     case .screenshot, .aiApps, .about: return .more
     }
   }
@@ -2468,8 +2437,9 @@ struct SettingsDefaults {
   static let liveMeetingSafeguardDuration = MeetingSafeguardDuration.ninetyMinutes
   static let selectedMeetingSummaryModel = PromptModel.gemini35FlashLite
 
-  /// Smart Improvement runs at most once a week in the background, so its per-run cost barely
-  /// registers — but it does analysis over a whole corpus, which Flash-Lite is weak at. 3.8 Flash
+  /// The Writing Style model (the key is named after Smart Improvement, which used it until
+  /// 2026-11-02). It drafts a profile every ~20 new messages, so its per-run cost barely
+  /// registers — but it reads a whole sample of messages at once, which Flash-Lite is weak at. 3.8 Flash
   /// is the current workhorse (GA 2026-09-02): same introductory price as 3.7 ($0.75/$3.75 per 1M
   /// through 2026). 3.7 stays selectable — the audit's probe had 3.8 ~12% slower, so it is not
   /// hidden. https://ai.google.dev/gemini-api/docs/models

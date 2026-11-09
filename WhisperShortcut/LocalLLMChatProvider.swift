@@ -114,7 +114,7 @@ final class LocalLLMChatProvider: LLMChatProvider {
     schemaName: String,
     thinkingLevel: ThinkingLevel
   ) async throws -> [String: Any] {
-    // Not used by the local Dictate Prompt path. Smart Improvement / structured features stay on
+    // Not used by the local Dictate Prompt path. The Writing Style profile / structured features stay on
     // cloud models for now; implement via OpenAICompatibleStructured if local structured output is
     // needed later.
     throw TranscriptionError.networkError(String(localized: "Structured output is not supported for local models yet."))

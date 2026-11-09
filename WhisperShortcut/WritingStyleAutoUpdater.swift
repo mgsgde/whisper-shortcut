@@ -19,8 +19,27 @@ final class WritingStyleAutoUpdater: ObservableObject {
 
   static let profileThreshold = 20
   static let gmailInterval: TimeInterval = 7 * 24 * 3600
+  private static let dailyCheckInterval: TimeInterval = 24 * 3600
+
+  private var dailyTimer: Timer?
 
   private init() {}
+
+  /// Runs `runIfDue()` now and then once a day while the app stays open. Call once after launch.
+  /// Safe to call again: only one timer is ever active. Not in a sidecar, which shares the user's
+  /// data directory and must not import Gmail or offer a profile a second time.
+  ///
+  /// Used to be started by the Smart Improvement auto-run coordinator, which ran it before its
+  /// own job; that coordinator is gone (owner decision 2026-11-02), so Writing Style owns its timer.
+  func startDailySchedule() {
+    guard !AppConstants.isSidecarInstance, dailyTimer == nil else { return }
+    // Detached from the caller: the profile review panel can wait on the user indefinitely.
+    Task { @MainActor in await self.runIfDue() }
+    dailyTimer = Timer.scheduledTimer(withTimeInterval: Self.dailyCheckInterval, repeats: true) { _ in
+      Task { @MainActor in await WritingStyleAutoUpdater.shared.runIfDue() }
+    }
+    DebugLogger.log("WRITING-STYLE-AUTO: daily check timer started")
+  }
 
   private var isEnabled: Bool {
     UserDefaults.standard.bool(forKey: UserDefaultsKeys.writingStyleEnabled)

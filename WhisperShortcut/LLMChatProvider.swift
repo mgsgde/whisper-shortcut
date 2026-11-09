@@ -244,7 +244,7 @@ struct ChatRequestOptions {
   var thinkingLevel: ThinkingLevel = .default
 
   /// When true the provider sends no built-in tools (e.g. Gemini's `code_execution`). Pure text
-  /// transforms (Read Aloud rewrite, Smart Improvement) set this so the model returns only prose,
+  /// transforms (Read Aloud rewrite, Writing Style profile) set this so the model returns only prose,
   /// never code or tool output. Ignored by providers that don't auto-enable built-ins.
   /// Dictate Prompt sets this on every round; it must not be read as "final round".
   var disableBuiltInTools: Bool = false

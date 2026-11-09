@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Curated model pickers
 //
 // Every model picker (Dictate, Dictate Prompt, Read Aloud, Chat, Meeting Transcription / Summary,
-// Smart Improvement) opens with the three slots Recommended · Fastest · Offline, plus the tiles of
+// Writing Style) opens with the three slots Recommended · Fastest · Offline, plus the tiles of
 // any on-device provider the picker explicitly asks to feature (Read Aloud's Qwen3 voice) — and
 // keeps the rest behind "More models". The 2026-10-19 UX review found 16–18 near-identical tiles
 // per picker (five Gemini Flash variants nobody could tell apart); the curation is the fix.
@@ -282,7 +282,7 @@ extension TranscriptionModel: PickerCuratedModel {
   }
 }
 
-// MARK: - Prompt models (Dictate Prompt, Chat, Meeting Summary, Smart Improvement)
+// MARK: - Prompt models (Dictate Prompt, Chat, Meeting Summary, Writing Style)
 
 extension PromptModel: PickerCuratedModel {
   /// Only the Gemini tiers are ranked: they are the ones measured against each other in the app's

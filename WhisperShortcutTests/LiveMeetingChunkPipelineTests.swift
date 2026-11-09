@@ -729,8 +729,13 @@ private final class Counters: @unchecked Sendable {
 
 private final class ChunkTranscripts: @unchecked Sendable {
   private let lock = NSLock()
-  private var waiters: [CheckedContinuation<String, Error>] = []
+  private var waiters: [Int: CheckedContinuation<String, Error>] = [:]
   private var resumed = Set<Int>()
+  /// Slot for an audio URL that does not encode a chunk index. Those tests fail or resume every
+  /// waiter, so arrival order is enough. URLs named `b02-chunk-N` are keyed by N: the transcribe
+  /// tasks start together and would otherwise register in whichever order they reach this lock,
+  /// sending chunk 1's text to chunk 0.
+  private var arrival = 0
 
   var waiterCount: Int {
     lock.lock()
@@ -738,45 +743,54 @@ private final class ChunkTranscripts: @unchecked Sendable {
     return waiters.count
   }
 
-  func next() async throws -> String {
+  func next(for url: URL) async throws -> String {
     try await withCheckedThrowingContinuation { continuation in
       lock.lock()
-      waiters.append(continuation)
+      let parsed = Self.chunkIndex(in: url)
+      let slot = parsed ?? arrival
+      if parsed == nil { arrival += 1 }
+      waiters[slot] = continuation
       lock.unlock()
     }
   }
 
   func resume(at index: Int, returning text: String) {
     lock.lock()
-    guard index < waiters.count, !resumed.contains(index) else {
+    guard let continuation = waiters[index], !resumed.contains(index) else {
       lock.unlock()
       return
     }
     resumed.insert(index)
-    let continuation = waiters[index]
     lock.unlock()
     continuation.resume(returning: text)
   }
 
   func fail(at index: Int) {
     lock.lock()
-    guard index < waiters.count, !resumed.contains(index) else {
+    guard let continuation = waiters[index], !resumed.contains(index) else {
       lock.unlock()
       return
     }
     resumed.insert(index)
-    let continuation = waiters[index]
     lock.unlock()
     continuation.resume(throwing: TranscriptionError.networkError("offline"))
   }
 
   func resumeOutstanding(returning text: String) {
     lock.lock()
-    let pending = waiters.indices.filter { !resumed.contains($0) }
+    let pending = waiters.keys.filter { !resumed.contains($0) }
     for index in pending { resumed.insert(index) }
-    let continuations = pending.map { waiters[$0] }
+    let continuations = pending.map { waiters[$0]! }
     lock.unlock()
     continuations.forEach { $0.resume(returning: text) }
+  }
+
+  /// `deliver` names the stand-in file `b02-chunk-N.wav`. A custom audio URL has no index.
+  private static func chunkIndex(in url: URL) -> Int? {
+    let stem = url.deletingPathExtension().lastPathComponent
+    let prefix = "b02-chunk-"
+    guard stem.hasPrefix(prefix) else { return nil }
+    return Int(stem.dropFirst(prefix.count))
   }
 }
 
@@ -796,7 +810,7 @@ private func makeSession(
     }
   }
   return LiveMeetingSession(
-    transcribeChunk: { _ in try await transcripts.next() },
+    transcribeChunk: { url in try await transcripts.next(for: url) },
     cleanUpAudioFile: { _ in box.didCleanUp() },
     appStateIsRecordingMeeting: { false },
     onStopping: { box.stopping += 1 },

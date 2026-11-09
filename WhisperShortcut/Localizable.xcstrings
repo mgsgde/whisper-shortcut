@@ -26417,6 +26417,517 @@
           }
         }
       }
+    },
+    "Add to: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen zu: %@"
+          }
+        }
+      }
+    },
+    "App instructions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Anweisungen"
+          }
+        }
+      }
+    },
+    "Change: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ändern: %@"
+          }
+        }
+      }
+    },
+    "Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. The Google and Trello integrations do not work — nothing runs them on-device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat kann dieselben Offline-MLX-Modelle nutzen. Vorlesen verwendet die macOS-Stimmen auf dem Gerät. Die Google- und Trello-Integration funktionieren nicht, weil sie nicht auf dem Gerät laufen können."
+          }
+        }
+      }
+    },
+    "Chat needs this server's key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat braucht den Schlüssel dieses Servers."
+          }
+        }
+      }
+    },
+    "Compare Gemini models" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini-Modelle vergleichen"
+          }
+        }
+      }
+    },
+    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions, which LM Studio and mlx_lm.server do not serve." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinde deinen eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt und Chat; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions, das LM Studio und mlx_lm.server nicht anbieten."
+          }
+        }
+      }
+    },
+    "Dictate Prompt: Gemini 3.1 Flash-Lite · Writing Style: %@ (fixed)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt: Gemini 3.1 Flash-Lite · Schreibstil: %@ (fest)"
+          }
+        }
+      }
+    },
+    "For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Patientendaten oder Fallnotizen: Nichts verlässt diesen Mac, auch nicht der Chat. Später änderbar unter Einstellungen → Datenschutz & Berechtigungen."
+          }
+        }
+      }
+    },
+    "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 3.1 Flash-Lite; Writing Style uses %@ (fixed)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Abo-Modus gibt es keine Modellauswahl. Dictate Prompt nutzt Gemini 3.1 Flash-Lite, der Schreibstil nutzt %@ (fest)."
+          }
+        }
+      }
+    },
+    "Keeps your dictations, prompts and chats on this Mac so you can ask the Chat or a connected AI app why something went wrong and let it fix a term or a rule. Nothing reads it on its own." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewahrt Ihre Diktate, Prompts und Chats auf diesem Mac auf, damit Sie den Chat oder eine verbundene KI-App fragen können, warum etwas schiefging, und sie einen Begriff oder eine Regel korrigieren lassen. Von selbst liest niemand mit."
+          }
+        }
+      }
+    },
+    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nTo fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit and reopen the app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nZum Beheben geben Sie WhisperShortcut unter Systemeinstellungen › Datenschutz & Sicherheit den Festplattenvollzugriff, beenden Sie die App und öffnen Sie sie wieder."
+          }
+        }
+      }
+    },
+    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Give WhisperShortcut Full Disk Access in Privacy & Security, then quit and reopen the app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Geben Sie WhisperShortcut unter Datenschutz & Sicherheit den Festplattenvollzugriff, beenden Sie die App und öffnen Sie sie erneut."
+          }
+        }
+      }
+    },
+    "Microphone Access Needed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonzugriff nötig"
+          }
+        }
+      }
+    },
+    "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below Low and are clamped to it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr Denkaufwand hilft bei schwierigem Ton, Akzenten und ungewöhnlichem Vokabular, kostet aber Zeit: Bei Flash-Lite fast nichts, bei Pro etwa das Doppelte. Gemini 3.1 Pro und Gemini 3.7 Flash laufen nicht unter Niedrig und werden darauf angehoben."
+          }
+        }
+      }
+    },
+    "Needs \"Save usage data\" in Privacy & Permissions. Then you can ask \"why did it get that wrong?\" and the AI app looks at your recent dictations." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht „Nutzungsdaten speichern“ unter Datenschutz & Berechtigungen. Dann können Sie fragen „Warum war das falsch?“, und die KI-App sieht sich Ihre letzten Diktate an."
+          }
+        }
+      }
+    },
+    "Needs Screen Recording permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt die Berechtigung „Bildschirmaufnahme“."
+          }
+        }
+      }
+    },
+    "Offline Mode is on, so cloud Read Aloud voices cannot be used. Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist an, deshalb lassen sich die Cloud-Stimmen zum Vorlesen nicht nutzen. Wählen Sie die macOS-Stimme unter Einstellungen → Vorlesen oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
+          }
+        }
+      }
+    },
+    "Offline Mode is on, so nothing may leave this Mac — the request to %@ was blocked. Use an on-device model, or turn Offline Mode off in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist an, deshalb darf nichts diesen Mac verlassen. Die Anfrage an %@ wurde blockiert. Nutzen Sie ein Modell auf dem Gerät oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
+          }
+        }
+      }
+    },
+    "Offline Mode, usage data, and macOS permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modus, Nutzungsdaten und macOS-Berechtigungen"
+          }
+        }
+      }
+    },
+    "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein OpenAI-kompatibler Server für Diktieren, Dictate Prompt und Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder selbst gehostet. Sie richten ihn einmal ein; alle drei nutzen dieselbe URL und denselben Schlüssel."
+          }
+        }
+      }
+    },
+    "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur das Mikrofon ist nötig. Der Rest ist optional und kann warten, Sie ändern alles später unter Einstellungen → Datenschutz & Berechtigungen."
+          }
+        }
+      }
+    },
+    "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional. Damit können Sie Bildschirmfotos an Chat-Nachrichten hängen und Bildschirminhalte in Dictate-Prompt-Anfragen mitgeben."
+          }
+        }
+      }
+    },
+    "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional. Wird nur für das automatische Einfügen gebraucht: Der diktierte Text wird per simuliertem ⌘V an der Cursorposition eingefügt. Standardmäßig aus, einschalten unter Einstellungen → Allgemein."
+          }
+        }
+      }
+    },
+    "Paused while Offline Mode is on. Nothing is stored." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausiert, solange der Offline-Modus an ist. Es wird nichts gespeichert."
+          }
+        }
+      }
+    },
+    "Privacy & Permissions" : {
+      "comment" : "Settings tab",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz & Berechtigungen"
+          }
+        }
+      }
+    },
+    "Read your usage log" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsprotokoll gelesen"
+          }
+        }
+      }
+    },
+    "Reading your usage log" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsprotokoll wird gelesen"
+          }
+        }
+      }
+    },
+    "Remove from: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernen aus: %@"
+          }
+        }
+      }
+    },
+    "Replace: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen: %@"
+          }
+        }
+      }
+    },
+    "Resets the app to its original state: all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data are deleted. API keys are preserved. To delete only usage data, use Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setzt die App in den Ausgangszustand zurück: Alle Einstellungen, System-Prompts, Modellauswahl, Chats, Meeting-Transkripte und Nutzungsdaten werden gelöscht. API-Schlüssel bleiben erhalten. Um nur die Nutzungsdaten zu löschen, nutzen Sie Einstellungen → Datenschutz & Berechtigungen."
+          }
+        }
+      }
+    },
+    "Shared with Dictate, Dictate Prompt and Chat. Changing the server changes it for all three." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemeinsam für Diktieren, Dictate Prompt und Chat. Eine Änderung am Server gilt für alle drei."
+          }
+        }
+      }
+    },
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model to dictate without a key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Whisper-Modell wählen und ohne Schlüssel diktieren."
+          }
+        }
+      }
+    },
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Whisper-Modell wählen."
+          }
+        }
+      }
+    },
+    "So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated recently (the last 7 days, or up to 90 when it asks for more)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit Sie fragen können „Warum war das falsch?“ und die KI-App sich ansieht, was Sie zuletzt diktiert haben (die letzten 7 Tage oder bis zu 90, wenn sie mehr abfragt)."
+          }
+        }
+      }
+    },
+    "Stored on this Mac in the app's data folder. While on, what you dictate into mail, messenger and work chat apps is kept as an example, and if your Google account is connected, emails you sent are imported once a week. Each Dictate Prompt request sends your profile and a few of these messages to your Dictate Prompt model (cloud models only; local models do not get them). When about 20 new messages have come in, the Writing Style model drafts an updated profile from a sample of them and shows it for your review before saving." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liegt auf diesem Mac im Datenordner der App. Solange es an ist, wird gesichert, was Sie in Mail-, Messenger- und Arbeits-Chat-Apps diktieren, als Beispiel; ist Ihr Google-Konto verbunden, werden gesendete E-Mails einmal pro Woche importiert. Jede Dictate-Prompt-Anfrage schickt Ihr Profil und einige dieser Nachrichten an Ihr Modell für Dictate Prompt (nur Cloud-Modelle; lokale Modelle bekommen sie nicht). Sind etwa 20 neue Nachrichten hinzugekommen, entwirft das Modell für den Schreibstil aus einer Auswahl ein aktualisiertes Profil und zeigt es Ihnen vor dem Sichern zur Prüfung."
+          }
+        }
+      }
+    },
+    "Suggested change" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorgeschlagene Änderung"
+          }
+        }
+      }
+    },
+    "System Audio Not Recorded" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemton wird nicht aufgenommen"
+          }
+        }
+      }
+    },
+    "The model that drafts your writing style profile from your messages." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell, das aus Ihren Nachrichten Ihr Schreibstil-Profil entwirft."
+          }
+        }
+      }
+    },
+    "The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die anderen Teilnehmer sind nicht zu hören, deshalb wird nur Ihr Mikrofon aufgenommen. Erlauben Sie WhisperShortcut die Systemaudioaufnahme."
+          }
+        }
+      }
+    },
+    "Tip: Compare Gemini models (speed, intelligence, pricing):" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipp: Gemini-Modelle vergleichen (Tempo, Intelligenz, Preise):"
+          }
+        }
+      }
+    },
+    "Tip: Compare models (speed, intelligence, pricing):" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipp: Modelle vergleichen (Tempo, Intelligenz, Preise):"
+          }
+        }
+      }
+    },
+    "Turn on \"Save usage data\" in Settings → Privacy & Permissions to collect this" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalten Sie „Nutzungsdaten speichern“ unter Einstellungen → Datenschutz & Berechtigungen ein, damit dies gesammelt wird"
+          }
+        }
+      }
+    },
+    "Usage Data" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsdaten"
+          }
+        }
+      }
+    },
+    "Usage data is optional and stays on this Mac. When you turn on \"Save usage data\" in Settings → Privacy & Permissions, the in-app Chat (and an AI app you connect, if you allow it) can read it when you ask them to tune WhisperShortcut; what they read goes only to the model you chose for them, never to us or anyone else." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsdaten sind optional und bleiben auf diesem Mac. Wenn Sie unter Einstellungen → Datenschutz & Berechtigungen „Nutzungsdaten speichern“ einschalten, kann der Chat in der App (und eine verbundene KI-App, wenn Sie es erlauben) sie lesen, sobald Sie ihn bitten, WhisperShortcut anzupassen; was er liest, geht nur an das Modell, das Sie dafür gewählt haben, nie an uns oder sonst jemanden."
+          }
+        }
+      }
+    },
+    "Whether anything may leave this Mac, and what WhisperShortcut can access on it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ob etwas diesen Mac verlassen darf und worauf WhisperShortcut hier zugreifen kann."
+          }
+        }
+      }
+    },
+    "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht. Erlauben Sie WhisperShortcut unter Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Bildschirm- & Systemaudioaufnahme. Bis dahin wird das Meeting nur über Ihr Mikrofon aufgenommen."
+          }
+        }
+      }
+    },
+    "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut braucht Zugriff auf das Mikrofon, um aufzunehmen. Öffnen Sie Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Mikrofon und aktivieren Sie WhisperShortcut."
+          }
+        }
+      }
+    },
+    "Writing Style Model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für den Schreibstil"
+          }
+        }
+      }
+    },
+    "Writing Style model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für den Schreibstil"
+          }
+        }
+      }
+    },
+    "You can change this anytime in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das können Sie jederzeit unter Einstellungen → Datenschutz & Berechtigungen ändern."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -178,13 +178,6 @@ enum MCPSettingsCatalog {
       let post = { MainActor.assumeIsolated { ModelSelectionReconciler.postSelectionsChanged() } }
       if Thread.isMainThread { post() } else { DispatchQueue.main.sync(execute: post) }
     }
-    /// Settings → Improvement calls this after the auto-run picker changes. Tests replace it;
-    /// the live default is the same `checkAndRunIfDue()` the view runs.
-    var checkImprovementAutoRun: () -> Void = {
-      Task { @MainActor in
-        await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
-      }
-    }
 
     static let live = Dependencies()
   }
@@ -249,7 +242,7 @@ enum MCPSettingsCatalog {
     case "Meeting transcription model": return String(localized: "Meeting transcription model")
     case "Dictate Prompt model": return String(localized: "Dictate Prompt model")
     case "Meeting summary model": return String(localized: "Meeting summary model")
-    case "Smart Improvement model": return String(localized: "Smart Improvement model")
+    case "Writing Style model": return String(localized: "Writing Style model")
     case "Read Aloud model": return String(localized: "Read Aloud model")
     case "ChatGPT plan model id": return String(localized: "ChatGPT plan model id")
     case "Custom endpoint model id": return String(localized: "Custom endpoint model id")
@@ -285,7 +278,6 @@ enum MCPSettingsCatalog {
     case "Meeting chunk interval": return String(localized: "Meeting chunk interval")
     case "Ask when meeting longer than": return String(localized: "Ask when meeting longer than")
     case "Screenshot context": return String(localized: "Screenshot context")
-    case "Run Improve from usage automatically": return String(localized: "Run Improve from usage automatically")
     case "Launch at login": return String(localized: "Launch at login")
     case "Use my writing style in Dictate Prompt": return String(localized: "Use my writing style in Dictate Prompt")
     case "Let Dictate Prompt use read-only tools": return String(localized: "Let Dictate Prompt use read-only tools")
@@ -593,7 +585,7 @@ enum MCPSettingsCatalog {
       // chat-slot resolver's `supportsTextChat` filter would drop.
       resolveStoredRawValueAsChatSlot: Bool = false,
       // Only `dictate_prompt.model`'s own picker (`SpeechToPromptSettingsTab`) posts
-      // `.promptModelChanged` on save; the Meeting Summary and Smart Improvement pickers don't, so
+      // `.promptModelChanged` on save; the Meeting Summary and Writing Style pickers don't, so
       // this must not post it there either (even though it is now harmless — the download gate
       // above means `.apply` only ever stores an already-downloaded model).
       postsPromptModelChanged: Bool = true
@@ -834,11 +826,13 @@ enum MCPSettingsCatalog {
       hasCredential: { $0.hasRequiredCredential },
       resolveStoredRawValueAsChatSlot: true, postsPromptModelChanged: false))
 
-    // MARK: improvement.model
-    // Same reasoning as `meetings.summary_model`: `ImprovementSettingsTab`'s picker doesn't post
+    // MARK: improvement.model — the Writing Style model
+    // The id and the `selectedImprovementModel` key outlived Smart Improvement (removed 2026-11-02),
+    // so recorded changes and existing choices still resolve. Same reasoning as
+    // `meetings.summary_model`: the Dictate Prompt tab's Writing Style picker doesn't post
     // `.promptModelChanged` either.
     settings.append(promptModelSetting(
-      id: "improvement.model", title: "Smart Improvement model",
+      id: "improvement.model", title: "Writing Style model",
       key: UserDefaultsKeys.selectedImprovementModel, fallback: SettingsDefaults.selectedImprovementModel,
       models: { PromptModel.textChatModels },
       hasCredential: { $0.hasRequiredCredential },
@@ -1232,34 +1226,6 @@ enum MCPSettingsCatalog {
       id: "dictate_prompt.learned_quick_prompts", title: "Also show often-used prompts",
       category: "dictate_prompt", key: UserDefaultsKeys.dictatePromptLearnedQuickActionsEnabled,
       defaultValue: true))
-
-    // MARK: improvement.auto_run_interval — picker stores the Int raw value (days; 0 = off).
-    settings.append(enumSetting(
-      id: "improvement.auto_run_interval", title: "Run Improve from usage automatically",
-      category: "improvement",
-      allOptions: {
-        ImproveFromUsageAutoRunInterval.allCases.map { MCPSetting.Option(String($0.rawValue), $0.displayName) }
-      },
-      current: {
-        let interval: ImproveFromUsageAutoRunInterval
-        if defaults.object(forKey: UserDefaultsKeys.improveFromUsageAutoRunInterval) != nil,
-          let parsed = ImproveFromUsageAutoRunInterval(
-            rawValue: defaults.integer(forKey: UserDefaultsKeys.improveFromUsageAutoRunInterval))
-        {
-          interval = parsed
-        } else {
-          // Same default as the Settings `@AppStorage` and `checkAndRunIfDue` when the key is unset.
-          interval = .every7Days
-        }
-        return String(interval.rawValue)
-      },
-      applyValue: { raw in
-        guard let value = Int(raw), let interval = ImproveFromUsageAutoRunInterval(rawValue: value) else {
-          throw MCPConfigError(message: "Unknown auto-run interval.")
-        }
-        defaults.set(interval.rawValue, forKey: UserDefaultsKeys.improveFromUsageAutoRunInterval)
-        deps.checkImprovementAutoRun()
-      }))
 
     // MARK: general.launch_at_login — always a proposal: a background-login change the user should see coming.
     settings.append(MCPSetting(

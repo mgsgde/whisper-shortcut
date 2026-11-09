@@ -2,12 +2,12 @@
 //  GlossaryFastLearner.swift
 //  WhisperShortcut
 //
-//  Fast loop of Smart Improvement: typed chat text is treated as ground-truth spelling.
+//  Typed chat text is treated as ground-truth spelling.
 //  Capitalized typed words are fuzzy-matched against recently dictated transcripts; when a
 //  transcript contains a same-sounding but differently spelled word, the transcript word is
 //  the machine's misspelling of what the user just typed — the typed spelling is added to
 //  the Whisper Glossary immediately, so the very next dictation is conditioned with it.
-//  Unlike the weekly Smart Improvement batch, a single typed occurrence is enough evidence.
+//  A single typed occurrence is enough evidence.
 //
 //  False-positive guard: a matched pair is only accepted when at least one side is unknown
 //  to the system spell checker. Two ordinary dictionary words that happen to sound alike

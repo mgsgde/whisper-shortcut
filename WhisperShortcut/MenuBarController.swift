@@ -1535,8 +1535,14 @@ class MenuBarController: NSObject {
     // leave its short-pause cutting behind for the next normal Dictate.
     (audioRecorder as? ChunkedDictateRecorder)?.rotationPolicy = rotation
     if mode == .transcription || mode == .prompt {
-      pasteTargetAtRecordStart = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
+      let frontmost = NSWorkspace.shared.frontmostApplication
+      pasteTargetAtRecordStart = Self.pasteTarget(of: frontmost)
       ownTextWindowAtRecordStart = Self.ownFocusedTextWindowNumber()
+      // For the usage log's appBundleId/appName. Our own windows (the Chat input) are not a
+      // target app worth naming.
+      let isOwn = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+      ContextLogger.shared.noteRecordingTarget(
+        frontmost.flatMap { isOwn ? nil : InteractionTargetApp(bundleId: $0.bundleIdentifier, name: $0.localizedName) })
     }
     clipboardOnlyForNextResult = false
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
@@ -3091,42 +3097,14 @@ class MenuBarController: NSObject {
       }
     }
 
-    // Snapshot the recording into the audio-sample pool up front, while the source WAV still
-    // exists. Capturing after transcription raced a rapid subsequent recording's beginSession()/
-    // cleanup(), which deletes the delivered chunk/merged file — ~2% of captures failed with
-    // "no such file". We keep the snapshot only if we log a successful transcription below;
-    // otherwise the defer discards it, so cancelled/failed dictations leave no orphan sample.
     let transcriptionModelForCapture = TranscriptionModel.loadSelected()
-    let backendTag: String
-    if transcriptionModelForCapture.isOffline {
-      backendTag = transcriptionModelForCapture.offlineModelType?.engine == .parakeet ? "parakeet" : "whisper"
-    } else if transcriptionModelForCapture.isOpenAI {
-      backendTag = "openai"
-    } else if transcriptionModelForCapture == .selfHostedTranscription {
-      backendTag = "self-hosted"
-    } else if transcriptionModelForCapture == .openRouterTranscription {
-      backendTag = "openrouter"
-    } else {
-      backendTag = "gemini"
-    }
-    let captureTask: Task<String?, Never>? = duringMeeting ? nil : Task.detached {
-      [audioURL, backendTag, model = transcriptionModelForCapture.rawValue] in
-      ContextLogger.shared.captureDictationAudio(
-        from: audioURL,
-        backend: backendTag,
-        transcriptionModel: model
-      )
-    }
-    var pendingAudioRef: String?
+    // Measured up front, while the source WAV still exists: a rapid next recording's
+    // beginSession()/cleanup() can delete the delivered chunk/merged file before the result is
+    // logged (the same race that used to break audio-sample capture, ~2% of dictations).
+    let recordingDurationMs = AudioDuration.milliseconds(audioURL)
     // Taken before transcription starts, so strips logged by this dictation (and not an earlier
     // one) can be attached to its history entry.
     let dictationStart = Date()
-    var audioRefCommitted = false
-    defer {
-      if let ref = pendingAudioRef, !audioRefCommitted {
-        ContextLogger.shared.deleteAudioSample(named: ref)
-      }
-    }
     // "Only when spoken" is an offline-dictation setting; meeting segments keep model punctuation.
     let punctuationMode = PunctuationMode.effective(
       stored: .current, isOffline: transcriptionModelForCapture.isOffline, duringMeeting: duringMeeting)
@@ -3191,18 +3169,13 @@ class MenuBarController: NSObject {
           result, mode: "Dictation", transcriptionModel: transcriptionModelForCapture.rawValue,
           transcriptionModelName: modelDisplayName,
           glossaryEchoRemoved: self.speechService.glossaryEchoStrips(since: dictationStart))
-        pendingAudioRef = await captureTask?.value
-        audioRefCommitted = true
         ContextLogger.shared.logTranscription(
           result: result,
           model: modelDisplayName,
-          audioRef: pendingAudioRef,
-          transcriptionModel: transcriptionModelForCapture.rawValue
+          transcriptionModel: transcriptionModelForCapture.rawValue,
+          durationMs: recordingDurationMs
         )
       })
-    if pendingAudioRef == nil {
-      pendingAudioRef = await captureTask?.value
-    }
   }
 
   /// `job` is nil for a live-meeting segment.

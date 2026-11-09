@@ -75,7 +75,7 @@ struct SettingsSlotChangeNotificationTests {
     #expect(promptPosted.first?.userInfo == nil)
   }
 
-  @Test("Read Aloud, Smart Improvement and meeting models post nothing")
+  @Test("Read Aloud, Writing Style and meeting models post nothing")
   func silentModelSlotsPostNothing() {
     var persisted = SettingsData()
     var data = persisted

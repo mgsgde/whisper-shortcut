@@ -38,8 +38,8 @@ enum PromptHistorySource: String, CaseIterable {
 /// One reader and one writer for the UserContext JSONL streams.
 ///
 /// Listing, line decoding, ISO-8601 timestamps, and append each existed as a private copy
-/// (`ContextLogger`, `ContextDerivation`, `UsageReport`, `QuickActionStore`,
-/// `GlossaryFastLearner`, `SmartImprovementScorecard`). The copies had already drifted: the
+/// (`ContextLogger`, `UsageReport`, `QuickActionStore`, `GlossaryFastLearner`, and the since
+/// removed Smart Improvement derivation and scorecard). The copies had already drifted: the
 /// scorecard parsed `yyyy-MM-dd` filenames with the user calendar, so a Buddhist or Japanese
 /// calendar dropped today's file, and each reader allocated its own ISO-8601 parser.
 enum UserContextLog {
@@ -143,7 +143,7 @@ enum UserContextLog {
 
   /// ISO-8601 timestamp, with or without fractional seconds.
   ///
-  /// `ContextDerivation` parsed with `ISO8601DateFormatter` and treated failure as `.distantPast`;
+  /// The (removed) Smart Improvement derivation parsed with `ISO8601DateFormatter` and treated failure as `.distantPast`;
   /// the scorecard parsed with `Date.ISO8601FormatStyle` and treated failure as nil. This accepts
   /// whichever of those parsers succeeds. Callers that want the old distant-past fallback apply
   /// it themselves. `date(from:)` is not thread-safe, so the formatters stay behind a lock;

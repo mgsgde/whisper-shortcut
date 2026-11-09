@@ -232,7 +232,7 @@ struct ModelSelectionReconcilerTests {
     #expect(ModelSelectionReconciler.offlineFallbackTranscription(available: []) == nil)
   }
 
-  @Test("Offline Mode moves the meeting summary and Smart Improvement slots onto the Dictate Prompt model and back")
+  @Test("Offline Mode moves the meeting summary and Writing Style slots onto the Dictate Prompt model and back")
   func meetingSummaryOfflineRoundTrip() {
     let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!

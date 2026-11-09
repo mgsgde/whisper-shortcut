@@ -130,7 +130,6 @@ struct DictatePromptStyleLearningTests {
       modelResponse: modelResponse,
       text: nil,
       voice: nil,
-      audioRef: nil,
       transcriptionModel: nil,
       hadScreenshot: nil,
       latencyMs: nil,

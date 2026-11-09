@@ -615,7 +615,7 @@ class GeminiAPIClient {
           // Custom function declarations take precedence: when tools are defined,
           // Gemini's built-in code_execution can conflict on some model versions,
           // so we only include it when no custom tools are provided. Pure text
-          // transforms (Read Aloud rewrite, Smart Improvement) pass
+          // transforms (Read Aloud rewrite, Writing Style profile) pass
           // `disableBuiltInTools` so the model never runs code and pollutes the
           // reply with executable_code / code_execution_result parts.
           if functionDeclarations.isEmpty {
@@ -965,7 +965,7 @@ class GeminiAPIClient {
   /// `generationConfig.responseSchema` + `responseMimeType:"application/json"` and returns the
   /// parsed top-level JSON object. `schema` is the canonical JSON Schema (Gemini accepts the
   /// OpenAPI-3.0 subset directly; it must NOT contain `additionalProperties`). Used by
-  /// `GeminiChatProvider.generateStructured`, the chat/meeting title path, and Smart Improvement.
+  /// `GeminiChatProvider.generateStructured`, the chat/meeting title path, and the Writing Style profile.
   ///
   /// `origin` and `withRetry` were hardcoded off here, so the derivation path kept a private
   /// copy of this body (no `thinkingConfig`, and its own retry/origin). Defaults match the

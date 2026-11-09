@@ -1,5 +1,7 @@
 # MCP v2: Claude and ChatGPT configure WhisperShortcut
 
+**Update 2026-11-02:** Smart Improvement was removed (owner decision; branch `remove-smart-improvement`). References below to `ContextDerivation`, `AutoPromptImprovementScheduler`, `SmartImprovementReviewPanel` / `SmartImprovementReviewView` and Settings → Smart Improvement are historical: the review window is now `ProposalReviewView.swift` (`ProposalReviewPanel`), usage data lives in Settings → Privacy & Permissions, and tuning from the log goes through the Chat (`read_recent_interactions`, `update_app_instructions`) or MCP.
+
 Status: slice 1 built (2026-10-21) on `feat/mcp-config-access`. Plumbing by Sonnet 5.5 (Grok
 over its daily cap), UI by Opus, checked in the sidecar build with screenshots. Not yet verified:
 a live client (Claude Code) against the server, because the sidecar runs no MCP server; that

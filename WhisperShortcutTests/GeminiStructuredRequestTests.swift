@@ -3,7 +3,7 @@ import Testing
 
 @testable import WhisperShortcut_AppStore
 
-/// The Smart Improvement Gemini path used to hand-build the structured-output body.
+/// A Gemini path (Smart Improvement, removed 2026-11-02) used to hand-build the structured-output body.
 /// `generateStructured` is that body plus `thinkingConfig`. This pins the diff.
 @Suite("Gemini structured request")
 struct GeminiStructuredRequestTests {
@@ -11,7 +11,9 @@ struct GeminiStructuredRequestTests {
   @Test("Low thinking adds only thinkingConfig to the hand-built body")
   func lowThinkingIsTheOnlyBodyDifference() throws {
     let model = PromptModel.gemini38Flash.rawValue
-    #expect(GeminiAPIClient.generateContentEndpoint(model: model) == AppConstants.contextDerivationEndpoint)
+    #expect(
+      GeminiAPIClient.generateContentEndpoint(model: model)
+        == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent")
     #expect(
       GeminiAPIClient.generateContentEndpoint(model: model) == TranscriptionModel.gemini38Flash.apiEndpoint)
     let pro = PromptModel.gemini31Pro

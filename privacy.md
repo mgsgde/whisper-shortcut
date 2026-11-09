@@ -29,7 +29,7 @@ That guard does **not** wrap every request on the process. WhisperKit downloads 
 
 ### API Keys And OAuth Tokens
 
-- **Google Gemini API key**: Used for cloud transcription, Dictate Prompt, Chat with Gemini, TTS, Smart Improvement, and Live Meeting. Stored in macOS Keychain until you delete it.
+- **Google Gemini API key**: Used for cloud transcription, Dictate Prompt, Chat with Gemini, TTS, the Writing Style profile, and Live Meeting. Stored in macOS Keychain until you delete it.
 - **OpenAI API key**: Optional. Used for OpenAI Transcribe, OpenAI Dictate Prompt, and OpenAI chat models. Stored in macOS Keychain until you delete it.
 - **xAI API key**: Optional. Used only for Grok chat models. Stored in macOS Keychain until you delete it.
 - **Google OAuth refresh token**: Optional. Created only if you connect a Google account for Calendar, Tasks, and Gmail tools. Stored in macOS Keychain until you disconnect Google.
@@ -43,7 +43,7 @@ WhisperShortcut stores settings such as keyboard shortcuts, selected models, not
 
 Audio recorded for dictation, prompt workflows, TTS-related processing, or live meeting transcription is stored temporarily while processing is in progress. Temporary audio files are deleted after processing when possible.
 
-If **Save usage data** is enabled, recent successful dictation audio may also be copied briefly into `UserContext/audio-samples/` so Smart Improvement can verify text-based dictation and glossary suggestions. These samples are capped, used only as verifier evidence, and deleted at the start of the next Smart Improvement run or when you delete interaction data.
+WhisperShortcut no longer keeps copies of dictation audio. Versions before November 2026 copied recent dictations into `UserContext/audio-samples/` for the since removed Smart Improvement feature; the app now deletes each of those files 30 days after it was recorded (the retention those versions promised) and removes the folder once it is empty. **Delete context data** removes them at once.
 
 ### Chat Sessions
 
@@ -55,11 +55,16 @@ Live Meeting transcripts are saved locally under the app data folder, usually in
 
 ### User Context And Interaction Logs
 
-If **Save usage data** is enabled, WhisperShortcut stores local JSONL interaction logs under `UserContext/`. These logs may include mode names, timestamps, result snippets, prompt-related history, and optional references to short-lived dictation audio samples used to improve system prompts, user context, and dictation glossary suggestions.
+If **Save usage data** is enabled (Settings → Privacy & Permissions, off by default), WhisperShortcut stores local JSONL interaction logs under `UserContext/`. Each row holds the mode, a timestamp, what you dictated or typed and what the app produced, the models used, and since November 2026 also the name and bundle id of the app you dictated into, the recording length, the dictation language setting, and a short hash identifying which version of the system prompt was in effect. A second, content-free stream (`signals-*.jsonl`) records what you did next — pasted, dictated again, retried a prompt or chat — as timings and counts, never text.
 
-Interaction logs are used when you run **Generate with AI**, **Improve from usage**, or related Smart Improvement features. The app reads recent local logs, builds a summary payload, and sends that payload to Google Gemini only when you initiate or enable that improvement flow.
+Nothing reads these logs on its own. They are read only when you ask:
 
-Log retention and cleanup are managed by the app. You can delete interaction data from Settings or by removing the `UserContext/` folder manually.
+- the in-app **Chat** reads them with its `read_recent_interactions` tool when you ask it why something went wrong or to tune the app; what it reads is sent to the chat model you selected, like any message you send it;
+- an **AI app** you connected over MCP (Settings → Claude & AI Apps) reads them with `get_recent_interactions`, only if you also turned on "Let AI apps read my recent dictations"; what it reads goes to that app and its model provider.
+
+Earlier versions (until November 2026) had a Smart Improvement feature that sent samples of these logs to your Smart Improvement model on a schedule; it has been removed.
+
+Interaction logs older than 90 days and outcome signals older than 180 days are deleted automatically. You can delete all interaction data from Settings → Privacy & Permissions → **Delete context data**, or by removing the `UserContext/` folder manually.
 
 ## App Data Location
 
@@ -71,7 +76,7 @@ WhisperShortcut uses one canonical local app data path for sandboxed and non-san
 
 This path is used for:
 
-- `UserContext/`: interaction logs, user context, system prompts, prompt history, and short-lived Smart Improvement audio verification samples in `UserContext/audio-samples/`.
+- `UserContext/`: interaction logs and outcome signals, system prompts, prompt history, and the Writing Style profile and examples (plus, from versions before November 2026, dictation audio in `UserContext/audio-samples/` until it ages out).
 - `Meetings/`: saved live meeting transcripts.
 - `WhisperKit/`: downloaded local Whisper models.
 - Chat/session data and other app support files.
@@ -93,7 +98,8 @@ When you use Gemini-powered cloud features, WhisperShortcut sends the minimum ne
 - Text for TTS audio generation.
 - Chat messages, attachments, screenshots, and tool results for Gemini chat.
 - Meeting audio chunks for Live Meeting transcription.
-- Recent interaction summaries for Smart Improvement when you run those features.
+- Rows from your usage log, when you ask a Gemini chat model to read it (`read_recent_interactions`).
+- Writing Style examples, when the Writing Style model drafts a profile.
 
 Google's processing and retention are governed by Google's policies and the terms for the Gemini API.
 
@@ -172,7 +178,7 @@ It never contains transcripts, spoken instructions, model replies, selected text
 - Personal information for analytics or tracking.
 - Usage statistics without your consent — they are off unless you turn them on, and they never contain content or an identifier.
 - Crash reports operated by us.
-- Audio recordings beyond temporary processing and the short-lived Smart Improvement verification samples described above.
+- Audio recordings beyond temporary processing (and the legacy samples described above until they age out).
 - Clipboard content except when needed for a user-triggered feature.
 - Email, calendar, task, Trello board, list, or card data except when you explicitly use connected tools.
 
@@ -186,7 +192,7 @@ We apply the following safeguards to sensitive data, including API keys, OAuth t
 - **Least-privilege access:** WhisperShortcut requests only the minimum OAuth scopes required for the features you enable: `calendar.events`, `tasks`, and `gmail.readonly`. No additional scopes are requested in the background.
 - **User-controlled access and revocation:** You can disconnect your Google account at any time from in-app Settings or with the `/disconnect-google` chat command, which deletes the locally stored OAuth tokens. You can additionally revoke the app's access at any time in your [Google Account permissions](https://myaccount.google.com/permissions).
 - **User-controlled Trello revocation:** You can disconnect Trello at any time from in-app Settings or with the `/disconnect-trello` chat command. You can also revoke the token in Trello/Atlassian account settings.
-- **Retention and deletion controls:** Temporary audio files are deleted after processing. Smart Improvement audio verification samples are capped and deleted at the start of the next Smart Improvement run or when interaction data is deleted. Interaction logs older than 90 days are deleted automatically; only the last 30 days are read for Smart Improvement features. You can delete API keys, chat sessions, meeting transcripts, and interaction data at any time from in-app Settings.
+- **Retention and deletion controls:** Temporary audio files are deleted after processing. Legacy dictation audio samples from versions before November 2026 are deleted 30 days after recording or when interaction data is deleted. Interaction logs older than 90 days and content-free outcome signals older than 180 days are deleted automatically; the logs are read only when you ask the Chat or a connected AI app to. You can delete API keys, chat sessions, meeting transcripts, and interaction data at any time from in-app Settings.
 - **No server-side storage of user content by WhisperShortcut:** WhisperShortcut does not operate a backend that receives, stores, or processes user content, API keys, or OAuth tokens. (The optional usage statistics server receives anonymous counts only.) All credentials and user data remain on your device or are sent directly from your device to the third-party API provider you configured.
 - **No sale of personal data:** We do not sell, rent, or trade personal data to third parties.
 - **AI/ML training disclosure for Workspace APIs:** Data accessed from Google Workspace APIs (Calendar, Tasks, Gmail) through this app is used solely to provide the user-requested feature in that session and is **not used by WhisperShortcut to develop, improve, or train generalized AI/ML models**. Workspace data is not shared with third parties for AI/ML training. When such data is included in a request to a configured cloud AI provider (e.g. Google Gemini using your own API key) to produce the response you asked for, that provider's own terms and policies apply to its handling.
@@ -196,7 +202,7 @@ We apply the following safeguards to sensitive data, including API keys, OAuth t
 - Remove API keys in Settings.
 - Disconnect Google in Settings or with `/disconnect-google`.
 - Disconnect Trello in Settings or with `/disconnect-trello`.
-- Disable **Save usage data** in Smart Improvement settings.
+- Disable **Save usage data** in Settings → Privacy & Permissions.
 - Turn **Share anonymous usage statistics** on or off in Settings → Privacy & Permissions (off by default).
 - Delete interaction data from Settings.
 - Delete meeting transcripts from the `Meetings/` folder.

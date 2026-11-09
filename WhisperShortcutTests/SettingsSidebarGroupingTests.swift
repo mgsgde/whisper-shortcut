@@ -47,7 +47,7 @@ struct SettingsSidebarGroupingTests {
     #expect(
       SettingsTab.allCases.map(\.rawValue) == [
         "General", "Accounts", "Dictate", "Dictate Prompt", "Templates", "Screenshot",
-        "Read Aloud", "Chat", "Meetings", "Smart Improvement", "Claude & AI Apps",
+        "Read Aloud", "Chat", "Meetings", "Claude & AI Apps",
         "Permissions & Privacy", "About",
       ])
   }
