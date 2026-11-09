@@ -296,6 +296,17 @@ final class OutputRouteTests: XCTestCase {
     XCTAssertFalse(
       OutputRoute.isLikelySpeaker(transportType: kAudioDeviceTransportTypeUSB, dataSource: nil))
   }
+
+  func testRebuildFailureIsNotAPermissionProblemAndRetriesThreeTimes() {
+    struct Boom: Error {}
+    XCTAssertFalse(SystemAudioCaptureError.suggestsMissingPermission(SystemAudioCaptureError.rebuildFailed(underlying: Boom())))
+    XCTAssertTrue(SystemAudioCaptureError.suggestsMissingPermission(Boom()))
+    XCTAssertTrue(SystemAudioCaptureError.suggestsMissingPermission(NSError(domain: "SystemAudioCapture", code: 1)))
+    XCTAssertEqual(SystemAudioCaptureError.rebuildRetryDelay(afterFailures: 0), 0.5)
+    XCTAssertEqual(SystemAudioCaptureError.rebuildRetryDelay(afterFailures: 1), 1)
+    XCTAssertEqual(SystemAudioCaptureError.rebuildRetryDelay(afterFailures: 2), 2)
+    XCTAssertNil(SystemAudioCaptureError.rebuildRetryDelay(afterFailures: 3))
+  }
 }
 
 // MARK: - SystemAudioPermissionHeuristic

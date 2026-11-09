@@ -392,6 +392,26 @@ struct SystemAudioPermissionHeuristic {
 /// plays out loud, except this app's own output. Main-thread only; the IO callback runs on its
 /// own dedicated queue and only touches pre-allocated scratch memory and the thread-safe
 /// `SystemAudioBuffer`.
+/// Why `SystemAudioCapture.onStartFailed` fired, when the cause is not the first start.
+enum SystemAudioCaptureError: Error {
+  /// The tap was running and a device change (Bluetooth connect/drop) made the rebuild fail even
+  /// after the retries. Not a permission problem: the next route change may try again.
+  case rebuildFailed(underlying: Error)
+
+  /// Whether the "System Audio Is Off … turn it on in Privacy & Security" alert fits this failure.
+  /// A failed rebuild after a device change says nothing about the permission.
+  static func suggestsMissingPermission(_ error: Error) -> Bool {
+    !(error is SystemAudioCaptureError)
+  }
+
+  /// Seconds to wait before rebuild retry number `attempt + 1` (0-based `attempt` = failures so
+  /// far); nil once the retries are used up.
+  static func rebuildRetryDelay(afterFailures attempt: Int) -> TimeInterval? {
+    let delays: [TimeInterval] = [0.5, 1, 2]
+    return attempt >= 0 && attempt < delays.count ? delays[attempt] : nil
+  }
+}
+
 final class SystemAudioCapture {
 
   let buffer = SystemAudioBuffer()
@@ -453,6 +473,10 @@ final class SystemAudioCapture {
   private var formatDebounceWork: DispatchWorkItem?
   private var formatGeneration = 0
   private static let formatDebounce: TimeInterval = 0.5
+  /// Debounce for the default-output-device listener itself (a Bluetooth connect fires several
+  /// notifications) and the pending retry of a failed rebuild.
+  private var defaultOutputDebounceWork: DispatchWorkItem?
+  private var rebuildRetryWork: DispatchWorkItem?
   private var timer: Timer?
   private var heuristic = SystemAudioPermissionHeuristic()
   private var permissionSuspected = false
@@ -507,7 +531,7 @@ final class SystemAudioCapture {
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain)
     let listenerBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-      self?.handleDefaultOutputDeviceChanged()
+      self?.scheduleDefaultOutputRestart()
     }
     let listenerStatus = AudioObjectAddPropertyListenerBlock(
       AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, listenerBlock)
@@ -594,6 +618,10 @@ final class SystemAudioCapture {
     formatGeneration += 1
     formatDebounceWork?.cancel()
     formatDebounceWork = nil
+    defaultOutputDebounceWork?.cancel()
+    defaultOutputDebounceWork = nil
+    rebuildRetryWork?.cancel()
+    rebuildRetryWork = nil
     restartPending = false
 
     controlQueue.async { [weak self] in
@@ -913,9 +941,27 @@ final class SystemAudioCapture {
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.formatDebounce, execute: work)
   }
 
-  private func handleDefaultOutputDeviceChanged() {
+  /// The default-output listener fires several times for one Bluetooth connect or drop; one
+  /// rebuild follows the burst, like the format listeners.
+  private func scheduleDefaultOutputRestart() {
     dispatchPrecondition(condition: .onQueue(.main))
     guard isRunning else { return }
+    defaultOutputDebounceWork?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.isRunning else { return }
+      self.handleDefaultOutputDeviceChanged()
+    }
+    defaultOutputDebounceWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.formatDebounce, execute: work)
+  }
+
+  /// `attempt` counts failed rebuilds in a row for this device change.
+  private func handleDefaultOutputDeviceChanged(attempt: Int = 0) {
+    dispatchPrecondition(condition: .onQueue(.main))
+    guard isRunning else { return }
+    // A newer change supersedes a retry that is still waiting.
+    rebuildRetryWork?.cancel()
+    rebuildRetryWork = nil
     // The listeners follow the device the tap is about to be built for.
     moveFormatListeners(to: OutputRoute.readDefaultOutputDevice())
     guard !restartInProgress else {
@@ -949,8 +995,21 @@ final class SystemAudioCapture {
         // Already logged inside setUpCaptureGraph().
         DispatchQueue.main.async {
           self.restartInProgress = false
+          guard gen == self.generation, self.isRunning else { return }
+          // The device is often half-gone for a moment during a Bluetooth connect or drop.
+          if let delay = SystemAudioCaptureError.rebuildRetryDelay(afterFailures: attempt) {
+            DebugLogger.logWarning(
+              "SYSTEM-AUDIO: rebuild after a device change failed (attempt \(attempt + 1)), retrying in \(delay)s")
+            let work = DispatchWorkItem { [weak self] in
+              guard let self, self.isRunning, gen == self.generation else { return }
+              self.handleDefaultOutputDeviceChanged(attempt: attempt + 1)
+            }
+            self.rebuildRetryWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            return
+          }
           self.restartPending = false
-          self.failIfCurrent(generation: gen, error: error)
+          self.failIfCurrent(generation: gen, error: SystemAudioCaptureError.rebuildFailed(underlying: error))
         }
       }
     }
