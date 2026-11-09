@@ -209,6 +209,8 @@ struct WelcomeView: View {
       Button(nextButtonTitle, action: advance)
         .buttonStyle(.borderedProminent)
         .disabled(!canAdvance)
+        // A greyed-out button alone does not say why; the orange line above the footer does.
+        .help(canAdvance ? "" : String(localized: "Finish this step first — the orange note above says what is missing."))
         .pointerCursorOnHover()
     }
     .padding(.horizontal, 40)

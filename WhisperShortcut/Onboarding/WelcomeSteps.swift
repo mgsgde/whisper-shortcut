@@ -133,6 +133,8 @@ struct WelcomeDictationSetupStep: View {
   @Binding var choice: DictationChoice?
   @ObservedObject var setup: OnboardingSetupState
   @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
+  /// Re-renders the status line with the download's progress.
+  @ObservedObject private var modelManager = ModelManager.shared
   /// Shown and changeable under Offline, so the language the app just picked from the Mac's is
   /// visible right where it was set (`DictationLanguagePreselect`).
   @AppStorage(UserDefaultsKeys.whisperLanguage) private var dictationLanguage: WhisperLanguage =
@@ -414,7 +416,13 @@ struct WelcomeDictationSetupStep: View {
   private var pendingHint: LocalizedStringKey {
     switch choice {
     case nil: return "Pick Offline or Cloud to continue."
-    case .offline: return "Download the offline model to continue."
+    case .offline:
+      let model = OfflineModelType.mostAccurate
+      if modelManager.downloadingModels.contains(model) {
+        let percent = Int((modelManager.downloadProgress[model] ?? 0) * 100)
+        return "Downloading the offline model (\(percent)%). Continue unlocks when it is done."
+      }
+      return "Download the offline model to continue."
     case .cloud: return "Connect OpenRouter or save a key to continue."
     }
   }
@@ -466,7 +474,7 @@ struct OnboardingOfflineRow: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      OfflineModelDownloadCard(modelType: modelType, onReady: syncReady)
+      OfflineModelDownloadCard(modelType: modelType, onReady: syncReady, startsDownloadOnAppear: true)
       if modelManager.isModelAvailable(modelType) { OnboardingOfflinePromptNote() }
     }
   }

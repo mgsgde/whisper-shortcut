@@ -6,6 +6,11 @@ import SwiftUI
 struct OfflineModelDownloadCard: View {
   var modelType: OfflineModelType = OfflineModelType.mostAccurate
   var onReady: (() -> Void)? = nil
+  /// Start the download as soon as the card appears. Onboarding sets this: the card shows only
+  /// after the user picked "Offline", whose card already says "One-time download", so a second
+  /// click on a Download button was a step people missed — they sat in front of a greyed-out
+  /// Continue without seeing why (Magnus, 2026-11-09).
+  var startsDownloadOnAppear = false
 
   @ObservedObject private var modelManager = ModelManager.shared
   @State private var downloadError: String?
@@ -76,7 +81,10 @@ struct OfflineModelDownloadCard: View {
             systemImage: "arrow.down.circle")
             .font(.callout)
         }
-        .buttonStyle(.bordered)
+        // Reached only when nothing is running: before the first click, or after a cancel or a
+        // failed download. In onboarding it is the one thing standing before Continue, so it
+        // gets the prominent style instead of looking like an optional extra.
+        .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
       }
 
@@ -90,7 +98,10 @@ struct OfflineModelDownloadCard: View {
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
     .cardChrome()
-    .onAppear(perform: notifyIfReady)
+    .onAppear {
+      notifyIfReady()
+      if startsDownloadOnAppear && !isAvailable && !isDownloading { download() }
+    }
     .onChange(of: isAvailable) { _, available in
       if available { notifyIfReady() }
     }
