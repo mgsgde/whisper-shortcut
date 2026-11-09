@@ -117,9 +117,14 @@ enum MeetingAudioBacklog {
   static func merge(_ recovered: [LiveMeetingChunk], into existing: [LiveMeetingChunk])
     -> [LiveMeetingChunk]
   {
+    // A recovered chunk identical to an existing one (same start, same text) is the same audio
+    // spliced twice; keep one. Different text at the same second is kept: chunks can share a second.
+    let fresh = recovered.filter { chunk in
+      !existing.contains { $0.startTime == chunk.startTime && $0.text == chunk.text }
+    }
     // Stable on equal timestamps: a recovered chunk goes before an existing one that shares its
     // second, since the recovered audio started at or before it.
-    (recovered.map { (0, $0) } + existing.map { (1, $0) })
+    (fresh.map { (0, $0) } + existing.map { (1, $0) })
       .enumerated()
       .sorted { a, b in
         if a.element.1.startTime != b.element.1.startTime {

@@ -285,7 +285,7 @@ class LiveMeetingRecorder: NSObject {
     }
     undeliveredChunks = [:]
 
-    guard let url else { return kept }
+    guard let url, !kept.contains(where: { $0.url == url }) else { return kept }
     let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64 ?? 0
     guard size > 0, age >= 1 else {
       try? FileManager.default.removeItem(at: url)
@@ -529,6 +529,7 @@ class LiveMeetingRecorder: NSObject {
       // Mark it final because no further chunks will come (session torn down).
       if let url = completedRecordingURL {
         undeliveredChunks[url] = (completedChunkStartTime, chunkWasSilent)
+        activeRecordingURL = nil
         // Delivery waits for stop() — it is what closes the WAV, and the delegate reads
         // the file as soon as it is handed the URL.
         audioQueue.async { [weak self] in
@@ -611,6 +612,8 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
         return
       }
       self.finalRecorder = nil
+      // This chunk is now the delegate's (or gone); a termination must not keep it a second time.
+      if self.activeRecordingURL == url { self.activeRecordingURL = nil }
       var deliver = false
       if flag {
         let fileSize =
