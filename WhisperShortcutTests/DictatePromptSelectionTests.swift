@@ -215,6 +215,36 @@ struct DictatePromptSelectionTests {
     #expect(AppConstants.promptModeOutputRule.contains("carry out a spoken request instead of echoing it"))
   }
 
+  @Test("Poll tick: an own-write restore or an editor line copy is not a selection")
+  func pollTickRejectsOwnWriteAndEditorLine() {
+    let marker = #"{"isFromEmptySelection":true}"#
+    // The previous paste's delayed restore bumps the count and puts the old clipboard back.
+    #expect(DictatePromptSelectionDecision.classifyPollTick(
+      changeCountBefore: 5, changeCountAfter: 6, lastOwnWriteChangeCount: 6,
+      string: "previous note", customData: nil, vscodeEditorData: marker) == .pending)
+    // Count moved, but the source app has not exposed a string yet — keep polling.
+    #expect(DictatePromptSelectionDecision.classifyPollTick(
+      changeCountBefore: 5, changeCountAfter: 6, lastOwnWriteChangeCount: nil,
+      string: nil, customData: nil, vscodeEditorData: marker) == .pending)
+    // ⌘C copied nothing: the pasteboard still holds whatever was copied last.
+    #expect(DictatePromptSelectionDecision.classifyPollTick(
+      changeCountBefore: 5, changeCountAfter: 5, lastOwnWriteChangeCount: nil,
+      string: "stale", customData: nil, vscodeEditorData: nil) == .pending)
+    #expect(DictatePromptSelectionDecision.classifyPollTick(
+      changeCountBefore: 5, changeCountAfter: 6, lastOwnWriteChangeCount: 4,
+      string: "Befund", customData: nil, vscodeEditorData: marker) == .editorLineCopy)
+    #expect(DictatePromptSelectionDecision.classifyPollTick(
+      changeCountBefore: 5, changeCountAfter: 6, lastOwnWriteChangeCount: 4,
+      string: "Befund", customData: marker.data(using: .utf8), vscodeEditorData: nil) == .editorLineCopy)
+    #expect(DictatePromptSelectionDecision.classifyPollTick(
+      changeCountBefore: 5, changeCountAfter: 6, lastOwnWriteChangeCount: nil,
+      string: "Befund", customData: nil, vscodeEditorData: nil) == .selected("Befund"))
+    #expect(DictatePromptSelectionDecision.classifyPollTick(
+      changeCountBefore: 5, changeCountAfter: 6, lastOwnWriteChangeCount: 3,
+      string: "Befund", customData: nil,
+      vscodeEditorData: #"{"isFromEmptySelection":false}"#) == .selected("Befund"))
+  }
+
   @Test("VS Code whole-line copy on an empty selection is not a selection")
   func editorEmptySelectionLineCopyIsDetected() {
     let json = #"{"version":1,"isFromEmptySelection":true,"multicursorText":null,"mode":"plaintext"}"#
