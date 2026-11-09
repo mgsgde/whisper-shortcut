@@ -235,9 +235,8 @@ struct ChatToolHardeningTests {
   // MARK: approval preview
 
   /// What the executor treats as the section's current text (blank falls back to the default).
-  /// The append test uses `dictation`: its default fits the length limit with room for a rule,
-  /// while the dictate_prompt default alone is over it, so on fresh settings (CI) every append
-  /// there is refused and no preview exists.
+  /// The append test uses `dictation`, the section with the shortest default, so a stored user
+  /// prompt near its limit is the least likely to make the append refuse and the preview vanish.
   private func currentDictationText() -> String {
     let stored = SystemPromptsStore.shared.loadSection(.dictation) ?? ""
     return stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
