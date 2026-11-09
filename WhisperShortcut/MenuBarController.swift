@@ -1596,7 +1596,8 @@ class MenuBarController: NSObject {
       isTTSPlaying: ttsPlayback.isPlaying,
       isLiveDictationFinishing: liveDictationSession != nil,
       isOfflineMode: OfflineMode.isEnabled,
-      readAloudRunsOnDevice: ReadAloudPreferences.model.provider.isOnDevice,
+      // Name predates the own server: it means "allowed in Offline Mode" (a local own server counts).
+      readAloudRunsOnDevice: ReadAloudPreferences.model.provider.allowedInOfflineMode,
       hasTranscriptionCredential: TranscriptionModel.loadSelected().hasRequiredCredential,
       hasPromptCredential: Self.selectedPromptModel().hasRequiredCredentialForDictatePrompt,
       hasImprovementCredential: Self.selectedImprovementModel()

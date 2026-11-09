@@ -37,6 +37,34 @@ done
 #
 # Hermetic runs skip this on purpose: CI has no .env, and live-network suites
 # are filtered out of WhisperShortcut-Hermetic.xctestplan.
+# The test host is a new binary on every build, so a keychain read in it can never be trusted by
+# the legacy item's ACL; KeychainManager makes such lookups fail instead of prompting. `.env` is
+# gitignored, so a fresh git worktree starts without it, and KeychainManager.dotEnvValues reads the
+# checkout's own `.env` (path from #filePath). Copy (never symlink, never overwrite) the main
+# checkout's `.env` so live tests still find their keys. Candidates: the git main worktree, and for
+# a submodule inside a parent worktree (its own repo, so git names itself main) the parent's
+# main-checkout `whisper-shortcut/.env`.
+if [[ "$HERMETIC_RUN" != true && "${CI:-}" != true && ! -e "$PROJECT_DIR/.env" ]]; then
+  MAIN_WT=$(git -C "$PROJECT_DIR" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')
+  # In a submodule git lists its gitdir (.git/modules/...) as "main"; core.worktree (relative to
+  # that gitdir) names the real checkout.
+  CORE_WT=$(git -C "$MAIN_WT" config --get core.worktree 2>/dev/null || true)
+  if [[ -n "$MAIN_WT" && -n "$CORE_WT" ]]; then
+    MAIN_WT=$(cd "$MAIN_WT" && cd "$CORE_WT" && pwd) || true
+  fi
+  PARENT_ROOT="${PROJECT_DIR%%/.claude/worktrees/*}"
+  CANDIDATES=("$MAIN_WT")
+  [[ "$PARENT_ROOT" != "$PROJECT_DIR" ]] && CANDIDATES+=("$PARENT_ROOT/whisper-shortcut")
+  for cand in "${CANDIDATES[@]}"; do
+    if [[ -n "$cand" && "$cand" != "$PROJECT_DIR" && -f "$cand/.env" ]]; then
+      cp -p "$cand/.env" "$PROJECT_DIR/.env"
+      chmod 600 "$PROJECT_DIR/.env"
+      echo "🔑 Copied .env from the main checkout so live tests find their keys without the keychain"
+      break
+    fi
+  done
+fi
+
 ENV_FILE="$PROJECT_DIR/.env"
 if [[ "$HERMETIC_RUN" == true ]]; then
   export HERMETIC=1
@@ -45,7 +73,7 @@ elif [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   set -a; source "$ENV_FILE"; set +a
 else
-  echo "ℹ️  No .env at repo root — tests will fall back to the Keychain (may prompt)."
+  echo "ℹ️  No .env at repo root — live tests that need keys will skip (test hosts never read the Keychain)."
 fi
 
 SCHEME="WhisperShortcut-AppStore"

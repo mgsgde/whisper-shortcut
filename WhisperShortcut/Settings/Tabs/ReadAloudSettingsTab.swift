@@ -21,9 +21,13 @@ struct ReadAloudSettingsTab: View {
 
       SpacedSectionDivider()
 
-      voiceSection
+      // The own server has no in-app voice catalogue: its voice id is a field in the shared
+      // own-server section below.
+      if viewModel.data.selectedReadAloudModel.provider != .custom {
+        voiceSection
 
-      SpacedSectionDivider()
+        SpacedSectionDivider()
+      }
 
       playbackSpeedSection
 
@@ -57,6 +61,10 @@ struct ReadAloudSettingsTab: View {
           Task { await viewModel.saveSettings() }
         }
       )
+
+      if viewModel.data.selectedReadAloudModel == .ownServerTTS {
+        OwnServerEndpointSection(route: .readAloud)
+      }
 
       // The Qwen3 voice models are multi-gigabyte downloads, so they get their own row here
       // rather than being fetched silently on the first Read Aloud — a menu-bar app must not
