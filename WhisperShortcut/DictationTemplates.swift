@@ -81,6 +81,32 @@ struct DictationTemplate: Codable, Equatable, Identifiable {
 /// changes. Absent or undecodable data is no templates, which is today's behaviour for everyone
 /// who has not saved one.
 enum DictationTemplateStore {
+  /// The part of a template save that decides which global hotkeys exist: each template's id,
+  /// whether it is usable, and its shortcut, plus the generic picker shortcut. Editing a name or
+  /// the instructions leaves it unchanged, so `Shortcuts` does not re-register every hotkey on
+  /// each keystroke in Settings.
+  struct ShortcutFingerprint: Equatable {
+    struct Entry: Equatable {
+      let id: UUID
+      let isUsable: Bool
+      let shortcut: ShortcutDefinition?
+    }
+    let entries: [Entry]
+    let picker: ShortcutDefinition?
+  }
+
+  static func shortcutFingerprint(
+    templates: [DictationTemplate], picker: ShortcutDefinition?
+  ) -> ShortcutFingerprint {
+    ShortcutFingerprint(
+      entries: templates.map { .init(id: $0.id, isUsable: $0.isUsable, shortcut: $0.shortcut) },
+      picker: picker)
+  }
+
+  static func currentShortcutFingerprint() -> ShortcutFingerprint {
+    shortcutFingerprint(templates: load(), picker: loadPickerShortcut())
+  }
+
   /// Missing or undecodable data is no templates: today's behaviour, and a corrupt value cannot
   /// wedge Dictate Prompt.
   static func load() -> [DictationTemplate] {

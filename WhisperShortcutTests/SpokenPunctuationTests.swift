@@ -529,4 +529,42 @@ struct SpokenPunctuationBracketTests {
     #expect(SpokenPunctuation.apply(to: spoken, mode: .spokenOnly) == written)
     #expect(SpokenPunctuation.apply(to: "Befund Doppel-Punkt Druckschmerz", mode: .spokenOnly) == written)
   }
+
+  // MARK: Round 19 false positives (R194)
+
+  @Test("Automatic mode: \"Klammer zu\" needs an open parenthesis before it")
+  func closingParenNeedsOpenParen() {
+    #expect(SpokenPunctuation.apply(to: "um die Klammer zu entfernen") == "um die Klammer zu entfernen")
+    #expect(SpokenPunctuation.apply(to: "Die Klammer zu lösen war schwer") == "Die Klammer zu lösen war schwer")
+    #expect(SpokenPunctuation.apply(to: "Klammer auf Test Klammer zu") == "(Test)")
+    // Spoken-only decodes piece by piece: a lone closing half still converts there.
+    #expect(SpokenPunctuation.apply(to: "Ramipril Klammer zu", mode: .spokenOnly) == "Ramipril)")
+  }
+
+  @Test("\"neue Zeile\" after an article is the noun phrase")
+  func newLineAfterArticleIsNoun() {
+    let text = "Füge eine neue Zeile in der Tabelle ein"
+    #expect(SpokenPunctuation.apply(to: text) == text)
+    #expect(SpokenPunctuation.apply(to: text, mode: .spokenOnly) == text)
+    #expect(SpokenPunctuation.apply(to: "Befund neue Zeile Inspektion") == "Befund\nInspektion")
+  }
+
+  @Test("\"Doppelpunktsetzung\" is a compound noun, not a colon")
+  func doppelpunktCompound() {
+    #expect(SpokenPunctuation.apply(to: "Befund Doppelpunktsetzung") == "Befund Doppelpunktsetzung")
+  }
+
+  @Test("Spoken-only: \"um Punkt acht Uhr\" is a time")
+  func punktAfterUmIsNoun() {
+    #expect(
+      SpokenPunctuation.apply(to: "Er kam um Punkt acht Uhr", mode: .spokenOnly)
+        == "Er kam um Punkt acht Uhr")
+  }
+
+  @Test("A written ellipsis survives; duplicate marks still collapse")
+  func ellipsisKept() {
+    #expect(SpokenPunctuation.apply(to: "usw... und so Punkt", mode: .spokenOnly).hasPrefix("usw..."))
+    #expect(SpokenPunctuation.apply(to: "usw\u{2026} und so Punkt", mode: .spokenOnly).hasPrefix("usw\u{2026}"))
+    #expect(SpokenPunctuation.apply(to: "vor. Punkt Ende", mode: .spokenOnly) == "vor. Ende")
+  }
 }

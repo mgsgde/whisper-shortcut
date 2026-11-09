@@ -53,9 +53,24 @@ enum SpokenPunctuation {
   private static let ruleSets: [[Rule]] = (0..<4).map {
     makeRules(timed: $0 & 2 != 0, parenAlways: $0 & 1 != 0)
   }
+  /// Automatic mode: "Klammer zu" is a command only after an unmatched "(" ("um die Klammer zu
+  /// entfernen" is a sentence). Spoken-only keeps it unguarded: Dictate Live decodes piece by
+  /// piece, and the closing half can arrive in a piece that does not hold its "(".
+  private static let automaticRules = makeRules(timed: false, parenAlways: false, requiresOpenParen: true)
 
-  private static func makeRules(timed: Bool, parenAlways: Bool) -> [Rule] {
+  /// Lookbehind: a "(" earlier in the text with no ")" in between.
+  private static let openParenBefore = #"(?<=\([^()]{0,2000})"#
+  /// "neue Zeile" right after an article or determiner is the noun phrase ("eine neue Zeile in
+  /// der Tabelle"), not the command. Placed directly before `\bneu…`.
+  private static let notAfterDeterminer =
+    #"(?<!\b(?:eine|einer|einen|einem|die|der|den|dem|jede|jeder|jeden|keine|keiner|diese|dieser|ihre|seine|meine|deine|unsere)[ \t])"#
+
+  private static func makeRules(
+    timed: Bool, parenAlways: Bool, requiresOpenParen: Bool = false
+  ) -> [Rule] {
     let openingParen = parenAlways ? openingParenPlain : openingParenGuarded
+    let openGuard = requiresOpenParen ? openParenBefore : ""
+    let zeile = notAfterDeterminer
     return [
     // The colon is already there — a model reply that kept the spoken word after its own heading
     // ("Befund: Doppelpunkt Druckschmerz", "Anamnese:\nDoppelpunkt Patientin"). Drop the word only.
@@ -68,15 +83,15 @@ enum SpokenPunctuation {
     // Parakeet sometimes glues the command onto the next word ("Befund Doppelpunktdruckschmerz").
     // The following word's first letter is upper-cased afterwards (`capitalizeAfterGluedColon`).
     // Inflections of the noun itself ("Doppelpunkte", "-en", "-es", "-s") are left alone.
-    rule(#"[ \t,.;]*\bdoppel[ \t-]?punkt(?!(?:e|en|es|s)\b)(?=\p{L})"#, ": \u{1}"),
+    rule(#"[ \t,.;]*\bdoppel[ \t-]?punkt(?!(?:e|en|es|s)\b|setzung|zeichen|taste|symbol)(?=\p{L})"#, ": \u{1}"),
     // "(" keeps one space before it and none after, except at the start of the text or a line,
     // where there is no space before it either. Stray ASR commas and periods around the words go.
     rule(#"(^|\n)[ \t,.;]*\#(openingParen)[ \t,.;]*"#, "$1("),
     rule(#"[ \t,.;]*\#(openingParen)[ \t,.;]*"#, " ("),
     // ")" has no space before it. A comma the ASR put after it goes (one space stays before the
     // next word); a period after it stays ("Anlage Klammer zu."). The period and comma before it go.
-    rule(#"[ \t,.;]*\#(closingParen)[ \t]*,[ \t]*"#, ") "),
-    rule(#"[ \t,.;]*\#(closingParen)"#, ")"),
+    rule(#"\#(openGuard)[ \t,.;]*\#(closingParen)[ \t]*,[ \t]*"#, ") "),
+    rule(#"\#(openGuard)[ \t,.;]*\#(closingParen)"#, ")"),
     // A comma before a spoken paragraph break is the ASR marking the pause; the sentence ended.
     // No capital marker: this stays ".\n\n", and the next word keeps the case it was spoken with.
     // "Neuerabsatz" / "Neuenabsatz" are the glued forms (no space).
@@ -87,7 +102,7 @@ enum SpokenPunctuation {
     // starts the new paragraph or line, so it gets a capital (marker, `capitalizeAfterGluedColon`).
     // "Neuzeile" / "Neuezeile" are "neue Zeile" glued into one word. "Neuzeilen" does not match.
     rule(#"(?<=[.!?])[ \t]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
-    rule(#"(?<=[.!?])[ \t]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
+    rule(#"(?<=[.!?])[ \t]*\#(zeile)\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
     // Paragraph break without a sentence mark before it. The next word still starts the new
     // paragraph, so it gets a capital too. A comma before "neuer Absatz" never reaches this rule —
     // the rule above already turned it into a period — so the comma in the prefix only restores
@@ -102,17 +117,17 @@ enum SpokenPunctuation {
     // With token timing (`timed`) a comma is the speaker's ("Müller, neue Zeile vielen Dank" →
     // "Müller,\nvielen Dank"), so it stays in front of the break.
     timed
-      ? rule(#"[ \t]*,[ \t,;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, ",\n")
-      : rule(#"[ \t]*[,;][ \t,;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n"),
+      ? rule(#"[ \t]*,[ \t,;]*\#(zeile)\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, ",\n")
+      : rule(#"[ \t]*[,;][ \t,;]*\#(zeile)\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n"),
     // Line break without a sentence mark or a pause comma before it. The next word starts the
     // new line, so it gets a capital.
-    rule(#"[ \t;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
+    rule(#"[ \t;]*\#(zeile)\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
     // Parakeet glues this one onto the next word too ("neue Zeileinspektion", "Neuzeileinspektion",
     // live capture 2026-10-20). A comma or semicolon before the glued command is the same pause
     // and is eaten; the split-off word still gets a capital. "neue Zeilen…" is left alone: the
     // "n" is the plural or a compound ("Zeilenumbrüche"), said literally. "Neue Teile" is a
     // different phrase and does not match.
-    rule(#"[ \t,;]*\bneu(?:e[ \t]*)?zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
+    rule(#"[ \t,;]*\#(zeile)\bneu(?:e[ \t]*)?zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
     ]
   }
 
@@ -170,7 +185,7 @@ enum SpokenPunctuation {
     // "vgl. Punkt drei"); otherwise it is the command ("entlassen Punkt zwei Wochen später" →
     // "entlassen. Zwei Wochen später").
     rule(
-      #"[ \t,;]*(?<!\b(?:zu|unter|im|in|der|den|dem|des|einen|einem|ein|jeden|letzten|wichtigste|wichtigsten)[ \t])\bpunkt\b(?!(?<=\b(?:siehe|vgl|auf|an|am|bei|von|nach|bis|ab|zum|zur|gemäß|laut)[ \t]punkt)[ \t]*(?:\d|(?:\#(punktNumberWords))\b))[ \t,.;]*"#,
+      #"[ \t,;]*(?<!\b(?:zu|um|unter|im|in|der|den|dem|des|einen|einem|ein|jeden|letzten|wichtigste|wichtigsten)[ \t])\bpunkt\b(?!(?<=\b(?:siehe|vgl|auf|an|am|bei|von|nach|bis|ab|um|zum|zur|gemäß|laut)[ \t]punkt)[ \t]*(?:\d|(?:\#(punktNumberWords))\b))[ \t,.;]*"#,
       ". \u{1}"),
     // After a particle that is also a verb prefix ("morgens ein Punkt", "den Befund zu Punkt",
     // "wieder in Punkt") the word is the command, unless a number or a noun follows ("ein Punkt
@@ -312,6 +327,22 @@ enum SpokenPunctuation {
   /// counts as whitespace between them, so it is not what separates two marks, and the marker
   /// after the last copy is left in place for `capitalizeAfterGluedColon` ("Ende. Weiter").
   private static let repeatedMarks = rule("([.,!?])(?:[ \t\u{1}]*\\1)+", "$1")
+  /// `repeatedMarks`, except for an ellipsis the speaker or model wrote: three or more dots with
+  /// nothing between them ("usw... und so") stay as they are. Duplicates the rules produce
+  /// (". .", ",,") still collapse.
+  private static func collapsingRepeatedMarks(_ text: String) -> String {
+    let ns = text as NSString
+    var result = text
+    let matches = repeatedMarks.regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+    for match in matches.reversed() {
+      let run = ns.substring(with: match.range)
+      if run.count >= 3, run.allSatisfy({ $0 == "." }) { continue }
+      guard let range = Range(match.range, in: result) else { continue }
+      result.replaceSubrange(range, with: String(run.first ?? "."))
+    }
+    return result
+  }
+
   /// A spoken "Komma" becomes a comma only in the spoken-only rules, after the break was inserted
   /// ("Komma neue Zeile vielen" → ",\n\u{1}vielen"). The plain break marked the next word for a
   /// capital; drop that marker so it keeps the case it was spoken with. A model comma before
@@ -402,7 +433,7 @@ enum SpokenPunctuation {
       let parenAlways = regexMatches(parenPairRegex, result)
       activeRules = ruleSets[(timedMarks ? 2 : 0) + (parenAlways ? 1 : 0)] + spokenOnlyRules
     } else {
-      activeRules = ruleSets[0]
+      activeRules = automaticRules
     }
     for rule in activeRules {
       let range = NSRange(result.startIndex..., in: result)
@@ -416,9 +447,7 @@ enum SpokenPunctuation {
     // "Komma" has just become a comma in front of the break; drop its marker first so the next
     // word keeps its case. A model comma was already eaten by the break rule.
     if mode == .spokenOnly {
-      let range = NSRange(result.startIndex..., in: result)
-      let collapsed = repeatedMarks.regex.stringByReplacingMatches(
-        in: result, range: range, withTemplate: repeatedMarks.template)
+      let collapsed = collapsingRepeatedMarks(result)
       if collapsed != result {
         result = collapsed
         changed = true

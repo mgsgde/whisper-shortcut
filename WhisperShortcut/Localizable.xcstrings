@@ -10586,12 +10586,12 @@
         }
       }
     },
-    "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and every offline model (Whisper, Parakeet) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary." : {
+    "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter. GPT Transcribe, your own server and every offline model (Whisper, Parakeet, Qwen3) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anweisungen, wie transkribiert werden soll (Füllwörter, Satzzeichen, Formatierung). Genutzt von Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter und eigenen Endpunkten. GPT Transcribe und jedes Offline-Modell (Whisper, Parakeet) ignorieren sie und nehmen ihr Vokabular aus dem Glossar. Einzelne Begriffe gehören nicht hierher, sondern ins Glossar."
+            "value" : "Anweisungen, wie transkribiert werden soll (Füllwörter, Satzzeichen, Formatierung). Genutzt von Gemini, GPT-4o Transcribe, xAI Grok und OpenRouter. GPT Transcribe, dein eigener Server und jedes Offline-Modell (Whisper, Parakeet, Qwen3) ignorieren sie und nehmen ihr Vokabular aus dem Glossar. Einzelne Begriffe gehören nicht hierher, sondern ins Glossar."
           }
         }
       }
@@ -22590,6 +22590,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihr eigener Server"
+          }
+        }
+      }
+    },
+    "Your own server ignores the system prompt below — most self-hosted servers run Whisper, which reads a prompt as text to continue, not as instructions. Your Glossary still reaches it as vocabulary hints." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein eigener Server ignoriert den System-Prompt unten — die meisten selbst gehosteten Server nutzen Whisper, das einen Prompt als fortzusetzenden Text liest, nicht als Anweisung. Dein Glossar erreicht ihn weiterhin als Vokabelhinweise."
           }
         }
       }

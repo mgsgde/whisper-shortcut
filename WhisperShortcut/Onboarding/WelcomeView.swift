@@ -40,15 +40,35 @@ enum WelcomeStep: Int, CaseIterable {
   /// `fnSetupResolved` is `GlobeKeyUsage.fnSetupMayContinue`: the permissions step holds the Fn
   /// toggle, and leaving it with Fn on while macOS still owns the 🌐 key ends in a Fn press that
   /// opens the emoji picker and dictates nothing.
-  func canAdvance(micStatus: PermissionStatus, fnSetupResolved: Bool = true) -> Bool {
+  ///
+  /// `dictationChoice` is the card the user picked. Under Offline the selected model must itself
+  /// be an installed offline model: a saved cloud key must not let Continue through under a card
+  /// that promises the audio never leaves this Mac (`OnboardingDictationGate`).
+  func canAdvance(
+    micStatus: PermissionStatus, fnSetupResolved: Bool = true,
+    dictationChoice: DictationChoice? = nil
+  ) -> Bool {
     switch self {
     case .dictationSetup:
-      return TranscriptionModel.loadSelected().hasRequiredCredential
+      let model = TranscriptionModel.loadSelected()
+      return OnboardingDictationGate.canAdvance(
+        choice: dictationChoice, selectedIsOffline: model.provider == .offline,
+        selectedCanRun: model.hasRequiredCredential)
     case .permissions:
       return (micStatus == .granted || micStatus == .denied) && fnSetupResolved
     case .intro, .tryIt, .done:
       return true
     }
+  }
+}
+
+/// The one rule behind both Continue and the step's status line, kept pure so it can be tested.
+enum OnboardingDictationGate {
+  static func canAdvance(
+    choice: DictationChoice?, selectedIsOffline: Bool, selectedCanRun: Bool
+  ) -> Bool {
+    if choice == .offline { return selectedIsOffline && selectedCanRun }
+    return selectedCanRun
   }
 }
 
@@ -60,11 +80,13 @@ final class OnboardingSetupState: ObservableObject {
   @Published private(set) var dictationCanAdvance: Bool
 
   init() {
-    dictationCanAdvance = WelcomeStep.dictationSetup.canAdvance(micStatus: .notDetermined)
+    dictationCanAdvance = WelcomeStep.dictationSetup.canAdvance(
+      micStatus: .notDetermined, dictationChoice: DictationChoice.inferred())
   }
 
-  func refresh() {
-    dictationCanAdvance = WelcomeStep.dictationSetup.canAdvance(micStatus: .notDetermined)
+  func refresh(choice: DictationChoice?) {
+    dictationCanAdvance = WelcomeStep.dictationSetup.canAdvance(
+      micStatus: .notDetermined, dictationChoice: choice)
   }
 }
 
@@ -244,7 +266,7 @@ struct WelcomeView: View {
   }
 
   private func refreshState() {
-    setup.refresh()
+    setup.refresh(choice: dictationChoice)
     micStatus = PermissionStatusChecker.status(for: .microphone)
     globeKey.refresh()
   }

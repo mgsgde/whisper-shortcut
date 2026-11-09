@@ -198,7 +198,7 @@ struct WelcomeDictationSetupStep: View {
     // The factory default is a cloud model the user may not have a key for; move it now.
     .onAppear {
       if choice == .cloud { OnboardingTranscriptionChoice.preferCloud(onlyIfCurrentCannotRun: true) }
-      setup.refresh()
+      setup.refresh(choice: choice)
     }
   }
 
@@ -207,7 +207,7 @@ struct WelcomeDictationSetupStep: View {
   /// OpenAI default selected and the step stays blocked.
   private func credentialChanged() {
     if choice == .cloud { OnboardingTranscriptionChoice.preferCloud() }
-    setup.refresh()
+    setup.refresh(choice: choice)
   }
 
   // MARK: - Choice cards
@@ -276,14 +276,14 @@ struct WelcomeDictationSetupStep: View {
     if value == .offline, DictationLanguagePreselect.applyForOfflineOnboarding() != nil {
       languageFromMac = true
     }
-    setup.refresh()
+    setup.refresh(choice: value)
   }
 
   // MARK: - Details per choice
 
   @ViewBuilder
   private var offlineDetails: some View {
-    OnboardingOfflineRow(onReady: { setup.refresh() })
+    OnboardingOfflineRow(onReady: { setup.refresh(choice: .offline) })
 
     dictationLanguageRow
 

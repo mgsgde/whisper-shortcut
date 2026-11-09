@@ -103,7 +103,7 @@ struct SpeechToTextSettingsTab: View {
     SystemPromptSectionEditor(
       title: "System Prompt",
       systemImage: "text.alignleft",
-      subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and every offline model (Whisper, Parakeet) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary.",
+      subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter. GPT Transcribe, your own server and every offline model (Whisper, Parakeet, Qwen3) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary.",
       section: .dictation,
       defaultContent: AppConstants.defaultTranscriptionSystemPrompt
     )

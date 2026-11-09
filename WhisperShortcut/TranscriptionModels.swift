@@ -439,6 +439,9 @@ enum TranscriptionModel: String, CaseIterable {
     // the recommended offline model ended up presented as prompt-honouring. No offline model can
     // take an instruction, so the provider is the right granularity.
     case _ where provider == .offline: return false
+    // Most own servers run Whisper, which reads `prompt` as text to continue; an instruction text
+    // there causes echo hallucinations, so the request carries the Glossary only.
+    case .selfHostedTranscription: return false
     default: return true
     }
   }
@@ -453,6 +456,8 @@ enum TranscriptionModel: String, CaseIterable {
     // recommended — offline model was the one showing an inert prompt editor with no warning.
     case _ where provider == .offline:
       return String(localized: "Offline models ignore the system prompt below — they accept no instructions. Only the Glossary reaches them: as conditioning text for Whisper, as terms Parakeet listens for.")
+    case .selfHostedTranscription:
+      return String(localized: "Your own server ignores the system prompt below — most self-hosted servers run Whisper, which reads a prompt as text to continue, not as instructions. Your Glossary still reaches it as vocabulary hints.")
     default:
       return nil
     }
