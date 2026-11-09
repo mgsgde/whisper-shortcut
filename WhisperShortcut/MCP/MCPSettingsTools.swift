@@ -84,7 +84,9 @@ extension MCPConfigTools {
       validated.append(ValidatedChange(setting: setting, from: setting.read(), to: to))
     }
 
-    let real = validated.filter { !MCPSettingsCatalog.sameValue($0.from, $0.to) }
+    let real = validated.filter {
+      !MCPSettingsCatalog.sameValue($0.from, $0.setting.normalizeForLabel($0.to))
+    }
     if real.isEmpty {
       log(tool, "applied", "no-op", len: 0)
       return (json(["status": "no_change", "changed": []]), false)
@@ -140,13 +142,19 @@ extension MCPConfigTools {
 
 extension MCPSettingsCatalog {
   /// Loose equality for the heterogeneous `Any` values a setting reads/accepts (Bool, String,
-  /// NSNull, or a shortcut's `[String: Any]`), used only to detect a no-op `update_settings` call.
+  /// NSNull, a list, or a shortcut's `[String: Any]`), used only to detect a no-op `update_settings` call.
   static func sameValue(_ a: Any, _ b: Any) -> Bool {
     if let a = a as? Bool, let b = b as? Bool { return a == b }
     if let a = a as? String, let b = b as? String { return a == b }
     if a is NSNull, b is NSNull { return true }
     if let a = a as? [String: Any], let b = b as? [String: Any] {
+      if let na = MCPSettingsCatalog.normalizedShortcutJSON(a), let nb = MCPSettingsCatalog.normalizedShortcutJSON(b) {
+        return NSDictionary(dictionary: na).isEqual(to: nb)
+      }
       return NSDictionary(dictionary: a).isEqual(to: b)
+    }
+    if let a = a as? [Any], let b = b as? [Any] {
+      return a.count == b.count && zip(a, b).allSatisfy { sameValue($0, $1) }
     }
     return false
   }

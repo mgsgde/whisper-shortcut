@@ -340,6 +340,14 @@ enum MCPSettingsCatalog {
     return ShortcutDefinition(key: key, modifiers: modifiers, isEnabled: true, displayCharacter: nil)
   }
 
+  /// The `{"key", "modifiers"}` dictionary as `read` would hand it back (canonical key name,
+  /// sorted modifier names), or nil when `dict` is not a decodable shortcut. Lets `sameValue`
+  /// treat "option, control" and "control, option" as the same shortcut.
+  static func normalizedShortcutJSON(_ dict: [String: Any]) -> [String: Any]? {
+    guard let def = shortcutDefinition(from: dict), let normalized = json(of: def) as? [String: Any] else { return nil }
+    return normalized
+  }
+
   /// Inverse of `shortcutDefinition(from:)`: the same `{"key", "modifiers"}` shape `read` and
   /// `get_settings` hand back, and an AI app's `update_settings` call must accept.
   private static func json(of definition: ShortcutDefinition) -> Any {
@@ -653,7 +661,10 @@ enum MCPSettingsCatalog {
         },
         apply: { value in
           guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
-          write(s)
+          write(s.trimmingCharacters(in: .whitespacesAndNewlines))
+        },
+        normalizeForLabel: { value in
+          (value as? String).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? value
         })
     }
 
@@ -761,7 +772,10 @@ enum MCPSettingsCatalog {
       },
       apply: { value in
         guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
-        OpenRouterChatPreferences.setModelID(s, defaults: defaults)
+        OpenRouterChatPreferences.setModelID(s.trimmingCharacters(in: .whitespacesAndNewlines), defaults: defaults)
+      },
+      normalizeForLabel: { value in
+        (value as? String).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? value
       }))
 
     // MARK: meetings.transcription_model
@@ -1307,7 +1321,11 @@ extension MCPConfigApplier {
           }
           return .failure(error)
         }
-        applied.append(item)
+        // Record the value as read back (normalised: trimmed ids, canonical shortcuts, cleaned
+        // lists), so Undo compares `read()` with a value of the same shape.
+        applied.append(MCPSettingsChangeItem(
+          id: item.id, title: item.title, fromLabel: item.fromLabel, toLabel: item.toLabel,
+          fromJSON: item.fromJSON, toJSON: MCPSettingsCatalog.encodeValue(setting.read())))
       }
       let change = changeLog.recordSettings(items: applied, rationale: rationale, viaProposal: viaProposal)
       // One post per batch, whether this came from a direct `update_settings` apply or an
