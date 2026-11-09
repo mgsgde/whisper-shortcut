@@ -14,6 +14,7 @@ struct ModeAvailabilityTests {
     pendingMode: AppState.RecordingMode? = nil,
     jobMode: AppState.RecordingMode? = nil,
     playing: Bool = false,
+    liveFinishing: Bool = false,
     offline: Bool = false,
     onDeviceVoice: Bool = false,
     transcription: Bool = true,
@@ -25,7 +26,7 @@ struct ModeAvailabilityTests {
     ModeAvailabilityInput(
       appState: state, isLiveMeetingActive: meeting, activeMeetingSegment: active,
       meetingSegmentIsProcessing: segmentProcessing, pendingMeetingSegment: pending, pendingRecordingMode: pendingMode,
-      currentJobMode: jobMode, isTTSPlaying: playing, isOfflineMode: offline,
+      currentJobMode: jobMode, isTTSPlaying: playing, isLiveDictationFinishing: liveFinishing, isOfflineMode: offline,
       readAloudRunsOnDevice: onDeviceVoice, hasTranscriptionCredential: transcription,
       hasPromptCredential: prompt, hasImprovementCredential: improvement,
       hasReadAloudCredential: readAloud, hasMeetingCredential: meetingCredential)
@@ -33,6 +34,19 @@ struct ModeAvailabilityTests {
 
   private func a(_ action: ModeAction, _ i: ModeAvailabilityInput) -> ModeAvailability {
     ModeAvailabilityRules.availability(action, i)
+  }
+
+  @Test("A second Dictate press while Dictate Live finishes is ignored, not a cancel")
+  func dictateLiveFinishingIgnoresPress() {
+    #expect(
+      a(.dictate, input(.processing(.transcribing), jobMode: .transcription, liveFinishing: true))
+        == .ignored(.liveDictationFinishing))
+    #expect(
+      a(.dictate, input(.processing(.transcribing), liveFinishing: true)) == .ignored(.liveDictationFinishing))
+    // While still recording, the press is the normal Stop.
+    #expect(a(.dictate, input(.recording(.transcription), liveFinishing: true)) == .stop)
+    // Without a live session a press during processing still cancels.
+    #expect(a(.dictate, input(.processing(.transcribing))) == .cancelProcessing)
   }
 
   @Test("Dictate outside a meeting")

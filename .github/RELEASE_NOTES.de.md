@@ -1,19 +1,17 @@
-## Vorlesen
-- **Qwen3-Stimmen auf dem Mac.** Auf Macs mit Apple-Chip kann „Vorlesen“ Qwen3-Stimmen nutzen, die vollständig auf Ihrem Mac laufen, auch im Offline-Modus. Sie wählen sie unter Einstellungen ▸ Vorlesen; das Modell wird bei der ersten Nutzung geladen.
-  - Ab 16 GB Arbeitsspeicher: eine schnelle Stimme mit neun festen Sprechern. Sie lesen Deutsch mit Akzent.
-  - Ab 32 GB Arbeitsspeicher: eine Stimme, die Sie in Worten beschreiben, sodass sie Deutsch wie ein Muttersprachler sprechen kann. 16 fertige Stimmen sind dabei (9 deutsche, 7 englische), eigene können Sie hinzufügen.
+## Dictate Live
+- **Zeilenumbrüche senden nichts mehr ab.** Zeilenumbrüche werden als Shift+Return getippt, sodass eine neue Zeile in Chrome, Webformularen oder Chat-Apps die Nachricht nicht mehr abschickt.
+- **Kein Update-Fenster mitten im Diktat.** Ist während des Diktats ein Update bereit, zeigt WhisperShortcut es erst, wenn Sie fertig sind.
+- **Ein zweiter Tastendruck verliert keinen Text mehr.** Drücken Sie das Kürzel erneut, während die letzten Stücke noch eingefügt werden, wird das ignoriert, statt sie zu verwerfen.
 
-## Diktat
-- **Qwen3 für Offline-Diktat.** Auf Macs mit Apple-Chip und mindestens 32 GB Arbeitsspeicher steht Qwen3-ASR als Offline-Diktiermodell zur Verfügung. Es deckt 11 Sprachen ab, darunter Chinesisch, Japanisch und Koreanisch. Parakeet bleibt die Voreinstellung.
-- **Klammern und Zeilenumbrüche im Offline-Diktat.** „Klammer auf“ und „Klammer zu“ ergeben jetzt „(“ und „)“. „Neue Zeile“ und „neuer Absatz“ funktionieren auch, wenn das Modell die Wörter zusammenschreibt, und nach einem gesprochenen Zeilenumbruch beginnt das nächste Wort groß.
-
-## Eigener Server
-- **Server finden.** Beim Einrichten eines eigenen Servers findet WhisperShortcut jetzt einen laufenden lokalen Server (LM Studio, MLX, Ollama und andere) und listet seine Modelle auf, statt dass Sie Adresse und Modell von Hand eintippen.
-
-## Dictate Prompt
-- In VS Code und Cursor schreibt ⌘2 ohne Markierung jetzt neuen Text, statt die aktuelle Zeile als zu bearbeitenden Text zu nehmen.
+## Offline-Diktat mit gesprochenen Satzzeichen
+- Ein gesprochenes Komma vor „neue Zeile“ oder „neuer Absatz“ bleibt erhalten.
+- „Klammer auf“ mit folgendem Artikel wird zu „(“, wenn danach ein „Klammer zu“ kommt.
+- „Punkt“ nach „ein“, „zu“, „in“ oder „einen“ wird als Punkt geschrieben, außer es folgt eine Zahl oder ein Nomen.
+- Nach einer Anrede mit Komma beginnt die nächste Zeile klein.
+- Das Glossar ersetzt keine Alltagswörter und keinen ersten Teil eines zusammengesetzten Worts mehr.
+- Kommas, Frage- und Ausrufezeichen bleiben zuverlässiger erhalten, und zwischen zwei Stücken steht nie mehr als eine Leerzeile.
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.84...v8.85
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.86...v8.87

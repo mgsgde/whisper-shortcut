@@ -34,14 +34,29 @@ enum SpokenPunctuation {
 
   /// "Klammer auf", also glued or hyphenated ("Klammerauf", "Klammer-auf"). An article right after
   /// it is the noun ("eine Klammer auf die Wunde"), not the command.
-  private static let openingParen =
+  private static let openingParenGuarded =
     #"\bklammer[ \t-]*auf\b(?![ \t,.;]*(?:die|der|den|dem|das|eine|einen|einer|einem)\b)"#
+  /// In "Only when spoken" a "Klammer zu" in the same text proves "Klammer auf" is the command,
+  /// whatever article follows ("Klammer auf die Laborwerte … Klammer zu").
+  private static let openingParenPlain = #"\bklammer[ \t-]*auf\b"#
   private static let closingParen = #"\bklammer[ \t-]*zu\b"#
+  // swiftlint:disable:next force_try
+  private static let parenPairRegex = try! NSRegularExpression(
+    pattern: #"\bklammer[ \t-]*auf\b[\s\S]*\bklammer[ \t-]*zu\b"#, options: [.caseInsensitive])
 
   /// Order matters: the colon runs first so "Befund Doppelpunkt neuer Absatz" keeps its colon when
   /// the paragraph rule then strips the stray space before the break. Brackets run before the
   /// breaks, so a following "neue Zeile" still sees the parenthesis.
-  private static let rules: [Rule] = [
+  /// The `rules` for one combination: `timed` = spoken-only text whose commas the token timing
+  /// already called spoken (they are kept before a break), `parenAlways` = "Klammer auf" is
+  /// converted even before an article. Index = `(timed ? 2 : 0) + (parenAlways ? 1 : 0)`.
+  private static let ruleSets: [[Rule]] = (0..<4).map {
+    makeRules(timed: $0 & 2 != 0, parenAlways: $0 & 1 != 0)
+  }
+
+  private static func makeRules(timed: Bool, parenAlways: Bool) -> [Rule] {
+    let openingParen = parenAlways ? openingParenPlain : openingParenGuarded
+    return [
     // The colon is already there — a model reply that kept the spoken word after its own heading
     // ("Befund: Doppelpunkt Druckschmerz", "Anamnese:\nDoppelpunkt Patientin"). Drop the word only.
     // "Doppel Punkt" and "Doppel-Punkt" are the same command split or hyphenated by Parakeet.
@@ -65,7 +80,9 @@ enum SpokenPunctuation {
     // A comma before a spoken paragraph break is the ASR marking the pause; the sentence ended.
     // No capital marker: this stays ".\n\n", and the next word keeps the case it was spoken with.
     // "Neuerabsatz" / "Neuenabsatz" are the glued forms (no space).
-    rule(#"[ \t]*,[ \t]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, ".\n\n"),
+    // With token timing (`timed`) a leftover comma is a spoken one ("Herren, neuer Absatz" is the
+    // salutation's comma): it stays, as ",\n\n", and the break rule does not turn it into a period.
+    rule(#"[ \t]*,[ \t]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, timed ? ",\n\n" : ".\n\n"),
     // The model already ended the sentence ("Anamnese. Neuer Absatz, die Klägerin"): the next word
     // starts the new paragraph or line, so it gets a capital (marker, `capitalizeAfterGluedColon`).
     // "Neuzeile" / "Neuezeile" are "neue Zeile" glued into one word. "Neuzeilen" does not match.
@@ -82,7 +99,11 @@ enum SpokenPunctuation {
     // next word keeps the case it was spoken with ("Herr Müller, neue Zeile vielen" →
     // "Herr Müller\nvielen"). A spoken "Komma" is still the word at this point; it becomes ","
     // only in the spoken-only rules, and `commaKeepsFollowingCase` then drops the marker.
-    rule(#"[ \t]*[,;][ \t,;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n"),
+    // With token timing (`timed`) a comma is the speaker's ("Müller, neue Zeile vielen Dank" →
+    // "Müller,\nvielen Dank"), so it stays in front of the break.
+    timed
+      ? rule(#"[ \t]*,[ \t,;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, ",\n")
+      : rule(#"[ \t]*[,;][ \t,;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n"),
     // Line break without a sentence mark or a pause comma before it. The next word starts the
     // new line, so it gets a capital.
     rule(#"[ \t;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
@@ -92,7 +113,13 @@ enum SpokenPunctuation {
     // "n" is the plural or a compound ("Zeilenumbrüche"), said literally. "Neue Teile" is a
     // different phrase and does not match.
     rule(#"[ \t,;]*\bneu(?:e[ \t]*)?zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
-  ]
+    ]
+  }
+
+  private static let punktNumberWords =
+    "eins|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf"
+  private static let punktFunctionWordAlternation =
+    functionWords.sorted().map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
 
   /// Only in `PunctuationMode.spokenOnly`, where the model adds no punctuation of its own. The mark
   /// attaches to the previous word with one space after; after ". ? !" the next word is
@@ -134,12 +161,23 @@ enum SpokenPunctuation {
     rule(
       #"[ \t,;]*(?:(?:\bdrei|(?<!\d)3)[ \t-]*p(?:ü|ue)nktchen|\bauslassungspunkte)\b[ \t,.;]*"#,
       "… "),
+    // ICD codes: "E11 Punkt 9" → "E11.9", "F33 Punkt 1" → "F33.1" (letter, 1-3 digits, Punkt, digit).
+    rule(#"(?<=\b\p{L}\d{1,3})[ \t]*\bpunkt\b[ \t]*(?=\d)"#, "."),
     // A model period before or after the word ("vor. Punkt", "Punkt.") is swallowed: the
     // `repeatedMarks` pass collapses the pair to one mark.
-    // Not the noun: "Punkt 3", "Punkt drei", "Siehe Punkt 2.1", "zu Punkt", "der wichtigste Punkt".
-    // A following number word counts as the number, same as a digit ("Unter Punkt drei steht").
+    // Not the noun: "Siehe Punkt 2.1", "zu Punkt", "der wichtigste Punkt". A number (digit or number
+    // word) after "Punkt" only keeps the noun when "Punkt" follows a preposition ("Siehe Punkt 2",
+    // "vgl. Punkt drei"); otherwise it is the command ("entlassen Punkt zwei Wochen später" →
+    // "entlassen. Zwei Wochen später").
     rule(
-      #"[ \t,;]*(?<!\b(?:zu|unter|im|in|der|den|dem|des|einen|einem|ein|jeden|letzten|wichtigste|wichtigsten)[ \t])\bpunkt\b(?![ \t]*(?:\d|(?:eins|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf)\b))[ \t,.;]*"#,
+      #"[ \t,;]*(?<!\b(?:zu|unter|im|in|der|den|dem|des|einen|einem|ein|jeden|letzten|wichtigste|wichtigsten)[ \t])\bpunkt\b(?!(?<=\b(?:siehe|vgl|auf|an|am|bei|von|nach|bis|ab|zum|zur|gemäß|laut)[ \t]punkt)[ \t]*(?:\d|(?:\#(punktNumberWords))\b))[ \t,.;]*"#,
+      ". \u{1}"),
+    // After a particle that is also a verb prefix ("morgens ein Punkt", "den Befund zu Punkt",
+    // "wieder in Punkt") the word is the command, unless a number or a noun follows ("ein Punkt
+    // mehr", "in Punkt 3", "zu Punkt Anamnese"): a capitalised word that is not a function word
+    // counts as a noun. At the end of the text or piece it is always the command.
+    rule(
+      #"[ \t,;]*(?<=\b(?:zu|ein|in|einen)[ \t])\bpunkt\b(?![ \t]*(?:\d|(?:\#(punktNumberWords))\b|mehr\b|weniger\b|(?!(?:\#(punktFunctionWordAlternation))\b)(?-i:\p{Lu})))[ \t,.;]*"#,
       ". \u{1}"),
     rule(#"[ \t,;]*\bkomma\b[ \t,.;]*"#, ", "),
   ]
@@ -197,6 +235,22 @@ enum SpokenPunctuation {
   static func lowercasingFunctionWord(_ word: String) -> String? {
     guard let first = word.first, first.isUppercase else { return nil }
     guard functionWords.contains(word.lowercased()) else { return nil }
+    return first.lowercased() + word.dropFirst()
+  }
+
+  /// Words that open the line after a salutation ("Sehr geehrte Frau Müller,⏎vielen Dank"). Parakeet
+  /// capitalises them at the start of a piece; after a comma they are lower-case.
+  private static let salutationFollowers: Set<String> = [
+    "vielen", "ich", "anbei", "danke", "hiermit", "gerne", "gern", "leider", "herzlichen",
+  ]
+
+  /// Like `lowercasingFunctionWord`, for the first word after a line break that follows a comma
+  /// (the salutation's): function words plus the usual openers ("vielen", "ich", "anbei", "danke").
+  /// Nouns keep their capital.
+  static func lowercasingAfterSalutationComma(_ word: String) -> String? {
+    guard let first = word.first, first.isUppercase else { return nil }
+    let lower = word.lowercased()
+    guard functionWords.contains(lower) || salutationFollowers.contains(lower) else { return nil }
     return first.lowercased() + word.dropFirst()
   }
 
@@ -330,14 +384,27 @@ enum SpokenPunctuation {
   /// spaces and tabs at the start/end, not line breaks — for a piece in Dictate Live, where a
   /// trailing "neuer Absatz" must leave its "\n\n" for `LiveChunkJoiner` to lay out the next piece
   /// against; the default trims newlines too, exactly as before.
-  static func apply(to text: String, mode: PunctuationMode = .automatic, keepsEdgeBreaks: Bool = false) -> String {
+  ///
+  /// `timedMarks`: the text is Parakeet's, already filtered by token timing, so a comma left in
+  /// front of "neuer Absatz" / "neue Zeile" was spoken and stays (spoken-only mode only).
+  static func apply(
+    to text: String, mode: PunctuationMode = .automatic, keepsEdgeBreaks: Bool = false,
+    timedMarks: Bool = false
+  ) -> String {
     var result = text
     var changed = false
     if mode == .spokenOnly, let decimals = decimalCommaBetweenNumberWords(result) {
       result = decimals
       changed = true
     }
-    for rule in mode == .spokenOnly ? rules + spokenOnlyRules : rules {
+    let activeRules: [Rule]
+    if mode == .spokenOnly {
+      let parenAlways = regexMatches(parenPairRegex, result)
+      activeRules = ruleSets[(timedMarks ? 2 : 0) + (parenAlways ? 1 : 0)] + spokenOnlyRules
+    } else {
+      activeRules = ruleSets[0]
+    }
+    for rule in activeRules {
       let range = NSRange(result.startIndex..., in: result)
       guard rule.regex.firstMatch(in: result, range: range) != nil else { continue }
       result = rule.regex.stringByReplacingMatches(

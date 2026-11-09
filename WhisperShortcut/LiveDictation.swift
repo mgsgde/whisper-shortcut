@@ -91,7 +91,8 @@ enum LiveDictation {
       mode == .spokenOnly
       ? SpokenPunctuation.stripModelPunctuation(from: withoutFillers, timedMarks: timedMarks)
       : withoutFillers
-    return SpokenPunctuation.apply(to: source, mode: mode, keepsEdgeBreaks: true)
+    return SpokenPunctuation.apply(
+      to: source, mode: mode, keepsEdgeBreaks: true, timedMarks: timedMarks)
   }
 
   /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
@@ -236,6 +237,11 @@ struct LiveChunkJoiner: Equatable {
     var body = piece.trimmingCharacters(in: .whitespaces)
     guard !body.isEmpty else { return "" }
 
+    // Across a piece boundary at most one blank line: "neuer Absatz" at the end of one piece and
+    // "neue Zeile" at the start of the next must not stack up to three breaks.
+    body = Self.limitingBreaks(body, after: precedingText + inserted)
+    guard !body.isEmpty else { return "" }
+
     if !holdsPeriods {
       body = Self.lowercaseLeadingFunctionWord(body, after: precedingText + inserted)
     }
@@ -293,11 +299,42 @@ struct LiveChunkJoiner: Equatable {
     return String(rest)
   }
 
+  /// Caps the line breaks where `body` meets the text so far at two ("\n\n"): the breaks already at
+  /// the end of `prior` count, and surplus ones at the start of `body` are dropped.
+  private static func limitingBreaks(_ body: String, after prior: String) -> String {
+    let lead = body.prefix(while: { $0.isNewline || $0 == " " || $0 == "\t" })
+    let leadBreaks = lead.filter(\.isNewline).count
+    guard leadBreaks > 0 else { return body }
+    var priorBreaks = 0
+    for character in prior.reversed() {
+      if character.isNewline {
+        priorBreaks += 1
+      } else if character != " " && character != "\t" {
+        break
+      }
+    }
+    let allowed = max(0, 2 - priorBreaks)
+    guard leadBreaks > allowed else { return body }
+    return String(repeating: "\n", count: allowed) + body.dropFirst(lead.count)
+  }
+
   /// Parakeet capitalises the first word after a pause. Mid-sentence, in spoken-only mode, that
-  /// capital belongs only on a noun or a verb — see the struct comment.
+  /// capital belongs only on a noun or a verb — see the struct comment. After a line break the
+  /// last real mark decides: a comma (the salutation's, "Frau Müller,⏎Vielen Dank") makes the
+  /// word lower-case again unless it may be a noun (`lowercasingAfterSalutationComma`); after
+  /// ". ! ? :" or with no mark before, it stays capital.
   private static func lowercaseLeadingFunctionWord(_ body: String, after inserted: String) -> String {
     let prior = inserted.trimmingCharacters(in: .whitespaces)
-    guard let last = prior.last, !last.isNewline, last != ".", last != "!", last != "?", last != ":"
+    let lead = body.prefix(while: { $0.isNewline || $0 == " " || $0 == "\t" })
+    let rest = body.dropFirst(lead.count)
+    if lead.contains(where: \.isNewline) || prior.last?.isNewline == true {
+      let beforeBreak = inserted.trimmingCharacters(in: .whitespacesAndNewlines).last
+      guard beforeBreak == ",", !rest.isEmpty else { return body }
+      let word = String(rest.prefix(while: \.isLetter))
+      guard let lowered = SpokenPunctuation.lowercasingAfterSalutationComma(word) else { return body }
+      return String(lead) + lowered + rest.dropFirst(word.count)
+    }
+    guard let last = prior.last, last != ".", last != "!", last != "?", last != ":"
     else { return body }
     let split = body.firstIndex(where: \.isWhitespace)
     let word = split.map { String(body[..<$0]) } ?? body

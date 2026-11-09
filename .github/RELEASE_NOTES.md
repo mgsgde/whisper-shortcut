@@ -1,19 +1,17 @@
-## Read Aloud
-- **On-device Qwen3 voices.** On Macs with Apple silicon, Read Aloud can use Qwen3 voices that run entirely on your Mac, also in Offline Mode. Pick them in Settings ▸ Read Aloud; the model downloads the first time you use it.
-  - From 16 GB of memory: a fast voice with nine fixed speakers. They read German with a foreign accent.
-  - From 32 GB of memory: a voice you describe in words, so it can speak German like a native speaker. 16 ready-made voices are included (9 German, 7 English), and you can add your own.
+## Dictate Live
+- **Line breaks no longer send.** Line breaks are typed as Shift+Return, so a new line in Chrome, web forms or chat apps no longer submits or sends the message.
+- **No update window in the middle of dictation.** If an update is ready while you dictate, WhisperShortcut waits until you have finished before showing it.
+- **Pressing the shortcut again no longer loses text.** A second press while the last pieces are still being inserted is ignored instead of discarding them.
 
-## Dictation
-- **Qwen3 for offline dictation.** On Macs with Apple silicon and 32 GB of memory or more, Qwen3-ASR is available as an offline dictation model. It covers 11 languages, including Chinese, Japanese and Korean. Parakeet stays the default.
-- **Brackets and line breaks in offline dictation.** Saying "Klammer auf" and "Klammer zu" now gives "(" and ")". "Neue Zeile" and "neuer Absatz" also work when the model runs the words together, and the word after a spoken line break starts with a capital.
-
-## Own server
-- **Find your server.** When you set up your own server, WhisperShortcut can now find a running local server (LM Studio, MLX, Ollama and others) and list its models, instead of you typing the address and model by hand.
-
-## Dictate Prompt
-- In VS Code and Cursor, ⌘2 with nothing selected now writes new text instead of treating the current line as the text to edit.
+## Offline dictation with spoken punctuation
+- A spoken comma before "neue Zeile" or "neuer Absatz" is kept.
+- "Klammer auf" followed by an article becomes "(" when a "Klammer zu" follows.
+- "Punkt" after "ein", "zu", "in" or "einen" is written as a full stop, unless a number or noun follows.
+- After a salutation and a comma, the next line starts in lower case.
+- The glossary no longer replaces everyday words or the first part of a compound word.
+- Commas, question marks and exclamation marks are kept more reliably, and never more than one blank line appears between two pieces.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.84...v8.85
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.86...v8.87

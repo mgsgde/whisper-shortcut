@@ -132,7 +132,7 @@ final class ParakeetBackend: @unchecked Sendable {
   ///   - spokenMarksOnly: "Only when spoken" punctuation. Parakeet's own commas, periods, "?" and
   ///     "!" are kept only where the token timings show speech time behind them
   ///     (`ParakeetPunctuationTiming`); the rest are removed. When the marks in the text cannot be
-  ///     matched to the tokens, the old rule applies (commas, "?" and "!" out, periods stay).
+  ///     matched to the tokens, the model's marks stay (`ParakeetPunctuationTiming.fallbackWithoutTiming`).
   func transcribe(
     audioURL: URL, language: String?, vocabulary terms: [String], spokenMarksOnly: Bool = false
   ) async throws -> String {
@@ -188,8 +188,7 @@ extension ParakeetBackend {
       return filtered.text
     }
     DebugLogger.log("LOCAL-SPEECH: punctuation timing skipped (count mismatch)")
-    return SpokenPunctuation.stripModelPunctuation(
-      from: ParakeetPunctuationTiming.spacingGluedCommas(text))
+    return ParakeetPunctuationTiming.fallbackWithoutTiming(text)
   }
 
   /// The raw decode with its token timings, for the opt-in live tests only (no app code calls

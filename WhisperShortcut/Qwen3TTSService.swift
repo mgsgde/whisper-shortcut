@@ -285,24 +285,38 @@ struct Qwen3TTSService {
       let samples = audio.asArray(Float.self)
       guard !samples.isEmpty else { throw Qwen3TTSError.emptyAudio }
 
+      // The checkpoint pads chunks it cannot speak (a URL without a scheme, a byline, "7–8
+      // minutes") with seconds of near-silence at the front — measured 15 s of lead-in on a
+      // text whose first chunk held a news-site header. Trim that padding before it reaches
+      // playback, or the user waits through silence and hears the text start mid-way.
+      let trimmedSamples = Self.trimmingSilence(samples, sampleRate: model.sampleRate)
+      // A sentence that is entirely silence (a bare domain the model cannot vocalize at all)
+      // must not enqueue an empty chunk: playback would schedule zero bytes and stall.
+      guard !trimmedSamples.isEmpty else {
+        DebugLogger.log(
+          "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) was silent after trimming; skipping")
+        continue
+      }
       // Without a frozen clip the first sentence is still the one that defines the voice (the
       // calibration above failed to store, e.g. disk full). Later sentences must never
-      // overwrite the reference, or the voice would drift sentence by sentence.
+      // overwrite the reference, or the voice would drift sentence by sentence. A silent
+      // sentence was skipped above, so it never becomes the reference.
       let referenceWasNil = referenceAudio == nil
       if referenceWasNil {
         referenceAudio = audio
         referenceText = sentence
       }
-
-      let pcm = Self.pcm16(from: samples, sourceRate: Double(model.sampleRate))
+      let pcm = Self.pcm16(from: trimmedSamples, sourceRate: Double(model.sampleRate))
       merged.append(pcm)
-      let seconds = Double(samples.count) / Double(model.sampleRate)
+      let seconds = Double(trimmedSamples.count) / Double(model.sampleRate)
       let elapsed = Date().timeIntervalSince(start)
       let role = referenceWasNil ? "defines the voice" : "reference-pinned"
       DebugLogger.log(
-        "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) \(samples.count) samples "
+        "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) \(trimmedSamples.count) samples "
           + "(\(String(format: "%.2f", seconds))s) "
-          + "in \(String(format: "%.1f", elapsed))s (\(role))")
+          + "in \(String(format: "%.1f", elapsed))s (\(role))"
+          + (trimmedSamples.count != samples.count
+            ? " (trimmed \(samples.count - trimmedSamples.count) silent samples)" : ""))
       if let onChunkReady {
         await MainActor.run { onChunkReady(pcm, index, sentences.count) }
       }
@@ -419,25 +433,11 @@ struct Qwen3TTSService {
     from url: URL, for persona: Qwen3VoicePersona, transcript: String?
   ) async throws -> Data {
     let model = try await Qwen3TTSModelLoader.shared.model(.voiceDesign)
-    let (fileRate, samples) = try loadAudioArray(from: url)
-    let values = samples.asArray(Float.self)
-    guard !values.isEmpty else { throw Qwen3TTSError.emptyAudio }
-
-    let resampled: [Float]
-    if abs(Double(fileRate) - Double(model.sampleRate)) < 1 {
-      resampled = values
-    } else {
-      let ratio = Double(model.sampleRate) / Double(fileRate)
-      let count = Int(Double(values.count) * ratio)
-      guard count > 0 else { throw Qwen3TTSError.emptyAudio }
-      resampled = (0..<count).map { index in
-        let position = Double(index) / ratio
-        let lower = Int(position)
-        let upper = min(lower + 1, values.count - 1)
-        let fraction = Float(position - Double(lower))
-        return values[lower] * (1 - fraction) + values[upper] * fraction
-      }
-    }
+    // The loader mixes stereo files to mono — the library's `loadAudioArray` would read only
+    // channel 0 and lose a voice that sits on the right channel.
+    let resampled = try AudioFileMonoLoader.loadMonoSamples(
+      from: url, targetRate: model.sampleRate).samples
+    guard !resampled.isEmpty else { throw Qwen3TTSError.emptyAudio }
 
     let text = try await referenceTranscript(for: url, typed: transcript, language: persona.language)
     Qwen3VoiceReferenceStore.store(
@@ -541,6 +541,56 @@ struct Qwen3TTSService {
     }
     if !rest.isEmpty { chunks.append(String(rest)) }
     return chunks
+  }
+
+  /// RMS level (per 10 ms window) below which audio counts as silence when trimming.
+  static let silenceRMSThreshold: Float = 0.02
+  /// Silence kept before the first speech window, so soft onsets (/h/, /f/, /s/) are not clipped.
+  static let silenceLeadMarginSeconds = 0.04
+  /// Trailing silence kept after the last speech window: decays stay intact and consecutive
+  /// chunks (played back to back) keep a natural pause between sentences.
+  static let silenceTailMarginSeconds = 0.2
+
+  /// Trims the near-silence the checkpoint pads around text it cannot vocalize (headers, bylines,
+  /// bare domains), without taking the natural pause between sentences with it.
+  ///
+  /// Speech boundaries come from a windowed RMS (10 ms) against `silenceRMSThreshold`, so a single
+  /// click inside a long pad does not count as speech and a soft onset is not cut. Only silence
+  /// beyond a 40 ms lead margin and a 200 ms tail margin is removed. A 5 ms fade is applied only
+  /// where a cut actually happens, so the trim cannot click. A chunk with no speech window comes
+  /// back empty; the caller skips that sentence.
+  static func trimmingSilence(_ samples: [Float], sampleRate: Int) -> [Float] {
+    guard !samples.isEmpty else { return samples }
+    let window = max(1, sampleRate / 100)  // 10 ms
+    let fade = max(1, sampleRate / 200)  // ~5 ms
+
+    var firstSpeech: Int?
+    var lastSpeechEnd = 0
+    var start = 0
+    while start < samples.count {
+      let end = min(start + window, samples.count)
+      var sum: Float = 0
+      for i in start..<end { sum += samples[i] * samples[i] }
+      if (sum / Float(end - start)).squareRoot() >= silenceRMSThreshold {
+        if firstSpeech == nil { firstSpeech = start }
+        lastSpeechEnd = end
+      }
+      start = end
+    }
+    guard let firstSpeech else { return [] }
+
+    let from = max(0, firstSpeech - Int(silenceLeadMarginSeconds * Double(sampleRate)))
+    let to = min(samples.count, lastSpeechEnd + Int(silenceTailMarginSeconds * Double(sampleRate)))
+    var trimmed = Array(samples[from..<to])
+    if from > 0 {
+      for i in 0..<min(fade, trimmed.count) { trimmed[i] *= Float(i) / Float(fade) }
+    }
+    if to < samples.count {
+      for i in 0..<min(fade, trimmed.count) {
+        trimmed[trimmed.count - 1 - i] *= Float(i) / Float(fade)
+      }
+    }
+    return trimmed
   }
 
   /// Float samples → s16le at `outputSampleRate`, mono. Linear resampling is enough here: the

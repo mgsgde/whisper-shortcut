@@ -19,10 +19,13 @@ import Foundation
 /// `minTailAfterFinalMark`. A spoken "Fragezeichen" / "Ausrufezeichen" comes out of Parakeet as
 /// "?" / "!" with that signature, so the model's mark is kept when the timing says it was spoken.
 /// When no timings are available, `SpokenPunctuation.stripModelPunctuation` still drops the
-/// model's "?" and "!".
+/// model's "?" and "!". When timings exist but the marks cannot be matched to them (count
+/// mismatch), `fallbackWithoutTiming` keeps the model's marks instead of dropping every comma.
 enum ParakeetPunctuationTiming {
   /// Mid-text mark ("," "." "?" "!"): minimum silence to the next token for the mark to count as spoken.
   static let minGapToNextToken: TimeInterval = 0.120
+  /// Mid-text "," directly after a digit token: shorter minimum gap (see `spokenMarks`).
+  static let minGapAfterDigitComma: TimeInterval = 0.060
   /// Final mark ("," "." "?" "!"): minimum audio left after it. Stricter than the mid-text gap
   /// because a recording always runs a little past the last word. 0.400 s since 2026-11-04
   /// (was 0.240 s): on live pieces this keeps 21 of 23 spoken piece-end marks and 0 of 42 guessed.
@@ -77,6 +80,14 @@ enum ParakeetPunctuationTiming {
       of: ",(?=\\p{L})", with: ", ", options: .regularExpression)
   }
 
+  /// The text when the marks cannot be matched to the tokens (`filter` returned nil). The model's
+  /// commas, "?", "!" and periods stay: a spoken salutation comma or question mark is worse lost
+  /// than a guessed comma kept, and the timing can no longer tell them apart. Only semicolons go
+  /// (Parakeet never says one; a spoken "Semikolon" is converted later).
+  static func fallbackWithoutTiming(_ text: String) -> String {
+    SpokenPunctuation.stripModelPunctuation(from: spacingGluedCommas(text), timedMarks: true)
+  }
+
   /// One verdict per mark token, in order: true = the speaker said it, false = Parakeet guessed it.
   /// "," "." "?" and "!" share one rule: a mark with a following token needs
   /// `minGapToNextToken` of silence before that token; the last mark needs `minTailAfterFinalMark`
@@ -86,7 +97,13 @@ enum ParakeetPunctuationTiming {
       if index == tokens.count - 1 {
         return audioDuration - tokens[index].end >= minTailAfterFinalMark
       }
-      return tokens[index + 1].start - tokens[index].end >= minGapToNextToken
+      let gap = tokens[index + 1].start - tokens[index].end
+      // A comma the speaker says right after a number ("11,8 Komma Natrium") is glued in time to
+      // the digit token; the pause shows up shorter. Commas after words keep the strict gap.
+      if bare(tokens[index]) == ",", index > 0, bare(tokens[index - 1]).last?.isNumber == true {
+        return gap >= minGapAfterDigitComma
+      }
+      return gap >= minGapToNextToken
     }
   }
 
