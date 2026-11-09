@@ -35,7 +35,7 @@ enum SystemSettingsOpener {
       lowerFloatingWindows()
       NSWorkspace.shared.open(root)
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-        MainActor.assumeIsolated { NSWorkspace.shared.open(url) }
+        MainActor.assumeIsolated { _ = NSWorkspace.shared.open(url) }
       }
     } else {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
