@@ -229,7 +229,7 @@ Dictate and Dictate Prompt keep working during a meeting, and the menu bar shows
 
 ### Tuning from your usage
 
-In Settings → Privacy & Permissions, turn on **Save usage data** (off by default). Then ask the Chat what went wrong ("the last dictation spelled Wianco as Vianco — why?", "go through this week's dictations and fix the names it keeps missing"). The Chat reads the log with `read_recent_interactions`, suggests one glossary term or one rule, and changes the Dictation, Dictate Prompt or Chat instructions or the Glossary only after you approve it. An AI app connected over MCP (Settings → Claude & AI Apps) can do the same with `get_recent_interactions`, `add_glossary_terms` and `update_system_prompt`; run its `tune_whisper_shortcut` prompt for the step-by-step recipe.
+In Settings → Privacy & Permissions, turn on **Save usage data** (off by default). Then ask the Chat what went wrong ("the last dictation spelled Wianco as Vianco — why?", "go through this week's dictations and fix the names it keeps missing"). The Chat reads the log with `read_recent_interactions` (also Read Aloud requests, the tools a chat turn called and, on request, the app's error lines) and the change history of the instructions with `read_config_history`, suggests one glossary term or one rule, and changes the Dictation, Dictate Prompt or Chat instructions or the Glossary only after you approve it. An AI app connected over MCP (Settings → Claude & AI Apps) can do the same with `get_recent_interactions`, `add_glossary_terms` and `update_system_prompt`; run its `tune_whisper_shortcut` prompt for the step-by-step recipe.
 
 ## Build From Source
 
