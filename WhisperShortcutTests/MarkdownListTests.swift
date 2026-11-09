@@ -62,3 +62,52 @@ struct MarkdownListTests {
     #expect(out == "Intro\n\n- a")
   }
 }
+
+@Suite("Markdown tables (R214)")
+struct MarkdownTableTests {
+
+  @Test("two lines with pipes but no delimiter row are not a table")
+  func falseTable() {
+    #expect(!MarkdownParsing.looksLikeMarkdownTable("a | b\nc | d"))
+    #expect(!MarkdownParsing.looksLikeMarkdownTable("- use a|b\n- or c|d"))
+  }
+
+  @Test("header + delimiter row is a table")
+  func realTable() {
+    let t = "| A | B |\n| --- | :---: |\n| 1 | 2 |"
+    #expect(MarkdownParsing.looksLikeMarkdownTable(t))
+    let parsed = MarkdownParsing.parseMarkdownTable(t)
+    #expect(parsed?.headers == ["A", "B"])
+    #expect(parsed?.rows == [["1", "2"]])
+  }
+
+  @Test("borderless table is accepted")
+  func borderless() {
+    let t = "A | B\n--- | ---\n1 | 2"
+    #expect(MarkdownParsing.looksLikeMarkdownTable(t))
+    #expect(MarkdownParsing.parseMarkdownTable(t)?.rows == [["1", "2"]])
+  }
+
+  @Test("cells beyond the header count widen the header, not vanish")
+  func extraCells() {
+    let t = "| A |\n| --- |\n| 1 | 2 | 3 |"
+    let parsed = MarkdownParsing.parseMarkdownTable(t)
+    #expect(parsed?.headers == ["A", "", ""])
+    #expect(parsed?.rows == [["1", "2", "3"]])
+  }
+
+  @Test("escaped pipe is a literal pipe inside a cell")
+  func escapedPipe() {
+    let t = "| A | B |\n| --- | --- |\n| x \\| y | z |"
+    #expect(MarkdownParsing.parseMarkdownTable(t)?.rows == [["x | y", "z"]])
+  }
+
+  @Test("a pipe list falls through to a list block")
+  func pipeListIsList() {
+    let blocks = ReplyBlockBuilder.buildBlocks(content: "- a | b\n- c | d", sources: [], groundingSupports: [])
+    guard case .bulletList(let items)? = blocks.first else {
+      Issue.record("expected a bullet list"); return
+    }
+    #expect(items.count == 2)
+  }
+}
