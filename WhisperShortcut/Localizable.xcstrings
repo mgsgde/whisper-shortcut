@@ -27278,6 +27278,46 @@
           }
         }
       }
+    },
+    "Use WhisperShortcut from Claude" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut in Claude nutzen"
+          }
+        }
+      }
+    },
+    "Connect Claude Code, Claude Desktop or Codex. Ask them about a meeting while it records, or let them tune your dictation: they read your recent dictations, already know the names you use, and suggest fixes that you approve." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden Sie Claude Code, Claude Desktop oder Codex. Fragen Sie nach einem Meeting, während es aufgenommen wird, oder lassen Sie Ihr Diktat verbessern: Die KI-App liest Ihre letzten Diktate, kennt die Namen, die Sie verwenden, und schlägt Korrekturen vor, die Sie bestätigen."
+          }
+        }
+      }
+    },
+    "Connect an AI App" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-App verbinden"
+          }
+        }
+      }
+    },
+    "Hide this tip" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipp ausblenden"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
