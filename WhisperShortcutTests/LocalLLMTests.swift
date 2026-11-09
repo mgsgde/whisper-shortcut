@@ -241,4 +241,35 @@ struct LocalLLMTests {
     try Data("{}".utf8).write(to: dir.appendingPathComponent("model-00001-of-00002.safetensors"))
     #expect(MLXModelPaths.hasRequiredFiles(at: dir))
   }
+
+  /// Qwen3 does not require `tokenizer.json`, but a sharded download cancelled after one shard
+  /// used to pass on "any .safetensors" and show up as installed.
+  @Test("A half-downloaded sharded Qwen3 snapshot is not installed")
+  func qwen3MissingShardIsIncomplete() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("qwen3-hub-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let layout = HubSnapshotLayout(root: root, requiredFiles: ["config.json"])
+    let repo = "mlx-community/Qwen3-ASR-1.7B-8bit"
+    let snap = root
+      .appendingPathComponent("models")
+      .appendingPathComponent(repo)
+      .appendingPathComponent("snapshots")
+      .appendingPathComponent("hash")
+    try FileManager.default.createDirectory(at: snap, withIntermediateDirectories: true)
+    for name in ["config.json", "model-00002-of-00002.safetensors"] {
+      try Data("{}".utf8).write(to: snap.appendingPathComponent(name))
+    }
+    let index =
+      #"{"weight_map":{"a":"model-00001-of-00002.safetensors","b":"model-00002-of-00002.safetensors"}}"#
+    try Data(index.utf8).write(to: snap.appendingPathComponent("model.safetensors.index.json"))
+
+    #expect(layout.localDirectory(for: repo) == nil)
+
+    try Data("{}".utf8).write(to: snap.appendingPathComponent("model-00001-of-00002.safetensors"))
+    #expect(layout.localDirectory(for: repo) == snap)
+    #expect(
+      layout.deletionTarget(for: snap)
+        == snap.deletingLastPathComponent().deletingLastPathComponent())
+  }
 }

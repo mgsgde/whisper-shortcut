@@ -127,45 +127,18 @@ final class Qwen3ModelManager: ModelStore<Qwen3ModelType> {
       .appendingPathComponent("hub")
   }
 
+  /// Qwen3 audio checkpoints ship `config.json` but not MLX chat's `tokenizer.json`. The
+  /// shard-index rule is the shared one: a cancelled sharded download is not installed.
+  private nonisolated var layout: HubSnapshotLayout {
+    HubSnapshotLayout(root: rootDirectory, requiredFiles: ["config.json"])
+  }
+
   override nonisolated func resolveModelPath(for type: Qwen3ModelType) -> URL? {
-    let models = rootDirectory.appendingPathComponent("models")
-    var candidates = [models.appendingPathComponent(type.huggingFaceID)]
-    let parts = type.huggingFaceID.split(separator: "/").map(String.init)
-    if parts.count == 2 {
-      candidates.append(models.appendingPathComponent(parts[0]).appendingPathComponent(parts[1]))
-    }
-    for repoPath in candidates {
-      if Self.hasRequiredFiles(at: repoPath) { return repoPath }
-      let snapshots = repoPath.appendingPathComponent("snapshots")
-      guard let hashes = try? fileManager.contentsOfDirectory(atPath: snapshots.path) else {
-        continue
-      }
-      for hash in hashes {
-        let snapshot = snapshots.appendingPathComponent(hash)
-        if Self.hasRequiredFiles(at: snapshot) { return snapshot }
-      }
-    }
-    return nil
+    layout.localDirectory(for: type.huggingFaceID)
   }
 
-  /// Delete the whole repo, not just the snapshot folder — otherwise the blobs stay on disk
-  /// while Settings reports the space as reclaimed.
   override nonisolated func deletionTarget(for modelPath: URL) -> URL {
-    modelPath.deletingLastPathComponent().lastPathComponent == "snapshots"
-      ? modelPath.deletingLastPathComponent().deletingLastPathComponent()
-      : modelPath
-  }
-
-  /// `config.json` alone is not enough: a cancelled snapshot can land the config and the
-  /// tokenizer but not the weights, and treating that as available makes Delete appear while
-  /// the first load fails.
-  private nonisolated static func hasRequiredFiles(at directory: URL) -> Bool {
-    let fm = FileManager.default
-    guard fm.fileExists(atPath: directory.appendingPathComponent("config.json").path) else {
-      return false
-    }
-    guard let contents = try? fm.contentsOfDirectory(atPath: directory.path) else { return false }
-    return contents.contains { $0.hasSuffix(".safetensors") }
+    layout.deletionTarget(for: modelPath)
   }
 
   // MARK: - Load

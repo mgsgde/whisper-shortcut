@@ -114,31 +114,30 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
 
 // MARK: - Paths
 
-/// Where MLX weights live on disk.
+/// Hugging Face hub snapshot layout shared by the MLX chat models and the Qwen3 audio models.
 ///
-/// Free-standing on purpose: the `@MainActor` manager and the `MLXModelLoader` actor both need it,
-/// and reaching across that boundary for a path forced a `fileprivate` accessor whose only job was
-/// to smuggle a URL out of one isolation domain into the other.
-enum MLXModelPaths {
-  /// Hub cache root — same layout swift-transformers uses for snapshots.
-  static var hubDirectory: URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent("MLXModels")
-      .appendingPathComponent("hub")
-  }
+/// `requiredFiles` is the only difference: MLX chat needs `tokenizer.json` (a cancelled snapshot
+/// can land `config.json` and a shard without it), Qwen3 audio does not. The shard-index rule is
+/// the same for both — a download cancelled between shards used to count as installed, and MLX
+/// then trapped in `Module.update` instead of throwing.
+struct HubSnapshotLayout {
+  let root: URL
+  let requiredFiles: [String]
 
-  /// The complete on-disk copy of `type`, or nil while it is missing or half-downloaded.
-  static func localDirectory(for type: LocalLLMModelType) -> URL? {
-    let models = hubDirectory.appendingPathComponent("models")
-    var candidates = [models.appendingPathComponent(type.huggingFaceID)]
-    let parts = type.huggingFaceID.split(separator: "/").map(String.init)
+  /// The complete on-disk copy of `repoID`, or nil while it is missing or half-downloaded.
+  func localDirectory(for repoID: String) -> URL? {
+    let models = root.appendingPathComponent("models")
+    var candidates = [models.appendingPathComponent(repoID)]
+    let parts = repoID.split(separator: "/").map(String.init)
     if parts.count == 2 {
       candidates.append(models.appendingPathComponent(parts[0]).appendingPathComponent(parts[1]))
     }
     for repoPath in candidates {
       if hasRequiredFiles(at: repoPath) { return repoPath }
       let snapshots = repoPath.appendingPathComponent("snapshots")
-      guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else { continue }
+      guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else {
+        continue
+      }
       for hash in hashes {
         let snap = snapshots.appendingPathComponent(hash)
         if hasRequiredFiles(at: snap) { return snap }
@@ -147,34 +146,9 @@ enum MLXModelPaths {
     return nil
   }
 
-  /// `tokenizer.json` is required because Hub snapshot can finish `config.json` + the
-  /// `.safetensors` shard and still be cancelled before the tokenizer lands. Treating that
-  /// half-repo as "available" made Delete appear and the first load fail.
-  private static let requiredFileNames = ["config.json", "tokenizer.json"]
-
-  /// Weights of catalogue entries that were removed. Nothing in Settings can reach them any more,
-  /// so without this a user who had downloaded one keeps gigabytes they cannot see or delete.
-  private static let retiredHuggingFaceIDs = ["mlx-community/Qwen3-8B-4bit"]
-
-  /// Deletes the weights of removed catalogue entries. Cheap when there is nothing to do (one
-  /// `fileExists` per entry), so it runs on every launch.
-  static func removeRetiredWeights() {
-    let models = hubDirectory.appendingPathComponent("models")
-    for id in retiredHuggingFaceIDs {
-      let dir = models.appendingPathComponent(id)
-      guard FileManager.default.fileExists(atPath: dir.path) else { continue }
-      do {
-        try FileManager.default.removeItem(at: dir)
-        DebugLogger.log("MLX: removed weights of retired model \(id)")
-      } catch {
-        DebugLogger.logWarning("MLX: could not remove retired model \(id): \(error.logDescription)")
-      }
-    }
-  }
-
-  static func hasRequiredFiles(at directory: URL) -> Bool {
+  func hasRequiredFiles(at directory: URL) -> Bool {
     let fileManager = FileManager.default
-    guard requiredFileNames.allSatisfy({
+    guard requiredFiles.allSatisfy({
       fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
     }) else { return false }
 
@@ -197,6 +171,64 @@ enum MLXModelPaths {
       return false
     }
     return contents.contains { $0.hasSuffix(".safetensors") }
+  }
+
+  /// Delete the repo, not just the snapshot folder — otherwise the blobs stay on disk while
+  /// Settings reports the space as reclaimed.
+  func deletionTarget(for modelPath: URL) -> URL {
+    modelPath.deletingLastPathComponent().lastPathComponent == "snapshots"
+      ? modelPath.deletingLastPathComponent().deletingLastPathComponent()
+      : modelPath
+  }
+}
+
+/// Where MLX weights live on disk.
+///
+/// Free-standing on purpose: the `@MainActor` manager and the `MLXModelLoader` actor both need it,
+/// and reaching across that boundary for a path forced a `fileprivate` accessor whose only job was
+/// to smuggle a URL out of one isolation domain into the other.
+enum MLXModelPaths {
+  /// Hub cache root — same layout swift-transformers uses for snapshots.
+  static var hubDirectory: URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent("MLXModels")
+      .appendingPathComponent("hub")
+  }
+
+  /// `tokenizer.json` is required because Hub snapshot can finish `config.json` + the
+  /// `.safetensors` shard and still be cancelled before the tokenizer lands. Treating that
+  /// half-repo as "available" made Delete appear and the first load fail.
+  static var layout: HubSnapshotLayout {
+    HubSnapshotLayout(root: hubDirectory, requiredFiles: ["config.json", "tokenizer.json"])
+  }
+
+  /// The complete on-disk copy of `type`, or nil while it is missing or half-downloaded.
+  static func localDirectory(for type: LocalLLMModelType) -> URL? {
+    layout.localDirectory(for: type.huggingFaceID)
+  }
+
+  /// Weights of catalogue entries that were removed. Nothing in Settings can reach them any more,
+  /// so without this a user who had downloaded one keeps gigabytes they cannot see or delete.
+  private static let retiredHuggingFaceIDs = ["mlx-community/Qwen3-8B-4bit"]
+
+  /// Deletes the weights of removed catalogue entries. Cheap when there is nothing to do (one
+  /// `fileExists` per entry), so it runs on every launch.
+  static func removeRetiredWeights() {
+    let models = hubDirectory.appendingPathComponent("models")
+    for id in retiredHuggingFaceIDs {
+      let dir = models.appendingPathComponent(id)
+      guard FileManager.default.fileExists(atPath: dir.path) else { continue }
+      do {
+        try FileManager.default.removeItem(at: dir)
+        DebugLogger.log("MLX: removed weights of retired model \(id)")
+      } catch {
+        DebugLogger.logWarning("MLX: could not remove retired model \(id): \(error.logDescription)")
+      }
+    }
+  }
+
+  static func hasRequiredFiles(at directory: URL) -> Bool {
+    layout.hasRequiredFiles(at: directory)
   }
 }
 
@@ -224,9 +256,7 @@ final class LocalLLMModelManager: ModelStore<LocalLLMModelType> {
   /// `…/<repo>/snapshots/<hash>`, and removing only that leaves the rest of the repo directory —
   /// gigabytes that Settings then reports as reclaimed while the disk says otherwise.
   override nonisolated func deletionTarget(for modelPath: URL) -> URL {
-    modelPath.deletingLastPathComponent().lastPathComponent == "snapshots"
-      ? modelPath.deletingLastPathComponent().deletingLastPathComponent()
-      : modelPath
+    MLXModelPaths.layout.deletionTarget(for: modelPath)
   }
 
   // MARK: - Load
