@@ -191,6 +191,10 @@ enum MCPSettingsCatalog {
       if Thread.isMainThread { post() } else { DispatchQueue.main.sync(execute: post) }
     }
 
+    /// After `writing_style.enabled` is written. Tests replace this; the live default starts the
+    /// Gmail import and profile derive, which shows a review panel on the user's screen.
+    var writingStyleToggled: (Bool) -> Void = { WritingStyleSettingsSection.handleToggle(enabled: $0) }
+
     static let live = Dependencies()
   }
 
@@ -1287,7 +1291,7 @@ enum MCPSettingsCatalog {
       id: "writing_style.enabled", title: "Use my writing style in Dictate Prompt",
       category: "writing_style", key: UserDefaultsKeys.writingStyleEnabled, defaultValue: false,
       proposalOnly: true,
-      afterApply: { WritingStyleSettingsSection.handleToggle(enabled: $0) }))
+      afterApply: { deps.writingStyleToggled($0) }))
 
     // MARK: dictate_prompt.tools_enabled — always a proposal: lookups are sent to the model.
     settings.append(boolSetting(

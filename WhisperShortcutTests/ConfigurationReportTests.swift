@@ -119,7 +119,8 @@ struct ConfigurationReportCatalogTests {
       loadShortcutConfig: { .default },
       saveShortcutConfig: { _ in },
       postNotification: { _, _ in },
-      postSelectionsChanged: {}))
+      postSelectionsChanged: {},
+      writingStyleToggled: { _ in }))
     let report = ConfigurationReport.build(
       .init(), store: SystemPromptsStore(contextDirectoryURL: dir), defaults: defaults,
       environment: .init(appVersion: "1", osVersion: "2", isAppStoreBuild: true),
