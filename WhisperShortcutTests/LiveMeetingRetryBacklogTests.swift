@@ -104,13 +104,14 @@ struct LiveMeetingRetryBacklogTests {
     }
     _ = try Self.keepAudio(stem: stem, start: 15)
 
-    final class Count: @unchecked Sendable { var passes = 0 }
-    let count = Count()
-    let calls = Calls(reply: "recovered")
+    final class Gate: @unchecked Sendable {
+      var passes = 0
+      var waiting: CheckedContinuation<String, Error>?
+    }
+    let gate = Gate()
     let session = LiveMeetingSession(
-      transcribeChunk: { url in
-        calls.urls.append(url)
-        return calls.reply
+      transcribeChunk: { _ in
+        try await withCheckedThrowingContinuation { gate.waiting = $0 }
       },
       cleanUpAudioFile: { _ in },
       appStateIsRecordingMeeting: { false },
@@ -118,16 +119,21 @@ struct LiveMeetingRetryBacklogTests {
       onFinished: {},
       onBacklogChanged: {},
       stopSafetyNetDelay: 3600,
-      postProcessingOverride: { _, _ in count.passes += 1 },
+      postProcessingOverride: { _, _ in gate.passes += 1 },
       presentEndedMeetingAlert: { _ in })
 
-    // Two requests for the same stem: the first runs, the second is queued behind it.
-    async let first: Void = session.retryBacklog(stems: [stem], announce: false)
-    async let second: Void = session.retryBacklog(stems: [stem], announce: false)
-    _ = await (first, second)
-    for _ in 0..<50 where count.passes == 0 { try await Task.sleep(nanoseconds: 20_000_000) }
+    // The first pass is held mid-transcription; a second request arrives and is queued behind it.
+    let first = Task { @MainActor in await session.retryBacklog(stems: [stem], announce: false) }
+    for _ in 0..<100 where gate.waiting == nil { try await Task.sleep(nanoseconds: 20_000_000) }
+    #expect(gate.waiting != nil)
+    let second = Task { @MainActor in await session.retryBacklog(stems: [stem], announce: false) }
+    try await Task.sleep(nanoseconds: 100_000_000)
+    gate.waiting?.resume(returning: "recovered")
+    await first.value
+    await second.value
+    for _ in 0..<50 where gate.passes == 0 { try await Task.sleep(nanoseconds: 20_000_000) }
     try await Task.sleep(nanoseconds: 200_000_000)
 
-    #expect(count.passes == 1)
+    #expect(gate.passes == 1)
   }
 }
