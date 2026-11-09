@@ -1187,6 +1187,13 @@ class MenuBarController: NSObject {
     if selectedModel.isOffline, let offlineModelType = selectedModel.offlineModelType {
       prepareModelInBackground(ModelManager.shared, offlineModelType, label: "offline", reason: "launch", downloadIfMissing: false)
     }
+    // Qwen3-ASR is on-device but not an `OfflineModelType`, so the branch above skips it.
+    // Same call as selecting it, except launch must not download a model the user deleted.
+    if selectedModel == .qwen3ASR, Qwen3ModelType.asr.isOfferable {
+      prepareModelInBackground(
+        Qwen3ModelManager.shared, Qwen3ModelType.asr, label: "Qwen3-ASR", reason: "launch",
+        downloadIfMissing: false)
+    }
 
     MLXModelPaths.removeRetiredWeights()
     let selectedPrompt = PromptModel.loadPromptModel(

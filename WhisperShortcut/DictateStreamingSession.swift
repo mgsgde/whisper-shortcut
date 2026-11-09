@@ -4,8 +4,8 @@ import Foundation
 /// user is still speaking, so pressing Stop only leaves the tail chunk to process.
 ///
 /// One session is created per Dictate recording when the selected transcription model is
-/// a cloud STT provider — Gemini, OpenAI, or xAI — or a downloaded on-device Whisper
-/// (`makeIfEligible`). It consumes
+/// a cloud STT provider — Gemini, OpenAI, or xAI — or a downloaded on-device WhisperKit
+/// model (`makeIfEligible`). Parakeet and Qwen3-ASR stay on the single-shot path. It consumes
 /// `ChunkedDictateRecorder`'s chunk callbacks and transcribes each rotated-out chunk
 /// immediately through the regular `SpeechService.transcribe` pipeline, which routes per
 /// provider and brings FLAC transcoding (Gemini), retries, and SPEED logging for free.
@@ -64,6 +64,7 @@ final class DictateStreamingSession {
   /// recording untested". It is not actually concurrent: `LocalSpeechService` is an actor, so chunk
   /// decodes serialise behind one another, and at the measured rtf ≈ 0.15 a chunk decodes about six
   /// times faster than it was spoken — in-flight chunks cannot pile up behind the speaker.
+  /// That assumption is WhisperKit only. Qwen3-ASR's `generate` is not on that actor.
   ///
   /// The **downloaded** check is the load-bearing half of the offline gate: an in-flight chunk must
   /// never be what triggers a multi-gigabyte download, mid-recording, behind the user's back. When
@@ -90,10 +91,12 @@ final class DictateStreamingSession {
     model: TranscriptionModel, hasCredential: Bool, offlineModelDownloaded: Bool
   ) -> Bool {
     if model.isOffline {
-      // Parakeet does not stream (plans/active/parakeet-offline.md, D2): it decodes a whole minute
-      // in ~0.5 s after Stop, less than Whisper's tail chunk alone, and its Glossary vocabulary is
-      // more accurate on the complete recording than per chunk.
-      if model.offlineModelType?.engine == .parakeet { return false }
+      // Only WhisperKit streams. Parakeet does not (plans/active/parakeet-offline.md, D2): it
+      // decodes a whole minute in ~0.5 s after Stop, less than Whisper's tail chunk alone, and
+      // its Glossary vocabulary is more accurate on the complete recording than per chunk.
+      // Qwen3-ASR has no `OfflineModelType`. Streaming it would run `generate` on one MLX model
+      // for every in-flight chunk, outside the `LocalSpeechService` actor the gate assumes.
+      guard model.offlineModelType?.engine == .whisperKit else { return false }
       return offlineModelDownloaded
     }
     guard model.isGemini || model.isOpenAI || model.isXAI else { return false }

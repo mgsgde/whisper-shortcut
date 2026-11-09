@@ -19,6 +19,17 @@ struct DictateStreamingEligibilityTests {
     }
   }
 
+  /// Qwen3-ASR is on-device but its `generate` is not the `LocalSpeechService` actor. A chunk
+  /// in flight would overlap another `generate` on the one MLX model.
+  @Test("Qwen3-ASR never streams, downloaded or not")
+  func qwen3DoesNotStream() {
+    for downloaded in [true, false] {
+      #expect(
+        !DictateStreamingSession.isEligible(
+          model: .qwen3ASR, hasCredential: false, offlineModelDownloaded: downloaded))
+    }
+  }
+
   /// Decision D2 in `plans/active/parakeet-offline.md`: a minute of audio decodes in ~0.5 s after
   /// Stop, and the Glossary vocabulary works better on the whole recording than per chunk.
   @Test("Parakeet never streams, downloaded or not")

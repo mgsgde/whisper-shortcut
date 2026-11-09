@@ -76,6 +76,25 @@ actor Qwen3ASRModelLoader {
     return model
   }
 
+  /// Loads (or reuses) the model and runs `generate` on this actor. `model()` hands the instance
+  /// out for the prewarm, and `Qwen3ASRModel.generate` is not safe to call twice at once — two
+  /// transcriptions would otherwise overlap on the one MLX model. Once `model()` has returned,
+  /// decoding and `generate` do not suspend, so the next caller waits until this one finishes.
+  func generate(audioURL: URL, language: String?) async throws -> String {
+    let model = try await model()
+    let (_, samples) = try AudioFileMonoLoader.loadMonoSamples(
+      from: audioURL, targetRate: model.sampleRate)
+    let audio = MLXArray(samples)
+    guard audio.size > 0 else { throw Qwen3ASRError.emptyAudio }
+
+    let start = Date()
+    let output = model.generate(audio: audio, language: language)
+    DebugLogger.log(
+      "QWEN3-ASR: transcribed \(String(format: "%.1f", Double(samples.count) / Double(model.sampleRate)))s "
+        + "in \(String(format: "%.1f", Date().timeIntervalSince(start)))s → \(output.text.count) chars")
+    return output.text
+  }
+
   func unload() {
     loaded = nil
     lifetime.cancelIdleUnload()
@@ -112,18 +131,6 @@ struct Qwen3ASRService {
   /// resampled first — the recorder writes 16 kHz mono, the model reads at 16 kHz, but a
   /// user-supplied file need not match (and may be stereo, which the loader mixes to mono).
   func transcribe(audioURL: URL, language: String?) async throws -> String {
-    let model = try await Qwen3ASRModelLoader.shared.model()
-
-    let (_, samples) = try AudioFileMonoLoader.loadMonoSamples(
-      from: audioURL, targetRate: model.sampleRate)
-    let audio = MLXArray(samples)
-    guard audio.size > 0 else { throw Qwen3ASRError.emptyAudio }
-
-    let start = Date()
-    let output = model.generate(audio: audio, language: language)
-    DebugLogger.log(
-      "QWEN3-ASR: transcribed \(String(format: "%.1f", Double(samples.count) / Double(model.sampleRate)))s "
-        + "in \(String(format: "%.1f", Date().timeIntervalSince(start)))s → \(output.text.count) chars")
-    return output.text
+    try await Qwen3ASRModelLoader.shared.generate(audioURL: audioURL, language: language)
   }
 }

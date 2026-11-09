@@ -118,7 +118,10 @@ class SpeechService {
   func setModel(_ model: TranscriptionModel) {
     // `unloadModel()` is idempotent — no-op when nothing is loaded — so we don't need
     // to track the previous selection just to decide whether to call it.
-    if !model.isOffline {
+    // Qwen3-ASR is `isOffline` but not a WhisperKit/Parakeet model (`offlineModelType` is
+    // nil). The old `!isOffline` check left the previous Whisper resident, so the model-info
+    // line and the usage log kept reporting that Whisper's name.
+    if model.offlineModelType == nil {
       Task {
         await LocalSpeechService.shared.unloadModel()
       }
@@ -128,7 +131,10 @@ class SpeechService {
   // MARK: - Model Information for Notifications
   func getTranscriptionModelInfo() async -> String {
     let model = TranscriptionModel.loadSelected()
-    if model.isOffline {
+    // Only a resident WhisperKit/Parakeet model has a name to read back. Qwen3-ASR is offline
+    // but lives in its own loader, so asking LocalSpeechService would return the Whisper that
+    // was loaded before the switch.
+    if model.offlineModelType != nil {
       return await LocalSpeechService.shared.getCurrentModelInfo() ?? model.displayName
     }
     return model.displayName
