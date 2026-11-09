@@ -242,15 +242,18 @@ struct ToolApprovalCardView: View {
         Image(systemName: "hand.raised")
           .foregroundColor(ChatTheme.secondaryText)
         VStack(alignment: .leading, spacing: 4) {
-          Text("Allow this action?")
+          (request.preview == nil ? Text("Allow this action?") : Text("Allow this change?"))
             .font(.system(size: 13, weight: .semibold))
             .foregroundColor(ChatTheme.primaryText)
-          Text(request.summary)
+          Text(headline)
             .font(.system(size: 13))
             .foregroundColor(ChatTheme.primaryText.opacity(0.85))
             .lineLimit(8)
             .fixedSize(horizontal: false, vertical: true)
         }
+      }
+      if let preview = request.preview {
+        diffBlock(preview)
       }
       HStack(spacing: 8) {
         Spacer()
@@ -276,5 +279,35 @@ struct ToolApprovalCardView: View {
     )
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Approval needed: \(request.summary)")
+  }
+
+  /// With a diff below, the summary's own copy of the new text would say the same thing twice,
+  /// and truncated: only its first line ("Add to: Dictate Prompt") stays.
+  private var headline: String {
+    guard request.preview != nil else { return request.summary }
+    return request.summary.components(separatedBy: "\n").first ?? request.summary
+  }
+
+  /// The same red/green diff the review window shows for an AI app's proposal, so a change to
+  /// the app's own instructions is read before it is allowed, not after.
+  @ViewBuilder
+  private func diffBlock(_ preview: ToolApprovalPreview) -> some View {
+    let lines = collapseUnchangedDiffLines(
+      computeProposalDiff(original: preview.before, suggested: preview.after), context: 1)
+    let diff = ProposalDiffLinesView(
+      lines: lines,
+      font: .system(size: 12, design: .monospaced),
+      primary: ChatTheme.primaryText.opacity(0.85),
+      secondary: ChatTheme.secondaryText,
+      background: ChatTheme.windowBackground)
+    // A short diff sits in the card as is; a long one (a whole section replaced) scrolls inside
+    // a fixed height so Allow and Deny stay on screen.
+    if lines.count > 14 {
+      ScrollView(.vertical) { diff }
+        .frame(height: 260)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    } else {
+      diff
+    }
   }
 }

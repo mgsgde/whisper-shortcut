@@ -3787,15 +3787,18 @@ struct ChatView: View {
     return ScrollViewReader { proxy in
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          LazyVStack(alignment: .leading, spacing: 20) {
-            Color.clear.frame(height: 1).id("listTop")
-            if viewModel.messages.isEmpty && !viewModel.isSending {
-              if viewModel.isCurrentSessionMeeting {
-                meetingEmptyState
-              } else {
-                emptyStateCommandHints
-              }
+          // Outside the LazyVStack on purpose: a lazy row is only built once it scrolls into view,
+          // and right after switching from a long chat the scroll view can still sit at the old
+          // offset, so the empty state never appeared and a new chat showed a blank pane.
+          Color.clear.frame(height: 1).id("listTop")
+          if viewModel.messages.isEmpty && !viewModel.isSending {
+            if viewModel.isCurrentSessionMeeting {
+              meetingEmptyState
+            } else {
+              emptyStateCommandHints
             }
+          }
+          LazyVStack(alignment: .leading, spacing: 20) {
             ForEach(meetingStreamItems) { item in
               switch item {
               case .note(let note):
@@ -4210,6 +4213,13 @@ struct ChatView: View {
       // anchor it happened to have: the anchor is only the layout starting point. Only when the
       // user turned on "Scroll along with new text" in Settings → Chat.
       if wasFollowing && followNewContentEnabled { scrollToBottom(proxy: proxy) }
+    } else if viewModel.messages.isEmpty {
+      // An empty chat starts at the top, instantly: an animated scroll to the bottom starts from
+      // the previous tab's offset and can leave the view parked below the shrunken content.
+      scrollPositionID = nil
+      followsBottom = true
+      viewModel.setFollowingBottom(true, for: sessionId)
+      proxy.scrollTo("listTop", anchor: .top)
     } else {
       scrollPositionID = nil
       followsBottom = true
