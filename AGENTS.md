@@ -189,6 +189,6 @@ else is here; theirs live under `.claude/worktrees/`). Both halves of this rule 
    `git show main:<path>`; work on a branch in your own worktree
    (`git worktree add .claude/worktrees/<name> -b <branch> origin/main`).
 5. **Shared files: report, do not edit silently.** `AGENTS.md`, `.cursor/rules/*`,
-   `README.md` `## Features` (bundled into the app), `plans/implementer-queue.md` and
+   `docs/guide.md` and `README.md` (both bundled into the app), `plans/implementer-queue.md` and
    `plans/agent-loops.md` are read by every other agent and by the loops; keep a change to them
    in its own commit and say so in your report.
