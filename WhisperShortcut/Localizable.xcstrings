@@ -19784,6 +19784,26 @@
         }
       }
     },
+    "The recovered text was added to the meeting transcript." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der wiederhergestellte Text wurde dem Meeting-Transkript hinzugefügt."
+          }
+        }
+      }
+    },
+    "There was no kept meeting audio to transcribe." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es gab keine aufbewahrte Meeting-Aufnahme zu transkribieren."
+          }
+        }
+      }
+    },
     "The kept meeting audio contained no speech." : {
       "localizations" : {
         "de" : {

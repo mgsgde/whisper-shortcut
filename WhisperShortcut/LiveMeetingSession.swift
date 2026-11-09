@@ -298,6 +298,12 @@ final class LiveMeetingSession: NSObject {
   var stopSafetyNetForTesting: DispatchWorkItem? { stopSafetyNet }
   #endif
 
+  /// Stem of the meeting being recorded (or still draining its last chunks), nil between meetings.
+  private var activeMeetingStem: String? {
+    guard !finalized else { return nil }
+    return transcriptURL?.deletingPathExtension().lastPathComponent
+  }
+
   /// True when a meeting is active (recording, or stopping with pending chunks).
   private var isActive: Bool { appStateIsRecordingMeeting() || recorder != nil }
 
@@ -863,8 +869,8 @@ final class LiveMeetingSession: NSObject {
   }
 
   /// Transcribes kept meeting audio again and splices the text into each meeting's transcript at
-  /// its original timestamp. A meeting that is recording right now is skipped — its own `finish()`
-  /// retries it. Stops at the first real failure: when the network is down every further call
+  /// its original timestamp. A meeting that is recording right now is retried too: its recovered
+  /// text goes into the live transcript, and its summary waits for its own `finish()`. Stops at the first real failure: when the network is down every further call
   /// fails the same way, and the files stay for the next attempt.
   ///
   /// `announce` is true for a retry the user asked for, which then also reports success; the
@@ -897,15 +903,16 @@ final class LiveMeetingSession: NSObject {
 
   @MainActor
   private func retryBacklogPass(stems: [String]?, announce: Bool) async {
-    let activeStem = recorder != nil ? transcriptURL?.deletingPathExtension().lastPathComponent : nil
-    let targets = (stems ?? MeetingAudioBacklog.stemsWithBacklog()).filter { $0 != activeStem }
+    let targets = stems ?? MeetingAudioBacklog.stemsWithBacklog()
     DebugLogger.log("MEETING-BACKLOG: Retrying \(targets.count) meeting(s)")
 
     var recovered = 0
+    var attempted = 0
     var failure: Error?
     for stem in targets {
       let result = await retryBacklog(stem: stem)
       recovered += result.recovered
+      attempted += result.attempted
       if let error = result.error {
         failure = error
         break
@@ -927,30 +934,41 @@ final class LiveMeetingSession: NSObject {
         retryActionTitle: "Retry Now"
       )
     } else if announce {
-      PopupNotificationWindow.showInfo(
-        verbatim: recovered == 0
-          ? String(localized: "The kept meeting audio contained no speech.")
-          : String(localized: "The meeting transcript is complete again. The summary is being regenerated."),
-        title: "Meeting Transcription Recovered")
+      // Say what actually happened: "no speech" only when audio was really transcribed and empty.
+      let message: String
+      if attempted == 0 {
+        message = String(localized: "There was no kept meeting audio to transcribe.")
+      } else if recovered == 0 {
+        message = String(localized: "The kept meeting audio contained no speech.")
+      } else if targets.contains(where: { $0 == activeMeetingStem }) {
+        message = String(localized: "The recovered text was added to the meeting transcript.")
+      } else {
+        message = String(localized: "The meeting transcript is complete again. The summary is being regenerated.")
+      }
+      PopupNotificationWindow.showInfo(verbatim: message, title: "Meeting Transcription Recovered")
     }
   }
 
   /// One meeting's share of `retryBacklog`. The transcript is rewritten before any audio is
   /// deleted, so a failed write never costs audio.
   @MainActor
-  private func retryBacklog(stem: String) async -> (recovered: Int, error: Error?) {
-    let transcriptURL = MeetingListService.transcriptURL(forStem: stem)
+  private func retryBacklog(stem: String) async -> (recovered: Int, attempted: Int, error: Error?) {
+    // The meeting being recorded owns its transcript file: use the URL it writes to.
+    let liveURL = activeMeetingStem == stem ? self.transcriptURL : nil
+    let transcriptURL = liveURL ?? MeetingListService.transcriptURL(forStem: stem)
     // The transcript file is created when recording starts, so a missing one was deleted on purpose
     // (Finder, library). Retrying would bring the meeting back from the kept audio; drop that audio.
     guard FileManager.default.fileExists(atPath: transcriptURL.path) else {
       DebugLogger.log("MEETING-BACKLOG: Transcript for \(stem) is gone; discarding its kept audio")
       MeetingAudioBacklog.remove(stem: stem)
-      return (0, nil)
+      return (0, 0, nil)
     }
     var recoveredChunks: [LiveMeetingChunk] = []
     var consumed: [URL] = []
+    var attempted = 0
     var failure: Error?
     for item in MeetingAudioBacklog.items(stem: stem) {
+      attempted += 1
       do {
         let text = try await transcribeChunk(item.url)
           .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -971,8 +989,16 @@ final class LiveMeetingSession: NSObject {
       }
     }
 
+    // The meeting was renamed or deleted while the audio was being transcribed. Writing now would
+    // recreate the old file; the audio stays and the next retry handles it under its current name.
+    guard FileManager.default.fileExists(atPath: transcriptURL.path) else {
+      DebugLogger.logWarning("MEETING-BACKLOG: Transcript for \(stem) moved during the retry; keeping its audio")
+      return (0, attempted, failure)
+    }
     let store = LiveMeetingTranscriptStore.shared
     let isShownMeeting = store.currentMeetingFilenameStem == stem
+    // Still the meeting being recorded: the live store and notes follow, the summary waits for finish().
+    let isStillLive = liveURL != nil && self.transcriptURL == liveURL && !finalized
     var merged: [LiveMeetingChunk] = []
     if !recoveredChunks.isEmpty {
       let existingText = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
@@ -985,12 +1011,18 @@ final class LiveMeetingSession: NSObject {
           to: transcriptURL, atomically: true, encoding: .utf8)
       } catch {
         DebugLogger.logError("MEETING-BACKLOG: Failed to write transcript for \(stem): \(error)")
-        return (0, error)
+        return (0, attempted, error)
       }
       // A pass already running for this meeting started without these chunks and the audio is
       // about to be deleted, so it must not rewrite the transcript or summary from its older view.
       noteTranscriptWrite(stem: stem)
-      if isShownMeeting { store.replaceChunks(merged) }
+      if isShownMeeting {
+        // A live meeting merges into the store's own chunks so their IDs (what the notes track) stay.
+        store.replaceChunks(isStillLive ? MeetingAudioBacklog.merge(recoveredChunks, into: store.chunks) : merged)
+      }
+      if isStillLive {
+        DispatchQueue.main.async { [weak self] in self?.refreshLiveNotes() }
+      }
       MeetingListService.shared.invalidateCache(for: nil)
       MeetingListService.shared.refresh()
       DebugLogger.log("MEETING-BACKLOG: Spliced \(recoveredChunks.count) chunk(s) into \(stem)")
@@ -999,7 +1031,7 @@ final class LiveMeetingSession: NSObject {
     MeetingAudioBacklog.removeIfEmpty(stem: stem)
 
     // The summary is only worth writing once the transcript is whole (see `finish()`).
-    if failure == nil {
+    if failure == nil, !isStillLive {
       if merged.isEmpty {
         let text = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
         merged = LiveMeetingTranscriptStore.parseTranscript(text)
@@ -1009,7 +1041,7 @@ final class LiveMeetingSession: NSObject {
           transcriptURL: transcriptURL, chunks: merged)
       }
     }
-    return (recoveredChunks.count, failure)
+    return (recoveredChunks.count, attempted, failure)
   }
 
   // MARK: - Transcript file

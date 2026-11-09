@@ -56,4 +56,34 @@ struct LiveMeetingRetryBacklogTests {
     #expect(MeetingAudioBacklog.items(stem: stem).isEmpty)
     #expect(!FileManager.default.fileExists(atPath: MeetingListService.transcriptURL(forStem: stem).path))
   }
+
+  @Test("Retry during a live meeting transcribes its kept audio into the live transcript")
+  func retryDuringLiveMeeting() async throws {
+    let store = LiveMeetingTranscriptStore.shared
+    store.clearForNewMeeting()
+    defer { store.clearForNewMeeting() }
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("r207-live-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let file = dir.appendingPathComponent("Meeting-r207-\(UUID().uuidString).txt")
+    let stem = file.deletingPathExtension().lastPathComponent
+    defer { MeetingAudioBacklog.remove(stem: stem) }
+    try MeetingAudioBacklog.transcriptText([LiveMeetingChunk(startTime: 60, text: "later")])
+      .write(to: file, atomically: true, encoding: .utf8)
+    let kept = try Self.keepAudio(stem: stem, start: 15)
+
+    let calls = Calls(reply: "recovered words")
+    let session = Self.makeSession(calls: calls)
+    session.beginSessionWithoutRecorder(transcriptFile: file)
+    store.appendChunk(startTime: 60, text: "later")
+
+    await session.retryBacklog(stems: [stem], announce: false)
+
+    #expect(calls.urls.map(\.lastPathComponent) == [kept.lastPathComponent])
+    #expect(store.chunks.map(\.text) == ["recovered words", "later"])
+    let onDisk = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+    #expect(LiveMeetingTranscriptStore.parseTranscript(onDisk).map(\.text) == ["recovered words", "later"])
+    #expect(MeetingAudioBacklog.items(stem: stem).isEmpty)
+  }
 }
