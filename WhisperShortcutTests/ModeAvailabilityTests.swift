@@ -49,6 +49,18 @@ struct ModeAvailabilityTests {
     #expect(a(.dictate, input(.processing(.transcribing))) == .cancelProcessing)
   }
 
+  @Test("Fn cancels a Dictate run only when ⌘1 would")
+  func fnAndDictateAgreeOnCancel() {
+    // Fn's processing check is `availability(.dictate) == .cancelProcessing`.
+    func cancels(_ i: ModeAvailabilityInput) -> Bool { a(.dictate, i) == .cancelProcessing }
+    #expect(cancels(input(.processing(.transcribing), jobMode: .transcription)))
+    #expect(!cancels(input(.processing(.transcribing), jobMode: .transcription, liveFinishing: true)))
+    #expect(!cancels(input(.processing(.splitting(context: .transcription)), jobMode: .prompt)))
+    #expect(!cancels(input(.processing(.merging(context: .transcription)), jobMode: .prompt)))
+    #expect(!cancels(input(.recording(.liveMeeting), meeting: true, active: .dictation, segmentProcessing: true)))
+    #expect(!cancels(input(.recording(.transcription))))
+  }
+
   @Test("Dictate outside a meeting")
   func dictate() {
     #expect(a(.dictate, input()) == .start)

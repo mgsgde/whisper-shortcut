@@ -4478,6 +4478,19 @@ extension MenuBarController: ShortcutDelegate {
       toggleTranscription()
       return
     }
+    #endif
+    startDictateForCurrentMode()
+  }
+
+  /// Starts Dictate, or Dictate Live when that mode is selected. Returns false when Live is
+  /// refused. Each caller keeps its own guard: ⌘1 only reaches here on `.start`, Fn only when
+  /// nothing is already recording or processing.
+  @discardableResult
+  private func startDictateForCurrentMode() -> Bool {
+    #if APP_STORE
+    toggleTranscription()
+    return true
+    #else
     switch LiveDictation.startDecision(
       mode: DictateMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
     {
@@ -4488,9 +4501,9 @@ extension MenuBarController: ShortcutDelegate {
       toggleLiveDictation()
     case .refuse(let reason):
       presentLiveUnavailable(reason)
+      return false
     }
-    #else
-    toggleTranscription()
+    return true
     #endif
   }
 
@@ -4877,27 +4890,12 @@ extension MenuBarController: FnDictationToggleDelegate {
     // fn-down must never cancel in-flight work or stop a recording the user started
     // otherwise — it only ever begins a fresh dictation.
     guard !isTranscriptionProcessing, !isDictationRecordingActive() else { return false }
-    #if APP_STORE
-    toggleTranscription()
-    fnStartedRecordingID = recording?.id
-    return isDictationRecordingActive()
-    #else
-    switch LiveDictation.startDecision(
-      mode: DictateMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
-    {
-    case .startDictate:
-      toggleTranscription()
-      fnStartedRecordingID = recording?.id
-    case .startLive:
-      toggleLiveDictation()  // the shortcut path: availability, Accessibility dialog
-      fnStartedRecordingID = recording?.id
-    case .refuse(let reason):
-      presentLiveUnavailable(reason)
+    guard startDictateForCurrentMode() else {
       fnStartedRecordingID = nil
       return false
     }
+    fnStartedRecordingID = recording?.id
     return isDictationRecordingActive()
-    #endif
   }
 
   func fnDictationStop() {
@@ -4911,14 +4909,15 @@ extension MenuBarController: FnDictationToggleDelegate {
     return recording?.id == id
   }
 
-  // During a live meeting ⌘1 never cancels either — its meeting branch runs first — so fn
-  // mirrors that and falls through to starting a dictation segment.
+  // Same decision as ⌘1. Dictate Live inserting its last pieces, and a Dictate Prompt still in
+  // the chunk phases, are not `.cancelProcessing`. A meeting never is either — that branch runs
+  // first in `ModeAvailability` — so Fn falls through to starting a dictation segment.
   func fnDictationIsProcessing() -> Bool {
-    return !isLiveMeetingActive && isTranscriptionProcessing
+    availability(.dictate) == .cancelProcessing
   }
 
   func fnDictationCancelProcessing() {
-    guard !isLiveMeetingActive, isTranscriptionProcessing else { return }
+    guard fnDictationIsProcessing() else { return }
     DebugLogger.log("SHORTCUTS: Cancelling in-flight transcription via Fn")
     cancelInFlightTranscription()
   }
