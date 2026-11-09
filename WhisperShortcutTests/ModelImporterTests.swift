@@ -22,6 +22,16 @@ struct ModelImporterTests {
     return url
   }
 
+  /// Roots pointing at fresh temp folders instead of the real app container — discovery must
+  /// never depend on, or be thrown off by, whatever is actually downloaded on this Mac.
+  private func makeImportRoots() throws -> ModelImportRoots {
+    let base = try makeTempFolder()
+    return ModelImportRoots(
+      whisper: base.appendingPathComponent("whisper"),
+      mlxHub: base.appendingPathComponent("mlx"),
+      qwen3: base.appendingPathComponent("qwen3"))
+  }
+
   /// A minimal complete WhisperKit model folder: the three required compiled components, each
   /// with the three files `incompleteComponent` checks.
   private func writeWhisperModel(at folder: URL) throws {
@@ -111,25 +121,25 @@ struct ModelImporterTests {
     #expect(!ModelImporter.plans(in: root).contains { $0.displayName == "Whisper Tiny" })
   }
 
-  // The discovery tests below use `Qwen3 TTS CustomVoice 0.6B` rather than an MLX chat model:
-  // discovery now skips a catalogue entry that is already fully downloaded (see
-  // `ModelImporter.isComplete`), and on a dev Mac that already has the MLX chat models on disk
-  // for normal use, a test built around one of those would pass or fail depending on what is
-  // installed rather than on the behaviour under test. CustomVoice exercises the identical shared
-  // `HubSnapshotLayout` discovery code and is never downloaded as a side effect of using the app.
+  // The discovery tests below exercise MLX coverage with `Qwen3 4B Instruct`
+  // (`LocalLLMModelType.qwen34BInstruct2507`, offerable on any Mac — its
+  // `minimumPhysicalMemoryGB` is 0, so it is never filtered out by `isOfferable` whether the
+  // test runs on an 8 GB or a 16 GB machine) and inject temp-folder `ModelImportRoots`, so
+  // discovery never reads the real app container: what Magnus actually has downloaded on his own
+  // Mac must not change what a test expects to find.
 
   @Test("A model in a Hugging Face cache snapshot is found")
   func findsModelInCacheSnapshot() throws {
     let root = try makeTempFolder()
     defer { try? FileManager.default.removeItem(at: root) }
     let snapshot = root
-      .appendingPathComponent("models--mlx-community--Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit")
+      .appendingPathComponent("models--mlx-community--Qwen3-4B-Instruct-2507-4bit")
       .appendingPathComponent("snapshots")
       .appendingPathComponent("deadbeef")
     try writeMLXModel(at: snapshot)
 
-    let plans = ModelImporter.plans(in: root)
-    #expect(plans.contains { $0.displayName == "Qwen3 TTS CustomVoice 0.6B" })
+    let plans = ModelImporter.plans(in: root, roots: try makeImportRoots())
+    #expect(plans.contains { $0.displayName == "Qwen3 4B Instruct" })
   }
 
   @Test("An LM Studio style org/repo folder is found")
@@ -137,10 +147,10 @@ struct ModelImporterTests {
     let root = try makeTempFolder()
     defer { try? FileManager.default.removeItem(at: root) }
     try writeMLXModel(
-      at: root.appendingPathComponent("mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"))
+      at: root.appendingPathComponent("mlx-community/Qwen3-4B-Instruct-2507-4bit"))
 
-    let plans = ModelImporter.plans(in: root)
-    #expect(plans.contains { $0.displayName == "Qwen3 TTS CustomVoice 0.6B" })
+    let plans = ModelImporter.plans(in: root, roots: try makeImportRoots())
+    #expect(plans.contains { $0.displayName == "Qwen3 4B Instruct" })
   }
 
   @Test("A model missing a shard its index names is not offered")
@@ -148,7 +158,7 @@ struct ModelImporterTests {
     let root = try makeTempFolder()
     defer { try? FileManager.default.removeItem(at: root) }
     let folder = root
-      .appendingPathComponent("models--mlx-community--Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit")
+      .appendingPathComponent("models--mlx-community--Qwen3-4B-Instruct-2507-4bit")
       .appendingPathComponent("snapshots/abc123")
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     try Data("{}".utf8).write(to: folder.appendingPathComponent("config.json"))
@@ -163,7 +173,31 @@ struct ModelImporterTests {
     try JSONSerialization.data(withJSONObject: index)
       .write(to: folder.appendingPathComponent("model.safetensors.index.json"))
 
-    #expect(!ModelImporter.plans(in: root).contains { $0.displayName == "Qwen3 TTS CustomVoice 0.6B" })
+    #expect(!ModelImporter.plans(in: root, roots: try makeImportRoots())
+      .contains { $0.displayName == "Qwen3 4B Instruct" })
+  }
+
+  @Test("Discovery skips a model already complete at its destination")
+  func discoverySkipsAlreadyCompleteModel() throws {
+    let root = try makeTempFolder()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let roots = try makeImportRoots()
+
+    // The picked folder has a perfectly importable model...
+    try writeMLXModel(
+      at: root
+        .appendingPathComponent("models--mlx-community--Qwen3-4B-Instruct-2507-4bit")
+        .appendingPathComponent("snapshots/abc123"))
+
+    // ...but the destination this import would land in already has a complete model of its
+    // own (e.g. downloaded earlier through the app), so importing again would be pointless.
+    let destination = roots.mlxHub
+      .appendingPathComponent("models")
+      .appendingPathComponent(LocalLLMModelType.qwen34BInstruct2507.huggingFaceID)
+    try writeMLXModel(at: destination)
+
+    let plans = ModelImporter.plans(in: root, roots: roots)
+    #expect(!plans.contains { $0.displayName == "Qwen3 4B Instruct" })
   }
 
   @Test("A folder with nothing usable yields no plans")

@@ -75,6 +75,23 @@ enum ModelImportGroup {
   case readAloud
 }
 
+/// Where each family's models live, so a destination can be computed without going through the
+/// live singletons. Production always uses `.live`; tests pass temp-folder roots so discovery
+/// never reads (or is thrown off by) the real app container — a model Magnus happens to already
+/// have downloaded on his own Mac must not change what a test expects to find.
+struct ModelImportRoots {
+  let whisper: URL
+  let mlxHub: URL
+  let qwen3: URL
+
+  static var live: ModelImportRoots {
+    ModelImportRoots(
+      whisper: ModelManager.shared.rootDirectory,
+      mlxHub: MLXModelPaths.hubDirectory,
+      qwen3: Qwen3ModelManager.shared.rootDirectory)
+  }
+}
+
 enum ModelImportError: LocalizedError {
   case nothingFound
   case copyFailed(String)
@@ -116,21 +133,30 @@ enum ModelImporter {
   /// The folder may be an LM Studio models directory, a Hugging Face cache root, or any folder
   /// that contains one of them — the search looks at the folder itself and one level down, which
   /// covers `~/.lmstudio/models/<publisher>/<repo>` and `~/.cache/huggingface/hub`.
-  static func plans(in folder: URL) -> [ModelImportPlan] {
-    let roots = searchRoots(for: folder)
+  static func plans(in folder: URL, roots importRoots: ModelImportRoots = .live) -> [ModelImportPlan] {
+    let searchedRoots = searchRoots(for: folder)
     var plans: [ModelImportPlan] = []
 
     for type in OfflineModelType.offerable where type.engine == .whisperKit {
-      guard !isComplete(at: whisperDestination(for: type), family: .whisper(type)) else { continue }
-      if let plan = whisperPlan(for: type, in: roots) { plans.append(plan) }
+      let destination = whisperDestination(for: type, in: importRoots)
+      guard !isComplete(at: destination, family: .whisper(type)) else { continue }
+      if let plan = whisperPlan(for: type, in: searchedRoots, destination: destination) {
+        plans.append(plan)
+      }
     }
     for type in LocalLLMModelType.allCases where type.isOfferable {
-      guard !isComplete(at: mlxDestination(for: type), family: .mlx(type)) else { continue }
-      if let plan = mlxPlan(for: type, in: roots) { plans.append(plan) }
+      let destination = mlxDestination(for: type, in: importRoots)
+      guard !isComplete(at: destination, family: .mlx(type)) else { continue }
+      if let plan = mlxPlan(for: type, in: searchedRoots, destination: destination) {
+        plans.append(plan)
+      }
     }
     for type in Qwen3ModelType.allCases where type.isOfferable {
-      guard !isComplete(at: qwen3Destination(for: type), family: .qwen3(type)) else { continue }
-      if let plan = qwen3Plan(for: type, in: roots) { plans.append(plan) }
+      let destination = qwen3Destination(for: type, in: importRoots)
+      guard !isComplete(at: destination, family: .qwen3(type)) else { continue }
+      if let plan = qwen3Plan(for: type, in: searchedRoots, destination: destination) {
+        plans.append(plan)
+      }
     }
     return plans
   }
@@ -170,7 +196,7 @@ enum ModelImporter {
   /// Completeness is `ModelManager.incompleteComponent` — the same check the loader runs — so a
   /// half-written copy in the user's folder is never offered as an import.
   private static func whisperPlan(
-    for type: OfflineModelType, in roots: [URL]
+    for type: OfflineModelType, in roots: [URL], destination: URL
   ) -> ModelImportPlan? {
     guard let variant = type.whisperKitModelName else { return nil }
     let folderName = "openai_whisper-\(variant)"
@@ -185,7 +211,7 @@ enum ModelImporter {
           if ModelManager.incompleteComponent(at: candidate) == nil {
             return plan(
               family: .whisper(type), displayName: type.displayName, source: candidate,
-              destination: whisperDestination(for: type),
+              destination: destination,
               whisperTokenizerSource: whisperTokenizerSource(for: type, in: roots))
           }
         }
@@ -197,7 +223,7 @@ enum ModelImporter {
       ] where ModelManager.incompleteComponent(at: candidate) == nil {
         return plan(
           family: .whisper(type), displayName: type.displayName, source: candidate,
-          destination: whisperDestination(for: type),
+          destination: destination,
           whisperTokenizerSource: whisperTokenizerSource(for: type, in: roots))
       }
     }
@@ -206,8 +232,8 @@ enum ModelImporter {
 
   /// Where an imported Whisper model goes: the same `models/argmaxinc/whisperkit-coreml/…`
   /// layout a download produces, so `resolveModelPath` finds it without a special case.
-  private static func whisperDestination(for type: OfflineModelType) -> URL {
-    ModelManager.shared.rootDirectory
+  private static func whisperDestination(for type: OfflineModelType, in roots: ModelImportRoots) -> URL {
+    roots.whisper
       .appendingPathComponent("models")
       .appendingPathComponent("argmaxinc")
       .appendingPathComponent("whisperkit-coreml")
@@ -238,42 +264,40 @@ enum ModelImporter {
 
   // MARK: - MLX and Qwen3
 
-  private static func mlxDestination(for type: LocalLLMModelType) -> URL {
-    MLXModelPaths.hubDirectory
+  private static func mlxDestination(for type: LocalLLMModelType, in roots: ModelImportRoots) -> URL {
+    roots.mlxHub
       .appendingPathComponent("models")
       .appendingPathComponent(type.huggingFaceID)
   }
 
-  private static func qwen3Destination(for type: Qwen3ModelType) -> URL {
-    Qwen3ModelManager.shared.rootDirectory
+  private static func qwen3Destination(for type: Qwen3ModelType, in roots: ModelImportRoots) -> URL {
+    roots.qwen3
       .appendingPathComponent("models")
       .appendingPathComponent(type.huggingFaceID)
   }
 
   /// An MLX chat model in the user's folder, or nil.
   private static func mlxPlan(
-    for type: LocalLLMModelType, in roots: [URL]
+    for type: LocalLLMModelType, in roots: [URL], destination: URL
   ) -> ModelImportPlan? {
     guard let source = hubSource(
       for: type.huggingFaceID, in: roots, hasRequiredFiles: MLXModelPaths.layout.hasRequiredFiles)
     else { return nil }
     return plan(
-      family: .mlx(type), displayName: type.displayName, source: source,
-      destination: mlxDestination(for: type))
+      family: .mlx(type), displayName: type.displayName, source: source, destination: destination)
   }
 
   /// A Qwen3 audio model in the user's folder, or nil. Only offered models are searched, so a
   /// 16 GB Mac does not get an import row for a checkpoint it cannot run.
   private static func qwen3Plan(
-    for type: Qwen3ModelType, in roots: [URL]
+    for type: Qwen3ModelType, in roots: [URL], destination: URL
   ) -> ModelImportPlan? {
     guard let source = hubSource(
       for: type.huggingFaceID, in: roots,
       hasRequiredFiles: Qwen3ModelManager.shared.layout.hasRequiredFiles)
     else { return nil }
     return plan(
-      family: .qwen3(type), displayName: type.displayName, source: source,
-      destination: qwen3Destination(for: type))
+      family: .qwen3(type), displayName: type.displayName, source: source, destination: destination)
   }
 
   /// The folder holding a Hub repo's files: a cache snapshot, or a plain `<org>/<repo>` checkout.
