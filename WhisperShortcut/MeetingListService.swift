@@ -112,7 +112,47 @@ final class MeetingListService: ObservableObject {
     transcriptFileURL.deletingPathExtension().appendingPathExtension("summary.md")
   }
 
-  /// Saves summary to the .summary.md file next to the given transcript URL.
+  /// What a summary was built from: how many chunks the transcript had and where the last one
+  /// starts. Stored beside the summary so a later look can tell that audio was added afterwards
+  /// (resume, late chunk, recovered backlog) and the summary no longer covers the transcript.
+  struct SummaryMeta: Codable, Equatable {
+    var chunkCount: Int
+    var lastChunkStart: TimeInterval
+  }
+
+  /// `<stem>.summary.meta.json`, next to the summary.
+  static func summaryMetaURL(transcriptFileURL: URL) -> URL {
+    transcriptFileURL.deletingPathExtension().appendingPathExtension("summary.meta.json")
+  }
+
+  static func summaryMeta(forTranscript text: String) -> SummaryMeta {
+    let chunks = LiveMeetingTranscriptStore.parseTranscript(text)
+    return SummaryMeta(chunkCount: chunks.count, lastChunkStart: chunks.map(\.startTime).max() ?? 0)
+  }
+
+  /// True when the summary still covers the transcript. A summary without meta predates this check
+  /// and counts as matching, so old meetings are not regenerated wholesale.
+  static func summaryMatches(meta: SummaryMeta?, transcript text: String) -> Bool {
+    guard let meta else { return true }
+    return meta == summaryMeta(forTranscript: text)
+  }
+
+  func loadSummaryMeta(transcriptFileURL: URL) -> SummaryMeta? {
+    guard let data = try? Data(contentsOf: Self.summaryMetaURL(transcriptFileURL: transcriptFileURL))
+    else { return nil }
+    return try? JSONDecoder().decode(SummaryMeta.self, from: data)
+  }
+
+  /// True when the meeting has a summary built from a transcript that has since changed.
+  func summaryIsStale(transcriptFileURL: URL) -> Bool {
+    guard let meta = loadSummaryMeta(transcriptFileURL: transcriptFileURL),
+      let text = try? String(contentsOf: transcriptFileURL, encoding: .utf8)
+    else { return false }
+    return !Self.summaryMatches(meta: meta, transcript: text)
+  }
+
+  /// Saves summary to the .summary.md file next to the given transcript URL, with the sidecar that
+  /// records which transcript it was written for.
   func saveSummary(_ text: String, transcriptFileURL: URL) {
     let url = Self.summaryURL(transcriptFileURL: transcriptFileURL)
     do {
@@ -120,6 +160,12 @@ final class MeetingListService: ObservableObject {
       DebugLogger.log("MEETING-LIBRARY: Saved summary to \(url.lastPathComponent)")
     } catch {
       DebugLogger.logError("MEETING-LIBRARY: Save summary failed: \(error.logDescription)")
+      return
+    }
+    let transcript = (try? String(contentsOf: transcriptFileURL, encoding: .utf8)) ?? ""
+    let meta = Self.summaryMeta(forTranscript: transcript)
+    if let data = try? JSONEncoder().encode(meta) {
+      try? data.write(to: Self.summaryMetaURL(transcriptFileURL: transcriptFileURL), options: .atomic)
     }
   }
 

@@ -535,6 +535,7 @@ final class LiveMeetingSession: NSObject {
         try? FileManager.default.removeItem(at: url)
         let summaryURL = url.deletingPathExtension().appendingPathExtension("summary.md")
         try? FileManager.default.removeItem(at: summaryURL)
+        try? FileManager.default.removeItem(at: MeetingListService.summaryMetaURL(transcriptFileURL: url))
         try? FileManager.default.removeItem(at: MeetingListService.notesURL(transcriptFileURL: url))
         MeetingAudioBacklog.remove(stem: url.deletingPathExtension().lastPathComponent)
         DebugLogger.log("LIVE-MEETING: Discarded transcript, notes, summary and kept audio")
