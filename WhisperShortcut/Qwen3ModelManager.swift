@@ -129,7 +129,9 @@ final class Qwen3ModelManager: ModelStore<Qwen3ModelType> {
 
   /// Qwen3 audio checkpoints ship `config.json` but not MLX chat's `tokenizer.json`. The
   /// shard-index rule is the shared one: a cancelled sharded download is not installed.
-  private nonisolated var layout: HubSnapshotLayout {
+  /// Internal, not `private`: the importer reuses this to check a candidate folder before
+  /// offering it, with the same bar the loader uses.
+  nonisolated var layout: HubSnapshotLayout {
     HubSnapshotLayout(root: rootDirectory, requiredFiles: ["config.json"])
   }
 

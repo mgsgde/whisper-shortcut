@@ -27068,6 +27068,216 @@
           }
         }
       }
+    },
+    "%@ is already downloaded. Delete it first if you want to replace it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist bereits heruntergeladen. Löschen Sie es zuerst, wenn Sie es ersetzen möchten."
+          }
+        }
+      }
+    },
+    "%@ was imported. The first use may take a moment to load the model into memory." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde importiert. Die erste Verwendung kann einen Moment dauern, bis das Modell in den Arbeitsspeicher geladen ist."
+          }
+        }
+      }
+    },
+    "Choose the folder that holds your models — your LM Studio models folder or your Hugging Face cache." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie den Ordner mit Ihren Modellen: Ihren LM-Studio-Modellordner oder Ihren Hugging-Face-Cache."
+          }
+        }
+      }
+    },
+    "Import" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importieren"
+          }
+        }
+      }
+    },
+    "Import a Model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell importieren"
+          }
+        }
+      }
+    },
+    "Import from folder…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus Ordner importieren…"
+          }
+        }
+      }
+    },
+    "Importing…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird importiert…"
+          }
+        }
+      }
+    },
+    "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and every offline model (Whisper, Parakeet) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anweisungen, wie transkribiert werden soll (Füllwörter, Satzzeichen, Formatierung). Genutzt von Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter und eigenen Endpunkten. GPT Transcribe und jedes Offline-Modell (Whisper, Parakeet) ignorieren sie und nehmen ihr Vokabular aus dem Glossar. Einzelne Begriffe gehören nicht hierher, sondern ins Glossar."
+          }
+        }
+      }
+    },
+    "Model Imported" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell importiert"
+          }
+        }
+      }
+    },
+    "Models found" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gefundene Modelle"
+          }
+        }
+      }
+    },
+    "No model this app can use was found in that folder. Pick the folder that holds your LM Studio models or your Hugging Face cache." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In diesem Ordner wurde kein Modell gefunden, das diese App nutzen kann. Wählen Sie den Ordner mit Ihren LM-Studio-Modellen oder Ihren Hugging-Face-Cache."
+          }
+        }
+      }
+    },
+    "Not enough disk space to import this model. About %@ is needed, but only %@ is free." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht genug Speicherplatz, um dieses Modell zu importieren. Benötigt werden etwa %@, frei sind nur %@."
+          }
+        }
+      }
+    },
+    "Pick the ones to import. They are copied into the app's own folder and work like a normal download afterwards." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie die Modelle zum Importieren. Sie werden in den Ordner der App kopiert und funktionieren danach wie ein normaler Download."
+          }
+        }
+      }
+    },
+    "The audio file contained no audio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Audiodatei enthielt kein Audio."
+          }
+        }
+      }
+    },
+    "The audio file could not be decoded." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Audiodatei konnte nicht dekodiert werden."
+          }
+        }
+      }
+    },
+    "The model could not be imported: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell konnte nicht importiert werden: %@"
+          }
+        }
+      }
+    },
+    "%@ — copied into the app" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ — in die App kopiert"
+          }
+        }
+      }
+    },
+    "%@ was imported. WhisperShortcut needs internet once to finish setting up this model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde importiert. WhisperShortcut braucht einmal Internet, um die Einrichtung dieses Modells abzuschließen."
+          }
+        }
+      }
+    },
+    "Scanning…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird durchsucht…"
+          }
+        }
+      }
+    },
+    "Cancel Import" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import abbrechen"
+          }
+        }
+      }
+    },
+    "Already have these models in LM Studio or a Hugging Face cache? Import one instead of downloading it again. The files are copied once into the app's own folder." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haben Sie diese Modelle schon in LM Studio oder im Hugging-Face-Cache? Importieren Sie eines, statt es erneut herunterzuladen. Die Dateien werden einmal in den eigenen Ordner der App kopiert."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

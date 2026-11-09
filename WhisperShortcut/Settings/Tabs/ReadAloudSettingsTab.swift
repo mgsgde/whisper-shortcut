@@ -88,6 +88,10 @@ struct ReadAloudSettingsTab: View {
             .foregroundColor(.secondary)
         }
       }
+
+      if Qwen3ModelType.voiceDesign.isOfferable || Qwen3ModelType.customVoice.isOfferable {
+        ModelImportSection(group: .readAloud, onError: { viewModel.showError($0) })
+      }
     }
   }
 
