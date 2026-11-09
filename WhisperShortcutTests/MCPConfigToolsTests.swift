@@ -32,6 +32,7 @@ final class MCPTestEnv: @unchecked Sendable {
     var launchAtLogin = false
     var shortcutConfig: ShortcutConfig = .default
     var notifications: [(Notification.Name, Any?)] = []
+    var writingStyleToggles: [Bool] = []
   }
   let box: Box
 
@@ -57,7 +58,9 @@ final class MCPTestEnv: @unchecked Sendable {
       postNotification: { name, object in box.notifications.append((name, object)) },
       // The live hook posts into the user's app. Record the call on the same notification list
       // the catalog tests already read.
-      postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) })
+      postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) },
+      // The live hook runs a real Gmail import and Gemini derive and shows the review panel.
+      writingStyleToggled: { box.writingStyleToggles.append($0) })
     self.settingsCatalog = MCPSettingsCatalog.build(deps)
     var recorder: ((String) -> Void)?
     changeLog = MCPChangeLog(

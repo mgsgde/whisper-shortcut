@@ -169,6 +169,14 @@ struct MCPSettingsCatalogTests {
     #expect(entry?["value"] as? Bool == false)
   }
 
+  @Test("writing_style.enabled routes its side effect through the injected hook")
+  func writingStyleToggleIsInjected() throws {
+    let env = MCPTestEnv(level: .apply)
+    let setting = try #require(env.settingsCatalog.first { $0.id == "writing_style.enabled" })
+    try setting.apply(true)
+    #expect(env.box.writingStyleToggles == [true])
+  }
+
   @Test("update_settings is a no-op when the value already matches")
   func updateNoOp() {
     let env = MCPTestEnv(level: .apply)

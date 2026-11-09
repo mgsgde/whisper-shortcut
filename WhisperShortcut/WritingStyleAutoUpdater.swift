@@ -25,6 +25,14 @@ final class WritingStyleAutoUpdater: ObservableObject {
 
   private init() {}
 
+  /// Under XCTest the process shares the dev app's defaults, where Writing Style may be on: a run
+  /// would import Gmail, call the model with real messages and show the review panel.
+  private static func skipUnderTest() -> Bool {
+    guard isRunningUnderTest else { return false }
+    DebugLogger.log("WRITING-STYLE-AUTO: skipped under test")
+    return true
+  }
+
   /// Runs `runIfDue()` now and then once a day while the app stays open. Call once after launch.
   /// Safe to call again: only one timer is ever active. Not in a sidecar, which shares the user's
   /// data directory and must not import Gmail or offer a profile a second time.
@@ -61,7 +69,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
   /// Toggle just turned on: import Gmail now (if connected and not offline), then derive the
   /// profile if any samples exist.
   func handleEnabled() async {
-    guard !isWorking, isEnabled, !OfflineMode.isEnabled else { return }
+    guard !Self.skipUnderTest(), !isWorking, isEnabled, !OfflineMode.isEnabled else { return }
     isWorking = true
     defer { isWorking = false }
     DebugLogger.log("WRITING-STYLE-AUTO: enabled, starting")
@@ -89,7 +97,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
 
   /// Daily check (launch + 24h timer).
   func runIfDue() async {
-    guard !isWorking, isEnabled, !OfflineMode.isEnabled else { return }
+    guard !Self.skipUnderTest(), !isWorking, isEnabled, !OfflineMode.isEnabled else { return }
     isWorking = true
     defer { isWorking = false }
 
@@ -122,7 +130,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
 
   /// Gmail import + derive, like the old Settings button.
   func importNow() async {
-    guard !isWorking else { return }
+    guard !Self.skipUnderTest(), !isWorking else { return }
     isWorking = true
     defer { isWorking = false }
     do {
@@ -138,7 +146,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
   }
 
   func updateProfileNow() async {
-    guard !isWorking else { return }
+    guard !Self.skipUnderTest(), !isWorking else { return }
     isWorking = true
     defer { isWorking = false }
     await derive(userTriggered: true)
@@ -147,6 +155,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
   // MARK: - Helpers
 
   private func derive(userTriggered: Bool) async {
+    guard !Self.skipUnderTest() else { return }
     do {
       let saved = try await WritingStyleImporter.deriveProfile()
       DebugLogger.log("WRITING-STYLE-AUTO: derive saved=\(saved != nil)")
