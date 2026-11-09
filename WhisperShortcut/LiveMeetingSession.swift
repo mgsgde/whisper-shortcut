@@ -338,13 +338,12 @@ final class LiveMeetingSession: NSObject {
     // Compute resume offset so new chunks continue from where the previous recording
     // left off, keeping transcript timestamps monotonic.
     let existingChunks = LiveMeetingTranscriptStore.shared.chunks
-    let resumeOffset: TimeInterval
-    if let last = existingChunks.last {
-      // Buffer past the last chunk's start so labels don't collide.
-      resumeOffset = last.startTime + max(1, chunkInterval)
-    } else {
-      resumeOffset = 0
-    }
+    // Kept audio that is not transcribed yet counts too: its timestamps are already taken.
+    let backlogStem = LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem
+    let resumeOffset = Self.resumeOffset(
+      chunkStarts: existingChunks.map(\.startTime),
+      backlogStarts: backlogStem.map { MeetingAudioBacklog.items(stem: $0).map(\.startTime) } ?? [],
+      chunkInterval: chunkInterval)
 
     // Create and start recorder
     recorder = LiveMeetingRecorder(maxChunkDuration: chunkInterval)
@@ -400,6 +399,17 @@ final class LiveMeetingSession: NSObject {
 
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
     return true
+  }
+
+  /// Where new audio of a resumed meeting starts: past everything already recorded, transcribed or
+  /// still kept untranscribed, so labels never collide and the transcript stays in speaking order.
+  /// 0 when nothing was recorded yet.
+  static func resumeOffset(
+    chunkStarts: [TimeInterval], backlogStarts: [TimeInterval], chunkInterval: TimeInterval
+  ) -> TimeInterval {
+    guard let last = (chunkStarts + backlogStarts).max() else { return 0 }
+    // Buffer past the last chunk's start so labels don't collide.
+    return last + max(1, chunkInterval)
   }
 
   /// Reloads the stem's chunks, summary and notes from disk into the live store.
