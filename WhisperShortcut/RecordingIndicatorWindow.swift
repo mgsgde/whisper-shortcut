@@ -1028,6 +1028,8 @@ final class RecordingIndicatorManager {
   private var panel: RecordingIndicatorPanel?
   /// Observers that re-raise the pill when another app or Space comes forward.
   private var frontObservers: [NSObjectProtocol] = []
+  /// Watches display attach/detach/arrangement changes while the pill is visible.
+  private var screenObserver: NSObjectProtocol?
 
   private enum Constants {
     static let bottomMargin: CGFloat = 28
@@ -1292,6 +1294,14 @@ final class RecordingIndicatorManager {
       center.addObserver(
         forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main, using: raise),
     ]
+    screenObserver = NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, self.isVisible, let panel = self.panel else { return }
+        self.position(panel, keepingCurrentScreen: true)
+      }
+    }
   }
 
   /// Stops re-raising the pill once it is hidden.
@@ -1301,6 +1311,8 @@ final class RecordingIndicatorManager {
       center.removeObserver(observer)
     }
     frontObservers.removeAll()
+    if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+    screenObserver = nil
   }
 
   private func makePanel() -> RecordingIndicatorPanel {
@@ -1406,8 +1418,18 @@ final class RecordingIndicatorManager {
 
   /// Centers the panel bottom-center at the size matching the current phase, so the
   /// clickable window area always matches the visible pill.
-  private func position(_ panel: NSPanel) {
-    guard let screen = NSScreen.main else { return }
+  ///
+  /// `keepingCurrentScreen` (a display was attached/detached/rearranged while visible): stay on the
+  /// pill's screen if it still exists, otherwise move to the screen holding the mouse, then main.
+  private func position(_ panel: NSPanel, keepingCurrentScreen: Bool = false) {
+    var target: NSScreen? = NSScreen.main
+    if keepingCurrentScreen {
+      let mouse = NSEvent.mouseLocation
+      target = panel.screen.flatMap { current in NSScreen.screens.contains(current) ? current : nil }
+        ?? NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })
+        ?? NSScreen.main
+    }
+    guard let screen = target else { return }
     let size = currentPanelSize()
     let visible = screen.visibleFrame
     let origin = NSPoint(
