@@ -25271,6 +25271,16 @@
         }
       }
     },
+    "Move WhisperShortcut to your Applications folder first — it is running from a temporary location that macOS removes after quit, so Claude Desktop could not start it later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verschieben Sie WhisperShortcut zuerst in Ihren Ordner „Programme“. Die App läuft von einem temporären Ort, den macOS nach dem Beenden entfernt, sodass Claude Desktop sie später nicht starten könnte."
+          }
+        }
+      }
+    },
     "Move WhisperShortcut to Applications?" : {
       "localizations" : {
         "de" : {

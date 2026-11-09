@@ -83,6 +83,23 @@ struct MCPClientInstallerTests {
     "[mcp_servers.whisper-shortcut]\nurl = \"\(url)\"\nhttp_headers = { Authorization = \"Bearer tok123\" }\n"
   }
 
+  @Test("Claude Desktop: a missing, translocated or disk-image executable is refused")
+  func desktopRefusesTemporaryExecutable() throws {
+    let home = "/Users/anna"
+    let ok = "/Applications/WhisperShortcut.app/Contents/MacOS/WhisperShortcut"
+    #expect(try MCPClientInstaller.stableExecutablePath(ok, homeDirectory: home) == ok)
+    for bad in [
+      nil, "",
+      "/private/var/folders/ab/T/AppTranslocation/UUID/d/WhisperShortcut.app/Contents/MacOS/WhisperShortcut",
+      "/Volumes/WhisperShortcut/WhisperShortcut.app/Contents/MacOS/WhisperShortcut",
+    ] as [String?] {
+      #expect(throws: MCPClientInstallerError.self) {
+        try MCPClientInstaller.stableExecutablePath(bad, homeDirectory: home)
+      }
+    }
+    #expect(MCPClientInstallerError.runningFromTemporaryLocation.errorDescription?.hasPrefix("Move WhisperShortcut to your Applications folder first") == true)
+  }
+
   @Test("Codex: append to nil and empty")
   func codexEmpty() {
     #expect(MCPClientInstaller.mergeCodex(existing: nil, serverName: name, url: url, token: token) == codexBlock)

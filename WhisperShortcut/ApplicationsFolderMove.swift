@@ -49,10 +49,18 @@ enum ApplicationsFolderMove {
   /// manual way instead of offering the move a second time.
   static let movedArgument = "--moved-to-applications"
 
-  /// True unless this exact bundle path was already declined with Not Now. A different path
-  /// (a new download) is offered again.
-  static func shouldOffer(currentPath: String, declinedPath: String?) -> Bool {
-    currentPath != declinedPath
+  /// What "Not Now" is remembered under. Normally the bundle path. A translocated app runs from
+  /// `/private/var/folders/…/AppTranslocation/<UUID>/…` with a new UUID on every launch, so the
+  /// path would never match again; it is remembered per app version instead, which also asks once
+  /// more after an update.
+  static func declineMarker(location: AppBundleLocation, bundlePath: String, version: String) -> String {
+    location == .translocated ? "translocated:" + version : bundlePath
+  }
+
+  /// True unless this exact marker (see `declineMarker`) was already declined with Not Now. A
+  /// different path (a new download) is offered again.
+  static func shouldOffer(currentMarker: String, declinedMarker: String?) -> Bool {
+    currentMarker != declinedMarker
   }
 }
 
@@ -83,9 +91,13 @@ enum ApplicationsFolderMove {
         let location = AppBundleLocation.classify(
           bundlePath: bundleURL.path, homeDirectory: realHomeDirectory)
         guard location.shouldOfferMove else { return false }
-        let declinedPath = UserDefaults.standard.string(forKey: UserDefaultsKeys.applicationsMoveDeclinedPath)
-        guard shouldOffer(currentPath: bundleURL.path, declinedPath: declinedPath) else {
-          DebugLogger.log("APP-LOCATION: Not Now already chosen for this path")
+        let info = Bundle.main.infoDictionary
+        let version =
+          "\(info?["CFBundleShortVersionString"] as? String ?? "?")(\(info?["CFBundleVersion"] as? String ?? "?"))"
+        let marker = declineMarker(location: location, bundlePath: bundleURL.path, version: version)
+        let declinedMarker = UserDefaults.standard.string(forKey: UserDefaultsKeys.applicationsMoveDeclinedPath)
+        guard shouldOffer(currentMarker: marker, declinedMarker: declinedMarker) else {
+          DebugLogger.log("APP-LOCATION: Not Now already chosen for this location")
           return false
         }
         DebugLogger.log("APP-LOCATION: running from \(location) (\(bundleURL.path))")
@@ -107,7 +119,7 @@ enum ApplicationsFolderMove {
         alert.addButton(withTitle: String(localized: "Not Now"))
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else {
-          UserDefaults.standard.set(bundleURL.path, forKey: UserDefaultsKeys.applicationsMoveDeclinedPath)
+          UserDefaults.standard.set(marker, forKey: UserDefaultsKeys.applicationsMoveDeclinedPath)
           DebugLogger.log("APP-LOCATION: user chose Not Now")
           return false
         }

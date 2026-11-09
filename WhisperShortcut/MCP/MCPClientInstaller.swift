@@ -63,6 +63,7 @@ enum MCPClientInstallerError: LocalizedError {
   case cancelled
   case wrongFolder(expected: String)
   case notAJSONObject(file: String)
+  case runningFromTemporaryLocation
 
   var errorDescription: String? {
     switch self {
@@ -72,6 +73,11 @@ enum MCPClientInstallerError: LocalizedError {
       return String(localized: "Please choose the folder \(expected) and click Allow.")
     case .notAJSONObject(let file):
       return String(localized: "\(file) is not valid JSON, so it was left untouched. Fix or remove the file and try again.")
+    case .runningFromTemporaryLocation:
+      return String(
+        localized:
+          "Move WhisperShortcut to your Applications folder first — it is running from a temporary location that macOS removes after quit, so Claude Desktop could not start it later."
+      )
     }
   }
 }
@@ -104,6 +110,16 @@ enum MCPClientInstaller {
       ],
     ]
     return try mergeJSON(existing: existing, serverName: serverName, entry: entry)
+  }
+
+  /// The executable Claude Desktop will launch later. Throws when there is none, or when it lives
+  /// somewhere macOS removes after quit (App Translocation, a mounted disk image).
+  static func stableExecutablePath(_ path: String?, homeDirectory: String = MCPClient.realHome.path) throws -> String {
+    guard let path, !path.isEmpty else { throw MCPClientInstallerError.runningFromTemporaryLocation }
+    switch AppBundleLocation.classify(bundlePath: path, homeDirectory: homeDirectory) {
+    case .translocated, .diskImage: throw MCPClientInstallerError.runningFromTemporaryLocation
+    case .applications, .elsewhere, .developerBuild: return path
+    }
   }
 
   private static func mergeJSON(existing: Data?, serverName: String, entry: [String: Any]) throws -> Data {
@@ -269,7 +285,7 @@ enum MCPClientInstaller {
       switch installerError {
       case .cancelled, .wrongFolder:
         return
-      case .notAJSONObject:
+      case .notAJSONObject, .runningFromTemporaryLocation:
         break
       }
     }
@@ -307,7 +323,7 @@ enum MCPClientInstaller {
         case .claudeDesktop:
           output = try mergeClaudeDesktop(
             existing: existingData, serverName: serverName, url: url, token: token,
-            executablePath: Bundle.main.executablePath ?? "")
+            executablePath: try stableExecutablePath(Bundle.main.executablePath))
         case .codex:
           let text = existingData.flatMap { String(data: $0, encoding: .utf8) }
           output = Data(mergeCodex(existing: text, serverName: serverName, url: url, token: token).utf8)
