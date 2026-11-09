@@ -75,7 +75,7 @@ actor GoogleTasksAPIClient {
       // Google Tasks rejects a bare `yyyy-MM-dd` with 400 "invalid argument" even though it only
       // stores the date. Models (especially Grok) frequently emit exactly that, causing repeated
       // failed rounds — normalize to a full RFC 3339 timestamp before sending.
-      guard let normalizedDue = normalizedRFC3339Due(due) else {
+      guard let normalizedDue = Self.normalizedRFC3339Due(due) else {
         throw TasksAPIError.invalidDateFormat
       }
       body["due"] = normalizedDue
@@ -144,7 +144,7 @@ actor GoogleTasksAPIClient {
         body["due"] = NSNull()
       } else {
         // Same `yyyy-MM-dd` normalization as createTask — models emit bare dates constantly.
-        guard let normalizedDue = normalizedRFC3339Due(due) else {
+        guard let normalizedDue = Self.normalizedRFC3339Due(due) else {
           throw TasksAPIError.invalidDateFormat
         }
         body["due"] = normalizedDue
@@ -259,19 +259,38 @@ actor GoogleTasksAPIClient {
   // MARK: - Validation
 
   /// Normalizes the `due` value the model emits into the RFC 3339 date-time Google Tasks requires.
-  /// Full date-times (with or without fractional seconds) pass through unchanged; a bare
-  /// `yyyy-MM-dd` is promoted to midnight UTC (which is all Google stores anyway). Returns nil for
-  /// anything that isn't a recognizable ISO 8601 date, so the caller can reject it up front.
-  private func normalizedRFC3339Due(_ string: String) -> String? {
+  ///
+  /// A full internet date-time passes through. A bare `yyyy-MM-dd` becomes midnight UTC. A string
+  /// that starts with a date and then a time but is not a valid internet date-time (no offset, or
+  /// a space instead of `T`) keeps only the date: Tasks stores a date, and `.withFullDate` would
+  /// otherwise accept the time and produce `2026-11-10T09:00:00T00:00:00.000Z`. Anything else is
+  /// nil so the caller can reject it up front.
+  static func normalizedRFC3339Due(_ string: String) -> String? {
     let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil {
+      return trimmed + "T00:00:00.000Z"
+    }
+    if isInternetDateTime(trimmed) { return trimmed }
+    if let datePart = datePartBeforeTime(trimmed) {
+      return datePart + "T00:00:00.000Z"
+    }
+    return nil
+  }
+
+  private static func isInternetDateTime(_ string: String) -> Bool {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if formatter.date(from: trimmed) != nil { return trimmed }
+    if formatter.date(from: string) != nil { return true }
     formatter.formatOptions = [.withInternetDateTime]
-    if formatter.date(from: trimmed) != nil { return trimmed }
-    formatter.formatOptions = [.withFullDate]
-    if formatter.date(from: trimmed) != nil { return trimmed + "T00:00:00.000Z" }
-    return nil
+    return formatter.date(from: string) != nil
+  }
+
+  /// The `yyyy-MM-dd` prefix when the next character is `T` or a space. Nil otherwise.
+  private static func datePartBeforeTime(_ string: String) -> String? {
+    guard let range = string.range(of: #"^\d{4}-\d{2}-\d{2}[T ]"#, options: .regularExpression) else {
+      return nil
+    }
+    return String(string[range].dropLast())
   }
 
   // MARK: - Errors
