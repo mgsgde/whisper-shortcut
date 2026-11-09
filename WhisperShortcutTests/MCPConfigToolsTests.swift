@@ -231,11 +231,11 @@ struct MCPConfigToolsTests {
     #expect(env.systemPrompts.loadSection(.readAloudRewrite) == beforeRead)
   }
 
-  @Test("Section over 5,000 characters and writing profile over maxChars are rejected")
+  @Test("Section over its limit and writing profile over maxChars are rejected")
   func caps() {
     let env = MCPTestEnv()
     let t = env.tools()
-    let big = String(repeating: "a", count: ChatToolRegistry.instructionsSectionLimitChars + 1)
+    let big = String(repeating: "a", count: ChatToolRegistry.instructionsSectionLimit(for: .promptMode) + 1)
     let r = t.call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": big, "rationale": "r"], access: .write)
     #expect(r.isError)

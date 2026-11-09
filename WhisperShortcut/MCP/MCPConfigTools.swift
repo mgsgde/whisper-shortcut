@@ -179,7 +179,7 @@ struct MCPConfigTools {
     "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\" in WhisperShortcut Settings, in which case it creates a proposal the user reviews there."
     + " " + InteractionLogTool.tuningRules
   private static let updateSystemPromptDescription: String =
-    "Replaces one system prompt section with the full new text (max 5,000 characters). dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible: keep every existing rule and glossary line, add or edit the one that fixes what the logs show."
+    "Replaces one system prompt section with the full new text (at most about 2,000 characters beyond the built-in default). dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible: keep every existing rule and glossary line, add or edit the one that fixes what the logs show."
     + " " + InteractionLogTool.tuningRules
 
   static let writeToolDefinitions: [[String: Any]] = [
@@ -533,8 +533,9 @@ struct MCPConfigTools {
     guard let content = args["content"] as? String,
       !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return reject(tool, "empty content", "content must be the full new section text.") }
-    guard content.count <= ChatToolRegistry.instructionsSectionLimitChars else {
-      return reject(tool, "too long", "content is \(content.count) characters; the limit is \(ChatToolRegistry.instructionsSectionLimitChars). Shorten it.")
+    let sectionLimit = ChatToolRegistry.instructionsSectionLimit(for: section)
+    guard content.count <= sectionLimit else {
+      return reject(tool, "too long", "content is \(content.count) characters; the limit is \(sectionLimit). Shorten it.")
     }
     let proposalOnly = Self.alwaysProposalSections.contains(name) || env.accessLevel() == .propose
     return MCPMain.run {
