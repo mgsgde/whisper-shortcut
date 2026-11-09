@@ -134,6 +134,11 @@ struct ModelImportSection: View {
 
   // MARK: - Import
 
+  /// Runs one import off the main actor and reports progress back to it.
+  ///
+  /// The copy itself is `Task.detached` because a multi-gigabyte copy on the main actor would
+  /// freeze Settings for its whole duration. The Whisper tokenizer fetch afterwards is a network
+  /// round-trip and stays on the same task so the row only disappears once the model can load.
   private func importOne(_ plan: ModelImportPlan) {
     isImporting = true
     progress = 0

@@ -45,6 +45,7 @@ struct ModelImportPlan: Identifiable {
   /// True when source and destination sit on the same volume, so APFS clones instead of copying.
   let willClone: Bool
 
+  /// The size the sheet shows: what the copy costs when it is not a clone.
   var sizeLabel: String {
     ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
   }
@@ -116,6 +117,11 @@ enum ModelImporter {
 
   // MARK: - Whisper
 
+  /// A WhisperKit model in the user's folder, or nil. Tried in this order per root: a real
+  /// Hugging Face cache snapshot, then a plain folder, then a copied WhisperKit tree.
+  ///
+  /// Completeness is `ModelManager.incompleteComponent` — the same check the loader runs — so a
+  /// half-written copy in the user's folder is never offered as an import.
   private static func whisperPlan(
     for type: OfflineModelType, in roots: [URL]
   ) -> ModelImportPlan? {
@@ -150,6 +156,8 @@ enum ModelImporter {
     return nil
   }
 
+  /// Where an imported Whisper model goes: the same `models/argmaxinc/whisperkit-coreml/…`
+  /// layout a download produces, so `resolveModelPath` finds it without a special case.
   private static func whisperDestination(for type: OfflineModelType) -> URL {
     ModelManager.shared.rootDirectory
       .appendingPathComponent("models")
@@ -160,6 +168,8 @@ enum ModelImporter {
 
   // MARK: - MLX and Qwen3
 
+  /// An MLX chat model in the user's folder, or nil. Destination is the plain
+  /// `models/<org>/<repo>` path `MLXModelPaths.localDirectory` looks in first.
   private static func mlxPlan(
     for type: LocalLLMModelType, in roots: [URL]
   ) -> ModelImportPlan? {
@@ -171,6 +181,8 @@ enum ModelImporter {
         .appendingPathComponent(type.huggingFaceID))
   }
 
+  /// A Qwen3 audio model in the user's folder, or nil. Only offered models are searched, so a
+  /// 16 GB Mac does not get an import row for a checkpoint it cannot run.
   private static func qwen3Plan(
     for type: Qwen3ModelType, in roots: [URL]
   ) -> ModelImportPlan? {
@@ -220,6 +232,8 @@ enum ModelImporter {
 
   // MARK: - Plan construction
 
+  /// Builds a plan and measures what the copy will cost. `willClone` is decided here, not in the
+  /// UI, so the sheet and `perform` cannot disagree about whether free space is needed.
   private static func plan(
     family: ModelImportPlan.Family, displayName: String, source: URL, destination: URL
   ) -> ModelImportPlan {
