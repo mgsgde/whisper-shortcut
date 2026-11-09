@@ -83,6 +83,23 @@ struct MCPClientInstallerTests {
     "[mcp_servers.whisper-shortcut]\nurl = \"\(url)\"\nhttp_headers = { Authorization = \"Bearer tok123\" }\n"
   }
 
+  @Test("Claude Desktop: a missing, translocated or disk-image executable is refused")
+  func desktopRefusesTemporaryExecutable() throws {
+    let home = "/Users/anna"
+    let ok = "/Applications/WhisperShortcut.app/Contents/MacOS/WhisperShortcut"
+    #expect(try MCPClientInstaller.stableExecutablePath(ok, homeDirectory: home) == ok)
+    for bad in [
+      nil, "",
+      "/private/var/folders/ab/T/AppTranslocation/UUID/d/WhisperShortcut.app/Contents/MacOS/WhisperShortcut",
+      "/Volumes/WhisperShortcut/WhisperShortcut.app/Contents/MacOS/WhisperShortcut",
+    ] as [String?] {
+      #expect(throws: MCPClientInstallerError.self) {
+        try MCPClientInstaller.stableExecutablePath(bad, homeDirectory: home)
+      }
+    }
+    #expect(MCPClientInstallerError.runningFromTemporaryLocation.errorDescription?.hasPrefix("Move WhisperShortcut to your Applications folder first") == true)
+  }
+
   @Test("Codex: append to nil and empty")
   func codexEmpty() {
     #expect(MCPClientInstaller.mergeCodex(existing: nil, serverName: name, url: url, token: token) == codexBlock)
@@ -296,5 +313,110 @@ struct MCPClientInstallerTests {
       A = "b"
       """
     #expect(MCPClientInstaller.removeCodex(existing: only, serverName: name) == "")
+  }
+
+  // MARK: - Hardening (R197)
+
+  private func tempDir() throws -> URL {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("mcp-installer-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+  }
+
+  private func mode(_ url: URL) throws -> Int {
+    let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+    return (attrs[.posixPermissions] as? NSNumber)?.intValue ?? -1
+  }
+
+  @Test("Writing through a symlink keeps the link, edits the target and keeps the target's mode")
+  func writeThroughSymlink() throws {
+    let dir = try tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let target = dir.appendingPathComponent("real-config.toml")
+    let link = dir.appendingPathComponent("config.toml")
+    try Data("old".utf8).write(to: target)
+    try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: target.path)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+    try MCPClientInstaller.writeConfigAtomically(Data("new".utf8), to: link)
+
+    #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) != nil)
+    #expect(try String(contentsOf: target, encoding: .utf8) == "new")
+    #expect(try mode(target) == 0o640)
+    // The backup sits next to the target and is owner-only.
+    let backup = dir.appendingPathComponent("real-config.toml.whispershortcut-backup")
+    #expect(try String(contentsOf: backup, encoding: .utf8) == "old")
+    #expect(try mode(backup) == 0o600)
+  }
+
+  @Test("A file we create is owner-only")
+  func newFileIsOwnerOnly() throws {
+    let dir = try tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let file = dir.appendingPathComponent("fresh.json")
+    try MCPClientInstaller.writeConfigAtomically(Data("{}".utf8), to: file)
+    #expect(try mode(file) == 0o600)
+  }
+
+  @Test("The backup keeps the original across repeated writes")
+  func backupWrittenOnce() throws {
+    let dir = try tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let file = dir.appendingPathComponent("config.toml")
+    try Data("original".utf8).write(to: file)
+    try MCPClientInstaller.writeConfigAtomically(Data("second".utf8), to: file)
+    try MCPClientInstaller.writeConfigAtomically(Data("third".utf8), to: file)
+    let backup = dir.appendingPathComponent("config.toml.whispershortcut-backup")
+    #expect(try String(contentsOf: backup, encoding: .utf8) == "original")
+    #expect(try String(contentsOf: file, encoding: .utf8) == "third")
+  }
+
+  @Test("Codex with CRLF line endings: the old table is replaced and CRLF is kept")
+  func codexCRLF() {
+    let existing = "model = \"gpt\"\r\n\r\n[mcp_servers.whisper-shortcut]\r\nurl = \"old\"\r\n\r\n[mcp_servers.other]\r\ncommand = \"x\"\r\n"
+    let out = MCPClientInstaller.mergeCodex(existing: existing, serverName: name, url: url, token: token)
+    #expect(!out.contains("old"))
+    #expect(out.components(separatedBy: "[mcp_servers.whisper-shortcut]").count == 2)
+    #expect(out.contains("[mcp_servers.other]\r\ncommand = \"x\"\r\n"))
+    // Every newline is CRLF.
+    #expect(!out.replacingOccurrences(of: "\r\n", with: "").contains("\n"))
+    let removed = MCPClientInstaller.removeCodex(existing: existing, serverName: name)
+    #expect(removed == "model = \"gpt\"\r\n\r\n[mcp_servers.other]\r\ncommand = \"x\"\r\n")
+  }
+
+  @Test("Codex: a comment directly above the next table survives; comments inside ours go")
+  func codexKeepsCommentAboveNextTable() {
+    let existing = """
+      [mcp_servers.whisper-shortcut]
+      # our own note
+      url = "old"
+
+      # about the other server
+      [mcp_servers.other]
+      command = "x"
+
+      """
+    let removed = MCPClientInstaller.removeCodex(existing: existing, serverName: name)
+    #expect(removed == "# about the other server\n[mcp_servers.other]\ncommand = \"x\"\n")
+    let merged = MCPClientInstaller.mergeCodex(existing: existing, serverName: name, url: url, token: token)
+    #expect(merged.contains("# about the other server\n[mcp_servers.other]"))
+    #expect(!merged.contains("our own note"))
+  }
+
+  @Test("Codex: a config that is not UTF-8 is refused, not replaced")
+  func codexNotUTF8() throws {
+    let file = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/config.toml")
+    #expect(try MCPClientInstaller.codexText(from: nil, file: file) == nil)
+    #expect(try MCPClientInstaller.codexText(from: Data("a = 1".utf8), file: file) == "a = 1")
+    #expect(throws: MCPClientInstallerError.self) {
+      try MCPClientInstaller.codexText(from: Data([0xFF, 0xFE, 0x00, 0xD8]), file: file)
+    }
+    do {
+      _ = try MCPClientInstaller.codexText(from: Data([0xFF, 0xFE, 0x00, 0xD8]), file: file)
+      Issue.record("expected notUTF8")
+    } catch {
+      #expect((error.localizedDescription).contains("~/.codex/config.toml"))
+    }
   }
 }

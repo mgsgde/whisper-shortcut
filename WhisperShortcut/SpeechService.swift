@@ -724,7 +724,9 @@ class SpeechService {
     // OpenRouter (audio as a chat-completion content part)
     if model == .openRouterTranscription {
       try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithOpenRouter(audioURL: audioURL, promptOverride: promptOverride)
+      let openRouterDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
+      let result = try await transcribeWithOpenRouter(
+        audioURL: audioURL, promptOverride: promptOverride, audioDurationSeconds: openRouterDuration)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [OpenRouter] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -3336,7 +3338,9 @@ class SpeechService {
   ///
   /// The upside for the user is that one entry covers every audio-capable model OpenRouter routes
   /// to: switching from a Gemini tier to `openai/gpt-audio` is a model slug, not a new provider.
-  private func transcribeWithOpenRouter(audioURL: URL, promptOverride: String?) async throws -> String {
+  private func transcribeWithOpenRouter(
+    audioURL: URL, promptOverride: String?, audioDurationSeconds: Double? = nil
+  ) async throws -> String {
     let apiKey = (keychainManager.get(.openRouter) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !apiKey.isEmpty else {
       throw TranscriptionError.networkError(String(localized: "OpenRouter is not connected. Connect your account in Settings → Accounts."))
@@ -3381,8 +3385,30 @@ class SpeechService {
     request.setValue("WhisperShortcut", forHTTPHeaderField: "X-Title")
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-    let (data, http) = try await Self.performWithRetryOn429(
-      request: request, session: makeTranscriptionURLSession(), logPrefix: "OPENROUTER-TRANSCRIPTION")
+    // `session.data(for:)` alone is not a deadline: URLSession timers do not fire reliably on reused
+    // HTTP/2 connections. Every round-trip goes through `NetworkDeadline`, like the multipart paths.
+    request.timeoutInterval = NetworkDeadline.transcriptionRequestTimeout
+    let deadlineSession = makeTranscriptionURLSession()
+    let logPrefix = "OPENROUTER-TRANSCRIPTION"
+    let data: Data
+    let http: HTTPURLResponse
+    do {
+      (data, http) = try await Self.performWithRetryOn429(
+        request: request, session: deadlineSession, logPrefix: logPrefix,
+        fetch: { req in
+          try await NetworkDeadline.dataWithOneNetworkRetry(
+            for: req, session: deadlineSession,
+            timeout: NetworkDeadline.transcriptionRequestTimeout, logPrefix: logPrefix)
+        })
+    } catch TranscriptionError.requestTimeout {
+      DebugLogger.logError(
+        "\(logPrefix): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
+      ContextLogger.shared.logRequestTimedOut(
+        timeoutSeconds: Int(NetworkDeadline.transcriptionRequestTimeout),
+        logPrefix: logPrefix,
+        origin: .transcription)
+      throw TranscriptionError.requestTimeout
+    }
 
     guard (200...299).contains(http.statusCode) else {
       let message = Self.openRouterErrorMessage(from: data)
@@ -3395,6 +3421,10 @@ class SpeechService {
       // https://openrouter.ai/settings/credits.
       case 402: throw TranscriptionError.billingRequired(topUpURL: OpenRouterOAuthConfig.creditsURL)
       case 429:
+        // A permanent (quota/billing) 429 is a balance problem, not something to wait out.
+        if RetryBackoff.isPermanentRateLimit(responseBody: String(data: data, encoding: .utf8) ?? "") {
+          throw TranscriptionError.billingRequired(topUpURL: OpenRouterOAuthConfig.creditsURL)
+        }
         let retryAfter = (http.value(forHTTPHeaderField: "Retry-After")).flatMap(TimeInterval.init)
         throw TranscriptionError.rateLimited(retryAfter: retryAfter)
       default: throw TranscriptionError.serverError(http.statusCode)
@@ -3412,7 +3442,7 @@ class SpeechService {
 
     let normalized = TextProcessingUtility.normalizeTranscriptionText(content)
     try TextProcessingUtility.validateSpeechText(normalized, mode: "TRANSCRIPTION-MODE")
-    return normalized
+    return try gatingGlossaryEcho(normalized, audioDurationSeconds: audioDurationSeconds, logPrefix: logPrefix)
   }
 
   /// Maps a recording's file extension onto one of the format strings OpenRouter documents
@@ -3674,11 +3704,14 @@ class SpeechService {
   /// `onPartial == nil` reads the body whole (`session.data(for:)`). A non-nil `onPartial`
   /// reads a 200 body as a byte stream and forwards it in batches while it arrives; any
   /// other status is still collected whole (short JSON errors) for the caller to map.
+  /// `fetch` replaces the bare `session.data(for:)` for the whole-body path (e.g. a
+  /// `NetworkDeadline`-capped round-trip); the 429 retry logic is unchanged.
   /// Internal so the 429 branch can be driven from tests without a live provider.
   static func performWithRetryOn429(
     request: URLRequest,
     session: URLSession,
     logPrefix: String,
+    fetch: ((URLRequest) async throws -> (Data, URLResponse))? = nil,
     onPartial: ((Data) async -> Void)? = nil
   ) async throws -> (Data, HTTPURLResponse) {
     var lastResponse: (Data, HTTPURLResponse)?
@@ -3705,7 +3738,12 @@ class SpeechService {
         }
         data = collected
       } else {
-        let (responseData, response) = try await session.data(for: request)
+        let (responseData, response): (Data, URLResponse)
+        if let fetch {
+          (responseData, response) = try await fetch(request)
+        } else {
+          (responseData, response) = try await session.data(for: request)
+        }
         guard let whole = response as? HTTPURLResponse else {
           throw TranscriptionError.networkError(String(localized: "Invalid response from server"))
         }

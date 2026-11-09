@@ -158,6 +158,15 @@ final class LiveMeetingSession: NSObject {
     // onStartFailed. Never abort the meeting: it keeps recording from the microphone.
     capture.onStartFailed = { [weak self, weak capture] error in
       guard let self, let capture, self.systemCapture === capture else { return }
+      guard SystemAudioCaptureError.suggestsMissingPermission(error) else {
+        // The tap ran and only a rebuild after an output-device change failed. That says nothing
+        // about the permission, so no alert and no latch: the next route change starts it again.
+        DebugLogger.logError("LIVE-MEETING: System audio rebuild after a device change failed: \(error)")
+        self.recorder?.systemAudio = nil
+        self.systemCapture = nil
+        store.isCapturingSystemAudio = false
+        return
+      }
       DebugLogger.logError("LIVE-MEETING: System audio capture failed to start: \(error)")
       self.systemAudioStartFailed = true
       self.recorder?.systemAudio = nil
