@@ -6,15 +6,20 @@ final class UILabelGlossaryTests: XCTestCase {
     XCTAssertEqual(UILabelGlossary.appendix(languageCode: "en"), "")
   }
 
-  /// Every English label in the table must appear in the README, or the table maps names the
-  /// Chat never reads.
-  func testEveryEnglishLabelAppearsInReadme() throws {
-    let readme = URL(fileURLWithPath: #filePath)
+  /// Every English label in the table must appear in the README or docs/guide.md, or the table
+  /// maps names the Chat never reads.
+  func testEveryEnglishLabelAppearsInBundledDocs() throws {
+    let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
-      .appendingPathComponent("README.md")
-    let text = try String(contentsOf: readme, encoding: .utf8)
+    let readme = try String(
+      contentsOf: root.appendingPathComponent("README.md"), encoding: .utf8)
+    let guide = try String(
+      contentsOf: root.appendingPathComponent("docs/guide.md"), encoding: .utf8)
+    let text = readme + "\n" + guide
     for entry in UILabelGlossary.entries {
-      XCTAssertTrue(text.contains(entry.english), "README never mentions \"\(entry.english)\"")
+      XCTAssertTrue(
+        text.contains(entry.english),
+        "README or docs/guide.md never mentions \"\(entry.english)\"")
     }
   }
 

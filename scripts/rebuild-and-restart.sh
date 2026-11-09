@@ -196,7 +196,7 @@ else
   echo "🔏 Signing: ad-hoc ($ADHOC_REASON; legacy keychain, prompts on rebuilds)"
 fi
 
-# Sync the root README into the app bundle so Xcode's file-system-synchronized
+# Sync the root README and docs/guide.md into the app bundle so Xcode's file-system-synchronized
 # group bundles it and the chat's list_whisper_shortcut_docs /
 # read_whisper_shortcut_doc tools can read it. The standalone docs/ tree was
 # removed in cf0dd3a (data-directories was inlined into privacy.md), so other
@@ -204,6 +204,7 @@ fi
 echo "📚 Syncing bundled docs..."
 mkdir -p "$PROJECT_DIR/WhisperShortcut/Docs"
 cp "$PROJECT_DIR/README.md" "$PROJECT_DIR/WhisperShortcut/Docs/README.md"
+cp "$PROJECT_DIR/docs/guide.md" "$PROJECT_DIR/WhisperShortcut/Docs/guide.md"
 
 # Build variant
 if [[ "$APP_STORE" == true ]]; then

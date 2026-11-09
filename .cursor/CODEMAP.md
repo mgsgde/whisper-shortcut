@@ -87,4 +87,4 @@ tree disagree, the tree wins; fix the row.
 | Build / release / App Store             | `scripts/rebuild-and-restart.sh`, `scripts/create-release.sh`, `.cursor/commands/{release,submit-appstore}.md`      |
 | Scheduled loops & implementer           | `scripts/*-job.sh`, `scripts/implementer/`, `scripts/loop-prompt.sh`; architecture `plans/agent-loops.md`           |
 | Ledgers & queues                        | `plans/improvement-ledger.md`, `plans/loop-ledger.md`, `plans/implementer-queue.md`, `plans/instrumentation-gaps.md` |
-| Bundled docs the in-app Chat reads      | `README.md` → copied to `WhisperShortcut/Docs/README.md` by the rebuild script                                      |
+| Bundled docs the in-app Chat reads      | `README.md` and `docs/guide.md` → copied to `WhisperShortcut/Docs/` by the rebuild script                                      |

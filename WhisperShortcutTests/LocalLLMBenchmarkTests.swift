@@ -135,7 +135,7 @@ struct LocalLLMBenchmarkTests {
 
     let readmeURL = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
-      .appendingPathComponent("README.md")
+      .appendingPathComponent("docs/guide.md")
     let context = OfflineChatAppContext.block(
       readme: try String(contentsOf: readmeURL, encoding: .utf8), currentModel: type,
       shortcuts: [("Dictate", "⌘ + 1"), ("Chat", "⌘ + 3")], appVersion: AppConstants.appVersion)

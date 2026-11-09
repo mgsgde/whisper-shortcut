@@ -50,14 +50,14 @@ struct OfflineChatAppContextTests {
     #expect(!block.contains("Features:"))
   }
 
-  /// The real README, so a long new first sentence shows up here rather than as slower offline
+  /// The real docs/guide.md (`## Features`), so a long new first sentence shows up here rather than as slower offline
   /// replies. ~4 characters per token: 6,500 characters is about 1,625 tokens. The Gemma 4 26B
   /// catalogue line is why this moved up from 6,200.
-  @Test func realReadmeStaysWithinBudget() throws {
-    let readmeURL = URL(fileURLWithPath: #filePath)
+  @Test func realGuideStaysWithinBudget() throws {
+    let guideURL = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
-      .appendingPathComponent("README.md")
-    let readme = try String(contentsOf: readmeURL, encoding: .utf8)
+      .appendingPathComponent("docs/guide.md")
+    let readme = try String(contentsOf: guideURL, encoding: .utf8)
     let digest = OfflineChatAppContext.featureDigest(fromReadme: readme)
     #expect(digest.count >= 10)
     let block = OfflineChatAppContext.block(
