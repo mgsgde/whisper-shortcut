@@ -19,17 +19,17 @@ import Foundation
 /// every message. Measured on Qwen3 4B (2026-10-18): first token 0.9 s with the bare offline
 /// prompt, 4.5 s with the full section (~1.3k tokens). So every chat gets one identity line, and
 /// the full section only once a user message in the chat is about the app (`isAboutTheApp`).
-/// Even the full section is a digest: the README `## Features` section is ~4k tokens; only each
+/// Even the full section is a digest: the docs/guide.md `## Features` section is ~4k tokens; only each
 /// feature's name and first sentence go in. Nothing here is a second hand-kept list: features come
-/// from the bundled README, models from `LocalLLMModelType`, shortcuts from the user's live config.
+/// from the bundled docs/guide.md (`## Features`), models from `LocalLLMModelType`, shortcuts from the user's live config.
 enum OfflineChatAppContext {
   /// The section for this chat: the identity line, or the full section once `userMessages` touch
-  /// the app. A missing bundled README only drops the feature list.
+  /// the app. A missing bundled guide only drops the feature list.
   static func current(chatModel: PromptModel, userMessages: [String]) -> String {
     guard isAboutTheApp(userMessages) else {
       return identity(currentModel: chatModel.localMLXModelType, appVersion: AppConstants.appVersion)
     }
-    let readme = bundledReadme() ?? ""
+    let readme = bundledFeatureDoc() ?? ""
     let config = ShortcutConfigManager.shared.loadConfiguration()
     return block(
       readme: readme,
@@ -151,9 +151,11 @@ enum OfflineChatAppContext {
     return String(plain[..<end.lowerBound]) + "."
   }
 
-  private static func bundledReadme() -> String? {
+  private static func bundledFeatureDoc() -> String? {
     let url =
-      Bundle.main.url(forResource: "README", withExtension: "md", subdirectory: "Docs")
+      Bundle.main.url(forResource: "guide", withExtension: "md", subdirectory: "Docs")
+      ?? Bundle.main.url(forResource: "guide", withExtension: "md")
+      ?? Bundle.main.url(forResource: "README", withExtension: "md", subdirectory: "Docs")
       ?? Bundle.main.url(forResource: "README", withExtension: "md")
     guard let url else { return nil }
     return try? String(contentsOf: url, encoding: .utf8)
