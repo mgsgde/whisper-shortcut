@@ -2,9 +2,10 @@
 
 # WhisperShortcut Rebuild and Restart Script
 # Builds the project, kills any running dev instances, and starts the app that was just built.
-# NOTHING under /Applications is ever killed (the installed release is the user's daily instance):
-# see kill_unprotected in lib/daily-app.sh. While the release runs, this build launches as a
-# sidecar next to it (badge TEST, no hotkeys), even from the main checkout.
+# NOTHING under /Applications and not the daily Dev app (~/Applications/WhisperShortcut Dev.app,
+# see scripts/dev-daily.sh) is ever killed: see kill_unprotected in lib/daily-app.sh. While your
+# daily instance (release or daily Dev) runs, this build launches as a sidecar next to it
+# (badge TEST, no hotkeys), even from the main checkout.
 # The Debug build is "WhisperShortcut Dev" (bundle com.magnusgoedde.whispershortcut.dev): its own
 # TCC entries (Accessibility, Microphone, Screen Recording), keychain group and container, so it
 # never collides with the installed /Applications release. Settings/history can be copied over
@@ -18,10 +19,11 @@
 #   bash scripts/rebuild-and-restart.sh --launch-from-main     # inside a .claude/worktrees/ checkout: build here, but
 #                                                              # relaunch the MAIN checkout's app (see warning below)
 #   bash scripts/rebuild-and-restart.sh --sidecar              # launch this build NEXT TO the running instance (never kills it)
+#   bash scripts/rebuild-and-restart.sh --build-only           # build, print "Build successful", exit 0: no guard, no kill, no launch
 #   bash scripts/rebuild-and-restart.sh --replace              # kill every non-/Applications instance, launch this build
 #
-# Main checkout: replaces the running dev instance (default) unless the /Applications release
-# runs, then it is a sidecar. Worktree: sidecar by default, because an agent's worktree build must
+# Main checkout: replaces the running dev instance (default) unless your daily instance (release
+# or daily Dev) runs, then it is a sidecar. Worktree: sidecar by default, because an agent's worktree build must
 # not take the user's all-day instance away (all instances bind the same global hotkeys). A sidecar
 # runs with `--sidecar`: badge TEST, no hotkeys / Fn key / MCP / Sparkle / daily auto-run. Only the
 # previous sidecar of this very build is restarted. (The app also turns itself into a sidecar when
@@ -33,12 +35,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/daily-app.sh
 source "$SCRIPT_DIR/lib/daily-app.sh"
+# shellcheck source=lib/build-lock.sh
+source "$SCRIPT_DIR/lib/build-lock.sh"
 # Parse flags (order-independent)
 APP_STORE=false
 DEVELOPMENT=false
 LAUNCH_FROM_MAIN=false
 FORCE_SIDECAR=false
 FORCE_REPLACE=false
+BUILD_ONLY=false
 for arg in "$@"; do
   case "$arg" in
     --app-store) APP_STORE=true ;;
@@ -46,6 +51,7 @@ for arg in "$@"; do
     --launch-from-main) LAUNCH_FROM_MAIN=true ;;
     --sidecar) FORCE_SIDECAR=true ;;
     --replace) FORCE_REPLACE=true ;;
+    --build-only) BUILD_ONLY=true ;;
   esac
 done
 
@@ -79,10 +85,10 @@ fi
 # "this is the instance the user runs", so they keep the kill-everything path.
 SIDECAR=false
 if [[ "$FORCE_SIDECAR" == true && "$IN_WORKTREE" != true ]]; then
-  # Without a running release the main checkout's build IS the daily instance, and the sidecar
-  # path kills the previous instance of this very bundle path: it would take it away.
-  if release_running; then
-    SIDECAR=true   # same as the default launch below: sidecar next to the release
+  # Without a running daily instance the main checkout's build IS the daily instance, and the
+  # sidecar path kills the previous instance of this very bundle path: it would take it away.
+  if daily_instance_running; then
+    SIDECAR=true   # same as the default launch below: sidecar next to the daily instance
   else
     echo "ℹ️  --sidecar ignored: the main checkout's build is the daily instance."
   fi
@@ -94,20 +100,78 @@ fi
 
 cd "$PROJECT_DIR"
 
+# One Xcode run at a time on this Mac (see lib/build-lock.sh: seven concurrent runs took the load
+# average to 162 on 2026-11-03). A rebuild collides with run-tests.sh just the same, so it takes
+# the same lock. Taken before anything is built (the scheme check below shells out to xcodebuild
+# too) or stopped. CI is skipped: one job per isolated runner, nothing to serialize against.
+# The default 1200 s wait stays: this script is interactive, and waiting with a progress line
+# every 60 s beats two xcodebuilds thrashing a 10-core machine. Exit 75 (EX_TEMPFAIL) is passed
+# on unchanged: "another run holds the machine", not "the build failed".
+if [[ "${CI:-}" != "true" ]]; then
+  lock_rc=0
+  acquire_build_lock || lock_rc=$?
+  [[ "$lock_rc" -eq 0 ]] || exit "$lock_rc"
+  trap release_build_lock EXIT
+fi
+
 # Keychain items live in the data protection keychain, which needs the keychain-access-groups
-# entitlement and therefore a provisioning profile. With an Apple Development identity we use the
-# project's own signing (team Z59J7V26UT), which keeps the designated requirement stable, so
-# mic/TCC grants survive rebuilds. The direct target's Debug config (bundle ….whispershortcut.dev)
-# signs Manually with the "WhisperShortcut Dev (Mac Development)" profile: Xcode has no account
-# signed in, so Automatic signing cannot mint a managed profile for the .dev App ID. That profile
-# was made with `asc profiles create` and expires 2027-10-20 — renew it the same way
-# (WhisperShortcut/Docs/data-directories.md → "Debug build identity"). The App Store target stays
-# on Automatic signing; -allowProvisioningUpdates lets Xcode renew its team profile.
-# No identity (e.g. cloners without an account) → ad-hoc, with the entitlement stripped from a
-# copy of the entitlements file (an ad-hoc build cannot carry it); the app then falls back to the
-# legacy keychain.
+# entitlement and therefore a provisioning profile. With an Apple Development identity *from the
+# team the project requires* we use the project's own signing, which keeps the designated
+# requirement stable, so mic/TCC grants survive rebuilds. The direct target's Debug config (bundle
+# ….whispershortcut.dev) signs Manually with the "WhisperShortcut Dev (Mac Development)" profile:
+# Xcode has no account signed in, so Automatic signing cannot mint a managed profile for the .dev
+# App ID. That profile was made with `asc profiles create` and expires 2027-10-20 — renew it the
+# same way (WhisperShortcut/Docs/data-directories.md → "Debug build identity"). The App Store
+# target stays on Automatic signing; -allowProvisioningUpdates lets Xcode renew its team profile.
+#
+# The check is team-aware, not just "an identity exists": an identity from another team has no
+# profile for this project's team, so that branch would fail with "No profile for team '…'
+# matching '…' found" instead of falling back. The required team is read from the project
+# (DEVELOPMENT_TEAM in project.pbxproj, so a fork with its own team works) and compared with the
+# team id in the identity's certificate (organizationalUnitName). If either cannot be determined,
+# we do not guess: no required team keeps the old behaviour, an unreadable identity team means
+# ad-hoc.
+# No usable identity (e.g. cloners without an account) → ad-hoc, with the entitlement stripped
+# from a copy of the entitlements file (an ad-hoc build cannot carry it); the app then falls back
+# to the legacy keychain.
+REQUIRED_TEAM=$(sed -nE 's/.*DEVELOPMENT_TEAM = ([A-Z0-9]+);.*/\1/p' \
+  "$PROJECT_DIR/WhisperShortcut.xcodeproj/project.pbxproj" 2>/dev/null | head -n1 || true)
+
+# Team id of a codesigning identity's certificate: its organizationalUnitName. Empty when the
+# certificate cannot be read or parsed, which callers treat as "not the project's team".
+identity_team() {
+  local identity="$1" subject
+  subject=$(security find-certificate -c "$identity" -p 2>/dev/null \
+    | openssl x509 -noout -subject -nameopt multiline 2>/dev/null) || return 0
+  printf '%s\n' "$subject" | sed -nE 's/^ *organizationalUnitName *= *(.*)$/\1/p' | head -n1
+}
+
 SIGN_ARGS=()
-IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 "Apple Development" | sed -E 's/.*"(.*)".*/\1/')
+# Every Apple Development identity, not just the first: a machine can hold identities from several
+# teams (a personal one and an employer's), and `grep -m1` picked whichever the keychain listed
+# first. If that one belonged to another team, the script fell back to ad-hoc even though a usable
+# identity was right there — the exact case this fallback exists for.
+IDENTITIES=()
+while IFS= read -r line; do
+  IDENTITIES+=("$(printf '%s' "$line" | sed -E 's/.*"(.*)".*/\1/')")
+done < <(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" || true)
+
+IDENTITY=""
+IDENTITY_TEAM=""
+for candidate in "${IDENTITIES[@]}"; do
+  [[ -n "$candidate" ]] || continue
+  candidate_team=$(identity_team "$candidate")
+  if [[ -z "$REQUIRED_TEAM" || "$candidate_team" == "$REQUIRED_TEAM" ]]; then
+    IDENTITY="$candidate"
+    IDENTITY_TEAM="$candidate_team"
+    break
+  fi
+  # Remember the first non-matching one for the ad-hoc reason line below.
+  if [[ -z "$IDENTITY_TEAM" ]]; then
+    IDENTITY_TEAM="$candidate_team"
+  fi
+done
+
 if [[ -n "$IDENTITY" ]]; then
   SIGN_ARGS=(-allowProvisioningUpdates)
   echo "🔏 Signing: $IDENTITY (project signing settings)"
@@ -122,7 +186,14 @@ else
   cp "$ENTITLEMENTS_SRC" "$STRIPPED"
   /usr/libexec/PlistBuddy -c 'Delete :keychain-access-groups' "$STRIPPED" >/dev/null 2>&1 || true
   SIGN_ARGS=(CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS="$STRIPPED")
-  echo "🔏 Signing: ad-hoc (no Apple Development identity; legacy keychain, prompts on rebuilds)"
+  if [[ ${#IDENTITIES[@]} -eq 0 ]]; then
+    ADHOC_REASON="no Apple Development identity"
+  elif [[ -z "$IDENTITY_TEAM" ]]; then
+    ADHOC_REASON="identity team unreadable, project team $REQUIRED_TEAM"
+  else
+    ADHOC_REASON="no identity for project team $REQUIRED_TEAM (found $IDENTITY_TEAM)"
+  fi
+  echo "🔏 Signing: ad-hoc ($ADHOC_REASON; legacy keychain, prompts on rebuilds)"
 fi
 
 # Sync the root README into the app bundle so Xcode's file-system-synchronized
@@ -164,6 +235,9 @@ fi
 
 echo "✅ Build successful!"
 
+# --build-only: callers (scripts/dev-daily.sh) install the product themselves.
+[[ "$BUILD_ONLY" == true ]] && exit 0
+
 # The build is ready; do not take a recording meeting down to install it (2026-10-20 incident).
 if [[ "${CI:-}" != "true" ]]; then
   bash "$SCRIPT_DIR/meeting-guard.sh" --dev-only || { echo "ℹ️  The build is ready; rerun this script once the meeting has ended." >&2; exit 1; }
@@ -178,9 +252,9 @@ fi
 # build still named "WhisperShortcut" bind the same global hotkeys, so only one may run at a time.
 APP_PROCESS_NAMES=("WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore)
 
-# Computed before anything is killed; the release is never among the victims.
+# Computed before anything is killed; the daily instance (release or daily Dev) is never among the victims.
 RELEASE_UP=false
-release_running && RELEASE_UP=true
+daily_instance_running && RELEASE_UP=true
 
 if [[ "$SIDECAR" == true ]]; then
   echo "🔄 Sidecar: restarting only this build's previous sidecar (other instances stay untouched)..."
@@ -245,10 +319,10 @@ fi
 echo "🚀 Starting WhisperShortcut application ($( [[ "$LAUNCH_FROM_MAIN" == true ]] && echo main checkout || echo this build ))..."
 # -n: every dev instance was just killed, and the launch must not be folded into a stray one.
 # The daily-app record is deliberately not touched here: it names the instance the user runs
-# (the /Applications release), and a dev build overwriting it made scripts relaunch the wrong app.
+# (the /Applications release or the daily Dev), and a dev build overwriting it made scripts relaunch the wrong app.
 if [[ "$RELEASE_UP" == true ]]; then
   open -n "$APP_PATH" --args --sidecar
-  echo "🧪 The release in /Applications keeps running; this build runs next to it as a sidecar (badge TEST, no hotkeys)."
+  echo "🧪 Your daily instance (release or daily Dev) keeps running; this build runs next to it as a sidecar (badge TEST, no hotkeys)."
 else
   open -n "$APP_PATH"
 fi

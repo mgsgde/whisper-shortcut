@@ -25,9 +25,9 @@ import FluidAudio
 /// directory the models were loaded from.
 final class ParakeetBackend: @unchecked Sendable {
   // `@unchecked`: every stored property is an actor or `Sendable`, and none is reassigned.
-  private let manager: AsrManager
+  fileprivate let manager: AsrManager
   private let vocabulary = VocabularyBooster()
-  private static let version: AsrModelVersion = .ultra
+  fileprivate static let version: AsrModelVersion = .ultra
   private let converter = AudioConverter()
 
   private init(manager: AsrManager) {
@@ -129,7 +129,13 @@ final class ParakeetBackend: @unchecked Sendable {
   ///     conditioning text; instead FluidAudio's CTC keyword spotter listens for these terms in the
   ///     audio and rescores the transcript where it hears one. Benchmarked on German practice
   ///     terms: 18/24 → 23/24, for ~0.2 s on a short clip. Empty → the plain, faster path.
-  func transcribe(audioURL: URL, language: String?, vocabulary terms: [String]) async throws -> String {
+  ///   - spokenMarksOnly: "Only when spoken" punctuation. Parakeet's own commas, periods, "?" and
+  ///     "!" are kept only where the token timings show speech time behind them
+  ///     (`ParakeetPunctuationTiming`); the rest are removed. When the marks in the text cannot be
+  ///     matched to the tokens, the model's marks stay (`ParakeetPunctuationTiming.fallbackWithoutTiming`).
+  func transcribe(
+    audioURL: URL, language: String?, vocabulary terms: [String], spokenMarksOnly: Bool = false
+  ) async throws -> String {
     var state = TdtDecoderState.make(decoderLayers: Self.version.decoderLayers)
     let hint = language.flatMap(Language.init(rawValue:))
     if let language, hint == nil {
@@ -138,12 +144,21 @@ final class ParakeetBackend: @unchecked Sendable {
     }
     do {
       guard !terms.isEmpty else {
-        return try await manager.transcribe(audioURL, decoderState: &state, language: hint).text
+        let result = try await manager.transcribe(audioURL, decoderState: &state, language: hint)
+        return spokenMarksOnly
+          ? Self.keepingSpokenMarks(result, audioURL: audioURL)
+          : ParakeetPunctuationTiming.spacingGluedCommas(result.text)
       }
       // The spotter needs the samples too, so decode from them rather than reading the file twice.
       let samples = try converter.resampleAudioFile(audioURL)
       let result = try await manager.transcribe(samples, decoderState: &state, language: hint)
-      return await vocabulary.rescore(result, samples: samples, terms: terms)
+      let rescored = await vocabulary.rescore(result, samples: samples, terms: terms)
+      // After the rescore, which reads `result.text` with its token timings and needs them to
+      // agree. It only rewrites word spans; the filter maps marks to tokens by order and falls
+      // back when a span swallowed one (count mismatch).
+      return spokenMarksOnly
+        ? Self.keepingSpokenMarks(result, text: rescored, audioURL: audioURL)
+        : ParakeetPunctuationTiming.spacingGluedCommas(rescored)
     } catch let error as ASRError {
       switch error {
       case .invalidAudioData: throw ParakeetBackendError.audioTooShort
@@ -151,6 +166,43 @@ final class ParakeetBackend: @unchecked Sendable {
       default: throw error
       }
     }
+  }
+}
+
+extension ParakeetBackend {
+  /// `text` (default: the decode's own) with the marks Parakeet guessed removed. Counts only, never
+  /// the dictated text, go to the log.
+  fileprivate static func keepingSpokenMarks(
+    _ result: ASRResult, text: String? = nil, audioURL: URL
+  ) -> String {
+    let text = text ?? result.text
+    let tokens = (result.tokenTimings ?? []).map {
+      ParakeetPunctuationTiming.Token(text: $0.token, start: $0.startTime, end: $0.endTime)
+    }
+    if let duration = try? AudioDuration.avAudioFileSeconds(audioURL),
+      let filtered = ParakeetPunctuationTiming.filter(
+        text: text, tokens: tokens, audioDuration: duration)
+    {
+      DebugLogger.log(
+        "LOCAL-SPEECH: punctuation timing kept=\(filtered.kept) dropped=\(filtered.dropped)")
+      return filtered.text
+    }
+    DebugLogger.log("LOCAL-SPEECH: punctuation timing skipped (count mismatch)")
+    return ParakeetPunctuationTiming.fallbackWithoutTiming(text)
+  }
+
+  /// The raw decode with its token timings, for the opt-in live tests only (no app code calls
+  /// it). Plain value types so the test target does not need to import FluidAudio.
+  func rawTokenTimings(audioURL: URL, language: String?) async throws
+    -> (text: String, tokens: [(token: String, start: Double, end: Double)])
+  {
+    var state = TdtDecoderState.make(decoderLayers: Self.version.decoderLayers)
+    let hint = language.flatMap(Language.init(rawValue:))
+    let result = try await manager.transcribe(audioURL, decoderState: &state, language: hint)
+    let tokens = (result.tokenTimings ?? []).map {
+      (token: $0.token, start: $0.startTime, end: $0.endTime)
+    }
+    return (result.text, tokens)
   }
 }
 
@@ -172,11 +224,28 @@ private actor VocabularyBooster {
       let session = try await session(for: terms)
       let rescored = await session.rescore(
         text: result.text, tokenTimings: result.tokenTimings ?? [], audioSamples: samples)
-      if let rescored, rescored.wasModified {
-        DebugLogger.log(
-          "LOCAL-SPEECH: Parakeet vocabulary applied \(rescored.replacements.filter(\.shouldReplace).count) replacement(s)")
+      guard let rescored, rescored.wasModified else {
+        return ParakeetVocabularyGuard.restoreGlossaryCasing(
+          in: result.text, glossaryTerms: terms)
       }
-      return rescored?.text ?? result.text
+      let candidates = rescored.replacements.filter(\.shouldReplace).compactMap {
+        replacement -> ParakeetVocabularyGuard.Replacement? in
+        guard let term = replacement.replacementWord else { return nil }
+        return ParakeetVocabularyGuard.Replacement(
+          originalSpan: replacement.originalWord, term: term)
+      }
+      let applied = ParakeetVocabularyGuard.apply(
+        to: result.text, replacements: candidates, glossaryTerms: terms)
+      if applied.rejected > 0 {
+        DebugLogger.log(
+          "LOCAL-SPEECH: Parakeet vocabulary rejected \(applied.rejected) replacement(s)")
+      }
+      if applied.accepted > 0 {
+        DebugLogger.log(
+          "LOCAL-SPEECH: Parakeet vocabulary applied \(applied.accepted) replacement(s)")
+      }
+      return ParakeetVocabularyGuard.restoreGlossaryCasing(
+        in: applied.text, glossaryTerms: terms)
     } catch {
       DebugLogger.logWarning(
         "LOCAL-SPEECH: Parakeet vocabulary boosting skipped (\(error.localizedDescription))")

@@ -3,9 +3,10 @@ import Foundation
 // MARK: - Curated model pickers
 //
 // Every model picker (Dictate, Dictate Prompt, Read Aloud, Chat, Meeting Transcription / Summary,
-// Writing Style) opens with at most three tiles — Recommended · Fastest · Offline — and keeps
-// the rest behind "More models". The 2026-10-19 UX review found 16–18 near-identical tiles per
-// picker (five Gemini Flash variants nobody could tell apart); the curation is the fix.
+// Writing Style) opens with the three slots Recommended · Fastest · Offline, plus the tiles of
+// any on-device provider the picker explicitly asks to feature (Read Aloud's Qwen3 voice) — and
+// keeps the rest behind "More models". The 2026-10-19 UX review found 16–18 near-identical tiles
+// per picker (five Gemini Flash variants nobody could tell apart); the curation is the fix.
 //
 // What is featured is decided here, from data on the model enums, never from string lists in the
 // views: `pickerSpeedRank` names the fastest, `pickerOfflineRank` the on-device pick,
@@ -65,6 +66,11 @@ protocol PickerCuratedModel: Hashable {
   /// would select for this user. `nil` = not a stand-in: on-device models, which have their own
   /// step in the fallback order, and models the reconciler never substitutes.
   var pickerStandInRank: Int? { get }
+  /// Whether this model's tile belongs in the picker's top row even when it wins none of the
+  /// three slots. Read Aloud's on-device voice uses it: a single local tile is a first-class
+  /// choice, not "More models" clutter. `false` everywhere else, so the Chat picker's curation is
+  /// untouched.
+  var pickerIsFeatured: Bool { get }
 }
 
 // `pickerTitle` on each model below is the name on the tile: `displayName` minus the "(Offline)" /
@@ -114,6 +120,14 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
     feature(Self.best(candidates, by: \.pickerSpeedRank), as: .fastest)
     // On-device models never need a key, so the Offline slot does not depend on credentials.
     feature(Self.best(visible, by: \.pickerOfflineRank), as: .offline)
+
+    // A model the picker explicitly features sits above the disclosure. Read Aloud uses this for
+    // its on-device voice: one local tile is a first-class choice, and hiding it under the cloud
+    // tiles was the opposite of the picker's own offline-first curation. Nothing else sets it, so
+    // the Chat picker keeps exactly the curation it had.
+    for model in visible where model.pickerIsFeatured && !featured.contains(where: { $0.model == model }) {
+      featured.append(Featured(model: model, badges: []))
+    }
 
     if visible.count < Self.disclosureThreshold {
       // Short lists (Read Aloud in Offline Mode, a Mac with one provider) stay fully visible.
@@ -176,7 +190,7 @@ extension TranscriptionModel: PickerCuratedModel {
     case .gemini35FlashLite: return 6
     case .gemini38Flash: return 7
     case .gemini4Argon, .gemini31Pro, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
-         .whisperLarge, .whisperLargeTurbo, .parakeetUltra, .selfHostedTranscription,
+         .whisperLarge, .whisperLargeTurbo, .parakeetUltra, .qwen3ASR, .selfHostedTranscription,
          .openRouterTranscription:
       return nil
     }
@@ -193,6 +207,9 @@ extension TranscriptionModel: PickerCuratedModel {
     case .whisperSmall: return 3
     case .whisperBase: return 4
     case .whisperTiny: return 5
+    // Qwen3-ASR is the multilingual fallback, not a German-accuracy pick: it sits behind the
+    // Whisper family so the offline list still leads with the fastest accurate option.
+    case .qwen3ASR: return 6
     default: return nil
     }
   }
@@ -208,6 +225,7 @@ extension TranscriptionModel: PickerCuratedModel {
     case .whisperLarge: return "Whisper Large"
     case .whisperLargeTurbo: return "Whisper Large v3 Turbo"
     case .parakeetUltra: return "Parakeet Ultra"
+    case .qwen3ASR: return "Qwen3 ASR 1.7B"
     default: return displayName
     }
   }
@@ -238,6 +256,8 @@ extension TranscriptionModel: PickerCuratedModel {
     if self == .openRouterTranscription { return rank }
     return nil
   }
+
+  var pickerIsFeatured: Bool { false }
 
   /// The models under "More models" that are their provider's own pick, for the "Best Gemini
   /// pick" tile badge. The top row carries one recommendation; someone with a Gemini *and* an
@@ -292,6 +312,7 @@ extension PromptModel: PickerCuratedModel {
     switch self {
     case .localMLXQwen34BInstruct: return "Qwen3 4B Instruct"
     case .localMLXQwen359B: return "Qwen3.5 9B"
+    case .localMLXGemma426BA4B: return "Gemma 4 26B A4B"
     default: return displayName
     }
   }
@@ -311,6 +332,8 @@ extension PromptModel: PickerCuratedModel {
     guard let index = order.firstIndex(of: provider) else { return nil }
     return index * 2 + (self == provider.defaultChatModel ? 0 : 1)
   }
+
+  var pickerIsFeatured: Bool { false }
 }
 
 // MARK: - Read Aloud
@@ -323,18 +346,39 @@ extension TTSModel: PickerCuratedModel {
     case .gemini38FlashLiteTTS: return 1
     case .gemini38FlashTTS: return 2
     case .openAIGpt4oMiniTTS, .grokVoiceTTS, .systemMacOS: return nil
+    case .qwen3VoiceDesign, .qwen3CustomVoice: return nil
     }
   }
 
-  var pickerOfflineRank: Int? { provider == .system ? 0 : nil }
+  var pickerOfflineRank: Int? {
+    switch provider {
+    case .system: return 0
+    // Behind the macOS voice: it is instant, Qwen3 has to generate first. CustomVoice is the
+    // faster of the two checkpoints, so it sits ahead of VoiceDesign.
+    case .localMLX: return self == .qwen3CustomVoice ? 1 : 2
+    default: return nil
+    }
+  }
 
   var pickerSupersededBy: TTSModel? { nil }
 
   var pickerTitle: String { self == .systemMacOS ? "macOS" : displayName }
 
-  var pickerSetupBadge: String? { hasRequiredCredential ? nil : String(localized: "Needs key", comment: "Tile badge: API key missing") }
+  var pickerSetupBadge: String? {
+    guard !hasRequiredCredential else { return nil }
+    // An on-device model is not missing a key, it is missing its weights — "Needs key" would send
+    // the user to Settings → Accounts for nothing.
+    if qwen3ModelType != nil {
+      return String(localized: "Needs download", comment: "Tile badge: on-device model not downloaded yet")
+    }
+    return String(localized: "Needs key", comment: "Tile badge: API key missing")
+  }
 
   /// The reconciler takes the first keyed entry of `readAloudModels`, which is the macOS voice;
   /// leaving every rank `nil` lets the curation reach the same model through its Offline step.
   var pickerStandInRank: Int? { nil }
+
+  /// The on-device voice is a first-class tile: one local choice next to the macOS voice, not
+  /// something to find behind "More models" under the cloud tiles.
+  var pickerIsFeatured: Bool { qwen3ModelType != nil }
 }

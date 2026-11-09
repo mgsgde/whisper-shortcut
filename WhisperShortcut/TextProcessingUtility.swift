@@ -403,8 +403,9 @@ enum TextProcessingUtility {
       else { return text }
     }
 
-    let trimmedTail = tail.trimmingCharacters(in: .whitespacesAndNewlines)
-    DebugLogger.logWarning("\(mode): Stripped trailing glossary echo \"\(trimmedTail)\"")
+    // Dictated content (patient data): log the size only, never the words.
+    DebugLogger.logWarning(
+      "\(mode): Stripped trailing glossary echo (\(tailWords.count) word(s), \(tail.count) chars)")
 
     var kept = String(head)
     while let last = kept.last, last.isWhitespace {
@@ -448,7 +449,54 @@ enum TextProcessingUtility {
   }
 
   // MARK: - Text Validation
-  static func validateSpeechText(_ text: String, mode: String = "TRANSCRIPTION-MODE") throws {
+
+  /// Subtitle filler Whisper emits when it hears no speech at all. Whisper was trained on
+  /// subtitled web audio, so on breath, a chair or keyboard noise it writes what a subtitle track
+  /// says at the end of a clip instead of nothing. Measured on 400 non-speech clips with
+  /// large-v3: text on 112 (28 %) with the peak gate alone, 97 after lowering
+  /// `no_speech_threshold` to 0.3, 9 with a VAD gate, 2 with this list on top.
+  ///
+  /// A **closed** set, matched against the whole transcript only — never as a substring, so a real
+  /// sentence containing "thank you" passes. Adding a phrase here means also adding it to
+  /// `ValidateSpeechTextTests`; the list is deliberately short because every entry is a phrase a
+  /// user could legitimately dictate on its own.
+  static let knownWhisperHallucinations: Set<String> = [
+    "thank you",
+    "thanks for watching",
+    "you",
+    "bye",
+    "vielen dank",
+    "untertitel der amara.org-community",
+    "subtitles by the amara.org community",
+    "please subscribe",
+    "bitte abonnieren",
+  ]
+
+  /// The comparison form of a transcript for the hallucination check: lowercased, trimmed, and
+  /// stripped of trailing punctuation and whitespace. "Thank you." and "thank you" are the same
+  /// hallucination; "Thank you, Dr. Meyer." is not, because the words in between survive.
+  static func phantomComparisonForm(_ text: String) -> String {
+    var form = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    while let last = form.last, last.isPunctuation || last.isWhitespace {
+      form.removeLast()
+    }
+    return form
+  }
+
+  /// True when the whole transcript is one of the known Whisper silence hallucinations.
+  static func isKnownWhisperHallucination(_ text: String) -> Bool {
+    knownWhisperHallucinations.contains(phantomComparisonForm(text))
+  }
+
+  /// Longest clip for which a single-phrase transcript is treated as a silence hallucination.
+  /// Subtitle filler appears on short noise-only clips; a clip of 2 s or more that transcribes to
+  /// just "You" or "Vielen Dank" is far more likely a real, deliberate utterance. Unknown duration
+  /// (nil) keeps the transcript — the same fail-open rule the VAD gate follows.
+  static let hallucinationMaxClipSeconds: Double = 2.0
+
+  static func validateSpeechText(
+    _ text: String, mode: String = "TRANSCRIPTION-MODE", audioSeconds: Double? = nil
+  ) throws {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     
     // Debug logging to see what Whisper actually returned
@@ -499,6 +547,23 @@ enum TextProcessingUtility {
         DebugLogger.log("PROMPT-DETECTION: Detected assistant-mode refusal in transcription \(DebugLogger.redacted(trimmedText))")
         throw TranscriptionError.noSpeechDetected
       }
+    }
+
+    // Whisper's silence hallucinations ("Thank you.", "Thanks for watching!") — subtitle filler
+    // the model writes when the clip holds no speech. Whole-transcript match only, so a real
+    // sentence that happens to contain "thank you" is untouched. The VAD gate in
+    // `LocalSpeechService` catches most of these before the decode; this catches what still gets
+    // through. Offline Whisper only. User-switchable because the list
+    // contains phrases someone could legitimately dictate on their own ("You", "Bye").
+    if mode.contains("LOCAL-SPEECH"), DictationPreferences.filterKnownWhisperHallucinations,
+       isKnownWhisperHallucination(trimmedText),
+       let audioSeconds, audioSeconds < Self.hallucinationMaxClipSeconds {
+      DebugLogger.log(
+        "HALLUCINATION-FILTER: Dropped known Whisper silence hallucination "
+          + "\(DebugLogger.redacted(trimmedText))")
+      ContextLogger.shared.logNoSpeechDetected(
+        source: "phantomPhraseFilter", peakDb: "n/a", durationMs: "n/a", logPrefix: mode)
+      throw TranscriptionError.noSpeechDetected
     }
     
     // Check for exact prompt match

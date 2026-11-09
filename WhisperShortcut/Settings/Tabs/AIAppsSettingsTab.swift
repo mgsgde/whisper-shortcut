@@ -25,8 +25,6 @@ struct AIAppsSettingsTab: View {
   /// Changes listed under "Changed by AI apps"; the full record stays in `mcp-changes.jsonl`.
   private static let visibleChanges = 5
 
-  /// Pinned so a new `mcp-remote` release can't change what users paste. Bump deliberately.
-  private static let mcpRemotePackage = "mcp-remote@0.14.3"
   private static let serverName = "whisper-shortcut"
 
   @State private var copiedItem: String?
@@ -38,9 +36,12 @@ struct AIAppsSettingsTab: View {
   /// says it is waiting instead of showing a connection that still holds the old entry.
   @State private var connectedAt: [MCPClient: Date] = [:]
   @State private var connecting: MCPClient?
+  @State private var disconnecting: MCPClient?
 
   private enum ConnectOutcome: Equatable {
     case connected
+    /// `removed` is false when the entry was already gone, so the card can say so honestly.
+    case disconnected(removed: Bool)
     case failed(String)
   }
 
@@ -84,13 +85,14 @@ struct AIAppsSettingsTab: View {
 
           setupCard(
             .claudeCode,
+            note: "Anthropic's agent, in Terminal and in the Code tab of the Claude app.",
             manualInstruction: "Run in Terminal, then start a new Claude Code session:",
             code: claudeCodeCommand
           )
 
           setupCard(
             .claudeDesktop,
-            note: "Needs Node.js.",
+            note: "The regular chat in the Claude app.",
             manualInstruction: "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude.",
             code: claudeDesktopConfig
           )
@@ -171,9 +173,9 @@ struct AIAppsSettingsTab: View {
     case .read:
       return String(localized: "AI apps can read meetings and your setup, never change anything.")
     case .propose:
-      return String(localized: "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access.")
+      return String(localized: "Each change opens here for you to accept, edit or decline. Connect your AI app again below so it gets the new access.")
     case .apply:
-      return String(localized: "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access.")
+      return String(localized: "Changes apply at once and can be undone below. Instructions, model changes and screenshot context still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access.")
     }
   }
 
@@ -334,7 +336,10 @@ struct AIAppsSettingsTab: View {
           }
         }
         Spacer()
-        connectButton(client)
+        HStack(spacing: 8) {
+          if isConnected(client) { disconnectButton(client) }
+          connectButton(client)
+        }
       }
 
       connectionStatus(client)
@@ -390,8 +395,7 @@ struct AIAppsSettingsTab: View {
       if connecting == client {
         ProgressView().controlSize(.small)
       } else {
-        Text(connectOutcome[client] == .connected || clients.client(matching: client.registryPrefix) != nil
-          ? ("Connect Again" as LocalizedStringKey) : "Connect")
+        Text(isConnected(client) ? ("Connect Again" as LocalizedStringKey) : "Connect")
       }
     }
     .buttonStyle(.borderedProminent)
@@ -400,8 +404,37 @@ struct AIAppsSettingsTab: View {
     // connects as soon as the server is up.
     // A test build runs next to the user's own instance with its own key and never starts the
     // server, so a Connect from it would point the user's real AI app at the wrong key.
-    .disabled(connecting != nil || setupToken.isEmpty || AppConstants.isSidecarInstance)
+    .disabled(connecting != nil || disconnecting != nil || setupToken.isEmpty || AppConstants.isSidecarInstance)
     .help(Text("Adds WhisperShortcut to \(client.displayName)'s settings. macOS asks once for access to the folder they live in."))
+    .pointerCursorOnHover()
+  }
+
+  /// Connected means: Connect wrote the entry this session, or the client has called in since.
+  /// A Disconnect in this session wins over an old registry record.
+  private func isConnected(_ client: MCPClient) -> Bool {
+    switch connectOutcome[client] {
+    case .connected: return true
+    case .disconnected: return false
+    default: return clients.client(matching: client.registryPrefix) != nil
+    }
+  }
+
+  /// Secondary to Connect Again: removing access is the rarer move, so it does not compete for
+  /// attention. No confirmation, since Connect puts it back in one click.
+  private func disconnectButton(_ client: MCPClient) -> some View {
+    Button {
+      disconnect(client)
+    } label: {
+      if disconnecting == client {
+        ProgressView().controlSize(.small)
+      } else {
+        Text("Disconnect")
+      }
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.small)
+    .disabled(connecting != nil || disconnecting != nil || AppConstants.isSidecarInstance)
+    .help(Text("Removes WhisperShortcut from \(client.displayName)'s settings. macOS asks once for access to the folder they live in."))
     .pointerCursorOnHover()
   }
 
@@ -417,6 +450,17 @@ struct AIAppsSettingsTab: View {
         .foregroundColor(.orange)
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
+    } else if case .disconnected(let removed) = connectOutcome[client] {
+      Label {
+        Text(removed
+          ? "Removed from \(client.displayName)'s settings. \(client.restartHint)"
+          : "WhisperShortcut wasn't in \(client.displayName)'s settings.")
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } icon: {
+        Image(systemName: "minus.circle").foregroundColor(.secondary)
+      }
+      .font(.caption)
     } else if waiting {
       HStack(spacing: 6) {
         ProgressView().controlSize(.mini)
@@ -452,13 +496,30 @@ struct AIAppsSettingsTab: View {
     connecting = client
     Task { @MainActor in
       let result = await MCPClientInstaller.connect(
-        client, url: server.endpointURL, token: setupToken,
-        mcpRemotePackage: Self.mcpRemotePackage, serverName: Self.serverName)
+        client, url: server.endpointURL, token: setupToken, serverName: Self.serverName)
       connecting = nil
       switch result {
       case .success:
         connectOutcome[client] = .connected
         connectedAt[client] = Date()
+      case .failure(let error):
+        if case .cancelled? = error as? MCPClientInstallerError { return }
+        connectOutcome[client] = .failed(error.localizedDescription)
+      }
+    }
+  }
+
+  private func disconnect(_ client: MCPClient) {
+    disconnecting = client
+    Task { @MainActor in
+      let result = await MCPClientInstaller.disconnect(client, serverName: Self.serverName)
+      disconnecting = nil
+      switch result {
+      case .success(let removed):
+        // Forget the last call-in too, or the card would keep showing "Connected · 2 min ago".
+        clients.forget(matching: client.registryPrefix)
+        connectedAt[client] = nil
+        connectOutcome[client] = .disconnected(removed: removed)
       case .failure(let error):
         if case .cancelled? = error as? MCPClientInstallerError { return }
         connectOutcome[client] = .failed(error.localizedDescription)
@@ -475,17 +536,22 @@ struct AIAppsSettingsTab: View {
     "claude mcp remove --scope user \(Self.serverName) 2>/dev/null; claude mcp add --transport http --scope user \(Self.serverName) \(server.endpointURL) --header \"Authorization: Bearer \(setupToken)\""
   }
 
-  /// `mcp-remote` bridges Claude Desktop's stdio-only local config to our HTTP endpoint. The key
-  /// travels in `env` rather than in `args` — mcp-remote's documented way to pass a header value
-  /// that contains a space.
+  /// Claude Desktop only launches local MCP servers as stdio processes. This app's binary is the
+  /// bridge (`--mcp-stdio`): it reads JSON-RPC on stdin and forwards it to the HTTP endpoint.
+  /// The access key travels in the environment, not on the command line.
   private var claudeDesktopConfig: String {
-    """
+    let executable = Bundle.main.executablePath
+      ?? "/Applications/WhisperShortcut.app/Contents/MacOS/WhisperShortcut"
+    return """
     {
       "mcpServers": {
         "\(Self.serverName)": {
-          "command": "npx",
-          "args": ["-y", "\(Self.mcpRemotePackage)", "\(server.endpointURL)", "--header", "Authorization:${AUTH_HEADER}"],
-          "env": { "AUTH_HEADER": "Bearer \(setupToken)" }
+          "command": "\(executable)",
+          "args": ["\(MCPStdioBridge.argument)"],
+          "env": {
+            "\(MCPStdioBridge.urlEnv)": "\(server.endpointURL)",
+            "\(MCPStdioBridge.authEnv)": "Bearer \(setupToken)"
+          }
         }
       }
     }

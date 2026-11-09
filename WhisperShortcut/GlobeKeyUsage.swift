@@ -5,8 +5,9 @@ import Foundation
 ///
 /// Fn dictation can be on by default only when that setting is Do Nothing. Otherwise one Fn
 /// press would also open the emoji picker, switch the input source, or start Apple Dictation.
-/// The app is sandboxed, so reading another app's preference domain needs the read-only
-/// shared-preference exception for `com.apple.HIToolbox` in `WhisperShortcut.entitlements`.
+/// The app is sandboxed, so touching another app's preference domain needs the shared-preference
+/// exception for `com.apple.HIToolbox` in `WhisperShortcut.entitlements` (read-write since the
+/// onboarding can free the key on request; the App Store entitlements have no exception at all).
 /// Without it `CFPreferencesCopyAppValue` returns nil and this reports `.unknown`, which keeps
 /// the default off.
 enum GlobeKeyUsage: Equatable {
@@ -40,27 +41,61 @@ enum GlobeKeyUsage: Equatable {
   /// trigger a system action.
   static var isFree: Bool { current == .doNothing }
 
-  /// The matching item under System Settings → Keyboard → "Press 🌐 key to". Nil when there
-  /// is nothing to ask the user to change.
+  /// The matching item under System Settings → Keyboard → "Press 🌐 key to", in the wording
+  /// macOS shows in the user's language. Nil when there is nothing to ask the user to change.
   var systemSettingsLabel: String? {
     switch self {
     case .doNothing, .unknown:
       return nil
     case .changeInputSource:
-      return "Change Input Source"
+      return String(localized: "Change Input Source")
     case .emojiAndSymbols:
-      return "Show Emoji & Symbols"
+      return String(localized: "Show Emoji & Symbols")
     case .startDictation:
-      return "Start Dictation"
+      return String(localized: "Start Dictation")
     }
   }
+
+  /// True when macOS itself reacts to the 🌐 key, so a Fn press would do two things at once.
+  /// `.unknown` is not a conflict: it cannot be resolved from here (a read the sandbox refused, or
+  /// a future macOS value), and blocking on it would leave the user stuck.
+  var conflictsWithFnDictation: Bool { systemSettingsLabel != nil }
+
+  /// Whether the onboarding step with the Fn toggle may continue. With Fn on and a known conflict,
+  /// Fn dictation would silently do nothing (the emoji picker opens instead), which is exactly how
+  /// a pilot user got stuck on 2026-11-02. She has two ways out: free the key, or turn Fn off and
+  /// use the keyboard shortcut.
+  static func fnSetupMayContinue(fnEnabled: Bool, usage: GlobeKeyUsage) -> Bool {
+    !fnEnabled || !usage.conflictsWithFnDictation
+  }
+
+  #if !APP_STORE
+    /// Sets "Press 🌐 key to" to Do Nothing by writing `AppleFnUsageType = 0` into
+    /// `com.apple.HIToolbox` — the same value System Settings writes. Only ever called after the
+    /// user confirmed that exact change. Returns whether a fresh read shows Do Nothing; on false
+    /// the caller falls back to opening Keyboard settings.
+    ///
+    /// TODO(verify locally): it is still unverified whether macOS applies the new value to the
+    /// running session without logging out and back in. System Settings may also notify
+    /// HIToolbox in a way this write does not. Test on a Mac set to "Show Emoji & Symbols": free
+    /// the key here, then press Fn in TextEdit — the emoji picker must not open. If it still
+    /// opens until re-login, say so in the card's copy.
+    static func freeForFnDictation() -> Bool {
+      let domain = "com.apple.HIToolbox" as CFString
+      CFPreferencesSetAppValue("AppleFnUsageType" as CFString, NSNumber(value: 0), domain)
+      let synced = CFPreferencesAppSynchronize(domain)
+      let after = current
+      DebugLogger.log("GLOBE-KEY: wrote AppleFnUsageType=0 (synchronize=\(synced)); re-read \(after)")
+      return synced && after == .doNothing
+    }
+  #endif
 
   /// Opens System Settings on the Keyboard pane, where "Press 🌐 key to" lives.
   static func openKeyboardSettings() {
     guard let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") else {
       return
     }
-    NSWorkspace.shared.open(url)
+    Task { @MainActor in SystemSettingsOpener.open(url) }
   }
 
   /// Maps Apple's `AppleFnUsageType` integer. Anything else, including a missing value, is
@@ -73,5 +108,23 @@ enum GlobeKeyUsage: Equatable {
     case 3: return .startDictation
     default: return .unknown
     }
+  }
+}
+
+/// The 🌐 setting as one shared, observable value, so the onboarding footer (Continue), the
+/// warning card and Settings all flip together after the user frees the key — whether that
+/// happened through the in-app button or in System Settings (callers refresh on
+/// `didBecomeActiveNotification`).
+@MainActor
+final class GlobeKeyStatus: ObservableObject {
+  static let shared = GlobeKeyStatus()
+
+  @Published private(set) var usage: GlobeKeyUsage = .current
+
+  private init() {}
+
+  func refresh() {
+    let now = GlobeKeyUsage.current
+    if now != usage { usage = now }
   }
 }

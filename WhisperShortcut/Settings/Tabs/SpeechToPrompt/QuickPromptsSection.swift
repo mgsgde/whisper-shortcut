@@ -67,6 +67,7 @@ struct QuickPromptsSection: View {
       .toggleStyle(.switch)
     }
     .onAppear(perform: load)
+    .onReceive(NotificationCenter.default.publisher(for: .settingsChangedExternally)) { _ in load() }
     .onChange(of: rows) { _, newRows in
       UserDefaults.standard.set(
         newRows.map(\.text), forKey: UserDefaultsKeys.dictatePromptCustomQuickActions)

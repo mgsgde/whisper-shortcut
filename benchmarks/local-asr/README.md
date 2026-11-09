@@ -12,6 +12,8 @@ dictating user feels — **accuracy on German** and **the wait after Stop** — 
 | `apple`, `apple+ctx` | macOS 26 `SpeechAnalyzer` / `SpeechTranscriber` (system model, nothing to ship), with and without `contextualStrings` |
 | `whisper-small`, `whisper-base` | opt-in via `--engines` |
 
+The `+app` arms run the app's glossary guard through sources symlinked from `WhisperShortcut/`.
+
 It is a standalone Swift package rather than a test in the Xcode project so candidates can be
 measured before any of them becomes an app dependency, and because the unsandboxed CLI can run
 `say` and read the app container.
@@ -25,7 +27,7 @@ swift build -c release
 .build/release/LocalASRBench --skip-real --engines parakeet-ultra,apple
 ```
 
-Flags: `--engines a,b,…`, `--real-limit N`, `--max-seconds S` (default 120; real clips above it are dropped after picking), `--skip-real`, `--skip-synthetic`, `--out DIR`.
+Flags: `--engines a,b,…`, `--real-limit N`, `--max-seconds S` (default 120; real clips above it are dropped after picking), `--skip-real`, `--skip-synthetic`, `--pilot-corpus PATH`, `--pilot-audio DIR`, `--skip-pilot`, `--out DIR`.
 
 First run downloads the Parakeet models from HuggingFace (~500 MB v3, ~630 MB ultra, ~220 MB
 redux, ~100 MB CTC) into FluidAudio's cache and the German `SpeechTranscriber` asset through
@@ -46,6 +48,12 @@ Whisper uses the model the app already downloaded — the run fails that engine 
   as *distance from the cloud transcript the user accepted*. Numbers written as digits by one side
   and as words by the other count as errors against every engine alike. Term recall uses the
   user's Whisper Glossary, counted only where the reference contains the term.
+- **pilot** — the user reading the dictation-benchmark corpus (`benchmarks/dictation/corpus.json`,
+  branch `feat/dictation-benchmark`) in their own voice. Audio lives only in the private repo
+  (`business/pilot-praxis/benchmark-audio/magnus/`), passed with `--pilot-corpus` and
+  `--pilot-audio`. The reference is the spoken text, so spoken punctuation words ("Komma",
+  "Punkt") count as words and numbers said as words are scored against the engine's digits for
+  every engine alike.
 
 ## Output
 
@@ -62,6 +70,47 @@ audio-length bucket — `<5s` is the post-Stop tail in streaming Dictate), `p90 
 Engines run one after another, never side by side, so none competes with another for the GPU/ANE.
 
 ## Results
+
+### 2026-11-04 — successors to Parakeet Ultra, and the glossary gate (M1 Pro, macOS 26.6.2, FluidAudio 0.18.2)
+
+Candidates: German fine-tune of Parakeet v3 (`ValentinWeyer/parakeet-primeline-de-coreml`, unofficial
+Core ML conversion of `primeline/parakeet-primeline`, CC BY 4.0, fp16, 1.1 GB, loaded with
+`AsrModels.loadLocal`) and NVIDIA Nemotron Unified ASR 0.6B (`.nemotronMultilingual(.de)`, offline int8,
+new in FluidAudio 0.18.0). Sets: 10 synthetic, 60 real (cloud transcript as reference), 46 pilot
+(the user reading the dictation corpus, spoken text as reference).
+
+| engine | WER real | WER pilot | pilot without spoken-mark words | p50 <5 s | note |
+|---|---:|---:|---:|---:|---|
+| **parakeet-ultra** | **5.5 %** | 17.1 % | **6.3 %** | **0.09** | stays |
+| parakeet-primeline | 6.7 % | 16.0 % | 8.3 % | 0.20 | commas after nearly every word, writes "ss" for "ß", digits for spoken numbers; 2× size |
+| parakeet-primeline+vocab | 44.9 % | 70.8 % | 70.2 % | 0.30 | CTC boosting breaks on it |
+| nemotron-unified | 6.5 % | 18.3 % | 9.8 % | 0.16 | more mishearings on the user's voice ("Gh-strecke", "Kommers") |
+| nemotron-unified+vocab | 11.8 % | 20.2 % | 12.2 % | 0.19 | inserts glossary terms where none was said |
+
+The raw pilot WER is high for every engine because the reference keeps the spoken "Komma"/"Punkt"
+words, which engines turn into marks or drop; without them Ultra misses 13 of 205 words. The pilot
+set is 42 short sentences built around punctuation, numbers and glossary traps: good for "does it
+hear this voice and these terms", too small (one error ≈ 0.5 points) to rank close engines.
+
+**Glossary gate.** FluidAudio 0.18.2 added a confident-word gate (#1100) to vocabulary boosting;
+`itnDefaultConfig`, which the app used for its similarity floors, turns it off. With a two-term
+glossary holding a short surname, boosting rewrote confidently heard words into it ("weiter",
+"einer", "meiner"). Through the app's own guard (`+app` arms), on the 58 real clips both arms decoded:
+
+| arm | word errors / 1448 | terms synth | terms pilot |
+|---|---:|---:|---:|
+| parakeet-ultra (no glossary) | 59 (4.07 %) | 18/24 | 10/12 |
+| parakeet-ultra+app (shipped up to now) | 70 (4.83 %) | 23/24 | 10/12 |
+| parakeet-ultra+app-gate | 61 (4.21 %) | 23/24 | 10/12 |
+
+Same term recall, nine fewer false rewrites, no latency difference (a reversed-order rerun showed
+the first run's 0.1 s gap was run order).
+
+**Re-measured on top of #342** (the guard now refuses to rewrite ordinary German words,
+`GermanCommonWords`), 59 real clips, 1496 words: no glossary 87, `+app` 89, `+app-gate` 88 word
+errors; term recall unchanged. #342 already catches what the gate caught, so the gate is **not
+adopted** — the app keeps `itnDefaultConfig`. Re-run `parakeet-ultra+app,parakeet-ultra+app-gate`
+if the glossary grows or false rewrites come back.
 
 ### 2026-09-29 — M1 Pro / 16 GB, macOS 26.6.2
 

@@ -55,7 +55,7 @@ struct UsageLogTuningTests {
   func promptVersion() {
     let a = InteractionContext.promptVersion(of: "Rule one.")
     #expect(a.count == 8)
-    #expect(a.allSatisfy(\.isHexDigit))
+    #expect(a.allSatisfy { $0.isHexDigit })
     #expect(InteractionContext.promptVersion(of: "  Rule one.\n") == a)
     #expect(InteractionContext.promptVersion(of: "Rule two.") != a)
     #expect(InteractionContext.promptVersion(of: nil) == "default")

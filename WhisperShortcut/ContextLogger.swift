@@ -368,6 +368,7 @@ class ContextLogger {
     let fm = FileManager.default
     guard fm.fileExists(atPath: contextDirectoryURL.path) else { return }
     try fm.removeItem(at: contextDirectoryURL)
+    DebugLogger.closeContextErrorLogHandles()
     DebugLogger.log("USER-CONTEXT: Deleted all context data at \(contextDirectoryURL.path)")
   }
 
@@ -691,22 +692,6 @@ class ContextLogger {
 
   // MARK: - Data Management
 
-  func deleteAllData() {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let fm = FileManager.default
-      do {
-        let contents = try fm.contentsOfDirectory(at: self.contextDirectoryURL, includingPropertiesForKeys: nil)
-        for fileURL in contents {
-          try fm.removeItem(at: fileURL)
-        }
-        DebugLogger.log("USER-CONTEXT: Deleted all context data")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to delete context data: \(error.logDescription)")
-      }
-    }
-  }
-
   func performRotation() {
     queue.async { [weak self] in
       guard let self else { return }
@@ -725,7 +710,7 @@ class ContextLogger {
             DebugLogger.log("USER-CONTEXT: Rotated old log file: \(filename)")
           } else if filename == "system-prompts-history.jsonl" || filename == "user-context-history.jsonl" {
             // Line-count rotation for history files that have no date in their name
-            self.trimJSONLFile(at: fileURL, maxLines: self.historyFileMaxLines)
+            Self.trimJSONLFile(at: fileURL, maxLines: self.historyFileMaxLines)
           }
         }
       } catch {
@@ -784,7 +769,7 @@ class ContextLogger {
 
   /// Keeps only the last `maxLines` non-empty lines in a JSONL file, discarding the oldest entries.
   /// Called on the serial queue already; no further synchronisation needed.
-  private func trimJSONLFile(at url: URL, maxLines: Int) {
+  private static func trimJSONLFile(at url: URL, maxLines: Int) {
     guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
     let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
     guard lines.count > maxLines else { return }
@@ -795,13 +780,6 @@ class ContextLogger {
     } catch {
       DebugLogger.logError("USER-CONTEXT: Failed to trim \(url.lastPathComponent): \(error.logDescription)")
     }
-  }
-
-  // MARK: - User Context Loading (deprecated; User Context section removed)
-
-  /// No longer used; User Context section was removed from system prompts. Returns nil.
-  func loadUserContext() -> String? {
-    nil
   }
 
   /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).

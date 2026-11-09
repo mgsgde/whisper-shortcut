@@ -1,17 +1,17 @@
-**[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
+## Dictate Live
+- **Line breaks no longer send.** Line breaks are typed as Shift+Return, so a new line in Chrome, web forms or chat apps no longer submits or sends the message.
+- **No update window in the middle of dictation.** If an update is ready while you dictate, WhisperShortcut waits until you have finished before showing it.
+- **Pressing the shortcut again no longer loses text.** A second press while the last pieces are still being inserted is ignored instead of discarding them.
 
-## Auto-paste
-- **Never pastes the wrong text.** Auto-paste now checks that the clipboard still holds your dictation before pasting, and only restores your previous clipboard if nothing else changed it in the meantime.
-- **Works better in slow apps.** Browsers, Citrix and remote desktops get a little more time to pick up the text: the paste waits 150 ms, and your old clipboard comes back after 3 seconds.
-- **New option: Clear clipboard after auto-paste** (Settings → General, off by default).
-- "Transcribe Cancelled Recording", "Run Again Without Template" and Retry in an error message now copy the result instead of pasting it into whichever app you used last.
-
-## Offline dictation
-- **Glossary terms are no longer inserted when you didn't say them.** The offline model could replace ordinary words with a glossary term that sounded vaguely similar.
-- **New option: Punctuation → Only when spoken** (Settings → Dictate, offline models). Say "Punkt", "Komma", "Fragezeichen" or "Ausrufezeichen" and only those are set. The default, Automatic, is unchanged.
-- **"Schrägstrich" becomes "/".**
+## Offline dictation with spoken punctuation
+- A spoken comma before "neue Zeile" or "neuer Absatz" is kept.
+- "Klammer auf" followed by an article becomes "(" when a "Klammer zu" follows.
+- "Punkt" after "ein", "zu", "in" or "einen" is written as a full stop, unless a number or noun follows.
+- After a salutation and a comma, the next line starts in lower case.
+- The glossary no longer replaces everyday words or the first part of a compound word.
+- Commas, question marks and exclamation marks are kept more reliably, and never more than one blank line appears between two pieces.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.74...v8.75
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.86...v8.87

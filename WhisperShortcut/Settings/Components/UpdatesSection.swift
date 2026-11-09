@@ -2,7 +2,7 @@ import SwiftUI
 
 #if !APP_STORE && canImport(Sparkle)
 
-/// Settings → About card for the direct build's Sparkle updater: manual check, the automatic-check
+/// Settings → General section for the direct build's Sparkle updater: manual check, the automatic-check
 /// switch, and — because the pilot practice runs in Offline Mode — a plain statement of what the
 /// check sends. Never offers to install silently; Sparkle's own window carries the release notes
 /// and the Install button.
@@ -18,21 +18,14 @@ struct UpdatesSection: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .center, spacing: 12) {
-        Image(systemName: "arrow.down.circle")
-          .font(.title2)
-          .foregroundColor(.accentColor)
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(title: "Updates", systemImage: "arrow.down.circle")
 
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Updates")
-            .font(.callout)
-            .fontWeight(.medium)
-          Text(statusLine)
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .textSelection(.enabled)
-        }
+      HStack(alignment: .center, spacing: 12) {
+        Text(statusLine)
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
 
         Spacer(minLength: 12)
 
@@ -49,32 +42,24 @@ struct UpdatesSection: View {
 
       channelPicker
 
-      Toggle("Check for updates automatically", isOn: automaticChecks)
-        .toggleStyle(.switch)
-        .controlSize(.small)
-        .font(.callout)
+      VStack(alignment: .leading, spacing: 4) {
+        Toggle("Check for updates automatically", isOn: automaticChecks)
+          .toggleStyle(.switch)
+          .font(.callout)
 
-      Text(
-        "When a new version is out, you see a notice with its release notes. Nothing is downloaded or installed until you click Install Update."
-      )
-      .font(.caption)
-      .foregroundColor(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
+        Text(
+          "When a new version is out, you see a notice with its release notes. Nothing is downloaded or installed until you click Install Update."
+        )
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
 
       if offlineMode {
         offlineModeNote
       }
     }
-    .padding(SettingsConstants.cardPadding)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
   }
 
   /// Stable is the default so a practice that works with the app all day only sees versions that

@@ -105,7 +105,7 @@ struct MCPConfigToolsTests {
 
   private let writeTools: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "get_proposal_status", "report_problem",
+    "delete_command", "report_problem",
   ]
 
   private func obj(_ r: MCPToolResult) -> [String: Any] {
@@ -122,6 +122,10 @@ struct MCPConfigToolsTests {
     let t = env.tools()
     let names = Set(t.toolDefinitions(access: .read).compactMap { $0["name"] as? String })
     #expect(names.isDisjoint(with: writeTools))
+    #expect(names.contains("get_proposal_status"))
+    let status = t.call(name: "get_proposal_status", arguments: ["id": "none"], access: .read)
+    #expect(status.text.contains("No proposal"))
+    #expect(!status.text.contains("can only read"))
     let r = t.call(name: "add_glossary_terms", arguments: ["terms": ["Wianco"], "rationale": "x"], access: .read)
     #expect(r.isError)
     #expect(r.text.contains("can only read"))
@@ -143,7 +147,7 @@ struct MCPConfigToolsTests {
     #expect(!glossary(env).contains("Wianco"))
   }
 
-  @Test("Write token at every access level: write tools listed the same way, with requiresUserInteraction except get_proposal_status")
+  @Test("Write token at every access level: write tools listed the same way, each requiring user interaction")
   func writeToolsListed() {
     for level in [MCPConfigAccessLevel.read, .propose, .apply] {
       let env = MCPTestEnv(level: level)
@@ -152,12 +156,7 @@ struct MCPConfigToolsTests {
       #expect(Set(write.compactMap { $0["name"] as? String }) == writeTools)
       for d in write {
         let meta = d["_meta"] as? [String: Any]
-        let requiresInteraction = meta?["anthropic/requiresUserInteraction"] as? Bool == true
-        if d["name"] as? String == "get_proposal_status" {
-          #expect(!requiresInteraction)  // read-only: no _meta hint needed
-        } else {
-          #expect(requiresInteraction)
-        }
+        #expect(meta?["anthropic/requiresUserInteraction"] as? Bool == true)
       }
     }
   }
@@ -196,12 +195,12 @@ struct MCPConfigToolsTests {
 
   // MARK: system prompts
 
-  @Test("dictation, chat, whisper_glossary at level apply become proposals; file unchanged")
+  @Test("Every system-prompt section at level apply becomes a proposal; file unchanged")
   func guardedSections() {
     let env = MCPTestEnv(level: .apply)
     let t = env.tools()
     let before = env.systemPrompts.loadFullContent()
-    for section in ["dictation", "chat", "whisper_glossary"] {
+    for section in ["dictation", "chat", "whisper_glossary", "dictate_prompt", "read_aloud_rewrite"] {
       let r = t.call(name: "update_system_prompt",
         arguments: ["section": section, "content": "New rule for \(section)", "rationale": "r"], access: .write)
       #expect(!r.isError)
@@ -209,27 +208,26 @@ struct MCPConfigToolsTests {
       #expect(obj(r)["id"] as? String != nil)
     }
     #expect(env.systemPrompts.loadFullContent() == before)
-    #expect(env.proposals.pending.count == 3)
+    #expect(env.proposals.pending.count == 5)
     #expect(env.changeLog.changes.isEmpty)
   }
 
-  @Test("dictate_prompt: applied at apply with change logged, proposal at propose")
+  @Test("dictate_prompt and read_aloud_rewrite are proposals even at apply")
   func dictatePromptLevels() {
     let env = MCPTestEnv(level: .apply)
     let t = env.tools()
+    let beforePrompt = env.systemPrompts.loadSection(.promptMode)
+    let beforeRead = env.systemPrompts.loadSection(.readAloudRewrite)
     let r = t.call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": "Always be brief.", "rationale": "r"], access: .write)
-    #expect(obj(r)["status"] as? String == "applied")
-    #expect(env.systemPrompts.loadSection(.promptMode) == "Always be brief.")
-    #expect(env.changeLog.changes.count == 1)
-    #expect(env.changeLog.changes.first?.id == obj(r)["change_id"] as? String)
-    #expect(env.history.contains { $0.hasSuffix("|mcp") })
+    #expect(obj(r)["status"] as? String == "pending_review")
+    #expect(env.systemPrompts.loadSection(.promptMode) == beforePrompt)
+    #expect(env.changeLog.changes.isEmpty)
 
-    env.level = .propose
     let p = t.call(name: "update_system_prompt",
       arguments: ["section": "read_aloud_rewrite", "content": "Read it slowly.", "rationale": "r"], access: .write)
     #expect(obj(p)["status"] as? String == "pending_review")
-    #expect(env.systemPrompts.loadSection(.readAloudRewrite) != "Read it slowly.")
+    #expect(env.systemPrompts.loadSection(.readAloudRewrite) == beforeRead)
   }
 
   @Test("Section over 5,000 characters and writing profile over maxChars are rejected")

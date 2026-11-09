@@ -48,20 +48,22 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 7. **GitHub release notes:** summarize changes since the previous git tag (`git log` since last `Update to version` commit / `v<PREV>`).
 8. **App Store “What's New”:** summarize **user-facing** changes since the last version **live on App Store Connect** (see [App Store vs GitHub baselines](#app-store-vs-github-baselines) — not the previous git tag unless they match). Get the live App Store version from `asc` rather than asking.
 9. Save GitHub release notes to `.github/RELEASE_NOTES.md` (used automatically by the workflow) – **IMPORTANT**: Use the resolved repository URL for all links (releases link and changelog link); never use placeholders like `your-repo`
-10. Rebuild and start the app with `bash scripts/rebuild-and-restart.sh`; stop if the build fails
-11. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit, plus `WhisperShortcut/Docs/README.md` when step 10 changed it (the rebuild copies `README.md` there, and CI bundles the committed copy, so an uncommitted sync ships the old README to the in-app Chat — v8.36 did)
-12. Detect the current branch with `git branch --show-current`
-13. Push the current branch with `git push origin <current-branch>`
-14. **Create and push the tag with the script — do not run `git tag` / `git push` by hand:**
+10. Also write `.github/RELEASE_NOTES.de.md`: the same notes in German (Sie-Form, natural German, not word-for-word). Sparkle shows it to users whose Mac runs in German.
+11. Rebuild and start the app with `bash scripts/rebuild-and-restart.sh`; stop if the build fails
+12. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist`, `.github/RELEASE_NOTES.md`, and `.github/RELEASE_NOTES.de.md` must be included in the commit, plus `WhisperShortcut/Docs/README.md` when step 11 changed it (the rebuild copies `README.md` there, and CI bundles the committed copy, so an uncommitted sync ships the old README to the in-app Chat — v8.36 did)
+13. Detect the current branch with `git branch --show-current`
+14. Push the current branch with `git push origin <current-branch>`
+15. **Create and push the tag with the script — do not run `git tag` / `git push` by hand:**
 
     ```bash
     bash scripts/create-release.sh --tag "v<Version>" --yes --skip-tests --allow-dirty
     ```
 
     Each flag is deliberate: `--yes` because this flow is non-interactive, `--skip-tests` because
-    step 1 already ran them against this tree, `--allow-dirty` because step 11 commits only the
+    step 1 already ran them against this tree, `--allow-dirty` because step 12 commits only the
     release files and unrelated work may still be in the tree (the script still refuses to tag if
-    `Info.plist` or `RELEASE_NOTES.md` are uncommitted). Stop if it exits non-zero.
+    `Info.plist`, `RELEASE_NOTES.md`, or a tracked `RELEASE_NOTES.de.md` are uncommitted; a missing
+    German file does not block the tag). Stop if it exits non-zero.
 
 > **Why the script and not `git tag`:** it refuses a tag that already exists, refuses a tag that
 > does not match `Info.plist` (`/submit-appstore` looks the build up by `v$VERSION`, so a mismatch
@@ -123,10 +125,6 @@ This command + the `release.yml` workflow build and ship only the **notarized De
 
 Release notes should be formatted in Markdown and may include:
 
-- **Store CTA — always the first line after the title (growth ledger G1):**
-  `**[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.`
-  Keep the `/go/appstore?src=github-release` hop exactly as written — it is how release-note
-  clicks become attributable in the Cloud Run logs (`plans/instrumentation-gaps.md` #1/#7).
 - Installation instructions (with link to releases page: `https://github.com/USER/REPO/releases`)
 - Changes (main section)
 - Full changelog link (format: `https://github.com/USER/REPO/compare/vPREVIOUS...vCURRENT`)

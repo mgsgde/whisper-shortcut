@@ -74,4 +74,68 @@ struct LiveMeetingNotesTests {
     #expect(LiveMeetingSession.parseBullets("").isEmpty)
     #expect(LiveMeetingSession.parseBullets("\n  \n").isEmpty)
   }
+
+  // MARK: - Hand edits
+
+  @Test("A hand-edited note round-trips with its timestamp and new bullets")
+  func editedNoteRoundTrips() {
+    let original = LiveMeetingNote(startTime: 754, bullets: ["Pricing tiers debated", "No decision yet"])
+    let edited = LiveMeetingNote(
+      id: original.id, startTime: original.startTime, bullets: ["Pricing settled at 20 €", "Decision: tier 2"])
+
+    let parsed = LiveMeetingTranscriptStore.parseNotes(
+      LiveMeetingTranscriptStore.notesMarkdown([edited]))
+
+    #expect(parsed.count == 1)
+    #expect(parsed[0].startTime == 754)
+    #expect(parsed[0].bullets == ["Pricing settled at 20 €", "Decision: tier 2"])
+  }
+
+  @Test("A note emptied of bullets disappears instead of leaving a blank header")
+  func emptiedNoteDisappears() {
+    let notes = [
+      LiveMeetingNote(startTime: 0, bullets: ["Kickoff"]),
+      LiveMeetingNote(startTime: 754, bullets: ["Pricing tiers debated"]),
+    ]
+    let emptied = LiveMeetingTranscriptStore.applyingEdit(
+      to: notes, replacing: LiveMeetingNote(id: notes[1].id, startTime: 754, bullets: []))
+
+    #expect(emptied.count == 1)
+    let markdown = LiveMeetingTranscriptStore.notesMarkdown(emptied)
+    #expect(!markdown.contains("[12:34]"))
+    let parsed = LiveMeetingTranscriptStore.parseNotes(markdown)
+    #expect(parsed.count == 1)
+    #expect(parsed[0].bullets == ["Kickoff"])
+  }
+
+  @Test("Editing one note leaves the others untouched and in order")
+  func editingOneNoteKeepsTheRest() {
+    let notes = [
+      LiveMeetingNote(startTime: 0, bullets: ["Kickoff"]),
+      LiveMeetingNote(startTime: 754, bullets: ["Pricing tiers debated"]),
+      LiveMeetingNote(startTime: 900, bullets: ["Budget owner agreed"]),
+    ]
+    let edited = LiveMeetingTranscriptStore.applyingEdit(
+      to: notes,
+      replacing: LiveMeetingNote(id: notes[1].id, startTime: 754, bullets: ["Pricing settled"]))
+
+    #expect(edited.map(\.startTime) == [0, 754, 900])
+    #expect(edited.map(\.bullets) == [["Kickoff"], ["Pricing settled"], ["Budget owner agreed"]])
+    #expect(edited[0].id == notes[0].id)
+    #expect(edited[1].id == notes[1].id)
+    #expect(edited[2].id == notes[2].id)
+
+    let parsed = LiveMeetingTranscriptStore.parseNotes(
+      LiveMeetingTranscriptStore.notesMarkdown(edited))
+    #expect(parsed.map(\.startTime) == [0, 754, 900])
+    #expect(parsed[1].bullets == ["Pricing settled"])
+  }
+
+  @Test("Editor text becomes one bullet per non-empty line, typed markers stripped")
+  func draftBecomesBullets() {
+    #expect(
+      LiveMeetingTranscriptStore.bullets(fromDraft: "First point\n\n  - Second point  \n• Third\n")
+        == ["First point", "Second point", "Third"])
+    #expect(LiveMeetingTranscriptStore.bullets(fromDraft: "   \n\n").isEmpty)
+  }
 }

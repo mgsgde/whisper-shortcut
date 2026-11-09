@@ -54,7 +54,8 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var scrubPosition: TimeInterval?
   /// Dictate Prompt: frequent instructions shown above the pill. Empty when the list is hidden.
   @Published var quickActions: [QuickAction] = []
-  /// nil until ↑/↓ moves into the list, so ↩ on an empty field means "use the speech".
+  /// The highlighted entry; nil means the text field, so ↩ on an empty field uses the speech.
+  /// Opens on the first entry when the last run picked one, else on the field.
   @Published var quickActionIndex: Int?
   @Published var quickActionsVisible = false
   /// Dictate Prompt: what the run will act on, shown in the card's header.
@@ -268,6 +269,11 @@ private enum QuickActionCardMetrics {
   static let dividerSpacing: CGFloat = 4
   static let cornerRadius: CGFloat = 16
 
+  /// The "8 prompts · ⌃1–⌃8 · ↑↓" line under a list longer than `visibleActions`.
+  static let moreHintHeight: CGFloat = 16
+  /// Quick action rows shown at once; the rest scroll inside the same height.
+  static let visibleActions = QuickActionStore.cardEntries
+
   static let typeFieldPlaceholder: LocalizedStringKey = "Type an instruction, or just speak"
 
   /// Header, `count` rows (quick actions or templates), the text field unless a template
@@ -278,15 +284,26 @@ private enum QuickActionCardMetrics {
     return padding * 2 + headerHeight + divider + CGFloat(rows) * rowHeight
       + (rows > 0 ? divider : 0) + footerHeight
   }
+
+  /// The card for `count` quick actions: at most `visibleActions` rows, plus the hint line when
+  /// more are reachable by scrolling or ⌃digit.
+  static func height(quickActionCount count: Int) -> CGFloat {
+    height(count: min(count, visibleActions))
+      + (count > visibleActions ? moreHintHeight : 0)
+  }
 }
 
 /// Dictate Prompt while recording: one card instead of a list floating over the pill. Top to
 /// bottom: what the run acts on, the quick actions (⌃1–9), a text field that has keyboard focus
 /// from the start, and the recording controls.
 ///
-/// Nothing is highlighted until ↑/↓ moves into the list, so ↩ on an empty field means the same as
-/// ✓ — stop and use what was spoken. Only ⌃digit picks an entry: a bare digit is just text, so a
-/// keystroke meant for the app underneath cannot fire an action.
+/// The list holds the user's own quick prompts in their fixed order (⌃n always runs the same one),
+/// or, when they have none, the instructions last run from the card, most recent first. Three rows
+/// show at once; longer lists scroll inside them, with a "9 prompts · ⌃1–⌃9 · ↑↓" line underneath. When the
+/// last run picked an entry, the card opens with it highlighted (scrolled into view), so ↩ runs it
+/// again; otherwise the field is selected and ↩ on it means the same as ✓ — stop and use what was
+/// spoken. ↑/↓ cycle through the entries and the field. Only ⌃digit picks an entry: a bare digit is just text, so a keystroke
+/// meant for the app underneath cannot fire an action.
 ///
 /// A dictation template bound to the app underneath shows in the header instead of the "nothing
 /// selected" warning: the user is dictating into a field on purpose, and the header says what
@@ -331,10 +348,8 @@ private struct QuickActionCardView: View {
         ForEach(templateChoices.indices, id: \.self) { index in
           templateChoiceRow(index)
         }
-      } else {
-        ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
-          actionRow(index: index, action: action)
-        }
+      } else if !actions.isEmpty {
+        actionList
       }
       if showsField { fieldRow }
       if showsPicker || showsField || !actions.isEmpty { divider }
@@ -519,6 +534,53 @@ private struct QuickActionCardView: View {
 
   // MARK: Rows
 
+  private var hiddenActionCount: Int {
+    max(0, actions.count - QuickActionCardMetrics.visibleActions)
+  }
+
+  /// Up to `visibleActions` rows; the rest scroll, and the highlighted entry stays in view.
+  private var actionList: some View {
+    let rows = min(actions.count, QuickActionCardMetrics.visibleActions)
+    return VStack(spacing: 0) {
+      ScrollViewReader { proxy in
+        ScrollView(.vertical, showsIndicators: hiddenActionCount > 0) {
+          VStack(spacing: 0) {
+            ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+              actionRow(index: index, action: action)
+                .id(index)
+            }
+          }
+        }
+        .scrollDisabled(hiddenActionCount == 0)
+        .frame(height: CGFloat(rows) * QuickActionCardMetrics.rowHeight)
+        .onAppear {
+          if let selectedIndex { proxy.scrollTo(selectedIndex) }
+        }
+        .onChange(of: selectedIndex) { _, index in
+          guard let index else { return }
+          withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(index) }
+        }
+      }
+      if hiddenActionCount > 0 { moreHint }
+    }
+  }
+
+  /// "8 prompts · ⌃1–⌃8 · ↑↓": true at any scroll position, and says how to reach the rest
+  /// without looking.
+  private var moreHint: some View {
+    let last = min(actions.count, 9)
+    return HStack(spacing: 0) {
+      Spacer(minLength: 0)
+      Text("\(actions.count) prompts \u{00B7} \u{2303}1\u{2013}\u{2303}\(last) \u{00B7} \u{2191}\u{2193}")
+        .font(.system(size: 10, weight: .medium).monospacedDigit())
+        .foregroundColor(.white.opacity(0.4))
+        .lineLimit(1)
+    }
+    .padding(.horizontal, 8)
+    .frame(height: QuickActionCardMetrics.moreHintHeight)
+    .accessibilityLabel(String(localized: "\(actions.count) quick prompts, Control-1 to Control-\(last)"))
+  }
+
   /// Editing actions mean little without text to edit; they stay clickable but step back.
   private func isMuted(_ action: QuickAction) -> Bool {
     isTyping || (context == .nothingSelected && action.isEdit)
@@ -627,7 +689,7 @@ private struct QuickActionCardView: View {
     .frame(height: QuickActionCardMetrics.rowHeight)
     .background(
       RoundedRectangle(cornerRadius: 7, style: .continuous)
-        .fill(isTyping ? Color.white.opacity(0.16) : Color.white.opacity(0.06))
+        .fill(Color.white.opacity(isTyping || selectedIndex == nil ? 0.16 : 0.06))
     )
     .onAppear {
       // The panel takes key status as the card appears; focus on the next turn.
@@ -728,7 +790,7 @@ struct RecordingIndicatorView: View {
     // A template recording lists only the picker's templates, and never the field.
     let height = hasTemplate
       ? QuickActionCardMetrics.height(count: templateChoiceCount, field: false)
-      : QuickActionCardMetrics.height(count: quickActions.count)
+      : QuickActionCardMetrics.height(quickActionCount: quickActions.count)
     return CGSize(width: QuickActionCardMetrics.width, height: height)
   }
 
@@ -1053,17 +1115,18 @@ final class RecordingIndicatorManager {
     }
   }
 
-  /// Grows the pill into the Dictate Prompt card. Nothing starts highlighted, and the field
-  /// takes keyboard focus, so the user can type right away. `templateName`: the dictation template
+  /// Grows the pill into the Dictate Prompt card. `preselectIndex` highlights that entry (the
+  /// last one run) so ↩ repeats it; nil highlights nothing. The field takes
+  /// keyboard focus either way, so the user can type right away. `templateName`: the dictation template
   /// bound to the app underneath; the card then shows even with no quick actions, so the header can
   /// say what stopping does. `templateChoices`: with two or more, the card opens the template
   /// picker on `templateChoiceIndex`, whose name `templateName` must be.
   func showQuickActions(
     _ actions: [QuickAction], context: QuickActionContext, templateName: String? = nil,
-    templateChoices: [String] = [], templateChoiceIndex: Int = 0
+    templateChoices: [String] = [], templateChoiceIndex: Int = 0, preselectIndex: Int? = nil
   ) {
     model.quickActions = actions
-    model.quickActionIndex = nil
+    model.quickActionIndex = preselectIndex.flatMap { actions.indices.contains($0) ? $0 : nil }
     model.quickActionContext = context
     model.typedPrompt = ""
     model.templateName = templateName
@@ -1096,16 +1159,25 @@ final class RecordingIndicatorManager {
   func updateQuickActionContext(_ context: QuickActionContext) {
     guard model.quickActionsVisible else { return }
     model.quickActionContext = context
+    // An edit entry has nothing to act on: the preselected repeat gives way to the field.
+    if context == .nothingSelected, let index = model.quickActionIndex,
+      model.quickActions.indices.contains(index), model.quickActions[index].isEdit
+    {
+      model.quickActionIndex = nil
+    }
   }
 
-  /// ↓ from nothing lands on the first entry, ↑ on the last; after that it wraps.
+  /// Cycles entries and the field below them: ↓ from the field lands on the first entry, ↑ on
+  /// the last; ↓ past the last entry and ↑ past the first land on the field.
   func moveQuickActionSelection(by delta: Int) {
     guard model.quickActionsVisible, !model.quickActions.isEmpty else { return }
     let count = model.quickActions.count
-    let next = model.quickActionIndex.map { (($0 + delta) % count + count) % count }
-      ?? (delta > 0 ? 0 : count - 1)
-    model.quickActionIndex = next
-    DebugLogger.log("QUICK-ACTIONS: Highlight → entry \(next + 1)")
+    // Position `count` is the field.
+    let current = model.quickActionIndex ?? count
+    let position = ((current + delta) % (count + 1) + count + 1) % (count + 1)
+    model.quickActionIndex = position == count ? nil : position
+    DebugLogger.log(
+      "QUICK-ACTIONS: Highlight → \(position == count ? "field" : "entry \(position + 1)")")
   }
 
   /// Tab or a click on the template header: switch the bound template off or back on. The choice

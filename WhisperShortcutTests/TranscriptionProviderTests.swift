@@ -18,12 +18,13 @@ struct TranscriptionProviderTests {
     #expect(!TranscriptionModel.gemini31Pro.isSelectableForDictation)
     #expect(!TranscriptionModel.selectableForDictation.contains(.gemini31Pro))
 
-    // Everything else stays offerable, except the two Whisper sizes turbo supersedes — those are
-    // hidden unless the user already has them on disk, so the count is expressed as the exclusion
-    // set rather than a bare number.
+    // Everything else stays offerable, except the two Whisper sizes turbo supersedes (hidden unless on
+    // disk) and Qwen3-ASR (offered only on machines with enough RAM), so the count is an exclusion set.
     let hidden = Set(
       TranscriptionModel.allCases.filter { !$0.isSelectableForDictation })
-    #expect(hidden.subtracting([.whisperMedium, .whisperLarge]) == [.gemini4Argon, .gemini31Pro])
+    #expect(
+      hidden.subtracting([.whisperMedium, .whisperLarge, .qwen3ASR]) == [.gemini4Argon, .gemini31Pro])
+    #expect(TranscriptionModel.qwen3ASR.isSelectableForDictation == Qwen3ModelType.asr.isOfferable)
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperMedium))
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperLarge))
     // Turbo replaces them and is offered whether or not it is downloaded.
@@ -73,7 +74,7 @@ struct TranscriptionProviderTests {
     #expect(
       offline == [
         .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
-        .parakeetUltra,
+        .parakeetUltra, .qwen3ASR,
       ])
 
     for model in offline {
@@ -102,6 +103,32 @@ struct TranscriptionProviderTests {
     #expect(
       TranscriptionModel.whisperBase.hasRequiredCredential
         == TranscriptionModel.whisperBase.isOfflineModelAvailable())
+  }
+
+  /// "Needs a key" and "needs a download" are different states, and the menu bar / onboarding used
+  /// to collapse them: a user who had already selected an offline model was told to add an API key.
+  @Test("An undownloaded offline model asks for a download, not for a key")
+  func offlineModelDownloadIsNotAKeyProblem() {
+    // The reported bug: offline selected, file not on disk.
+    #expect(TranscriptionModel.needsOfflineModelDownload(isOffline: true, available: false))
+    // Downloaded: ready, no warning at all.
+    #expect(!TranscriptionModel.needsOfflineModelDownload(isOffline: true, available: true))
+    // A cloud model never asks for a download, whatever the store says.
+    #expect(!TranscriptionModel.needsOfflineModelDownload(isOffline: false, available: false))
+    #expect(!TranscriptionModel.needsOfflineModelDownload(isOffline: false, available: true))
+
+    // The instance property is that rule over the live store, so the two can never drift apart.
+    for model in TranscriptionModel.allCases {
+      #expect(
+        model.needsOfflineModelDownload
+          == TranscriptionModel.needsOfflineModelDownload(
+            isOffline: model.isOffline, available: model.isOfflineModelAvailable()),
+        "\(model.rawValue)")
+      // Exactly the offline models that cannot run yet are the ones asking for a download.
+      #expect(
+        model.needsOfflineModelDownload == (model.isOffline && !model.hasRequiredCredential),
+        "\(model.rawValue)")
+    }
   }
 
   @Test("Credential prompts never tell a keyless provider to add an API key")

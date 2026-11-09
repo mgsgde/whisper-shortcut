@@ -12,7 +12,7 @@ ITEM_RE = re.compile(r"<item\b[^>]*>.*?</item>", re.DOTALL)
 VERSION_RE = re.compile(r"<sparkle:version>([^<]*)</sparkle:version>")
 
 
-def write_appcast(extra, notes="Hello **notes**.", previous=None):
+def write_appcast(extra, notes="Hello **notes**.", previous=None, notes_de=None):
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         notes_path = root / "notes.md"
@@ -22,6 +22,10 @@ def write_appcast(extra, notes="Hello **notes**.", previous=None):
             prev = root / "previous.xml"
             prev.write_text(previous, encoding="utf-8")
             extra = extra + ["--previous", str(prev)]
+        if notes_de is not None:
+            de_path = root / "notes.de.md"
+            de_path.write_text(notes_de, encoding="utf-8")
+            extra = extra + ["--notes-de", str(de_path)]
         cmd = [
             sys.executable,
             str(SCRIPT),
@@ -130,6 +134,71 @@ class MakeAppcastTests(unittest.TestCase):
         self.assertEqual(versions[1:], [str(n) for n in range(1, 60)])
         self.assertNotIn("<sparkle:version>60</sparkle:version>", xml)
         self.assertNotIn("<sparkle:version>70</sparkle:version>", xml)
+
+    def test_notes_de_adds_localized_description(self):
+        xml = write_appcast([], notes_de="Hallo **Notizen**.")
+        items = ITEM_RE.findall(xml)
+        self.assertEqual(len(items), 1)
+        descriptions = re.findall(
+            r"<description\b([^>]*)><!\[CDATA\[(.*?)\]\]></description>",
+            items[0],
+            re.DOTALL,
+        )
+        self.assertEqual(len(descriptions), 2)
+        self.assertEqual(descriptions[0][0], ' xml:lang="en"')
+        self.assertIn("<p>Hello <strong>notes</strong>.</p>", descriptions[0][1])
+        self.assertEqual(descriptions[1][0], ' xml:lang="de"')
+        self.assertIn("<p>Hallo <strong>Notizen</strong>.</p>", descriptions[1][1])
+        english = items[0].index('<description xml:lang="en">')
+        german = items[0].index('<description xml:lang="de">')
+        enclosure = items[0].index("<enclosure ")
+        self.assertLess(english, german)
+        self.assertLess(german, enclosure)
+
+    def test_without_notes_de_exactly_one_description(self):
+        xml = write_appcast([])
+        items = ITEM_RE.findall(xml)
+        self.assertEqual(len(re.findall(r"<description\b", items[0])), 1)
+        self.assertNotIn("xml:lang", xml)
+
+        missing = write_appcast(["--notes-de", "/no/such/notes.de.md"])
+        missing_items = ITEM_RE.findall(missing)
+        self.assertEqual(len(re.findall(r"<description\b", missing_items[0])), 1)
+        self.assertNotIn("xml:lang", missing)
+
+        empty = write_appcast([], notes_de="")
+        empty_items = ITEM_RE.findall(empty)
+        self.assertEqual(len(re.findall(r"<description\b", empty_items[0])), 1)
+        self.assertNotIn("xml:lang", empty)
+
+        blank = write_appcast([], notes_de="\n  \n")
+        blank_items = ITEM_RE.findall(blank)
+        self.assertEqual(len(re.findall(r"<description\b", blank_items[0])), 1)
+        self.assertNotIn("xml:lang", blank)
+
+    def test_previous_german_description_kept_verbatim(self):
+        german = (
+            '<description xml:lang="de"><![CDATA[<p>Alte <strong>Notizen</strong></p>]]></description>'
+        )
+        old_item = (
+            "<item><sparkle:version>1</sparkle:version>"
+            "<description><![CDATA[<p>Old</p>]]></description>\n      %s\n</item>" % german
+        )
+        previous = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n<rss><channel>\n%s\n</channel></rss>\n'
+            % old_item
+        )
+        xml = write_appcast(
+            ["--build", "9", "--version", "9.0"],
+            notes_de="Neu **heute**.",
+            previous=previous,
+        )
+        items = ITEM_RE.findall(xml)
+        self.assertEqual(item_versions(xml), ["9", "1"])
+        self.assertEqual(items[1], old_item)
+        self.assertIn(german, items[1])
+        new_descriptions = re.findall(r"<description\b", items[0])
+        self.assertEqual(len(new_descriptions), 2)
 
 
 if __name__ == "__main__":

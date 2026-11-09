@@ -182,17 +182,37 @@ enum MarkdownParsing {
 
   /// Converts common LaTeX math notation to Unicode characters.
   /// Handles both inline `$...$` and display `$$...$$` delimiters.
+  ///
+  /// Inline dollars count as math only when the contents look like math (Pandoc's
+  /// rule): no whitespace just inside either `$`, and no digit right after the
+  /// closing `$`. `$2^n$` converts; `$5 per month, or $50`, `$5-$10` and `$ x $` stay
+  /// literal. Fenced code and backtick spans are copied through unchanged, and a
+  /// command name is replaced only when the next character is not a letter, so
+  /// `\to` matches `\to` but not the `\tom` in `C:\Users\tom`.
   static func renderLatexToUnicode(_ text: String) -> String {
     // Quick check: skip processing if no LaTeX markers present
     guard text.contains("$") || text.contains("\\") else { return text }
 
+    let (masked, tokens) = maskCodeRegions(text)
+    let converted = (masked.contains("$") || masked.contains("\\")) ? convertLatexMarkup(masked) : masked
+    return unmaskCodeRegions(converted, tokens: tokens)
+  }
+
+  /// LaTeX conversion for one prose span. Callers mask code regions first.
+  private static func convertLatexMarkup(_ text: String) -> String {
     var result = text
 
-    // Step 1: Strip display math delimiters $$...$$
+    // Step 1: Strip display math delimiters $$...$$ (may span lines; whitespace inside is fine)
     result = regexReplace(result, pattern: "\\$\\$(.+?)\\$\\$", template: "$1", options: .dotMatchesLineSeparators)
 
-    // Step 2: Strip inline math delimiters $...$
-    result = regexReplace(result, pattern: "(?<!\\$)\\$(?!\\$)(.+?)(?<!\\$)\\$(?!\\$)", template: "$1")
+    // Step 2: Strip inline math delimiters $...$ only when the contents look like math.
+    // Pandoc's rule: no whitespace just inside either `$`, and no digit right after the
+    // closing `$`. The pair cannot cross a newline. So `$2^n$` and `$1/2$` convert, while
+    // `$5 per month, or $50`, `$5-$10` and `$HOME and $PATH` are not a pair.
+    result = regexReplace(
+      result,
+      pattern: "(?<!\\$)\\$(?!\\$)(?!\\s)([^\\n$]*?[^\\s$])(?<!\\$)\\$(?!\\$)(?!\\d)",
+      template: "$1")
 
     // Step 3: Structural commands FIRST (before simple replacements, so nested braces are intact)
     result = regexReplaceAll(result, pattern: "\\\\frac\\{([^}]+)\\}\\{([^}]+)\\}") { match, nsStr in
@@ -216,41 +236,10 @@ enum MarkdownParsing {
       "lim_{\(nsStr.substring(with: match.range(at: 1)))}"
     }
 
-    // Step 4: Simple command → Unicode replacements
-    let replacements: [(String, String)] = [
-      ("\\times", "×"), ("\\div", "÷"), ("\\pm", "±"), ("\\mp", "∓"),
-      ("\\cdot", "·"), ("\\ldots", "…"), ("\\dots", "…"),
-      ("\\leq", "≤"), ("\\geq", "≥"), ("\\neq", "≠"), ("\\approx", "≈"),
-      ("\\equiv", "≡"), ("\\sim", "∼"), ("\\propto", "∝"),
-      ("\\infty", "∞"), ("\\partial", "∂"), ("\\nabla", "∇"),
-      ("\\to", "→"), ("\\mapsto", "↦"),
-      ("\\sum", "∑"), ("\\prod", "∏"), ("\\int", "∫"),
-      ("\\lim", "lim"),
-      ("\\log", "log"), ("\\ln", "ln"), ("\\sin", "sin"), ("\\cos", "cos"), ("\\tan", "tan"),
-      ("\\min", "min"), ("\\max", "max"),
-      ("\\alpha", "α"), ("\\beta", "β"), ("\\gamma", "γ"), ("\\delta", "δ"),
-      ("\\epsilon", "ε"), ("\\varepsilon", "ε"), ("\\zeta", "ζ"), ("\\eta", "η"), ("\\theta", "θ"),
-      ("\\lambda", "λ"), ("\\mu", "μ"), ("\\nu", "ν"), ("\\xi", "ξ"),
-      ("\\pi", "π"), ("\\rho", "ρ"), ("\\sigma", "σ"), ("\\tau", "τ"),
-      ("\\phi", "φ"), ("\\varphi", "φ"), ("\\chi", "χ"), ("\\psi", "ψ"), ("\\omega", "ω"),
-      ("\\Alpha", "Α"), ("\\Beta", "Β"), ("\\Gamma", "Γ"), ("\\Delta", "Δ"),
-      ("\\Theta", "Θ"), ("\\Lambda", "Λ"), ("\\Pi", "Π"), ("\\Sigma", "Σ"),
-      ("\\Phi", "Φ"), ("\\Psi", "Ψ"), ("\\Omega", "Ω"),
-      ("\\leftarrow", "←"), ("\\rightarrow", "→"), ("\\leftrightarrow", "↔"),
-      ("\\Leftarrow", "⇐"), ("\\Rightarrow", "⇒"),
-      ("\\forall", "∀"), ("\\exists", "∃"), ("\\in", "∈"), ("\\notin", "∉"),
-      ("\\subset", "⊂"), ("\\supset", "⊃"), ("\\subseteq", "⊆"), ("\\supseteq", "⊇"),
-      ("\\cup", "∪"), ("\\cap", "∩"),
-      ("\\emptyset", "∅"), ("\\neg", "¬"), ("\\land", "∧"), ("\\lor", "∨"),
-      ("\\quad", "  "), ("\\qquad", "    "), ("\\,", " "),
-      ("\\left(", "("), ("\\right)", ")"),
-      ("\\left[", "["), ("\\right]", "]"),
-      ("\\left\\{", "{"), ("\\right\\}", "}"),
-      ("\\{", "{"), ("\\}", "}"),
-    ]
-    for (latex, unicode) in replacements {
-      result = result.replacingOccurrences(of: latex, with: unicode)
-    }
+    // Step 4: Simple command → Unicode replacements. Letter-named commands match
+    // only at the end of the name (`\to` but not `\tom`, `\in` but not `\index`).
+    // A regex `\b` would miss subscripts, because `_` counts as a word character.
+    result = replaceLatexCommands(result)
 
     // Step 5: Superscripts ^{...} and ^x (AFTER structural commands)
     let superscriptMap: [Character: Character] = [
@@ -282,6 +271,109 @@ enum MarkdownParsing {
     }
 
     return result
+  }
+
+  /// Command → Unicode pairs. Letter-named commands get an end-of-name check;
+  /// the rest are literal (they already end on punctuation, so they cannot eat
+  /// the following word).
+  private static let latexReplacements: [(String, String)] = [
+    ("\\times", "×"), ("\\div", "÷"), ("\\pm", "±"), ("\\mp", "∓"),
+    ("\\cdot", "·"), ("\\ldots", "…"), ("\\dots", "…"),
+    ("\\leq", "≤"), ("\\geq", "≥"), ("\\neq", "≠"), ("\\approx", "≈"),
+    ("\\equiv", "≡"), ("\\sim", "∼"), ("\\propto", "∝"),
+    ("\\infty", "∞"), ("\\partial", "∂"), ("\\nabla", "∇"),
+    ("\\to", "→"), ("\\mapsto", "↦"),
+    ("\\sum", "∑"), ("\\prod", "∏"), ("\\int", "∫"),
+    ("\\lim", "lim"),
+    ("\\log", "log"), ("\\ln", "ln"), ("\\sin", "sin"), ("\\cos", "cos"), ("\\tan", "tan"),
+    ("\\min", "min"), ("\\max", "max"),
+    ("\\alpha", "α"), ("\\beta", "β"), ("\\gamma", "γ"), ("\\delta", "δ"),
+    ("\\epsilon", "ε"), ("\\varepsilon", "ε"), ("\\zeta", "ζ"), ("\\eta", "η"), ("\\theta", "θ"),
+    ("\\lambda", "λ"), ("\\mu", "μ"), ("\\nu", "ν"), ("\\xi", "ξ"),
+    ("\\pi", "π"), ("\\rho", "ρ"), ("\\sigma", "σ"), ("\\tau", "τ"),
+    ("\\phi", "φ"), ("\\varphi", "φ"), ("\\chi", "χ"), ("\\psi", "ψ"), ("\\omega", "ω"),
+    ("\\Alpha", "Α"), ("\\Beta", "Β"), ("\\Gamma", "Γ"), ("\\Delta", "Δ"),
+    ("\\Theta", "Θ"), ("\\Lambda", "Λ"), ("\\Pi", "Π"), ("\\Sigma", "Σ"),
+    ("\\Phi", "Φ"), ("\\Psi", "Ψ"), ("\\Omega", "Ω"),
+    ("\\leftarrow", "←"), ("\\rightarrow", "→"), ("\\leftrightarrow", "↔"),
+    ("\\Leftarrow", "⇐"), ("\\Rightarrow", "⇒"),
+    ("\\forall", "∀"), ("\\exists", "∃"), ("\\in", "∈"), ("\\notin", "∉"),
+    ("\\subset", "⊂"), ("\\supset", "⊃"), ("\\subseteq", "⊆"), ("\\supseteq", "⊇"),
+    ("\\cup", "∪"), ("\\cap", "∩"),
+    ("\\emptyset", "∅"), ("\\neg", "¬"), ("\\land", "∧"), ("\\lor", "∨"),
+    ("\\quad", "  "), ("\\qquad", "    "), ("\\,", " "),
+    ("\\left(", "("), ("\\right)", ")"),
+    ("\\left[", "["), ("\\right]", "]"),
+    ("\\left\\{", "{"), ("\\right\\}", "}"),
+    ("\\{", "{"), ("\\}", "}"),
+  ]
+
+  /// Longer names first so `\infty` wins over `\in` when both could start at the same `\`.
+  private static let letterCommandRegex: NSRegularExpression = {
+    let pattern = latexReplacements
+      .filter { $0.0.last?.isLetter == true }
+      .sorted { $0.0.count > $1.0.count }
+      .map { NSRegularExpression.escapedPattern(for: $0.0) + "(?![A-Za-z])" }
+      .joined(separator: "|")
+    return try! NSRegularExpression(pattern: pattern)
+  }()
+
+  private static let letterCommandMap: [String: String] = {
+    Dictionary(uniqueKeysWithValues: latexReplacements.filter { $0.0.last?.isLetter == true })
+  }()
+
+  private static func replaceLatexCommands(_ text: String) -> String {
+    var result = text
+    let matches = letterCommandRegex.matches(
+      in: result, range: NSRange(location: 0, length: (result as NSString).length))
+    for match in matches.reversed() {
+      let token = (result as NSString).substring(with: match.range)
+      let replacement = letterCommandMap[token] ?? token
+      result = (result as NSString).replacingCharacters(in: match.range, with: replacement)
+    }
+    for (latex, unicode) in latexReplacements where latex.last?.isLetter != true {
+      result = result.replacingOccurrences(of: latex, with: unicode)
+    }
+    return result
+  }
+
+  private static let fencedRegex = try! NSRegularExpression(pattern: "```[^\\n]*\\n[\\s\\S]*?```")
+  private static let tildeRegex = try! NSRegularExpression(pattern: "~~~[^\\n]*\\n[\\s\\S]*?~~~")
+  private static let inlineCodeRegex = try! NSRegularExpression(pattern: "`[^`\\n]+`")
+
+  /// Fenced ``` / ~~~ blocks, then single-backtick spans. Placeholders use private-use
+  /// sentinels so the LaTeX pass cannot rewrite them; unclosed delimiters stay prose.
+  private static func maskCodeRegions(_ text: String) -> (String, [String]) {
+    var tokens: [String] = []
+    var masked = captureRegions(text, regex: fencedRegex, into: &tokens)
+    masked = captureRegions(masked, regex: tildeRegex, into: &tokens)
+    masked = captureRegions(masked, regex: inlineCodeRegex, into: &tokens)
+    return (masked, tokens)
+  }
+
+  private static func captureRegions(_ text: String, regex: NSRegularExpression, into tokens: inout [String]) -> String {
+    let ns = text as NSString
+    let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+    guard !matches.isEmpty else { return text }
+    let base = tokens.count
+    tokens.append(contentsOf: matches.map { ns.substring(with: $0.range) })
+    var result = text
+    for (offset, match) in matches.enumerated().reversed() {
+      result = (result as NSString).replacingCharacters(in: match.range, with: codePlaceholder(base + offset))
+    }
+    return result
+  }
+
+  private static func unmaskCodeRegions(_ text: String, tokens: [String]) -> String {
+    var result = text
+    for index in tokens.indices.reversed() {
+      result = result.replacingOccurrences(of: codePlaceholder(index), with: tokens[index])
+    }
+    return result
+  }
+
+  private static func codePlaceholder(_ index: Int) -> String {
+    "\u{E000}L\(index)\u{E001}"
   }
 
   // MARK: - Regex Helpers

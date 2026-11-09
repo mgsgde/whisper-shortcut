@@ -2,8 +2,9 @@ import FluidAudio
 import Foundation
 
 // Offline speech-to-text bake-off: accuracy and post-Stop wait, per engine, on German practice
-// dictation (synthetic, known text) and on the user's own recordings (cloud transcript as
-// reference). See README.md next to Package.swift for how to run it and how to read it.
+// dictation (synthetic, known text), the user's own recordings (cloud transcript as reference),
+// and a known corpus read in the user's voice (pilot). See README.md next to Package.swift
+// for how to run it and how to read it.
 //
 // Per-clip rows, transcripts included, go to --out (default under ~/Library/Caches, never into the
 // repo: the real set is private dictation). stdout carries aggregates only.
@@ -20,6 +21,9 @@ struct Options {
   var maxSeconds = 120.0
   var skipReal = false
   var skipSynthetic = false
+  var pilotCorpus: URL?
+  var pilotAudio: URL?
+  var skipPilot = false
   var out = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Library/Caches/whispershortcut-bench/local-asr")
     .appendingPathComponent(ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-"))
@@ -34,6 +38,9 @@ while let argument = arguments.popFirst() {
   case "--max-seconds": options.maxSeconds = Double(arguments.popFirst() ?? "") ?? options.maxSeconds
   case "--skip-real": options.skipReal = true
   case "--skip-synthetic": options.skipSynthetic = true
+  case "--pilot-corpus": options.pilotCorpus = arguments.popFirst().map { URL(fileURLWithPath: $0) }
+  case "--pilot-audio": options.pilotAudio = arguments.popFirst().map { URL(fileURLWithPath: $0) }
+  case "--skip-pilot": options.skipPilot = true
   case "--out": options.out = URL(fileURLWithPath: arguments.popFirst() ?? ".")
   default:
     print("unknown argument \(argument)")
@@ -42,6 +49,8 @@ while let argument = arguments.popFirst() {
 }
 
 func makeEngine(_ name: String) -> Engine? {
+  let primeLineDirectory = FileManager.default.homeDirectoryForCurrentUser
+    .appendingPathComponent("Library/Application Support/FluidAudio/Models/parakeet-primeline-de-coreml")
   switch name {
   case "whisper-turbo": return WhisperEngine(variant: "large-v3-v20240930_turbo", useGlossary: false)
   case "whisper-turbo+glossary": return WhisperEngine(variant: "large-v3-v20240930_turbo", useGlossary: true)
@@ -52,6 +61,33 @@ func makeEngine(_ name: String) -> Engine? {
   case "parakeet-redux": return ParakeetEngine(version: .redux, label: "redux", useVocabulary: false)
   case "parakeet-ultra+vocab": return ParakeetEngine(version: .ultra, label: "ultra", useVocabulary: true)
   case "parakeet-v3+vocab": return ParakeetEngine(version: .v3, label: "v3", useVocabulary: true)
+  case "parakeet-primeline":
+    return ParakeetEngine(version: .v3, label: "primeline", useVocabulary: false, localDirectory: primeLineDirectory)
+  case "parakeet-primeline+vocab":
+    return ParakeetEngine(version: .v3, label: "primeline", useVocabulary: true, localDirectory: primeLineDirectory)
+  case "parakeet-ultra+vocab-app":
+    return ParakeetEngine(
+      version: .ultra, label: "ultra", useVocabulary: true,
+      boostConfig: VocabularyBoostingSession.itnDefaultConfig, nameOverride: "parakeet-ultra+vocab-app")
+  case "parakeet-ultra+vocab-gate":
+    return ParakeetEngine(
+      version: .ultra, label: "ultra", useVocabulary: true,
+      boostConfig: VocabularyRescorer.Config(
+        spotterRescueMinSimilarity: 0.30, spotterRescueMultiWordMinSimilarity: 0.50, confidentWordBiasGate: true),
+      nameOverride: "parakeet-ultra+vocab-gate")
+  case "parakeet-ultra+app":
+    return ParakeetEngine(
+      version: .ultra, label: "ultra", useVocabulary: true,
+      boostConfig: VocabularyBoostingSession.itnDefaultConfig,
+      nameOverride: "parakeet-ultra+app", appGuard: true)
+  case "parakeet-ultra+app-gate":
+    return ParakeetEngine(
+      version: .ultra, label: "ultra", useVocabulary: true,
+      boostConfig: VocabularyRescorer.Config(
+        spotterRescueMinSimilarity: 0.30, spotterRescueMultiWordMinSimilarity: 0.50, confidentWordBiasGate: true),
+      nameOverride: "parakeet-ultra+app-gate", appGuard: true)
+  case "nemotron-unified": return NemotronUnifiedEngine(useVocabulary: false)
+  case "nemotron-unified+vocab": return NemotronUnifiedEngine(useVocabulary: true)
   case "apple":
     if #available(macOS 26.0, *) { return AppleSpeechEngine(useContext: false) }
     return nil
@@ -70,6 +106,10 @@ struct Row: Codable {
   let decodeSeconds: Double
   let refWords: Int
   let edits: Int
+  /// Pilot only: reference length and edit distance after spoken punctuation command words
+  /// are removed from both sides. 0 on every other dataset.
+  let refWordsWords: Int
+  let editsWords: Int
   let termsPresent: Int
   let termsHit: Int
   let error: String?
@@ -90,10 +130,13 @@ let glossary = Datasets.glossary()
 var clips: [Clip] = []
 if !options.skipSynthetic { clips += try Datasets.synthetic(in: audioDir) }
 if !options.skipReal { clips += try Datasets.real(limit: options.realLimit, maxSeconds: options.maxSeconds, glossaryTerms: glossary.terms) }
+if !options.skipPilot, let corpus = options.pilotCorpus, let audio = options.pilotAudio {
+  clips += try Datasets.pilot(corpus: corpus, audioDir: audio)
+}
 
 let host = ProcessInfo.processInfo
 print("BENCH machine=\(machineName()) os=\(host.operatingSystemVersionString) ramGB=\(host.physicalMemory / 1_073_741_824)")
-print("BENCH clips synthetic=\(clips.filter { $0.dataset == "synthetic" }.count) real=\(clips.filter { $0.dataset == "real" }.count) glossaryTerms=\(glossary.terms.count)")
+print("BENCH clips synthetic=\(clips.filter { $0.dataset == "synthetic" }.count) real=\(clips.filter { $0.dataset == "real" }.count) pilot=\(clips.filter { $0.dataset == "pilot" }.count) glossaryTerms=\(glossary.terms.count)")
 print("BENCH out=\(options.out.path)")
 
 func machineName() -> String {
@@ -163,11 +206,17 @@ for engineName in options.engines {
     }
     let decode = (clock.now - start).seconds
     let ref = Metrics.normalize(clip.reference)
-    let edits = Metrics.editDistance(ref, Metrics.normalize(hypothesis))
+    let hyp = Metrics.normalize(hypothesis)
+    let edits = Metrics.editDistance(ref, hyp)
+    // Command-word WER is a pilot column. Other datasets keep 0 here and print "—".
+    let refWords = clip.dataset == "pilot" ? Metrics.droppingCommandWords(ref) : []
+    let hypWords = clip.dataset == "pilot" ? Metrics.droppingCommandWords(hyp) : []
+    let editsWords = clip.dataset == "pilot" ? Metrics.editDistance(refWords, hypWords) : 0
     let terms = Metrics.termRecall(terms: clip.terms, reference: clip.reference, hypothesis: hypothesis)
     let row = Row(
       engine: engine.name, dataset: clip.dataset, clip: clip.id, audioSeconds: clip.seconds,
-      decodeSeconds: decode, refWords: ref.count, edits: edits, termsPresent: terms.present,
+      decodeSeconds: decode, refWords: ref.count, edits: edits,
+      refWordsWords: refWords.count, editsWords: editsWords, termsPresent: terms.present,
       termsHit: terms.hit, error: failure, hypothesis: hypothesis, reference: clip.reference)
     rows.append(row)
     rowsHandle.write(try encoder.encode(row))
@@ -190,8 +239,8 @@ extension Duration {
 func summaryTable(_ list: [EngineSummary], header: Bool = true) -> [String] {
   var lines: [String] = []
   if header {
-    lines.append("| engine | load s | 1st decode s | WER synth | WER real | terms synth | terms real | p50 <5s | p50 5–15s | p50 15–30s | p50 >30s | p90 all | errors |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("| engine | load s | 1st decode s | WER synth | WER real | terms synth | terms real | WER pilot | WER pilot words | terms pilot | p50 <5s | p50 5–15s | p50 15–30s | p50 >30s | p90 all | errors |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
   }
   for summary in list {
     func wer(_ dataset: String) -> String {
@@ -199,6 +248,15 @@ func summaryTable(_ list: [EngineSummary], header: Bool = true) -> [String] {
       let words = rows.map(\.refWords).reduce(0, +)
       guard words > 0 else { return "—" }
       return f(100 * Double(rows.map(\.edits).reduce(0, +)) / Double(words), 1) + " %"
+    }
+    /// Same corpus WER as `wer`, after spoken punctuation command words are removed from both
+    /// sides. Only the pilot set is measured; every other dataset prints "—".
+    func werWords(_ dataset: String) -> String {
+      guard dataset == "pilot" else { return "—" }
+      let rows = summary.rows.filter { $0.dataset == dataset && $0.error == nil }
+      let words = rows.map(\.refWordsWords).reduce(0, +)
+      guard words > 0 else { return "—" }
+      return f(100 * Double(rows.map(\.editsWords).reduce(0, +)) / Double(words), 1) + " %"
     }
     func terms(_ dataset: String) -> String {
       let rows = summary.rows.filter { $0.dataset == dataset }
@@ -213,7 +271,8 @@ func summaryTable(_ list: [EngineSummary], header: Bool = true) -> [String] {
     let failures = summary.rows.filter { $0.error != nil }.count
     lines.append(
       "| \(summary.name) | \(f(summary.loadSeconds)) | \(f(summary.firstDecodeSeconds)) | \(wer("synthetic")) | \(wer("real")) | "
-        + "\(terms("synthetic")) | \(terms("real")) | " + perBucket.joined(separator: " | ")
+        + "\(terms("synthetic")) | \(terms("real")) | \(wer("pilot")) | \(werWords("pilot")) | \(terms("pilot")) | "
+        + perBucket.joined(separator: " | ")
         + " | \(f(Metrics.percentile(ok.map(\.decodeSeconds), 0.9))) | \(failures) |")
   }
   return lines
@@ -226,7 +285,7 @@ func printSummary(_ list: [EngineSummary], header: Bool = true) {
 printSummary(summaries)
 var markdown = "# Local ASR benchmark\n\n"
 markdown += "- machine: \(machineName()), \(host.operatingSystemVersionString)\n"
-markdown += "- clips: synthetic \(clips.filter { $0.dataset == "synthetic" }.count), real \(clips.filter { $0.dataset == "real" }.count)\n\n"
+markdown += "- clips: synthetic \(clips.filter { $0.dataset == "synthetic" }.count), real \(clips.filter { $0.dataset == "real" }.count), pilot \(clips.filter { $0.dataset == "pilot" }.count)\n\n"
 markdown += summaryTable(summaries).joined(separator: "\n") + "\n"
 try markdown.write(to: options.out.appendingPathComponent("summary.md"), atomically: true, encoding: .utf8)
 print("BENCH done — per-clip rows in \(rowsURL.path)")

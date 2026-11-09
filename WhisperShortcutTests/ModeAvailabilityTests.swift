@@ -9,12 +9,14 @@ struct ModeAvailabilityTests {
     _ state: AppState = .idle,
     meeting: Bool = false,
     active: MeetingSegment? = nil,
+    segmentProcessing: Bool = false,
     pending: MeetingSegment? = nil,
     pendingMode: AppState.RecordingMode? = nil,
     jobMode: AppState.RecordingMode? = nil,
     playing: Bool = false,
+    liveFinishing: Bool = false,
     offline: Bool = false,
-    systemVoice: Bool = false,
+    onDeviceVoice: Bool = false,
     transcription: Bool = true,
     prompt: Bool = true,
     improvement: Bool = true,
@@ -23,15 +25,28 @@ struct ModeAvailabilityTests {
   ) -> ModeAvailabilityInput {
     ModeAvailabilityInput(
       appState: state, isLiveMeetingActive: meeting, activeMeetingSegment: active,
-      pendingMeetingSegment: pending, pendingRecordingMode: pendingMode,
-      currentJobMode: jobMode, isTTSPlaying: playing, isOfflineMode: offline,
-      readAloudUsesSystemVoice: systemVoice, hasTranscriptionCredential: transcription,
+      meetingSegmentIsProcessing: segmentProcessing, pendingMeetingSegment: pending, pendingRecordingMode: pendingMode,
+      currentJobMode: jobMode, isTTSPlaying: playing, isLiveDictationFinishing: liveFinishing, isOfflineMode: offline,
+      readAloudRunsOnDevice: onDeviceVoice, hasTranscriptionCredential: transcription,
       hasPromptCredential: prompt, hasImprovementCredential: improvement,
       hasReadAloudCredential: readAloud, hasMeetingCredential: meetingCredential)
   }
 
   private func a(_ action: ModeAction, _ i: ModeAvailabilityInput) -> ModeAvailability {
     ModeAvailabilityRules.availability(action, i)
+  }
+
+  @Test("A second Dictate press while Dictate Live finishes is ignored, not a cancel")
+  func dictateLiveFinishingIgnoresPress() {
+    #expect(
+      a(.dictate, input(.processing(.transcribing), jobMode: .transcription, liveFinishing: true))
+        == .ignored(.liveDictationFinishing))
+    #expect(
+      a(.dictate, input(.processing(.transcribing), liveFinishing: true)) == .ignored(.liveDictationFinishing))
+    // While still recording, the press is the normal Stop.
+    #expect(a(.dictate, input(.recording(.transcription), liveFinishing: true)) == .stop)
+    // Without a live session a press during processing still cancels.
+    #expect(a(.dictate, input(.processing(.transcribing))) == .cancelProcessing)
   }
 
   @Test("Dictate outside a meeting")
@@ -60,6 +75,28 @@ struct ModeAvailabilityTests {
     #expect(a(.dictate, input(state, meeting: true, active: .prompt)) == .ignored(.otherMeetingSegmentActive))
   }
 
+  @Test("A segment that is already processing ignores its own shortcut")
+  func processingSegmentIgnoresSecondPress() {
+    let state = AppState.recording(.liveMeeting)
+    #expect(a(.dictate, input(state, meeting: true, active: .dictation, segmentProcessing: true)) == .ignored(.meetingSegmentProcessing))
+    #expect(a(.dictatePrompt, input(state, meeting: true, active: .prompt, segmentProcessing: true)) == .ignored(.meetingSegmentProcessing))
+    // The other mode's reason is unchanged, and a recording segment still stops.
+    #expect(a(.dictatePrompt, input(state, meeting: true, active: .dictation, segmentProcessing: true)) == .ignored(.otherMeetingSegmentActive))
+    #expect(a(.dictate, input(state, meeting: true, active: .dictation)) == .stop)
+    // The row no longer reads "Stop Dictate", so the generic Stop row is shown again.
+    #expect(ModeAvailabilityRules.showsCentralStop(
+      input(state, meeting: true, active: .dictation, segmentProcessing: true),
+      presentRows: [.dictate, .dictatePrompt, .readAloudSelection]))
+  }
+
+  @Test("A stop that finds no recorder never ends a live meeting")
+  func stopFoundNothingKeepsMeeting() {
+    #expect(AppState.recording(.liveMeeting).afterStopFoundNothingRunning() == .recording(.liveMeeting))
+    #expect(AppState.recording(.transcription).afterStopFoundNothingRunning() == .idle)
+    #expect(AppState.recording(.prompt).afterStopFoundNothingRunning() == .idle)
+    #expect(AppState.processing(.transcribing).afterStopFoundNothingRunning() == .processing(.transcribing))
+  }
+
   @Test("Dictate Prompt")
   func dictatePrompt() {
     #expect(a(.dictatePrompt, input()) == .start)
@@ -82,7 +119,7 @@ struct ModeAvailabilityTests {
     #expect(a(.readAloudSelection, input(playing: true)) == .stop)
     #expect(a(.readAloudSelection, input(.processing(.transcribing))) == .ignored(.otherProcessing))
     #expect(a(.readAloudSelection, input(offline: true)) == .blocked(.offlineModeReadAloud))
-    #expect(a(.readAloudSelection, input(offline: true, systemVoice: true)) == .start)
+    #expect(a(.readAloudSelection, input(offline: true, onDeviceVoice: true)) == .start)
     // Order: the Offline Mode popup comes before the silent live-meeting ignore.
     #expect(a(.readAloudSelection, input(.recording(.liveMeeting), meeting: true, offline: true)) == .blocked(.offlineModeReadAloud))
     #expect(a(.readAloudSelection, input(.recording(.liveMeeting), meeting: true)) == .ignored(.liveMeetingActive))

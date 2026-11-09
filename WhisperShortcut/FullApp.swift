@@ -46,6 +46,11 @@ final class TestHostAppDelegate: NSObject, NSApplicationDelegate {}
 // Main App Delegate with full functionality
 class FullAppDelegate: NSObject, NSApplicationDelegate {
   var menuBarController: MenuBarController?
+  private var takeoverObserver: NSObjectProtocol?
+
+  /// `NSApp.servicesProvider` is not guaranteed to retain its object. Held for the process lifetime
+  /// so the three selection Services stay registered.
+  private var selectionServices: SelectionServicesProvider?
 
   /// POSIX signal handlers held for the lifetime of the app. Without these, a
   /// default `pkill` / `kill` (which sends SIGTERM) terminates the process
@@ -100,6 +105,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     ModelSelectionReconciler.reconcileAll()
 
     migrateNotificationPositionDefault()
+    migrateSettingsCloseOnFocusLossToOff()
+
+    // The activation policy is not persisted by macOS, so the optional Dock icon has to be
+    // re-applied on every launch.
+    DockIconPreference.apply()
 
     // One line per system-prompt section (custom/default + length, never content), so a report of
     // "my prompt is gone" can be answered from the log. Also detects an unreadable file.
@@ -122,13 +132,39 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
       #if !APP_STORE && canImport(Sparkle)
       // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
-      UpdaterService.shared.start()
+      // Never in a Dev build: the daily Dev instance is updated by scripts/dev-daily.sh.
+      if !AppConstants.isDevBuild {
+        UpdaterService.shared.start()
+      }
       #endif
+
+      // A `--takeover` instance (DailyInstanceSwitcher) asks every other instance to quit.
+      takeoverObserver = DistributedNotificationCenter.default().addObserver(
+        forName: .init(AppConstants.takeoverNotificationName), object: nil, queue: .main
+      ) { note in
+        if (note.object as? String) == String(getpid()) { return }
+        if let marker = LiveMeetingRecordingMarker.read(),
+          marker.payload.pid == getpid(), !marker.payload.userQuit
+        {
+          DebugLogger.log("TAKEOVER: ignoring takeover request, a live meeting is recording (\(marker.payload.stem))")
+          return
+        }
+        DebugLogger.log("TAKEOVER: another instance took over, quitting pid=\(getpid())")
+        // applicationShouldTerminate cancels unless this flag is set (menu-bar app stays alive).
+        UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
+        NSApp.terminate(nil)
+      }
     }
 
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
     menuBarController?.resumeInterruptedMeetingIfNeeded()
+
+    if let controller = menuBarController {
+      selectionServices = SelectionServicesProvider(controller: controller)
+      NSApp.servicesProvider = selectionServices
+      NSUpdateDynamicServices()
+    }
 
     // Accessibility permissions will be checked when user actually tries to use prompt features
 
@@ -141,6 +177,12 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     Task {
       await MainActor.run {
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
+          #if !APP_STORE
+          // Started from the disk image (or Downloads): offer the move to Applications before
+          // onboarding asks for any permission — grants to a translocated copy do not stick.
+          // True means a copy in Applications is starting and this process is quitting.
+          if ApplicationsFolderMove.offerIfNeeded() { return }
+          #endif
           let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
           if !hasCompletedOnboarding {
             WelcomeWindowController.shared.show()
@@ -183,22 +225,25 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       macOS blocked access to system-prompts.md (\(reason)). Until that is fixed, dictation uses the \
       default prompts instead of yours. Your file has not been changed.
 
-      To fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit \
-      and reopen the app.
+      This happens when a different build of WhisperShortcut created the file. Quit and reopen WhisperShortcut, and click Allow when macOS asks about data from other apps. If macOS doesn't ask, install WhisperShortcut again from where you got it (App Store or website).
       """)
-    alert.addButton(withTitle: String(localized: "Open Privacy & Security"))
-    alert.addButton(withTitle: String(localized: "Later"))
+    alert.addButton(withTitle: String(localized: "OK"))
     NSApp.activate(ignoringOtherApps: true)
-    if alert.runModal() == .alertFirstButtonReturn,
-      let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
-    {
-      NSWorkspace.shared.open(url)
-    }
+    alert.runModal()
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     // CRITICAL: MenuBar apps should NEVER terminate when windows close
     return false
+  }
+
+  /// Dock icon click (only possible with the optional Dock icon): open Settings when no window is
+  /// visible, otherwise let AppKit raise the existing one.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag {
+      SettingsManager.shared.showSettings()
+    }
+    return true
   }
 
   func application(_ application: NSApplication, open urls: [URL]) {
@@ -267,6 +312,24 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       defaults.set(
         NotificationPosition.centerBottom.rawValue, forKey: UserDefaultsKeys.notificationPosition)
       DebugLogger.log("MIGRATION: notificationPosition \(stored ?? "unset") → center-bottom")
+    }
+  }
+
+  /// One-shot migration (2026-11): the `settingsCloseOnFocusLoss` default moved true → false in
+  /// 7.62 ("the window vanishing on an outside click is surprising"), but builds before that had
+  /// already written `true` out explicitly — `SettingsViewModel.save()` persists every slot on any
+  /// settings change. Those installs therefore never saw the new default and kept losing the
+  /// window. This clears the stored value once; the toggle stays, so anyone who wants the old
+  /// behaviour can turn it back on in Settings → General → Advanced → Window Behavior.
+  private func migrateSettingsCloseOnFocusLossToOff() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateSettingsCloseOnFocusLossToOff)
+    else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateSettingsCloseOnFocusLossToOff)
+    if defaults.bool(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss) {
+      defaults.set(false, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
+      DebugLogger.log(
+        "MIGRATION: settingsCloseOnFocusLoss true → false (window no longer closes on outside click)")
     }
   }
 
@@ -474,7 +537,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   }
 
 
-  private func setupEditMenu() {
+  /// Builds the top-level Edit item with its standard text editing submenu.
+  static func makeEditMenuItem() -> NSMenuItem {
     // Create Edit menu with standard text editing commands
     let editMenu = NSMenu(title: String(localized: "Edit"))
 
@@ -523,10 +587,16 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     selectAllItem.target = nil  // Will be handled by first responder
     editMenu.addItem(selectAllItem)
 
+    // Titles are localized, so never look up a menu item by title; set the submenu on the item itself.
+    let editMenuItem = NSMenuItem(title: String(localized: "Edit"), action: nil, keyEquivalent: "")
+    editMenuItem.submenu = editMenu
+    return editMenuItem
+  }
+
+  private func setupEditMenu() {
     // Add Edit and Chat menus to main menu
     let mainMenu = NSApp.mainMenu ?? NSMenu()
-    mainMenu.addItem(NSMenuItem(title: String(localized: "Edit"), action: nil, keyEquivalent: ""))
-    mainMenu.item(withTitle: "Edit")?.submenu = editMenu
+    mainMenu.addItem(FullAppDelegate.makeEditMenuItem())
 
     let chatMenu = NSMenu(title: String(localized: "Chat"))
     let newChatItem = NSMenuItem(
@@ -556,8 +626,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     clearChatItem.target = self
     chatMenu.addItem(clearChatItem)
 
-    mainMenu.addItem(NSMenuItem(title: String(localized: "Chat"), action: nil, keyEquivalent: ""))
-    mainMenu.item(withTitle: "Chat")?.submenu = chatMenu
+    let chatMenuItem = NSMenuItem(title: String(localized: "Chat"), action: nil, keyEquivalent: "")
+    chatMenuItem.submenu = chatMenu
+    mainMenu.addItem(chatMenuItem)
 
     NSApp.mainMenu = mainMenu
   }
@@ -580,7 +651,38 @@ class FullWhisperShortcut {
   /// Retains the delegate for the process lifetime — `NSApplication.delegate` is weak.
   private static var delegate: NSApplicationDelegate?
 
+  /// Asks every other running instance (release or daily Dev) to quit, then waits up to 8 s for
+  /// the release and daily Dev bundles to be gone, so this instance can take their hotkeys.
+  private static func requestTakeover() {
+    DebugLogger.log("TAKEOVER: requesting takeover, pid=\(getpid())")
+    DistributedNotificationCenter.default().postNotificationName(
+      .init(AppConstants.takeoverNotificationName), object: String(getpid()), userInfo: nil,
+      deliverImmediately: true)
+    let ids = ["com.magnusgoedde.whispershortcut", "com.magnusgoedde.whispershortcut.dev"]
+    let paths = [AppConstants.releaseAppPath, AppConstants.dailyDevAppPath]
+    func othersRunning() -> Bool {
+      ids.contains { id in
+        NSRunningApplication.runningApplications(withBundleIdentifier: id).contains {
+          $0.processIdentifier != getpid()
+            && paths.contains($0.bundleURL?.standardizedFileURL.path ?? "")
+        }
+      }
+    }
+    let deadline = Date().addingTimeInterval(8)
+    while othersRunning() && Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+    DebugLogger.log(
+      othersRunning()
+        ? "TAKEOVER: other instance still running after 8s, continuing anyway"
+        : "TAKEOVER: other instances gone, continuing")
+  }
+
   static func main() {
+    // Claude Desktop launches this binary as its stdio MCP server. That process must not
+    // become a second menu-bar app, so the bridge runs before NSApplication exists.
+    if CommandLine.arguments.contains(MCPStdioBridge.argument) { MCPStdioBridge.run() }
+
+    if CommandLine.arguments.contains(AppConstants.takeoverArgument) { requestTakeover() }
+
     let app = NSApplication.shared
     // LSUIElement = true in Info.plist handles the menu bar app behavior
 
@@ -608,9 +710,14 @@ class FullWhisperShortcut {
       // The user's instance must not exit because a sidecar is running. A sandboxed app cannot read
       // other processes' arguments, so sidecars are recognised by location: they only ever run
       // from a worktree's build.
+      // The daily Dev instance only counts instances running from its own path: a DerivedData
+      // sidecar of the same bundle ID must not make it exit.
       let others = runningApps.filter {
-        $0.processIdentifier != getpid()
-          && !($0.bundleURL?.path.contains("/.claude/worktrees/") ?? false)
+        guard $0.processIdentifier != getpid() else { return false }
+        if AppConstants.isDailyDevInstance {
+          return $0.bundleURL?.standardizedFileURL.path == AppConstants.dailyDevAppPath
+        }
+        return !($0.bundleURL?.path.contains("/.claude/worktrees/") ?? false)
       }
       if !others.isEmpty {
         DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(others.count + 1)) — exiting pid=\(getpid())")

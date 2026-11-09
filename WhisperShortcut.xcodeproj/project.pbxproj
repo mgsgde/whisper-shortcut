@@ -22,6 +22,10 @@
 		BFA8E0012F08A10100E00022 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00021 /* FluidAudio */; };
 		BFA8E0012F08A10100E00024 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00023 /* FluidAudio */; };
 		BFA8E0012F08A10100E00031 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00030 /* Sparkle */; };
+		BFA8E0012F08A10100E00045 /* MLXAudioTTS in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00041 /* MLXAudioTTS */; };
+		BFA8E0012F08A10100E00046 /* MLXAudioSTT in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00042 /* MLXAudioSTT */; };
+		BFA8E0012F08A10100E00047 /* MLXAudioTTS in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00043 /* MLXAudioTTS */; };
+		BFA8E0012F08A10100E00048 /* MLXAudioSTT in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00044 /* MLXAudioSTT */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,6 +93,8 @@
 				BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */,
 				BFA8E0012F08A10100E00022 /* FluidAudio in Frameworks */,
 				BFA8E0012F08A10100E00031 /* Sparkle in Frameworks */,
+				BFA8E0012F08A10100E00045 /* MLXAudioTTS in Frameworks */,
+				BFA8E0012F08A10100E00046 /* MLXAudioSTT in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -103,6 +109,8 @@
 				BFA8E0012F08A10100E00018 /* Tokenizers in Frameworks */,
 				BF9918262F697163008AB3ED /* HotKey in Frameworks */,
 				BFA8E0012F08A10100E00024 /* FluidAudio in Frameworks */,
+				BFA8E0012F08A10100E00047 /* MLXAudioTTS in Frameworks */,
+				BFA8E0012F08A10100E00048 /* MLXAudioSTT in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -173,6 +181,8 @@
 				BFA8E0012F08A10100E00012 /* Tokenizers */,
 				BFA8E0012F08A10100E00021 /* FluidAudio */,
 				BFA8E0012F08A10100E00030 /* Sparkle */,
+				BFA8E0012F08A10100E00041 /* MLXAudioTTS */,
+				BFA8E0012F08A10100E00042 /* MLXAudioSTT */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
@@ -202,6 +212,8 @@
 				BFA8E0012F08A10100E00015 /* Hub */,
 				BFA8E0012F08A10100E00016 /* Tokenizers */,
 				BFA8E0012F08A10100E00023 /* FluidAudio */,
+				BFA8E0012F08A10100E00043 /* MLXAudioTTS */,
+				BFA8E0012F08A10100E00044 /* MLXAudioSTT */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */;
@@ -270,6 +282,7 @@
 				BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				BFA8E0012F08A10100E00020 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 				BFA8E0012F08A10100E00032 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				BFA8E0012F08A10100E00040 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF3C90C72E3E0CC0001D325B /* Products */;
@@ -730,7 +743,7 @@
 			repositoryURL = "https://github.com/FluidInference/FluidAudio";
 			requirement = {
 				kind = exactVersion;
-				version = 0.18.0;
+				version = 0.18.2;
 			};
 		};
 		BFA8E0012F08A10100E00032 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
@@ -739,6 +752,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.10.1;
+			};
+		};
+		BFA8E0012F08A10100E00040 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Neywa-Labs/mlx-audio-swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.1.7;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -818,6 +839,26 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BFA8E0012F08A10100E00032 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		BFA8E0012F08A10100E00041 /* MLXAudioTTS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00040 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
+			productName = MLXAudioTTS;
+		};
+		BFA8E0012F08A10100E00042 /* MLXAudioSTT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00040 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
+			productName = MLXAudioSTT;
+		};
+		BFA8E0012F08A10100E00043 /* MLXAudioTTS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00040 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
+			productName = MLXAudioTTS;
+		};
+		BFA8E0012F08A10100E00044 /* MLXAudioSTT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00040 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
+			productName = MLXAudioSTT;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

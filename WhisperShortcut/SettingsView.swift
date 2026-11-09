@@ -45,27 +45,41 @@ struct SettingsView: View {
   // MARK: - Sidebar
   @ViewBuilder
   private var sidebar: some View {
-    List(SettingsTab.allCases, id: \.self, selection: Binding<SettingsTab?>(
+    List(selection: Binding<SettingsTab?>(
       get: { selectedTab },
       set: { if let tab = $0 { selectedTabRaw = tab.rawValue } }
-    )) { tab in
-      NavigationLink(value: tab) {
-        HStack(spacing: 10) {
-          Image(systemName: iconName(for: tab))
-            .font(.body)
-            .foregroundColor(.accentColor)
-            .frame(width: 20, height: 20)
-
-          Text(tab.displayName)
-            .font(.body)
+    )) {
+      ForEach(SettingsTab.sections, id: \.self) { section in
+        Section {
+          ForEach(section.tabs, id: \.self) { tab in
+            sidebarRow(for: tab)
+          }
+        } header: {
+          Text(section.displayName)
         }
-        .padding(.vertical, 2)
       }
-      .help(Text(description(for: tab)))
-      .pointerCursorOnHover()
     }
     .listStyle(.sidebar)
     .frame(minWidth: 270, idealWidth: 270, maxWidth: 300)
+  }
+
+  /// One sidebar row. The `NavigationLink` carries the tab as its value, which is what the
+  /// `List`'s selection binding above tracks.
+  private func sidebarRow(for tab: SettingsTab) -> some View {
+    NavigationLink(value: tab) {
+      HStack(spacing: 10) {
+        Image(systemName: iconName(for: tab))
+          .font(.body)
+          .foregroundColor(.accentColor)
+          .frame(width: 20, height: 20)
+
+        Text(tab.displayName)
+          .font(.body)
+      }
+      .padding(.vertical, 2)
+    }
+    .help(Text(description(for: tab)))
+    .pointerCursorOnHover()
   }
 
   // MARK: - Detail View
@@ -163,7 +177,7 @@ struct SettingsView: View {
   private func description(for tab: SettingsTab) -> LocalizedStringKey {
     switch tab {
     case .general:
-      return "Shortcuts and app behavior"
+      return "Shortcuts, app behavior, updates, and reset"
     case .accounts:
       return "API keys, OpenRouter, and connected services"
     case .speechToText:
@@ -183,9 +197,9 @@ struct SettingsView: View {
     case .aiApps:
       return "Connect Claude and other AI apps to set up WhisperShortcut and read your meetings"
     case .permissions:
-      return "Offline Mode, usage data, and macOS permissions"
+      return "Offline Mode, macOS permissions, and privacy"
     case .about:
-      return "Privacy, welcome tour, shortcuts, reset, and support"
+      return "What's new, support, and acknowledgements"
     }
   }
 

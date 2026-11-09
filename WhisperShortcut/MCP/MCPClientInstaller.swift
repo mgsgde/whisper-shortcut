@@ -89,13 +89,19 @@ enum MCPClientInstaller {
     return try mergeJSON(existing: existing, serverName: serverName, entry: entry)
   }
 
+  /// Claude Desktop only launches local MCP servers as stdio processes. This executable is the
+  /// bridge: `--mcp-stdio` forwards stdin to the HTTP endpoint. The URL and bearer token travel
+  /// in the environment, not on the command line.
   static func mergeClaudeDesktop(
-    existing: Data?, serverName: String, url: String, token: String, mcpRemotePackage: String
+    existing: Data?, serverName: String, url: String, token: String, executablePath: String
   ) throws -> Data {
     let entry: [String: Any] = [
-      "command": "npx",
-      "args": ["-y", mcpRemotePackage, url, "--header", "Authorization:${AUTH_HEADER}"],
-      "env": ["AUTH_HEADER": "Bearer \(token)"],
+      "command": executablePath,
+      "args": [MCPStdioBridge.argument],
+      "env": [
+        MCPStdioBridge.urlEnv: url,
+        MCPStdioBridge.authEnv: "Bearer \(token)",
+      ],
     ]
     return try mergeJSON(existing: existing, serverName: serverName, entry: entry)
   }
@@ -118,43 +124,102 @@ enum MCPClientInstaller {
   }
 
   static func mergeCodex(existing: String?, serverName: String, url: String, token: String) -> String {
-    let header = "[mcp_servers.\(serverName)]"
-    let subPrefix = "[mcp_servers.\(serverName)."
-    var kept: [Substring] = []
-    var skipping = false
-    for line in (existing ?? "").split(separator: "\n", omittingEmptySubsequences: false) {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      if trimmed.hasPrefix("[") {
-        skipping = (trimmed == header || trimmed.hasPrefix(subPrefix))
-      }
-      if !skipping { kept.append(line) }
-    }
-    var text = kept.joined(separator: "\n")
+    var text = droppingServerTables(existing: existing, serverName: serverName).text
     // Trim trailing blank lines left behind, then separate with exactly one blank line.
     while text.hasSuffix("\n\n") { text.removeLast() }
     if !text.isEmpty {
       if !text.hasSuffix("\n") { text += "\n" }
       text += "\n"
     }
+    let header = "[mcp_servers.\(serverName)]"
     text += "\(header)\nurl = \"\(url)\"\nhttp_headers = { Authorization = \"Bearer \(token)\" }\n"
     return text
   }
 
-  // MARK: - Connect
-
-  /// Asks for one-time folder access, merges the entry into the client's config and writes it.
-  /// Returns the written file's URL. `MCPClientInstallerError.cancelled` means the user dismissed the panel.
-  @MainActor
-  static func connect(
-    _ client: MCPClient, url: String, token: String, mcpRemotePackage: String, serverName: String
-  ) async -> Result<URL, Error> {
-    let configFolder = client.configFolder
-    // A client that never ran has no config folder yet (`~/.codex`), and a hidden folder that does
-    // not exist can't be picked. Ask for the nearest folder that exists and create the rest inside it.
-    var expected = configFolder
-    while !FileManager.default.fileExists(atPath: expected.path), expected.pathComponents.count > 1 {
-      expected = expected.deletingLastPathComponent()
+  /// Removes `serverName` from a Claude Code or Claude Desktop config. Nil when there is nothing
+  /// to remove. An empty `mcpServers` object is kept.
+  static func removeJSON(existing: Data?, serverName: String) throws -> Data? {
+    guard let existing, !existing.allSatisfy({ $0 == 0x20 || $0 == 0x0A || $0 == 0x0D || $0 == 0x09 }) else {
+      return nil
     }
+    guard let parsed = try? JSONSerialization.jsonObject(with: existing) as? [String: Any] else {
+      throw MCPClientInstallerError.notAJSONObject(file: "The existing config file")
+    }
+    guard var servers = parsed["mcpServers"] as? [String: Any], servers[serverName] != nil else {
+      return nil
+    }
+    servers.removeValue(forKey: serverName)
+    var root = parsed
+    root["mcpServers"] = servers
+    var data = try JSONSerialization.data(
+      withJSONObject: root, options: [.prettyPrinted, .withoutEscapingSlashes, .sortedKeys])
+    data.append(0x0A)
+    return data
+  }
+
+  /// Removes the `serverName` table and its sub-tables from a Codex config. Nil when no such
+  /// table exists. Otherwise never two blank lines in a row, ending with one newline, or empty
+  /// when nothing remains.
+  static func removeCodex(existing: String?, serverName: String) -> String? {
+    let dropped = droppingServerTables(existing: existing, serverName: serverName)
+    guard dropped.removed else { return nil }
+    return collapsingBlankLines(dropped.text)
+  }
+
+  /// Drops `[mcp_servers.<name>]` and `[mcp_servers."<name>"]`, plus sub-tables of either form.
+  private static func droppingServerTables(
+    existing: String?, serverName: String
+  ) -> (text: String, removed: Bool) {
+    let header = "[mcp_servers.\(serverName)]"
+    let quotedHeader = "[mcp_servers.\"\(serverName)\"]"
+    let subPrefix = "[mcp_servers.\(serverName)."
+    let quotedSubPrefix = "[mcp_servers.\"\(serverName)\"."
+    var kept: [Substring] = []
+    var skipping = false
+    var removed = false
+    for line in (existing ?? "").split(separator: "\n", omittingEmptySubsequences: false) {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if trimmed.hasPrefix("[") {
+        skipping = trimmed == header || trimmed == quotedHeader
+          || trimmed.hasPrefix(subPrefix) || trimmed.hasPrefix(quotedSubPrefix)
+        if skipping { removed = true }
+      }
+      if !skipping { kept.append(line) }
+    }
+    return (kept.joined(separator: "\n"), removed)
+  }
+
+  /// One blank line between sections, no leading or trailing blank lines, a single trailing
+  /// newline. Empty when no content remains.
+  private static func collapsingBlankLines(_ text: String) -> String {
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+    var collapsed: [String] = []
+    var lastWasBlank = false
+    for line in lines {
+      let blank = line.trimmingCharacters(in: .whitespaces).isEmpty
+      if blank {
+        if lastWasBlank { continue }
+        lastWasBlank = true
+        collapsed.append("")
+      } else {
+        lastWasBlank = false
+        collapsed.append(String(line))
+      }
+    }
+    while collapsed.first?.isEmpty == true { collapsed.removeFirst() }
+    while collapsed.last?.isEmpty == true { collapsed.removeLast() }
+    if collapsed.isEmpty { return "" }
+    return collapsed.joined(separator: "\n") + "\n"
+  }
+
+  // MARK: - Folder access and writing
+
+  /// Asks for one-time access to `expected` and runs `body` inside the security scope.
+  /// `MCPClientInstallerError.cancelled` means the user dismissed the panel.
+  @MainActor
+  private static func withFolderAccess<T>(
+    expected: URL, message: String, _ body: () throws -> T
+  ) throws -> T {
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
@@ -163,48 +228,138 @@ enum MCPClientInstaller {
     panel.showsHiddenFiles = true
     panel.directoryURL = expected
     panel.prompt = String(localized: "Allow")
-    panel.message =
-      String(localized: "WhisperShortcut needs access to this folder once to add itself to \(client.displayName)'s settings. Click Allow.")
+    panel.message = message
 
     guard panel.runModal() == .OK, let chosen = panel.url else {
-      return .failure(MCPClientInstallerError.cancelled)
+      throw MCPClientInstallerError.cancelled
     }
     guard chosen.standardizedFileURL.path == expected.standardizedFileURL.path else {
-      return .failure(MCPClientInstallerError.wrongFolder(expected: expected.path))
+      throw MCPClientInstallerError.wrongFolder(expected: expected.path)
     }
 
     let scoped = chosen.startAccessingSecurityScopedResource()
     defer { if scoped { chosen.stopAccessingSecurityScopedResource() } }
+    return try body()
+  }
 
+  /// Replaces `file` with `output`. Copies the previous bytes to `<name>.whispershortcut-backup`
+  /// (mode 0600) when the file already exists — that copy holds other apps' bearer tokens.
+  /// `Data.write(.atomic)` replaces the inode, so an existing file gets its previous mode back
+  /// and a new file is owner-only.
+  private static func writeConfigAtomically(_ output: Data, to file: URL) throws {
+    let fm = FileManager.default
+    let existed = fm.fileExists(atPath: file.path)
+    let originalPermissions: NSNumber? = existed
+      ? (try fm.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber)
+      : nil
+    if existed {
+      let existingData = try Data(contentsOf: file)
+      let backup = file.deletingLastPathComponent()
+        .appendingPathComponent(file.lastPathComponent + ".whispershortcut-backup")
+      try existingData.write(to: backup, options: .atomic)
+      try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+    }
+    try output.write(to: file, options: .atomic)
+    let permissions = originalPermissions ?? NSNumber(value: 0o600)
+    try fm.setAttributes([.posixPermissions: permissions], ofItemAtPath: file.path)
+  }
+
+  private static func logInstallFailure(_ error: Error, client: MCPClient) {
+    if let installerError = error as? MCPClientInstallerError {
+      switch installerError {
+      case .cancelled, .wrongFolder:
+        return
+      case .notAJSONObject:
+        break
+      }
+    }
+    DebugLogger.logError("MCP-INSTALL: \(client.displayName) failed: \(error.localizedDescription)")
+  }
+
+  // MARK: - Connect
+
+  /// Asks for one-time folder access, merges the entry into the client's config and writes it.
+  /// Returns the written file's URL. `MCPClientInstallerError.cancelled` means the user dismissed the panel.
+  @MainActor
+  static func connect(
+    _ client: MCPClient, url: String, token: String, serverName: String
+  ) async -> Result<URL, Error> {
+    let configFolder = client.configFolder
+    // A client that never ran has no config folder yet (`~/.codex`), and a hidden folder that does
+    // not exist can't be picked. Ask for the nearest folder that exists and create the rest inside it.
+    var expected = configFolder
+    while !FileManager.default.fileExists(atPath: expected.path), expected.pathComponents.count > 1 {
+      expected = expected.deletingLastPathComponent()
+    }
+    let message =
+      String(localized: "WhisperShortcut needs access to this folder once to add itself to \(client.displayName)'s settings. Click Allow.")
     do {
-      let fm = FileManager.default
-      try fm.createDirectory(at: configFolder, withIntermediateDirectories: true)
-      let file = configFolder.appendingPathComponent(client.configFileName)
-      let existed = fm.fileExists(atPath: file.path)
-      let existingData = existed ? try Data(contentsOf: file) : nil
-
-      if let existingData {
-        let backup = configFolder.appendingPathComponent(client.configFileName + ".whispershortcut-backup")
-        try existingData.write(to: backup, options: .atomic)
+      let file = try withFolderAccess(expected: expected, message: message) { () -> URL in
+        let fm = FileManager.default
+        try fm.createDirectory(at: configFolder, withIntermediateDirectories: true)
+        let file = configFolder.appendingPathComponent(client.configFileName)
+        let existed = fm.fileExists(atPath: file.path)
+        let existingData = existed ? try Data(contentsOf: file) : nil
+        let output: Data
+        switch client {
+        case .claudeCode:
+          output = try mergeClaudeCode(existing: existingData, serverName: serverName, url: url, token: token)
+        case .claudeDesktop:
+          output = try mergeClaudeDesktop(
+            existing: existingData, serverName: serverName, url: url, token: token,
+            executablePath: Bundle.main.executablePath ?? "")
+        case .codex:
+          let text = existingData.flatMap { String(data: $0, encoding: .utf8) }
+          output = Data(mergeCodex(existing: text, serverName: serverName, url: url, token: token).utf8)
+        }
+        try writeConfigAtomically(output, to: file)
+        return file
       }
-
-      let output: Data
-      switch client {
-      case .claudeCode:
-        output = try mergeClaudeCode(existing: existingData, serverName: serverName, url: url, token: token)
-      case .claudeDesktop:
-        output = try mergeClaudeDesktop(
-          existing: existingData, serverName: serverName, url: url, token: token,
-          mcpRemotePackage: mcpRemotePackage)
-      case .codex:
-        let text = existingData.flatMap { String(data: $0, encoding: .utf8) }
-        output = Data(mergeCodex(existing: text, serverName: serverName, url: url, token: token).utf8)
-      }
-      try output.write(to: file, options: .atomic)
       DebugLogger.logSuccess("MCP-INSTALL: connected \(client.displayName) at \(file.path)")
       return .success(file)
     } catch {
-      DebugLogger.logError("MCP-INSTALL: \(client.displayName) failed: \(error.localizedDescription)")
+      logInstallFailure(error, client: client)
+      return .failure(error)
+    }
+  }
+
+  /// Asks for one-time folder access and removes `serverName` from the client's config.
+  /// `.success(false)` means there was nothing to remove. `.failure(MCPClientInstallerError.cancelled)`
+  /// means the user dismissed the panel.
+  @MainActor
+  static func disconnect(_ client: MCPClient, serverName: String) async -> Result<Bool, Error> {
+    let configFolder = client.configFolder
+    guard FileManager.default.fileExists(atPath: configFolder.path) else {
+      return .success(false)
+    }
+    let message =
+      String(localized: "WhisperShortcut needs access to this folder once to remove itself from \(client.displayName)'s settings. Click Allow.")
+    do {
+      let removed = try withFolderAccess(expected: configFolder, message: message) { () -> Bool in
+        let file = configFolder.appendingPathComponent(client.configFileName)
+        guard FileManager.default.fileExists(atPath: file.path) else { return false }
+        let existingData = try Data(contentsOf: file)
+        let output: Data
+        switch client {
+        case .claudeCode, .claudeDesktop:
+          guard let updated = try removeJSON(existing: existingData, serverName: serverName) else {
+            return false
+          }
+          output = updated
+        case .codex:
+          let text = String(data: existingData, encoding: .utf8)
+          guard let updated = removeCodex(existing: text, serverName: serverName) else {
+            return false
+          }
+          output = Data(updated.utf8)
+        }
+        try writeConfigAtomically(output, to: file)
+        DebugLogger.logSuccess("MCP-INSTALL: disconnected \(client.displayName) at \(file.path)")
+        return true
+      }
+      return .success(removed)
+    } catch {
+      logInstallFailure(error, client: client)
       return .failure(error)
     }
   }

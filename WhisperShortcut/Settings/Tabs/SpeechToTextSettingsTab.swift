@@ -11,6 +11,14 @@ struct SpeechToTextSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      #if !APP_STORE
+      // First, and next to the model picker: Live depends on the model, so the requirement and
+      // its one-click fix sit where the cause is.
+      dictateModeSection
+
+      SpacedSectionDivider()
+      #endif
+
       // Transcription Model Section
       modelSection
 
@@ -72,12 +80,17 @@ struct SpeechToTextSettingsTab: View {
       // Usage Instructions Section
       usageInstructionsSection
 
+      // Advanced: cloud accuracy tuning and the silence-hallucination filter. Each section
+      // self-gates on the selected model, so the group only appears when one of them has content.
+      // The filter is offline Whisper only — cloud models and Parakeet do not emit its subtitle
+      // filler — so the switch is hidden unless a WhisperKit model is selected.
       if viewModel.data.selectedTranscriptionModel.isGemini
         || viewModel.data.selectedTranscriptionModel == .openRouterTranscription
-      {
+        || viewModel.data.selectedTranscriptionModel.offlineModelType?.engine == .whisperKit {
         SpacedSectionDivider()
         AdvancedSettingsGroup {
           tuningSection
+          hallucinationFilterSection
         }
       }
     }
@@ -110,6 +123,14 @@ struct SpeechToTextSettingsTab: View {
     VStack(alignment: .leading, spacing: 8) {
       ShortcutHintRow(label: "Add Selection to Glossary:", shortcut: viewModel.data.addToGlossary)
       Text("Select a correctly spelled term anywhere — in your practice software, a document, an email — and press the shortcut to append it here. No model is involved, so this is also the way to grow the Glossary while Offline Mode is on.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.top, SettingsConstants.internalSectionSpacing)
+    #else
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Add a term from anywhere: select it, then right-click → Services → Add to WhisperShortcut Glossary. No model is involved, so this also works while Offline Mode is on. To give it a keyboard shortcut, open System Settings → Keyboard → Keyboard Shortcuts → Services → Text.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -204,7 +225,7 @@ struct SpeechToTextSettingsTab: View {
         }
       )
       if viewModel.data.selectedTranscriptionModel.isGemini && !GeminiCredentialProvider.shared.hasCredential() {
-        Text("Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model to dictate without a key.")
+        Text("Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model to dictate without a key.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
@@ -228,6 +249,97 @@ struct SpeechToTextSettingsTab: View {
       }
     }
   }
+
+  #if !APP_STORE
+  // MARK: - Dictate Mode Section
+
+  /// Recomputed on every render, so switching the model below updates the warning at once.
+  private var liveUnavailable: LiveDictation.Unavailable? {
+    let model = viewModel.data.selectedTranscriptionModel
+    return LiveDictation.unavailableReason(
+      model: model, downloaded: model.isOfflineModelAvailable(),
+      appleSilicon: LiveDictation.isAppleSilicon, duringMeeting: false)
+  }
+
+  private var dictateModeSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Mode",
+        systemImage: "text.cursor",
+        subtitle: "What the Dictate shortcut and 🌐 Fn do. The Dictate Live shortcut always starts Dictate Live."
+      )
+
+      Picker("Mode", selection: Binding(
+        get: { viewModel.data.dictateMode },
+        set: { newValue in
+          DebugLogger.log("SETTINGS: Dictate mode set to \(newValue.rawValue)")
+          viewModel.data.dictateMode = newValue
+          Task { await viewModel.saveSettings() }
+        }
+      )) {
+        ForEach(DictateMode.allCases, id: \.self) { mode in
+          Text(mode.displayName).tag(mode)
+        }
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .fixedSize()
+
+      switch viewModel.data.dictateMode {
+      case .dictate:
+        modeCaption("The text is inserted when you stop.")
+      case .live:
+        if let liveUnavailable {
+          // Selectable anyway: refusing the click silently looked like a broken control.
+          liveUnavailableWarning(liveUnavailable)
+        } else {
+          modeCaption("Text appears at the cursor after each pause, transcribed offline by Parakeet Ultra.")
+        }
+      }
+    }
+  }
+
+  private func modeCaption(_ text: LocalizedStringKey) -> some View {
+    Text(text)
+      .font(.callout)
+      .foregroundColor(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private func liveUnavailableWarning(_ reason: LiveDictation.Unavailable) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .foregroundStyle(.orange)
+      VStack(alignment: .leading, spacing: 2) {
+        // `message` points to Settings → Dictate, which is this tab.
+        Group {
+          if reason == .notParakeet {
+            Text("Dictate Live works with the offline Parakeet Ultra model. Select it below.")
+          } else {
+            Text(verbatim: reason.message)
+          }
+        }
+          .font(.callout)
+          .fixedSize(horizontal: false, vertical: true)
+        Text("Until then, the Dictate shortcut and Fn start nothing.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+      }
+      Spacer(minLength: 8)
+      if reason == .notParakeet && TranscriptionModel.parakeetUltra.isOfflineModelAvailable() {
+        Button("Use Parakeet Ultra") {
+          DebugLogger.log("SETTINGS: Dictate Live warning — switched Dictate model to Parakeet Ultra")
+          viewModel.data.selectedTranscriptionModel = .parakeetUltra
+          Task { await viewModel.saveSettings() }
+        }
+        .controlSize(.small)
+        .pointerCursorOnHover()
+      }
+    }
+    .padding(10)
+    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+  }
+  #endif
 
   // MARK: - Transcription Tuning Section
 
@@ -273,7 +385,7 @@ struct SpeechToTextSettingsTab: View {
             Task { await viewModel.saveSettings() }
           }
 
-          Text("More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below Low and are clamped to it.")
+          Text("More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Only Flash-Lite can run at Minimal; the other Gemini models are clamped to Low.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -282,7 +394,44 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 
+  // MARK: - Hallucination Filter Section
+
+  /// The phrase filter that drops a transcript consisting of nothing but a known silence
+  /// hallucination. Offline Whisper only — the VAD gate in `LocalSpeechService` catches most of
+  /// these before the decode, and this list catches what still gets through. Shown only when an
+  /// offline Whisper model is selected. The VAD gate itself is not switchable (a correctness fix,
+  /// not a taste), but this list contains phrases a user could legitimately dictate on their own
+  /// ("You", "Bye"), so it is theirs to turn off.
+  @ViewBuilder
+  private var hallucinationFilterSection: some View {
+    if viewModel.data.selectedTranscriptionModel.offlineModelType?.engine == .whisperKit {
+      VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+        SectionHeader(
+          title: "Silence Hallucinations",
+          systemImage: "waveform.slash",
+          subtitle: "Offline Whisper was trained on subtitled video, so on breath or room noise it sometimes writes subtitle filler — usually \"Thank you.\" Applies to offline Whisper only."
+        )
+
+        Toggle(isOn: $viewModel.data.filterKnownWhisperHallucinations) {
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Filter known silence hallucinations")
+              .font(.callout)
+            Text("Drops a short clip (under 2 seconds) whose transcript is nothing but one of those phrases. Longer clips and real sentences that merely contain one are kept.")
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+        .toggleStyle(.switch)
+        .onChange(of: viewModel.data.filterKnownWhisperHallucinations) { _ in
+          Task { await viewModel.saveSettings() }
+        }
+      }
+    }
+  }
+
   // MARK: - Offline Models Section
+
   @ViewBuilder
   private var offlineModelsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -297,6 +446,26 @@ struct SpeechToTextSettingsTab: View {
         ForEach(OfflineModelType.offerable, id: \.self) { modelType in
           offlineModelRow(for: modelType)
         }
+        qwen3ASRRow
+      }
+    }
+  }
+
+  /// Qwen3-ASR is on-device but not a WhisperKit/Parakeet engine, so it is not an
+  /// `OfflineModelType` and cannot come from `OfflineModelType.offerable`. Same row, own store.
+  @ViewBuilder
+  private var qwen3ASRRow: some View {
+    if Qwen3ModelType.asr.isOfferable {
+      ModelDownloadRow(
+        store: Qwen3ModelManager.shared,
+        model: Qwen3ModelType.asr,
+        downloadedMessage: String(
+          localized: "Qwen3 ASR 1.7B was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster."),
+        onError: { viewModel.showError($0) }
+      ) {
+        Text("11 languages")
+          .font(.caption)
+          .foregroundColor(.secondary)
       }
     }
   }

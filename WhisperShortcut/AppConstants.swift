@@ -208,6 +208,9 @@ Output rules (CRITICAL):
   /// How long after ⌘V the user's previous clipboard is put back. Slow receivers (browser, Citrix,
   /// RDP) read the pasteboard lazily; restoring earlier would make them paste the old content.
   static let clipboardRestoreDelay: TimeInterval = 3.0
+  /// Gap after each Dictate Live piece's ⌘V before the next piece may replace the pasteboard; short
+  /// on purpose, since `clipboardRestoreDelay` would stall live text.
+  static let livePieceGapDelay: TimeInterval = 0.4
 
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
@@ -215,20 +218,48 @@ Output rules (CRITICAL):
   /// Local Debug builds run as `com.magnusgoedde.whispershortcut.dev` ("WhisperShortcut Dev"), so
   /// macOS TCC and the keychain keep them apart from the installed release. Drives the DEV badge.
   static let isDevBuild = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true
+  /// The real home directory. A sandboxed app's `NSHomeDirectory()` is its container, so the
+  /// passwd entry is the only way to name `~/Applications`.
+  static let realHomeDirectory: String = {
+    if let dir = getpwuid(getuid())?.pointee.pw_dir { return String(cString: dir) }
+    return NSHomeDirectory()
+  }()
+  /// Where `scripts/dev-daily.sh` installs the daily Dev instance.
+  static let dailyDevAppPath = realHomeDirectory + "/Applications/WhisperShortcut Dev.app"
+  /// The installed release.
+  static let releaseAppPath = "/Applications/WhisperShortcut.app"
+  /// True for the Debug build that runs from `dailyDevAppPath`: the user's own all-day instance
+  /// (hotkeys, Fn key, MCP), kept current from origin/main. Not a sidecar, whatever else runs.
+  static let isDailyDevInstance =
+    isDevBuild && Bundle.main.bundleURL.standardizedFileURL.path == dailyDevAppPath
+  /// Launch argument of an instance that replaces the running one (see `DailyInstanceSwitcher`).
+  static let takeoverArgument = "--takeover"
+  /// Posted by a `--takeover` instance; every other non-sidecar instance quits on it.
+  static let takeoverNotificationName = "com.magnusgoedde.whispershortcut.takeover"
   /// A dev instance that runs next to the user's own one. It registers no global hotkeys, no Fn
   /// toggle, no MCP server, no Sparkle and no daily auto-run, so it cannot fight that instance.
   /// True when launched with `--sidecar` (the dev scripts do), and also for any Dev build started
-  /// while the installed release (`com.magnusgoedde.whispershortcut`) runs: Xcode's Run button,
-  /// the driver and in-app relaunches then cannot grab the release's hotkeys, Fn key or MCP port.
+  /// while the installed release (`com.magnusgoedde.whispershortcut`) or the daily Dev instance
+  /// runs: Xcode's Run button, the driver and in-app relaunches then cannot grab their hotkeys,
+  /// Fn key or MCP port. The daily Dev instance itself is never a sidecar for another Dev build.
   /// Evaluated once at launch.
   static let isSidecarInstance = sidecarReason != nil
-  /// Why this process is a sidecar ("argv" / "release running"), nil when it is not one.
+  /// Why this process is a sidecar ("argv" / "release running" / "daily dev running"), nil when
+  /// it is not one.
   static let sidecarReason: String? = {
     if ProcessInfo.processInfo.arguments.contains("--sidecar") { return "argv" }
     if isDevBuild,
       !NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut").isEmpty
     {
       return "release running"
+    }
+    if isDevBuild, !isDailyDevInstance,
+      let devID = Bundle.main.bundleIdentifier,
+      NSRunningApplication.runningApplications(withBundleIdentifier: devID).contains(where: {
+        $0.bundleURL?.standardizedFileURL.path == dailyDevAppPath
+      })
+    {
+      return "daily dev running"
     }
     return nil
   }()
@@ -237,8 +268,6 @@ Output rules (CRITICAL):
   /// items tagged `latest`.
   static let sparkleFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/latest/download/appcast.xml"
   static let privacyPolicyURL = "https://whispershortcut.com/privacy"
-  /// Tip link: compare Gemini models (speed, intelligence, pricing).
-  static let geminiModelsComparisonURL = "https://mgsgde.github.io/gemini-models/"
 
   /// Short version string from Info.plist (e.g. "1.2.3").
   static var appVersion: String {

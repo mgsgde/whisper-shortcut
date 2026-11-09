@@ -230,6 +230,10 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var isRecoveringMeetingSummary: Bool = false
   /// Disk-read notes of the ended meeting currently being viewed. See `meetingNotesForDisplay`.
   private var endedNotesCache: (stem: String, notes: [LiveMeetingNote])?
+  /// Invalidation tick — intentionally never read. A hand edit of an ended meeting's note rewrites
+  /// the `.notes.md` file and bumps this so SwiftUI re-evaluates `meetingNotesForDisplay`, which
+  /// then re-reads the file. Disk stays the source of truth.
+  @Published private(set) var notesRevision: UInt = 0
 
   /// In-memory ring buffer of recently closed sessions for Cmd+Shift+T undo.
   /// Only sessions that had at least one message are stored — empty tabs are
@@ -724,9 +728,18 @@ class ChatViewModel: ObservableObject {
         ScreenshotSaveLocation.save(data)
       }
     } else {
-      errorMessage = String(localized: "Screen capture failed. Opening Privacy & Permissions...")
-      DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Privacy & Permissions")
-      SettingsManager.shared.showPrivacyPermissions()
+      switch PermissionStatusChecker.status(for: .screenRecording) {
+      case .granted:
+        errorMessage = String(localized: "Screen capture failed. Please try again.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil while Screen Recording is granted")
+      case .notDetermined:
+        PermissionStatusChecker.requestScreenRecordingAccess()
+        errorMessage = String(localized: "Allow Screen Recording in the macOS dialog, then quit and reopen WhisperShortcut.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil; Screen Recording not set up, native prompt requested")
+      default:
+        errorMessage = String(localized: "Screenshots need Screen Recording. Turn it on in System Settings › Privacy & Security › Screen & System Audio Recording, then quit and reopen WhisperShortcut.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil; Screen Recording is off")
+      }
     }
   }
 
@@ -755,11 +768,14 @@ class ChatViewModel: ObservableObject {
   /// match `maxPendingScreenshots` and to bound request size / token cost.
   private static let maxFileAttachments = 10
 
+  /// Types the attach panel offers. Finder paste uses the same list (`ComposerFilePaste`).
+  static let attachableContentTypes: [UTType] = [.pdf, .png, .jpeg, .gif, .webP, .plainText]
+
   func attachFile() {
     let panel = NSOpenPanel()
     panel.allowsMultipleSelection = true
     panel.canChooseDirectories = false
-    panel.allowedContentTypes = [.pdf, .png, .jpeg, .gif, .webP, .plainText]
+    panel.allowedContentTypes = Self.attachableContentTypes
     panel.message = String(localized: "Select files to attach to your next message")
     // C2: reopen wherever we last attached from; first time fall back to the screenshot folder.
     if let lastPath = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAttachDirectoryPath) {
@@ -820,6 +836,16 @@ class ChatViewModel: ObservableObject {
       return String(localized: "\(names) is larger than \(limit) and wasn't attached.")
     }
     return String(localized: "\(names) are larger than \(limit) and weren't attached.")
+  }
+
+  /// Paste-from-Finder rejection for a type the attach panel does not offer. HEIC and TIFF
+  /// are not in that list, so they are rejected here rather than relabeled as PNG.
+  static func attachmentUnsupportedMessage(filenames: [String]) -> String {
+    let names = filenames.map { "\"\($0)\"" }.joined(separator: ", ")
+    if filenames.count == 1 {
+      return String(localized: "\(names) can't be attached. Use a PDF, PNG, JPEG, GIF, WebP, or text file.")
+    }
+    return String(localized: "\(names) can't be attached. Use PDF, PNG, JPEG, GIF, WebP, or text files.")
   }
 
   // MARK: - Workspace folders
@@ -1743,6 +1769,16 @@ class ChatViewModel: ObservableObject {
       .first { !$0.isEmpty } ?? ""
   }
 
+  /// A generated title may replace an empty title or the automatic first-message fallback.
+  /// Any other title is a manual rename and must be left alone — the title request returns
+  /// after the user may already have renamed the chat.
+  static func mayApplyGeneratedTitle(current: String?, firstMessageFallback: String?) -> Bool {
+    let trimmed = current?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if trimmed.isEmpty { return true }
+    guard let firstMessageFallback, !firstMessageFallback.isEmpty else { return false }
+    return current == firstMessageFallback
+  }
+
   /// The first-message fallback title a meeting may have been wrongly stamped with before we stopped
   /// titling meetings from chat messages (see `appendMessage`). Mirrors that old logic exactly so we
   /// can recognise — and discard — such a stale title and let the summary-based titler run. Returns
@@ -1842,10 +1878,11 @@ class ChatViewModel: ObservableObject {
     var text = offline
       ? AppConstants.defaultOfflineChatSystemPrompt
       : SystemPromptsStore.shared.loadChatSystemPrompt()
-    let formatter = DateFormatter()
-    formatter.dateFormat = "EEEE, MMMM d, yyyy"
-    formatter.locale = Locale(identifier: "en_US")
-    text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+    // Date, weekday and zone at the very top: the model needs to know *when* "today", "tonight"
+    // or "last Tuesday" is. Day granularity on purpose — this is the cached prompt prefix, and a
+    // minute-precision clock here would invalidate the provider's cache every 60 seconds. The
+    // clock time goes at the end of the prompt, next to the other volatile parts.
+    text = "\(ChatDateContext.stableLine())\n\n\(text)"
     if offline {
       // No doc tools offline, so the app's own facts travel in the prompt.
       text += "\n\n---\n\n" + OfflineChatAppContext.current(
@@ -1876,6 +1913,10 @@ class ChatViewModel: ObservableObject {
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
     }
+    // The clock time sits at the end, after the volatile blocks (memory, meeting transcript), so
+    // the cached prefix above stays byte-identical between turns while the model still knows what
+    // time it is.
+    text += "\n\n\(ChatDateContext.timeOfDayLine())"
     return ["parts": [["text": text]]]
   }
 
@@ -2093,6 +2134,8 @@ class ChatViewModel: ObservableObject {
     // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
     let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[replyIdx].content).prefix(400))
     let prompt = """
+      \(ChatDateContext.stableLine())
+
       Give this conversation a short title (2–3 words) that captures its core topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
       Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
@@ -2101,14 +2144,17 @@ class ChatViewModel: ObservableObject {
       User: \(userText)
       Assistant: \(modelText)
       """
-    // overwriteExisting: replaces the first-message fallback title set in appendMessage.
+    // Replace the first-message fallback from appendMessage only while the title is still that
+    // fallback. generateAndApplyTitle refuses the write once the user has renamed the chat.
     await generateAndApplyTitle(targetId: sessionId, prompt: prompt, overwriteExisting: true, logLabel: "AI")
   }
 
   /// Generates a short title via the title model and applies it to `targetId`. With
-  /// `overwriteExisting` false the title is only set while the session is still untitled, so a
-  /// manual rename (or a competing generator) is never clobbered. Shared by the chat and
-  /// meeting title paths so the model id, length cap, and UI sync stay in one place.
+  /// `overwriteExisting` true (chat titles) the generated title replaces the session title only
+  /// while it is still empty or the first-message fallback `appendMessage` stamped. A manual
+  /// rename is kept. With `overwriteExisting` false (meetings) the title is only set while the
+  /// session is still untitled or holding the stale first-message fallback. Shared by both
+  /// paths so the model id, length cap, and UI sync stay in one place.
   private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
     // The title model is a Gemini call, which Offline Mode blocks; failing it only adds retries.
     if OfflineMode.isEnabled {
@@ -2144,7 +2190,17 @@ class ChatViewModel: ObservableObject {
       // summary-based title even under `overwriteExisting: false` (which only guards manual renames).
       let isStaleMeetingFallback =
         updated.isMeeting && updated.title == Self.meetingFirstMessageFallbackTitle(for: updated)
-      if !overwriteExisting, !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback { return }
+      if overwriteExisting {
+        guard Self.mayApplyGeneratedTitle(
+          current: updated.title,
+          firstMessageFallback: Self.meetingFirstMessageFallbackTitle(for: updated)
+        ) else {
+          DebugLogger.log("GEMINI-CHAT: \(logLabel) title kept for \(targetId) — renamed away from the first-message title")
+          return
+        }
+      } else if !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback {
+        return
+      }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
       store.save(updated)
       if updated.id == session.id { session.title = updated.title }
@@ -2190,6 +2246,8 @@ class ChatViewModel: ObservableObject {
     let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !summaryText.isEmpty else { return }
     let prompt = """
+      \(ChatDateContext.stableLine())
+
       Give this meeting a short title (2–4 words) that captures its main topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
       Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
@@ -2427,6 +2485,17 @@ class ChatViewModel: ObservableObject {
     scrollAnchorStore.set(messageId, for: sessionId)
   }
 
+  /// True when `sessionId` was left scrolled to the bottom, so new content should keep pulling
+  /// it down. Recorded separately from the anchor: a bottom-read session still has a top message.
+  func isFollowingBottom(for sessionId: UUID) -> Bool {
+    scrollAnchorStore.isFollowing(sessionId)
+  }
+
+  /// Records whether `sessionId` is following the newest content.
+  func setFollowingBottom(_ isFollowing: Bool, for sessionId: UUID) {
+    scrollAnchorStore.setFollowing(isFollowing, for: sessionId)
+  }
+
   // MARK: - Tab navigation
 
   private func refreshRecentSessions() {
@@ -2656,6 +2725,12 @@ class ChatViewModel: ObservableObject {
     let transcriptDisk = loadMeetingTranscriptFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if summaryDisk.isEmpty && transcriptDisk.isEmpty { return nil }
     var parts: [String] = []
+    // Date the meeting for the model: a transcript without a date cannot answer "what did we
+    // agree last Tuesday?". The stem carries the start time; an unparseable stem gets no line
+    // rather than an invented one.
+    if let when = ChatDateContext.meetingLine(stem: stem) {
+      parts.append(when)
+    }
     if !summaryDisk.isEmpty {
       parts.append("Meeting summary:\n\(summaryDisk)")
     }
@@ -2684,6 +2759,33 @@ class ChatViewModel: ObservableObject {
     let notes = MeetingListService.shared.loadNotes(forStem: stem)
     endedNotesCache = (stem, notes)
     return notes
+  }
+
+  /// Saves a hand edit of one note. Works for both cases the Notes tab shows: while the meeting
+  /// runs the note lives in the live store (and is written through the same `.notes.md` path the
+  /// session uses), after it ended the file is rewritten and the disk cache invalidated.
+  ///
+  /// Only the bullets change — `id` and `startTime` stay, because the timestamp is what ties the
+  /// note to its place in the transcript and in the chat stream. Emptying a note deletes it.
+  func saveNoteEdit(_ note: LiveMeetingNote, bullets: [String]) {
+    if isCurrentSessionTheActiveMeeting {
+      let store = LiveMeetingTranscriptStore.shared
+      store.replaceNote(LiveMeetingNote(id: note.id, startTime: note.startTime, bullets: bullets))
+      if let stem = store.currentMeetingFilenameStem {
+        MeetingListService.shared.saveNotes(
+          store.liveNotes,
+          transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
+      }
+      return
+    }
+    guard let stem = session.meetingStem else { return }
+    let edited = LiveMeetingTranscriptStore.applyingEdit(
+      to: meetingNotesForDisplay,
+      replacing: LiveMeetingNote(id: note.id, startTime: note.startTime, bullets: bullets))
+    MeetingListService.shared.saveNotes(
+      edited, transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
+    endedNotesCache = nil
+    notesRevision &+= 1
   }
 
   /// One line describing exactly what the model can see, shown above the composer.
@@ -3148,6 +3250,20 @@ private final class ChatScrollActions {
   var scrollToBottom: (() -> Void)?
 }
 
+/// The slice of `ScrollGeometry` the chat's follow-the-bottom logic needs, as one `Equatable`
+/// value so `.onScrollGeometryChange` fires only when one of these actually moved.
+private struct ChatScrollSnapshot: Equatable {
+  /// Vertical scroll offset. Only its *delta* is used (direction of travel), so the origin
+  /// convention does not matter.
+  var offsetY: CGFloat
+  var contentHeight: CGFloat
+  /// Bottom edge of the visible area in content coordinates.
+  var visibleMaxY: CGFloat
+
+  /// How far the content bottom sits below the visible bottom; negative when overscrolled.
+  var distanceFromBottom: CGFloat { contentHeight - visibleMaxY }
+}
+
 /// PreferenceKey that propagates the measured height of the hidden Text used to size the input field.
 private struct InputTextHeightKey: PreferenceKey {
   static var defaultValue: CGFloat = 0
@@ -3168,6 +3284,16 @@ struct ChatView: View {
   /// do not `@Published`-refresh the whole chat. Cleared on `scrollAnchorClearSignal` emissions.
   @State private var scrollPositionID: UUID? = nil
   @State private var scrollAnchorPersistTask: Task<Void, Never>? = nil
+  /// True while the list should follow new content (streaming deltas, appended messages, live
+  /// meeting notes). Set false the moment the user scrolls away from the bottom, so a reply that
+  /// keeps growing below the fold never yanks them back to where they were reading.
+  @State private var followsBottom: Bool = true
+  /// Settings → Chat → Appearance → "Scroll along with new text". Off by default: the chat only
+  /// follows new content when the user opted in.
+  @AppStorage(UserDefaultsKeys.chatFollowNewContent) private var followNewContentEnabled: Bool = SettingsDefaults.chatFollowNewContent
+  /// How close to the content bottom counts as "at the bottom". Generous enough that a wheel
+  /// notch or a trackpad bounce does not silently end the follow.
+  private static let followBottomThreshold: CGFloat = 40
   /// Suppresses persisting the scroll anchor while we re-apply it programmatically (during a
   /// tab switch), so the transient reset-to-top doesn't clobber the saved position before we
   /// restore it.
@@ -3175,6 +3301,18 @@ struct ChatView: View {
   @State private var hoveredTabId: UUID? = nil
   /// Note the pointer is over, so only that row shows its "Ask" affordance.
   @State private var hoveredNoteId: UUID? = nil
+  /// Note currently being edited by hand, and its draft text (one bullet per line).
+  ///
+  /// The surface is part of the state because the same note is rendered twice — inline in the chat
+  /// stream and in the Notes tab — and both rows would otherwise open an editor bound to the same
+  /// draft, so typing in one would mirror into the other.
+  @State private var editingNoteId: UUID? = nil
+  @State private var editingNoteSurface: NoteEditSurface? = nil
+  /// Session the draft belongs to. A tab switch must not carry a half-written note into another
+  /// meeting, where `editingNoteId` would match nothing and the draft would be lost silently.
+  @State private var editingNoteSessionId: UUID? = nil
+  @State private var noteDraft: String = ""
+  @FocusState private var noteEditorFocused: Bool
   /// Session id currently being renamed via the context-menu alert.
   @State private var renamingTabId: UUID? = nil
   @State private var renameDraft: String = ""
@@ -3185,6 +3323,10 @@ struct ChatView: View {
   @State private var meetingTab: MeetingTab = .chat
   /// True while a folder is being dragged over the window, so the drop target is visible.
   @State private var isFolderDropTargeted: Bool = false
+  /// The prose typeface the transcript is rendered with. Rendered prose carries its fonts, so a
+  /// change has to reach the bubbles as an input — this is that input, refreshed from the
+  /// notification the Settings picker posts.
+  @State private var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
 
   /// Two surfaces, not three. The raw transcript used to be a tab of its own, but nobody reads a
   /// transcript — it gets pasted somewhere else, which is what the Copy button in the bar is for.
@@ -3296,7 +3438,7 @@ struct ChatView: View {
             }
             ChatInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
               previewImageData = data
-            })
+            }, fontDesign: fontDesign)
           }
         }
       }
@@ -3369,6 +3511,12 @@ struct ChatView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .chatScrollToBottom)) { _ in
       scrollActions.scrollToBottom?()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .chatFontDesignChanged)) { _ in
+      // The transcript's fonts are baked into the rendered prose, so a typeface change only shows
+      // up once this view re-renders with the new value. The window, its sessions and the scroll
+      // position stay as they are.
+      fontDesign = ChatTheme.bodyFontDesign
     }
     .onAppear {
       if createNewSessionOnAppear, !hasTriggeredNewSessionOnAppear {
@@ -3611,7 +3759,8 @@ struct ChatView: View {
                     onEdit: message.id == lastUserMessageId && !viewModel.isSending
                       && ChatViewModel.editableTypedText(of: message.content) != nil
                       ? { viewModel.editAndResend(id: message.id, newText: $0) } : nil,
-                    isLatestTurn: message.id == lastUserMessageId || message.id == lastReplyId)
+                    isLatestTurn: message.id == lastUserMessageId || message.id == lastReplyId,
+                    fontDesign: fontDesign)
                     .id(message.id)
                 }
               }
@@ -3628,7 +3777,8 @@ struct ChatView: View {
               message: detached.message,
               streamingBuffer: detached.buffer,
               onTapAttachedImage: { previewImageData = $0 },
-              liveToolSteps: viewModel.currentToolSteps)
+              liveToolSteps: viewModel.currentToolSteps,
+              fontDesign: fontDesign)
               .id(detached.message.id)
           }
 
@@ -3677,6 +3827,17 @@ struct ChatView: View {
         .padding(.bottom, 28)
       }
       .scrollPosition(id: $scrollPositionID, anchor: .top)
+      // Follow new content (streaming deltas, appended messages, live meeting notes) only while
+      // the user is at the bottom. Content growth is detected as a change in content height, so
+      // one hook covers every append path instead of one per source.
+      .onScrollGeometryChange(for: ChatScrollSnapshot.self) { geometry in
+        ChatScrollSnapshot(
+          offsetY: geometry.contentOffset.y,
+          contentHeight: geometry.contentSize.height,
+          visibleMaxY: geometry.visibleRect.maxY)
+      } action: { old, new in
+        handleScrollGeometryChange(from: old, to: new, proxy: proxy)
+      }
       // Typing indicator lives OUTSIDE the LazyVStack as a floating overlay so its
       // 60fps TimelineView clock invalidates only its own subtree, not the whole
       // message list. Inside the list it forced a full LazyVStack/GeometryReader
@@ -3722,7 +3883,8 @@ struct ChatView: View {
         scrollActions.scrollToTop = { scrollToTop(proxy: proxy) }
         scrollActions.scrollToBottom = { scrollToBottom(proxy: proxy) }
         // Restore this session's saved reading position, or scroll to the latest messages if there
-        // is none. We never auto-scroll when new messages arrive — the user stays where they are.
+        // is none. `restoreSavedScroll` also decides whether the list follows new content: a
+        // restored anchor means the user was reading further up, so it must not be yanked down.
         restoreSavedScroll(proxy: proxy)
       }
       .task {
@@ -3740,6 +3902,12 @@ struct ChatView: View {
         // Switching tabs swaps the whole message list; restore the new session's position after
         // the swap settles so scrollPosition's own reset doesn't fight us.
         suppressAnchorSave = true
+        // A draft belongs to the meeting it was started in. Carrying it into another tab would
+        // leave an editor open on a note id that tab does not have, and the text would vanish
+        // without a word when the editor is dismissed.
+        if let editingSession = editingNoteSessionId, editingSession != viewModel.currentSessionId {
+          cancelNoteEdit()
+        }
         DispatchQueue.main.async {
           restoreSavedScroll(proxy: proxy)
           suppressAnchorSave = false
@@ -3770,7 +3938,7 @@ struct ChatView: View {
       Rectangle()
         .fill(ChatTheme.secondaryText.opacity(0.25))
         .frame(width: 2)
-      noteRow(note, hovered: hoveredNoteId == note.id)
+      noteRow(note, hovered: hoveredNoteId == note.id, surface: .chatStream)
     }
     .padding(.vertical, 2)
     .contentShape(Rectangle())
@@ -3898,12 +4066,16 @@ struct ChatView: View {
   }
 
   private func scrollToTop(proxy: ScrollViewProxy) {
+    followsBottom = false
+    viewModel.setFollowingBottom(false, for: viewModel.currentSessionId)
     withAnimation(.easeOut(duration: 0.2)) {
       proxy.scrollTo("listTop", anchor: .top)
     }
   }
 
   private func scrollToBottom(proxy: ScrollViewProxy) {
+    followsBottom = true
+    viewModel.setFollowingBottom(true, for: viewModel.currentSessionId)
     withAnimation(.easeOut(duration: 0.2)) {
       if let lastId = viewModel.messages.last?.id {
         proxy.scrollTo(lastId, anchor: .bottom)
@@ -3913,18 +4085,75 @@ struct ChatView: View {
     }
   }
 
+  /// Follows content growth while the user is at the bottom, and stops following the moment they
+  /// scroll away. The follow only happens when the user turned on "Scroll along with new text" in
+  /// Settings → Chat; the at-bottom flag is tracked either way.
+  ///
+  /// One hook covers every append path — a streaming delta, a new message, a live meeting note —
+  /// because all of them do the same thing to the scroll view: they make the content taller. The
+  /// alternative, one `.onChange` per source, would have to be repeated for each new kind of
+  /// content and would still miss the streaming bubble, whose text lives in a separate
+  /// `ObservableObject` and never reaches this view as a value.
+  private func handleScrollGeometryChange(
+    from old: ChatScrollSnapshot, to new: ChatScrollSnapshot, proxy: ScrollViewProxy
+  ) {
+    // The user's own movement wins over growth: if they scrolled up in the same frame that a
+    // delta landed, they meant to leave the bottom and must not be pulled back.
+    if abs(new.offsetY - old.offsetY) > 0.5 {
+      let nowFollowing = new.distanceFromBottom <= Self.followBottomThreshold
+      if nowFollowing != followsBottom {
+        followsBottom = nowFollowing
+        // Remembered per session so a tab switch back restores the user's actual choice instead
+        // of inferring it from the anchor.
+        viewModel.setFollowingBottom(nowFollowing, for: viewModel.currentSessionId)
+      }
+    }
+    guard new.contentHeight > old.contentHeight + 0.5, followsBottom, followNewContentEnabled else { return }
+    // Deferred by one runloop turn: the growth that triggered this callback is still being laid
+    // out, so scrolling from inside it would target the previous content height and land short
+    // of the new bottom.
+    Task { @MainActor in
+      guard followsBottom && followNewContentEnabled else { return }
+      followBottom(proxy: proxy)
+    }
+  }
+
+  /// Scrolls to the newest content without animation: a streaming reply grows several times a
+  /// second, and an animated scroll per delta would trail behind the text it is chasing.
+  private func followBottom(proxy: ScrollViewProxy) {
+    // Drop the id anchor first. A non-nil `scrollPositionID` (set by the user's last scroll)
+    // makes the lazy list re-resolve that id during layout, which would pull the viewport back to
+    // it and undo the follow. Clearing it is the documented safe operation: the offset is kept by
+    // the ScrollView's default behaviour and the persisted anchor is untouched.
+    if scrollPositionID != nil { scrollPositionID = nil }
+    // `listBottom` rather than the last message id: in a meeting the newest item can be a note,
+    // which is not in `viewModel.messages`.
+    proxy.scrollTo("listBottom", anchor: .bottom)
+  }
+
   /// Restores the session's saved top message, or scrolls to the latest messages when there is
   /// none (or the saved message no longer exists). Sets the `scrollPosition` binding and nudges
   /// the proxy so the position holds across the list recreation a resize/screen-move causes.
+  ///
+  /// The follow decision comes from the stored flag, not from the presence of an anchor: a session
+  /// the user read at the bottom still has a top message, and treating that as "was reading
+  /// further up" is what stopped the autoscroll after every tab switch.
   private func restoreSavedScroll(proxy: ScrollViewProxy) {
     let sessionId = viewModel.currentSessionId
+    let wasFollowing = viewModel.isFollowingBottom(for: sessionId)
     if let saved = viewModel.scrollAnchor(for: sessionId),
        viewModel.messages.contains(where: { $0.id == saved }) {
       DebugLogger.logUI("CHAT-SCROLL: restoring saved anchor \(saved.uuidString) session=\(sessionId)")
       scrollPositionID = saved
+      followsBottom = wasFollowing
       proxy.scrollTo(saved, anchor: .top)
+      // A session that was following the bottom is put back on the newest content, not on the
+      // anchor it happened to have: the anchor is only the layout starting point. Only when the
+      // user turned on "Scroll along with new text" in Settings → Chat.
+      if wasFollowing && followNewContentEnabled { scrollToBottom(proxy: proxy) }
     } else {
       scrollPositionID = nil
+      followsBottom = true
       scrollToBottom(proxy: proxy)
     }
   }
@@ -4066,52 +4295,151 @@ struct ChatView: View {
     .onAppear { viewModel.recoverMeetingSummaryIfNeeded() }
   }
 
+  /// Which of the two places a note is rendered is being edited. The same note appears inline in
+  /// the chat stream and in the Notes tab; without this, both rows would show an editor at once.
+  private enum NoteEditSurface: Equatable {
+    case chatStream
+    case notesTab
+  }
+
   /// One live note as it appears both in the Notes tab and inline in the chat stream.
   /// Hovering reveals "Ask" — the shortest path from "that bullet is interesting" to a question
-  /// about it, without retyping what was said.
-  private func noteRow(_ note: LiveMeetingNote, hovered: Bool) -> some View {
+  /// about it, without retyping what was said — and a pencil that turns the note into a text
+  /// editor. Notes are written by a model and are often slightly wrong ("that was Tuesday, not
+  /// Thursday"); fixing it in place beats re-reading it wrong for the rest of the meeting.
+  private func noteRow(_ note: LiveMeetingNote, hovered: Bool, surface: NoteEditSurface) -> some View {
     HStack(alignment: .top, spacing: 8) {
       Text(note.timestampString)
         .font(.system(size: 12, weight: .medium, design: .monospaced))
         .foregroundColor(ChatTheme.secondaryText)
         .frame(minWidth: 46, alignment: .leading)
 
-      VStack(alignment: .leading, spacing: 4) {
-        ForEach(Array(note.bullets.enumerated()), id: \.offset) { _, bullet in
-          HStack(alignment: .top, spacing: 6) {
-            Text("•")
-              .font(.system(size: 13))
-              .foregroundColor(ChatTheme.secondaryText)
-            Text(bullet)
-              .font(.system(size: 13))
-              .foregroundColor(ChatTheme.primaryText)
-              .fixedSize(horizontal: false, vertical: true)
-              .textSelection(.enabled)
+      if editingNoteId == note.id && editingNoteSurface == surface {
+        noteEditor(note)
+      } else {
+        VStack(alignment: .leading, spacing: 4) {
+          ForEach(Array(note.bullets.enumerated()), id: \.offset) { _, bullet in
+            HStack(alignment: .top, spacing: 6) {
+              Text("•")
+                .font(.system(size: 13))
+                .foregroundColor(ChatTheme.secondaryText)
+              // Selectable NSTextView, DELIBERATELY not SwiftUI `.textSelection(.enabled)`: these rows
+              // render inline in the chat stream, and SelectionOverlay's updateNSView loop pinned the
+              // main thread there (hang-20261103-182004). Invariant: no .textSelection in the transcript.
+              SelectableProseText(
+                plain: bullet,
+                font: .systemFont(ofSize: 13),
+                color: NSColor(ChatTheme.primaryText))
+            }
           }
         }
-      }
 
-      Spacer(minLength: 4)
+        Spacer(minLength: 4)
 
-      Button(action: {
-        viewModel.quoteInComposer("\(note.timestampString) \(note.bullets.joined(separator: " "))")
-      }) {
-        Text("Ask")
-          .font(.system(size: 10, weight: .medium))
-          .foregroundColor(ChatTheme.secondaryText)
-          .padding(.horizontal, 6)
-          .padding(.vertical, 2)
-          .overlay(
-            RoundedRectangle(cornerRadius: 4)
-              .stroke(ChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
-          .contentShape(Rectangle())
+        HStack(spacing: 4) {
+          Button(action: { beginNoteEdit(note, surface: surface) }) {
+            Image(systemName: "pencil")
+              .font(.system(size: 10, weight: .medium))
+              .foregroundColor(ChatTheme.secondaryText)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 3)
+              .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                  .stroke(ChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .opacity(hovered ? 1 : 0)
+          .help("Edit this note")
+          .accessibilityLabel("Edit this note")
+          .pointerCursorOnHover()
+
+          Button(action: {
+            viewModel.quoteInComposer("\(note.timestampString) \(note.bullets.joined(separator: " "))")
+          }) {
+            Text("Ask")
+              .font(.system(size: 10, weight: .medium))
+              .foregroundColor(ChatTheme.secondaryText)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                  .stroke(ChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .opacity(hovered ? 1 : 0)
+          .help("Quote this note in the composer and ask about it")
+          .accessibilityLabel("Ask about this note")
+          .pointerCursorOnHover()
+        }
       }
-      .buttonStyle(.plain)
-      .opacity(hovered ? 1 : 0)
-      .help("Quote this note in the composer and ask about it")
-      .accessibilityLabel("Ask about this note")
-      .pointerCursorOnHover()
     }
+  }
+
+  /// Inline editor for one note: one bullet per line, which is the honest mapping to the
+  /// `.notes.md` format. ⌘↩ saves, Esc cancels — the same contract as the chat's message editor.
+  /// Leaving the field empty deletes the note.
+  private func noteEditor(_ note: LiveMeetingNote) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      TextEditor(text: $noteDraft)
+        .font(.system(size: 13))
+        .foregroundColor(ChatTheme.primaryText)
+        .scrollContentBackground(.hidden)
+        .frame(minHeight: 44, maxHeight: 200)
+        .focused($noteEditorFocused)
+        .onAppear { noteEditorFocused = true }
+      HStack(spacing: 8) {
+        Button("Cancel") { cancelNoteEdit() }
+          .keyboardShortcut(.cancelAction)
+        Button("Save") { commitNoteEdit(note) }
+          .keyboardShortcut(.return, modifiers: .command)
+        Text("One bullet per line. Empty deletes the note.")
+          .font(.system(size: 10))
+          .foregroundColor(ChatTheme.secondaryText)
+      }
+      .controlSize(.small)
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+    .background(
+      RoundedRectangle(cornerRadius: 8)
+        .fill(ChatTheme.secondaryText.opacity(0.08))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(ChatTheme.secondaryText.opacity(0.25), lineWidth: 1)
+    )
+  }
+
+  private func beginNoteEdit(_ note: LiveMeetingNote, surface: NoteEditSurface) {
+    // Prefilled *with* the bullet marker, not as bare lines: `bullets(fromDraft:)` strips one
+    // marker per line, so a bullet whose own text starts with "- " or "* " would lose it on every
+    // save. Writing the marker here makes the round trip stable and shows the user the shape the
+    // file has.
+    noteDraft = note.bullets.map { "- \($0)" }.joined(separator: "\n")
+    editingNoteId = note.id
+    editingNoteSurface = surface
+    editingNoteSessionId = viewModel.currentSessionId
+    noteEditorFocused = true
+  }
+
+  private func cancelNoteEdit() {
+    editingNoteId = nil
+    editingNoteSurface = nil
+    editingNoteSessionId = nil
+    noteDraft = ""
+    noteEditorFocused = false
+  }
+
+  private func commitNoteEdit(_ note: LiveMeetingNote) {
+    let bullets = LiveMeetingTranscriptStore.bullets(fromDraft: noteDraft)
+    editingNoteId = nil
+    editingNoteSurface = nil
+    editingNoteSessionId = nil
+    noteDraft = ""
+    noteEditorFocused = false
+    viewModel.saveNoteEdit(note, bullets: bullets)
   }
 
   /// The Notes tab: the live note stream while a meeting runs, the final summary once it ended.
@@ -4123,10 +4451,12 @@ struct ChatView: View {
     return ScrollView {
       VStack(alignment: .leading, spacing: 12) {
         if let summary, !summary.isEmpty {
-          Text(summary)
-            .font(.system(size: 14))
-            .foregroundColor(ChatTheme.primaryText)
-            .textSelection(.enabled)
+          // NSTextView, not SwiftUI `.textSelection`: hovering a note row below re-renders this
+          // view, which is exactly the churn that wedges SelectionOverlay (hang-20261103-182004).
+          SelectableProseText(
+            plain: summary,
+            font: .systemFont(ofSize: 14),
+            color: NSColor(ChatTheme.primaryText))
           if !notes.isEmpty {
             Divider().padding(.vertical, 8)
             Text("Live notes")
@@ -4147,7 +4477,7 @@ struct ChatView: View {
         if !notes.isEmpty {
           LazyVStack(alignment: .leading, spacing: 10) {
             ForEach(notes) { note in
-              noteRow(note, hovered: hoveredNoteId == note.id)
+              noteRow(note, hovered: hoveredNoteId == note.id, surface: .notesTab)
                 .contentShape(Rectangle())
                 .onHover { inside in hoveredNoteId = inside ? note.id : nil }
             }
@@ -4181,11 +4511,12 @@ struct ChatView: View {
       Image(systemName: icon)
         .foregroundColor(.white)
         .font(.footnote)
-      Text(message)
-        .font(.footnote)
-        .foregroundColor(.white)
-        .fixedSize(horizontal: false, vertical: true)
-        .textSelection(.enabled)
+      // NSTextView, not SwiftUI `.textSelection` — see the invariant on `SelectableProseText`.
+      SelectableProseText(
+        plain: message,
+        font: .preferredFont(forTextStyle: .footnote),
+        color: .white,
+        hugsContentWidth: true)
       Spacer()
       Button(action: dismiss) {
         Image(systemName: "xmark")
@@ -4288,16 +4619,16 @@ struct ChatView: View {
   private var systemAudioBlockedNoticeRow: some View {
     HStack(spacing: 8) {
       Image(systemName: "speaker.slash.fill")
-        .font(.system(size: 11))
+        .font(.caption)
         .foregroundColor(.orange)
-      Text("The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut.")
-        .font(.system(size: 11))
+      Text("WhisperShortcut can't hear the other participants, so only your microphone is recorded. Turn on WhisperShortcut under Privacy & Security › Screen & System Audio Recording.")
+        .font(.caption)
         .foregroundColor(ChatTheme.primaryText.opacity(0.85))
         .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 8)
       Button(action: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) }) {
         Text("Open System Settings")
-          .font(.system(size: 11, weight: .medium))
+          .font(.caption.weight(.medium))
           .foregroundColor(ChatTheme.primaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 3)
@@ -4348,6 +4679,8 @@ struct ChatView: View {
 struct ChatInputAreaView: View {
   @ObservedObject var viewModel: ChatViewModel
   var onTapScreenshotThumbnail: (Data) -> Void
+  /// Prose typeface from Settings, passed down to the AppKit composer.
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
   /// Observed so the "what the chat can see" line keeps counting up while the meeting runs.
   @ObservedObject private var liveStore = LiveMeetingTranscriptStore.shared
   /// Observed so a command file added or fixed in Settings shows up in the autocomplete and the
@@ -4753,6 +5086,7 @@ struct ChatInputAreaView: View {
       ChatComposerTextView(
         controller: composer,
         placeholder: composerPlaceholder,
+        fontDesign: fontDesign,
         onSubmit: { submitComposer() },
         onCancel: {
           if viewModel.isSending { viewModel.cancelSend() }
@@ -5081,6 +5415,27 @@ private struct SourceChip: View {
   }
 }
 
+/// Link clicks in chat prose. `open` is injectable so tests can call the text-view
+/// delegate without launching a URL. Every click is handled (returns true): only allowed
+/// links are opened, while blocked schemes and unparseable links are swallowed so AppKit's
+/// default opener never sees a link we did not vet.
+class ChatReplyLinkDelegate: NSObject, NSTextViewDelegate {
+  var open: (URL) -> Void
+
+  init(open: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
+    self.open = open
+    super.init()
+  }
+
+  func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+    let url: URL? = (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
+    guard let url else { return true }
+    guard ChatLinkPolicy.isSafeToOpen(url) else { return true }
+    open(url)
+    return true
+  }
+}
+
 /// Boxes parsed reply segments so they can be stored in an NSCache (class-only values).
 private final class ModelReplySegmentBox {
   let segments: [ModelReplyRenderSegment]
@@ -5092,7 +5447,7 @@ private final class ModelReplySegmentBox {
 /// markdown links stay clickable (with a pointing-hand cursor). SwiftUI's `Text` can do one or the
 /// other but not both: `.textSelection(.enabled)` makes its overlay swallow link clicks. AppKit's
 /// text view handles selection and links natively, sidestepping that limitation.
-private struct SelectableProseText: NSViewRepresentable {
+struct SelectableProseText: NSViewRepresentable {
   private let nsAttributed: NSAttributedString
   /// true = wrap to the proposed width (prose); false = keep natural line lengths
   /// (code inside a horizontal scroller).
@@ -5236,14 +5591,7 @@ private struct SelectableProseText: NSViewRepresentable {
     return CGSize(width: ceil(used.width), height: ceil(used.height))
   }
 
-  final class Coordinator: NSObject, NSTextViewDelegate {
-    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-      let url: URL? = (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
-      guard let url else { return false }
-      NSWorkspace.shared.open(url)
-      return true
-    }
-  }
+  final class Coordinator: ChatReplyLinkDelegate {}
 }
 
 private struct ModelReplyView: View {
@@ -5255,6 +5603,9 @@ private struct ModelReplyView: View {
   /// `updateNSView`; doing that per streamed token wedges the main thread, so we defer it
   /// until the message is final. See MessageBubbleView call site.
   var isStreaming: Bool = false
+  /// Prose typeface this reply is rendered with. Part of the view's identity so a change in
+  /// Settings invalidates the bubbles; also folded into the segment cache key below.
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
 
   /// Markdown parsing (`ReplyBlockBuilder.buildBlocks` + mergedSegments) is expensive and would otherwise run on
   /// every SwiftUI render of every assistant message — so switching chats re-parses the whole
@@ -5264,10 +5615,13 @@ private struct ModelReplyView: View {
 
   private static func cachedSegments(
     content: String, sources: [GroundingSource], groundingSupports: [GroundingSupport],
-    store: Bool
+    store: Bool, fontDesign: ChatFontDesign
   ) -> [ModelReplyRenderSegment] {
     var hasher = Hasher()
     hasher.combine(content)
+    // The parsed runs carry their fonts (ReplyBlockBuilder bakes `ChatTheme.bodyFont` in), so a
+    // typeface change must not be served from a cache entry built with the previous one.
+    hasher.combine(fontDesign.rawValue)
     for s in sources {
       hasher.combine(s.uri)
       hasher.combine(s.title)
@@ -5294,7 +5648,8 @@ private struct ModelReplyView: View {
 
   var body: some View {
     let segments = Self.cachedSegments(
-      content: content, sources: sources, groundingSupports: groundingSupports, store: !isStreaming)
+      content: content, sources: sources, groundingSupports: groundingSupports,
+      store: !isStreaming, fontDesign: fontDesign)
     return VStack(alignment: .leading, spacing: 18) {
       ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
         switch segment {
@@ -5341,6 +5696,7 @@ private struct ModelReplyView: View {
     .fixedSize(horizontal: false, vertical: true)
     .contentShape(Rectangle())
     .environment(\.openURL, OpenURLAction { url in
+      guard ChatLinkPolicy.isSafeToOpen(url) else { return .discarded }
       NSWorkspace.shared.open(url)
       return .handled
     })
@@ -5860,13 +6216,15 @@ func parseUserMessagePastedXML(_ content: String) -> (sections: [UserMessagePast
 private struct StreamingModelReplyView: View {
   @ObservedObject var buffer: StreamingBuffer
   let fallback: ChatMessage
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
 
   var body: some View {
     ModelReplyView(
       content: buffer.content,
       sources: fallback.sources,
       groundingSupports: fallback.groundingSupports,
-      isStreaming: true)
+      isStreaming: true,
+      fontDesign: fontDesign)
   }
 }
 
@@ -5886,6 +6244,9 @@ private struct MessageBubbleView: View {
   var isLatestTurn: Bool = false
   /// Set only on the detached streaming bubble: the turn's live tool steps.
   var liveToolSteps: ToolStepsBuffer? = nil
+  /// Prose typeface the transcript is rendered with. Passed in (rather than read from
+  /// `ChatTheme` inside the bubble) so a change in Settings actually invalidates the view.
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
 
   @State private var isHovered = false
   @State private var isEditing = false
@@ -6060,13 +6421,14 @@ private struct MessageBubbleView: View {
       VStack(alignment: .leading, spacing: 10) {
         toolStepsGroup
         if let buffer = streamingBuffer {
-          StreamingModelReplyView(buffer: buffer, fallback: message)
+          StreamingModelReplyView(buffer: buffer, fallback: message, fontDesign: fontDesign)
         } else {
           ModelReplyView(
             content: message.content,
             sources: message.sources,
             groundingSupports: message.groundingSupports,
-            isStreaming: false)
+            isStreaming: false,
+            fontDesign: fontDesign)
         }
       }
     }

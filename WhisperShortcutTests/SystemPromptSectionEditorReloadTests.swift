@@ -27,4 +27,24 @@ struct SystemPromptSectionEditorReloadTests {
   func diskTextAgainstEmptyField() {
     #expect(!SystemPromptSectionEditor.isOwnSave(onDisk: "abc", lastSaved: ""))
   }
+
+  @Test("Save keeps a glossary term appended during the autosave window and honours deletions")
+  func saveKeepsAppendedLine() {
+    let loaded = "Metoprolol\nBisoprolol"
+    let edited = "Metoprolol"
+    let onDisk = "Metoprolol\nBisoprolol\nHbA1c"
+    #expect(
+      SystemPromptSectionEditor.textToSave(
+        section: .whisperGlossary, edited: edited, loaded: loaded, onDisk: onDisk)
+        == "Metoprolol\nHbA1c")
+  }
+
+  @Test("Prose sections save the edited text as is, even when disk has an extra line")
+  func proseSectionIgnoresDisk() {
+    #expect(
+      SystemPromptSectionEditor.textToSave(
+        section: .dictation, edited: "Be brief.", loaded: "Be verbose.",
+        onDisk: "Be verbose.\nAlso formal.")
+        == "Be brief.")
+  }
 }

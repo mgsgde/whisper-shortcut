@@ -11,6 +11,7 @@ struct SupportFeedbackSection: View {
 
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
   @State private var usageReport: String?
+  @State private var showFeedbackSheet = false
   @State private var isBuildingReport = false
 
   var body: some View {
@@ -79,27 +80,34 @@ struct SupportFeedbackSection: View {
           .pointerCursorOnHover()
 
           // Sits with the two contact channels because it is one: a report of how the app behaved
-          // is feedback, just the kind nobody can type from memory. Building it does blocking file
-          // I/O over up to 30 days of JSONL, so it runs off the main thread — this window must not
-          // beachball on a button press.
+          // and how it is configured is feedback, just the kind nobody can type from memory. The
+          // usage part does blocking file I/O over up to 30 days of JSONL, so it is built off the
+          // main thread — this window must not beachball on a button press. Usable without "Save
+          // usage data": the configuration part does not depend on it, only the counts do.
           Button(action: {
             guard !isBuildingReport else { return }
+            guard saveUsageData else {
+              usageReport = nil
+              showFeedbackSheet = true
+              return
+            }
             isBuildingReport = true
             Task.detached(priority: .userInitiated) {
               let report = UsageReport.build()
               await MainActor.run {
                 isBuildingReport = false
                 usageReport = report
+                showFeedbackSheet = true
               }
             }
           }) {
             HStack(alignment: .center, spacing: 12) {
-              Image(systemName: "chart.bar.doc.horizontal")
+              Image(systemName: "paperplane.fill")
                 .font(.system(size: 18))
                 .foregroundColor(.purple)
                 .opacity(0.85)
 
-              Text(isBuildingReport ? ("Preparing report…" as LocalizedStringKey) : "Share Usage Report")
+              Text(isBuildingReport ? ("Preparing…" as LocalizedStringKey) : "Send My Settings")
                 .font(.body)
                 .fontWeight(.medium)
                 .textSelection(.enabled)
@@ -112,17 +120,13 @@ struct SupportFeedbackSection: View {
             .cornerRadius(SettingsConstants.cornerRadius)
           }
           .buttonStyle(PlainButtonStyle())
-          .disabled(!saveUsageData || isBuildingReport)
-          .opacity(saveUsageData ? 1 : 0.5)
-          // Disabled rather than hidden when logging is off: a feature nobody can see is a feature
-          // nobody turns the toggle on for.
-          .help(
-            saveUsageData
-              ? ("See and share an anonymous summary of how you use the app" as LocalizedStringKey)
-              : "Turn on \"Save usage data\" in Settings → Privacy & Permissions to collect this"
-          )
+          .disabled(isBuildingReport)
+          .help("Share your settings with the developer when something didn't work. You see and can edit everything first.")
           .pointerCursorOnHover()
 
+          #if APP_STORE
+          // App Store build only: the direct build never sends people to the App Store
+          // (Magnus, 2026-11-03).
           Button(action: {
             viewModel.openAppStoreReview()
           }) {
@@ -172,6 +176,7 @@ struct SupportFeedbackSection: View {
           .buttonStyle(PlainButtonStyle())
           .help(viewModel.data.appStoreLinkCopied ? ("App Store link copied to clipboard" as LocalizedStringKey) : "Copy App Store link to clipboard")
           .pointerCursorOnHover()
+          #endif
 
           Button(action: {
             viewModel.revealHangReports()
@@ -278,13 +283,13 @@ struct SupportFeedbackSection: View {
     }
     .sheet(
       isPresented: Binding(
-        get: { usageReport != nil },
-        set: { if !$0 { usageReport = nil } }
+        get: { showFeedbackSheet },
+        set: { if !$0 { showFeedbackSheet = false; usageReport = nil } }
       )
     ) {
-      if let report = usageReport {
-        UsageReportSheet(report: report, onDismiss: { usageReport = nil })
-      }
+      FeedbackReportSheet(
+        usageReport: usageReport,
+        onDismiss: { showFeedbackSheet = false; usageReport = nil })
     }
   }
 }

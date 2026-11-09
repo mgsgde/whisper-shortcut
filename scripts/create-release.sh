@@ -29,7 +29,8 @@ Usage: bash scripts/create-release.sh [options]
   --yes           Do not prompt for confirmation
   --skip-tests    Do not run scripts/run-tests.sh (only when the caller already ran them)
   --allow-dirty   Permit unrelated modified files; still requires the release files
-                  (Info.plist, .github/RELEASE_NOTES.md) to be committed
+                  (Info.plist, .github/RELEASE_NOTES.md, .github/RELEASE_NOTES.de.md) to be committed.
+                  A missing German notes file does not block the tag.
   -h, --help      Show this help
 
 To test a build before users get it, keep the release a draft: set the repo variable
@@ -57,7 +58,7 @@ echo "=================================="
 #    Strict by default. With --allow-dirty only the files that *define* the release
 #    have to be committed — /release commits those and may legitimately leave other
 #    work in the tree.
-RELEASE_FILES=(WhisperShortcut/Info.plist .github/RELEASE_NOTES.md)
+RELEASE_FILES=(WhisperShortcut/Info.plist .github/RELEASE_NOTES.md .github/RELEASE_NOTES.de.md)
 if [ "$ALLOW_DIRTY" = true ]; then
     if ! git diff --quiet HEAD -- "${RELEASE_FILES[@]}"; then
         echo -e "${RED}❌ Error: release files have uncommitted changes.${NC}"

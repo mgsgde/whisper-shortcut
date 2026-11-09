@@ -89,6 +89,8 @@ final class QuickActionStore {
   static let maxEntries = 5
   /// ⌃1–9 picks an entry, so the card never shows more than this many.
   static let maxCustomEntries = 9
+  /// How many entries the ⌘2 card shows above the text field.
+  static let cardEntries = 3
   static let minimumCount = 2
   static let maxKeyLength = 60
   /// Below this many learned entries the built-in defaults fill the rest of the list.
@@ -124,6 +126,81 @@ final class QuickActionStore {
       learned: cachedLearned,
       forceFallback: cachedForceFallback,
       includeLearned: Self.learnedEnabled)
+  }
+
+  /// What the ⌘2 card lists, and which entry it opens on. Cache and UserDefaults only.
+  func forCard() -> (actions: [QuickAction], preselectIndex: Int?) {
+    Self.card(
+      custom: Self.storedCustomTexts(), recent: Self.storedRecentTexts(), ranked: current(),
+      preselect: Self.preselectsRecent)
+  }
+
+  /// With prompts of the user's own, the card lists `ranked` (theirs, then learned ones) in its
+  /// fixed order, so ⌃n always runs the same prompt; it shows `cardEntries` rows and scrolls to
+  /// the rest. The last one run is highlighted where it stands instead of moving to the top.
+  /// Without, it lists the last instructions run first (`cardList`) and highlights the first.
+  static func card(
+    custom: [String], recent: [String], ranked: [QuickAction], preselect: Bool
+  ) -> (actions: [QuickAction], preselectIndex: Int?) {
+    guard !customActions(from: custom).isEmpty else {
+      let list = cardList(recent: recent, ranked: ranked)
+      return (list, preselect && !list.isEmpty ? 0 : nil)
+    }
+    guard preselect, let last = recent.first else { return (ranked, nil) }
+    let key = normalizeKey(last.trimmingCharacters(in: .whitespacesAndNewlines))
+    return (ranked, ranked.firstIndex { $0.key == key })
+  }
+
+  /// Recent texts first (an entry that also ranks keeps its flags, so a built-in default stays
+  /// an edit), then ranked entries not already listed, capped at `cardEntries`.
+  static func cardList(recent: [String], ranked: [QuickAction]) -> [QuickAction] {
+    var result: [QuickAction] = []
+    var seen: Set<String> = []
+    let rankedByKey = Dictionary(ranked.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+    for raw in recent {
+      let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      let key = normalizeKey(text)
+      if key.isEmpty || seen.contains(key) { continue }
+      seen.insert(key)
+      result.append(rankedByKey[key] ?? QuickAction(key: key, text: text))
+    }
+    for action in ranked where !seen.contains(action.key) {
+      seen.insert(action.key)
+      result.append(action)
+    }
+    return Array(result.prefix(cardEntries))
+  }
+
+  /// Instructions last run from the card, most recent first.
+  static func storedRecentTexts() -> [String] {
+    UserDefaults.standard.stringArray(forKey: UserDefaultsKeys.dictatePromptRecentQuickActions) ?? []
+  }
+
+  /// Whether the card opens on its first entry: the last run picked an entry.
+  static var preselectsRecent: Bool {
+    UserDefaults.standard.bool(forKey: UserDefaultsKeys.dictatePromptPreselectRecent)
+  }
+
+  /// Records what a Dictate Prompt run used. `text`: the entry or typed instruction, moved to
+  /// the front of the recent list (typed text longer than `maxKeyLength` is not kept — it is a
+  /// one-off, not a prompt to repeat). nil: the spoken instruction. `fromEntry`: an entry was
+  /// picked, so the next card opens on it.
+  static func recordUse(text: String?, fromEntry: Bool) {
+    let defaults = UserDefaults.standard
+    defaults.set(fromEntry, forKey: UserDefaultsKeys.dictatePromptPreselectRecent)
+    guard let text else { return }
+    defaults.set(
+      updatedRecent(storedRecentTexts(), using: text),
+      forKey: UserDefaultsKeys.dictatePromptRecentQuickActions)
+  }
+
+  /// `text` in front, earlier entries with the same key dropped, capped at `cardEntries`.
+  static func updatedRecent(_ recent: [String], using text: String) -> [String] {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let key = normalizeKey(trimmed)
+    guard !key.isEmpty, key.count <= maxKeyLength else { return recent }
+    let rest = recent.filter { normalizeKey($0) != key }
+    return Array(([trimmed] + rest).prefix(cardEntries))
   }
 
   /// Re-reads the interaction log and replaces the cached learned list. Call off the main thread.

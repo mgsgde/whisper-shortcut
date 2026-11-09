@@ -38,13 +38,13 @@ final class TranscriptionHistoryStore {
   /// a rescue hatch for "where did my last dictation go", not an archive.
   private static let maxEntries = 5
 
-  private let fileName = "recent-transcriptions.json"
+  static let fileName = "recent-transcriptions.json"
   private let queue = DispatchQueue(label: "com.whisper-shortcut.transcriptionhistory")
   /// Newest first.
   private var storage: [Entry] = []
 
   private lazy var fileURL: URL = {
-    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(fileName)
+    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(Self.fileName)
   }()
 
   private init() {
@@ -118,7 +118,7 @@ final class TranscriptionHistoryStore {
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
     guard let decoded = try? decoder.decode([Entry].self, from: data) else {
-      DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Could not decode \(fileName); starting empty")
+      DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Could not decode \(Self.fileName); starting empty")
       return []
     }
     return Array(decoded.prefix(Self.maxEntries))

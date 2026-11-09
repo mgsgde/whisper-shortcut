@@ -120,6 +120,26 @@ struct LocalLLMTests {
     #expect(!LocalLLMModelType.qwen359B.isRecommended)
   }
 
+  @Test("Qwen3 audio models: CustomVoice from 16 GB, the 1.7B checkpoints from 32 GB")
+  func qwen3AudioMemoryFloors() {
+    #expect(Qwen3ModelType.customVoice.minimumPhysicalMemoryGB == 16)
+    #expect(Qwen3ModelType.asr.minimumPhysicalMemoryGB == 32)
+    #expect(Qwen3ModelType.voiceDesign.minimumPhysicalMemoryGB == 32)
+  }
+
+  @Test("Gemma 4 26B A4B is a Chat-only catalogue entry that needs 32 GB")
+  func gemma426BA4BIsChatOnlyAndNeeds32GB() {
+    #expect(PromptModel.forLocalLLMModel(.gemma426BA4B) == .localMLXGemma426BA4B)
+    #expect(PromptModel.localMLXGemma426BA4B.localMLXModelType == .gemma426BA4B)
+    #expect(PromptModel.localMLXGemma426BA4B.supportsDictatePrompt == false)
+    #expect(PromptModel.localMLXQwen34BInstruct.supportsDictatePrompt == true)
+    #expect(!PromptModel.dictatePromptCapableModels.contains(.localMLXGemma426BA4B))
+    #expect(!LocalLLMModelType.byPreference.contains(.gemma426BA4B))
+    #expect(LocalLLMModelType.gemma426BA4B.minimumPhysicalMemoryGB == 32)
+    #expect(!LocalLLMModelType.gemma426BA4B.isRecommended)
+    #expect(LLMProviderFactory.provider(for: .localMLXGemma426BA4B) is MLXChatProvider)
+  }
+
   @Test("A local HTTP server model never takes its selection from a screenshot")
   func localModelAlwaysUsesClipboard() {
     #expect(PromptModel.localModel.dictatePromptUsesScreenshotSelection == false)

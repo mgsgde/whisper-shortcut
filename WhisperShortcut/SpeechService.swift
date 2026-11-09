@@ -44,6 +44,11 @@ class SpeechService {
   private var recentEchoStrips: [(date: Date, tail: String)] = []
   private let echoStripsLock = NSLock()
 
+  /// False for offline Parakeet: it has no prompt to echo, so nothing it writes is an echo.
+  static func canEchoGlossary(_ model: TranscriptionModel) -> Bool {
+    !(model.isOffline && model.offlineModelType?.engine == .parakeet)
+  }
+
   /// The strip only ever removes a suffix, so the removed tail is what `original` has beyond
   /// `stripped`'s length.
   private func noteEchoStrip(original: String, stripped: String) {
@@ -88,6 +93,10 @@ class SpeechService {
   /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
   /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
   private var promptIsEditQuickAction = false
+  /// True when this turn reads the selection from a screenshot. A macOS Service already supplied
+  /// the text, so that path stays off even when the model would otherwise use a screenshot.
+  /// Set per turn in `performPrompt`, same as `promptIsEditQuickAction`.
+  private var promptUsesScreenshotSelection = false
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -340,14 +349,17 @@ class SpeechService {
   ///
   /// Deliberately narrow, because a rejected spelling normally stays a legitimate word elsewhere
   /// in the same speaker's vocabulary:
-  /// - Only multi-word rejected forms are rewritten. Bare "Cloud" is left alone — "Google Cloud",
-  ///   "Sovereign Cloud" and "Cloud-Anbieter" are all frequent in this corpus, and the phrase is
-  ///   what makes the intent unambiguous.
-  /// - A match preceded by another capitalised word is left alone, so "Google Cloud CLI" survives
-  ///   while "die Cloud CLI" is corrected. German capitalises nouns, which makes the preceding
-  ///   token a decent signal for exactly the compounds that must not be touched.
+  /// - Multi-word rejected forms are rewritten when they stand on their own. Bare "Cloud" is left
+  ///   alone — "Google Cloud", "Sovereign Cloud" and "Cloud-Anbieter" are all frequent in this
+  ///   corpus, and the phrase is what makes the intent unambiguous.
+  /// - A multi-word match preceded by another capitalised word is left alone, so "Google Cloud
+  ///   CLI" survives while "die Cloud CLI" is corrected. German capitalises nouns, which makes
+  ///   the preceding token a decent signal for exactly the compounds that must not be touched.
+  /// - A one-word rejected form is rewritten only when the correct form is itself one capitalised
+  ///   word and a personal title stands immediately before the mishearing (`Frau Dr. Läufer` →
+  ///   `Läuffer`). Bare nouns stay ("Der Läufer", "die Daten").
   ///
-  /// Both rules fail toward changing nothing, i.e. toward the behaviour before this existed.
+  /// Every rule fails toward changing nothing, i.e. toward the behaviour before this existed.
   private func correctingRejectedSpellings(in text: String) -> String {
     guard !text.isEmpty else { return text }
     let corrections = parsedGlossary().corrections
@@ -357,6 +369,14 @@ class SpeechService {
     for correction in corrections {
       for rejected in correction.rejected where rejected.contains(" ") {
         result = Self.replacingRejectedSpelling(
+          rejected, with: correction.correct, in: result)
+      }
+    }
+    for correction in corrections where !correction.correct.contains(" ")
+      && correction.correct.first?.isUppercase == true
+    {
+      for rejected in correction.rejected where !rejected.contains(" ") {
+        result = Self.replacingRejectedNameAfterTitle(
           rejected, with: correction.correct, in: result)
       }
     }
@@ -385,6 +405,25 @@ class SpeechService {
       result = (result as NSString).replacingCharacters(in: match.range, with: correct)
     }
     return result
+  }
+
+  /// Rewrites a one-word rejected spelling only when a personal title stands immediately before it
+  /// (`Frau Dr. Läufer` → `Frau Dr. Läuffer`). The title is what makes the token unambiguously a
+  /// name; the same spelling as a bare noun must stay ("Läufer" = runner, "Daten" rejected for
+  /// "Datev"). Boundaries are lookarounds rather than `\b`, because a dotted title such as "Dr."
+  /// has its word boundary on the period, not after the abbreviation.
+  static func replacingRejectedNameAfterTitle(
+    _ rejected: String, with correct: String, in text: String
+  ) -> String {
+    let escaped = NSRegularExpression.escapedPattern(for: rejected)
+    let pattern =
+      #"(?<![\p{L}\p{N}])(Frau|Herrn|Herr|Fr\.|Hr\.|Dr\.|Prof\.|Doktor|Professor)(\s+)"#
+      + escaped
+      + #"(?![\p{L}\p{N}])"#
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+    let template = "$1$2" + NSRegularExpression.escapedTemplate(for: correct)
+    let range = NSRange(location: 0, length: (text as NSString).length)
+    return regex.stringByReplacingMatches(in: text, range: range, withTemplate: template)
   }
 
   /// True when the token immediately before `location` begins with an uppercase letter — the
@@ -452,6 +491,8 @@ class SpeechService {
   ///   - preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
   ///   - promptOverride: If set, use this prompt instead of the user's dictation prompt.
   ///   - cancellable: When false, skips the cancellation slot (e.g. live-meeting chunks).
+  ///   - punctuationMode: `.spokenOnly` makes offline Parakeet drop the commas, periods, "?" and "!"
+  ///     it guessed (`ParakeetPunctuationTiming`); every other engine and mode ignores it.
   ///   - reportsProgress: When false, a chunked transcription (>45s audio) does not drive
   ///     the global chunk-progress delegate. Background transcriptions (streaming dictate
   ///     chunks) must pass false — the delegate mutates the app state machine, which
@@ -461,19 +502,26 @@ class SpeechService {
     preferredModel: TranscriptionModel? = nil,
     promptOverride: String? = nil,
     cancellable: Bool = true,
-    reportsProgress: Bool = true
+    reportsProgress: Bool = true,
+    punctuationMode: PunctuationMode = .automatic
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress)
+      let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress, punctuationMode: punctuationMode)
       // Applied here rather than per-provider: every path (offline Whisper, Gemini inline /
       // Files API / chunked, OpenAI, xAI, self-hosted) and both dictation and live meeting
       // return through this one call. Both the trailing glossary-echo strip and the
       // rejected-spelling correction run on that result.
-      let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
-        transcript,
-        glossaryTerms: self.glossaryTermsForEchoCheck(),
-        mode: "TRANSCRIPTION")
+      // Parakeet takes no prompt, so it cannot echo the glossary; a glossary term at the end is
+      // something the speaker said and must stay.
+      let model = preferredModel ?? TranscriptionModel.loadSelected()
+      let stripped =
+        Self.canEchoGlossary(model)
+        ? TextProcessingUtility.strippingTrailingGlossaryEcho(
+          transcript,
+          glossaryTerms: self.glossaryTermsForEchoCheck(),
+          mode: "TRANSCRIPTION")
+        : transcript
       if stripped != transcript {
         self.noteEchoStrip(original: transcript, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
@@ -500,16 +548,56 @@ class SpeechService {
       }
     }
 
-    return try await task.value
+    return try await Self.value(of: task)
+  }
+
+  /// `task` is unstructured, so cancelling the awaiting caller (streaming dictate chunks, which
+  /// pass `cancellable: false`) would not reach the running work without this.
+  static func value<T>(of task: Task<T, Error>) async throws -> T {
+    try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   // MARK: - Transcription Mode (Private Implementation)
-  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true) async throws -> String {
+  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true, punctuationMode: PunctuationMode = .automatic) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
     let model = preferredModel ?? TranscriptionModel.loadSelected()
 
     // Check if using offline model
     if model.isOffline {
+      // Qwen3-ASR is on-device but not a WhisperKit/Parakeet engine, so it has no
+      // `OfflineModelType` and cannot go through `LocalSpeechService`. Same contract as the
+      // Whisper branch below: download and load on demand rather than throwing the recording away.
+      if model == .qwen3ASR {
+        try validateAudioFileFormat(at: audioURL)
+        try Task.checkCancellation()
+
+        let showsLoadingUI = reportsProgress
+        defer {
+          if showsLoadingUI {
+            Task { @MainActor in PopupNotificationWindow.dismissProcessing() }
+          }
+        }
+        if !Qwen3ModelManager.shared.isModelAvailable(.asr) {
+          try await Qwen3ModelManager.shared.ensureReady(.asr) { status in
+            guard showsLoadingUI else { return }
+            PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: "Offline Dictation")
+          }
+        }
+        try Task.checkCancellation()
+
+        let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
+        let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
+        let result = try await Qwen3ASRService.shared.transcribe(
+          audioURL: audioURL, language: savedLanguage.qwen3LanguageName)
+        let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+        DebugLogger.logSpeech("SPEED: Qwen3-ASR transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+        return result
+      }
+
       // For offline models, use LocalSpeechService
       guard let offlineModelType = model.offlineModelType else {
         throw TranscriptionError.networkError(String(localized: "Invalid offline model type"))
@@ -574,7 +662,8 @@ class SpeechService {
 
       // Transcribe using local service
       let result = try await LocalSpeechService.shared.transcribe(
-        audioURL: audioURL, language: languageString, prompt: whisperPrompt, vocabulary: vocabulary)
+        audioURL: audioURL, language: languageString, prompt: whisperPrompt, vocabulary: vocabulary,
+        spokenMarksOnly: punctuationMode == .spokenOnly)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -653,7 +742,10 @@ class SpeechService {
     templateInstruction: String? = nil,
     templateName: String? = nil,
     selectedText: String? = nil,
-    recordingWasSilent: Bool = false
+    recordingWasSilent: Bool = false,
+    selectionIsFromService: Bool = false,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
@@ -661,7 +753,10 @@ class SpeechService {
         audioURL: audioURL, mode: mode, instruction: instruction,
         isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
         templateName: templateName, selectedText: selectedText,
-        recordingWasSilent: recordingWasSilent)
+        recordingWasSilent: recordingWasSilent,
+        selectionIsFromService: selectionIsFromService,
+        fieldContext: fieldContext,
+        fieldAllowsWindowImage: fieldAllowsWindowImage)
     }
 
     currentPromptTask = task
@@ -827,6 +922,14 @@ class SpeechService {
     !usesScreenshotSelection && selectedText == nil
   }
 
+  /// Screenshot-selection mode follows the model, unless a macOS Service already handed over the
+  /// selected text. That text is the selection; a screenshot would discard it.
+  static func usesScreenshotSelection(
+    modelUsesScreenshotSelection: Bool, selectionIsFromService: Bool
+  ) -> Bool {
+    modelUsesScreenshotSelection && !selectionIsFromService
+  }
+
   /// Request knobs for the on-device Dictate Prompt path. In Offline Mode — where a practice
   /// dictates clinical notes — decoding is greedy (temperature 0), so a note is reordered, not
   /// sampled; outside it the model keeps its default temperature, which reads better for free
@@ -863,7 +966,10 @@ class SpeechService {
   private func performPrompt(
     audioURL: URL, mode: PromptMode, instruction: String? = nil, isEditQuickAction: Bool,
     templateInstruction: String? = nil, templateName: String? = nil, selectedText: String?,
-    recordingWasSilent: Bool = false
+    recordingWasSilent: Bool = false,
+    selectionIsFromService: Bool = false,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
@@ -873,16 +979,18 @@ class SpeechService {
     promptIsEditQuickAction = false
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
-    // reaches it as nothing at all.
+    // reaches it as nothing at all. A selection from a macOS Service is already text.
     let selectedPromptModel = getPromptModel()
-    let usesScreenshotSelection = selectedPromptModel.dictatePromptUsesScreenshotSelection
+    promptUsesScreenshotSelection = Self.usesScreenshotSelection(
+      modelUsesScreenshotSelection: selectedPromptModel.dictatePromptUsesScreenshotSelection,
+      selectionIsFromService: selectionIsFromService)
 
     // In screenshot-selection mode the copied text is ignored so the model relies solely on the
     // highlighted region in the screenshot. Sent as captured, only trimmed: `cleanText` caps
     // character runs at 3 ("20000" -> "2000") and strips URL query strings, which silently
     // corrupts the text the user asked to edit. A template turn does not use that mode; the
     // selection captured for a non-screenshot model is still the text it formats.
-    let clipboardContext: String? = usesScreenshotSelection
+    let clipboardContext: String? = promptUsesScreenshotSelection
       ? nil
       : DictatePromptSelectionDecision.selectionText(from: selectedText)
 
@@ -893,7 +1001,7 @@ class SpeechService {
     // instruction arrived with it.
     promptTurnKind = Self.decidePromptTurnKind(
       templateInstruction: templateInstruction, templateName: templateName,
-      usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext,
+      usesScreenshotSelection: promptUsesScreenshotSelection, selectedText: clipboardContext,
       textInstruction: textInstruction)
     promptIsEditQuickAction = isEditQuickAction && !promptTurnKind.isTemplate
     if case .template(let turn) = promptTurnKind {
@@ -946,19 +1054,24 @@ class SpeechService {
       return try await executePromptWithGemini(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
-        promptStarted: promptStarted, providerLabel: providerLabel)
+        promptStarted: promptStarted, providerLabel: providerLabel,
+        fieldContext: fieldContext, fieldAllowsWindowImage: fieldAllowsWindowImage)
     case .openai:
       return try await executePromptWithOpenAI(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
-        promptStarted: promptStarted, providerLabel: providerLabel)
+        promptStarted: promptStarted, providerLabel: providerLabel,
+        fieldContext: fieldContext, fieldAllowsWindowImage: fieldAllowsWindowImage)
     // Text-only providers share `executePromptWithLocal`. The model id, the transcription
     // step and the provider tag are decided inside.
     case .local, .localMLX, .customOpenAI:
       return try await executePromptWithLocal(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
-        promptStarted: promptStarted, providerLabel: providerLabel)
+        promptStarted: promptStarted, providerLabel: providerLabel,
+        // Small on-device models over-apply field context and were never tested with it.
+        fieldContext: selectedPromptModel.provider == .customOpenAI ? fieldContext : nil,
+        fieldAllowsWindowImage: fieldAllowsWindowImage)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
@@ -1078,6 +1191,9 @@ class SpeechService {
     let screenshot: Data?
     /// Introduces the screenshot. Only meaningful when `screenshot` is non-nil.
     let screenshotLabel: String
+    /// Focused-field context for a compose turn. Request-only: conversation history stores the
+    /// selection, never this block.
+    let fieldBlock: String?
     /// The selection with its header, or — on a compose turn — the NO SELECTED TEXT marker. Nil only
     /// in screenshot-selection mode, where the selection is the highlighted region of the image.
     let selectionBlock: String?
@@ -1098,11 +1214,15 @@ class SpeechService {
     modelAcceptsImages: Bool,
     supportsScreenshot: Bool,
     usesScreenshotSelection: Bool,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true,
     logPrefix: String
   ) async throws -> DictatePromptEnvelope {
     // A template turn never captures or sends a screenshot, and never uses the screenshot-selection
-    // system prompt. Dictate Prompt keeps today's screenshot decision.
+    // system prompt.
     let screenshotSelectionMode = usesScreenshotSelection && !promptTurnKind.isTemplate
+    let isComposeTurn = Self.isComposeTurn(
+      usesScreenshotSelection: screenshotSelectionMode, selectedText: clipboardContext)
 
     // An audio-only model can't receive the screenshot at all, so in screenshot-selection mode the
     // request would carry neither the selection nor an image. Reject with something actionable.
@@ -1112,26 +1232,63 @@ class SpeechService {
         String(localized: "This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead."))
     }
 
-    // In screenshot-selection mode the screenshot always goes, regardless of the user setting,
-    // since it is the sole source of the selected text. A template turn sends none at all.
-    let wantsScreenshot = !promptTurnKind.isTemplate && supportsScreenshot
-      && (screenshotSelectionMode || screenshotInPromptModeEnabled())
+    // Screenshot-selection mode (App Store) always sends the front window, with a full-display
+    // fallback, because the image is the selection. A password manager is refused instead.
+    // Every other turn sends a front window only when the field is missing or short — and
+    // never for a password field.
+    let frontmostExcluded = FocusedFieldSnapshot.frontmostIsExcluded
+    let settingEnabled = screenshotInPromptModeEnabled()
+    let wantsFieldImage = fieldAllowsWindowImage && PromptScreenContextDecision.wantsWindowImage(
+      isComposeTurn: isComposeTurn,
+      field: fieldContext,
+      settingEnabled: settingEnabled,
+      modelAcceptsImages: modelAcceptsImages,
+      isTemplate: promptTurnKind.isTemplate)
+    let wantsScreenshot = supportsScreenshot && (screenshotSelectionMode || wantsFieldImage)
     var screenshot: Data?
+    var imageLabel = "none"
     if wantsScreenshot && modelAcceptsImages {
-      screenshot = await ChatWindowManager.shared.captureScreenForPromptMode()
-      if screenshot == nil {
-        if screenshotSelectionMode {
-          DebugLogger.logError("\(logPrefix): Screenshot capture failed in screenshot-selection mode")
-          throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
+      if screenshotSelectionMode {
+        screenshot = await ChatWindowManager.shared.captureFrontWindowForPromptMode()
+        if screenshot != nil {
+          imageLabel = "window"
+        } else {
+          screenshot = await ChatWindowManager.shared.captureScreenForPromptMode()
+          imageLabel = screenshot == nil ? "none" : "screen"
         }
-        DebugLogger.logWarning("\(logPrefix): Screenshot capture returned nothing — sending without it")
+      } else {
+        screenshot = await ChatWindowManager.shared.captureFrontWindowForPromptMode()
+        imageLabel = screenshot == nil ? "none" : "window"
+      }
+      if screenshot == nil && !screenshotSelectionMode {
+        DebugLogger.logWarning("\(logPrefix): Front window capture returned nothing — sending without it")
       }
     } else if wantsScreenshot {
       DebugLogger.log("\(logPrefix): Screenshot dropped — model does not accept image input.")
     }
 
-    let isComposeTurn = Self.isComposeTurn(
-      usesScreenshotSelection: screenshotSelectionMode, selectedText: clipboardContext)
+    let fieldLabel = fieldContext.map { String($0.totalCount) } ?? "none"
+    let reason = Self.promptContextReason(
+      screenshotSelectionMode: screenshotSelectionMode,
+      isTemplate: promptTurnKind.isTemplate,
+      isComposeTurn: isComposeTurn,
+      fieldAllowsWindowImage: fieldAllowsWindowImage,
+      settingEnabled: settingEnabled,
+      modelAcceptsImages: modelAcceptsImages,
+      supportsScreenshot: supportsScreenshot,
+      fieldCount: fieldContext?.totalCount,
+      imageLabel: imageLabel,
+      frontmostExcluded: frontmostExcluded)
+    DebugLogger.log("\(logPrefix): PROMPT-CONTEXT: field=\(fieldLabel) image=\(imageLabel) reason=\(reason)")
+    if screenshotSelectionMode && wantsScreenshot && modelAcceptsImages && screenshot == nil {
+      if frontmostExcluded {
+        throw TranscriptionError.networkError(
+          String(localized: "Dictate Prompt does not read password manager windows."))
+      }
+      DebugLogger.logError("\(logPrefix): Screenshot capture failed in screenshot-selection mode")
+      throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
+    }
+
     let selectionBlock = Self.promptSelectionBlock(
       turnKind: promptTurnKind, clipboardContext: clipboardContext, isComposeTurn: isComposeTurn)
     if case .template = promptTurnKind, let context = clipboardContext, !context.isEmpty {
@@ -1158,11 +1315,39 @@ class SpeechService {
       screenshot: screenshot,
       screenshotLabel: screenshotSelectionMode
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
-        : "Current screen:",
+        : "Front window of the app the user is writing in (context only, do not describe it):",
+      fieldBlock: PromptScreenContextDecision.fieldBlock(
+        fieldContext, isComposeTurn: isComposeTurn, isTemplate: promptTurnKind.isTemplate),
       selectionBlock: selectionBlock,
       history: history,
       systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
         usesScreenshotSelection: screenshotSelectionMode))
+  }
+
+  /// Label for the one `PROMPT-CONTEXT` line. Counts and labels only.
+  private static func promptContextReason(
+    screenshotSelectionMode: Bool,
+    isTemplate: Bool,
+    isComposeTurn: Bool,
+    fieldAllowsWindowImage: Bool,
+    settingEnabled: Bool,
+    modelAcceptsImages: Bool,
+    supportsScreenshot: Bool,
+    fieldCount: Int?,
+    imageLabel: String,
+    frontmostExcluded: Bool
+  ) -> String {
+    if screenshotSelectionMode {
+      if frontmostExcluded { return "password-manager" }
+      return imageLabel == "none" ? "screenshot-failed" : "screenshot-selection"
+    }
+    if isTemplate { return "template" }
+    if !isComposeTurn { return "edit" }
+    if !fieldAllowsWindowImage { return "secure" }
+    if !settingEnabled { return "setting-off" }
+    if !modelAcceptsImages || !supportsScreenshot { return "no-image" }
+    if let fieldCount, fieldCount >= PromptScreenContextDecision.minimumFieldChars { return "field" }
+    return imageLabel == "none" ? "no-window" : (fieldCount == nil ? "no-field" : "short-field")
   }
 
   /// Dictate Prompt: stored prompt (or the screenshot prompt) plus style blocks, as today.
@@ -1262,6 +1447,10 @@ class SpeechService {
         fileData: nil,
         url: nil))
     }
+    if let fieldBlock = envelope.fieldBlock {
+      parts.append(GeminiChatRequest.GeminiChatPart(
+        text: fieldBlock, inlineData: nil, fileData: nil, url: nil))
+    }
     if let selectionBlock = envelope.selectionBlock {
       parts.append(GeminiChatRequest.GeminiChatPart(
         text: selectionBlock, inlineData: nil, fileData: nil, url: nil))
@@ -1280,10 +1469,26 @@ class SpeechService {
         "image_url": ["url": "data:image/jpeg;base64,\(screenshot.base64EncodedString())"],
       ])
     }
+    if let fieldBlock = envelope.fieldBlock {
+      content.append(["type": "text", "text": fieldBlock])
+    }
     if let selectionBlock = envelope.selectionBlock {
       content.append(["type": "text", "text": selectionBlock])
     }
     return content
+  }
+
+  /// Generation config for a Gemini Dictate Prompt request. Nil when the model has no thinking
+  /// level, so that request stays without a `generationConfig`. `thinkingBudget` is never set:
+  /// 3.x models ignore it and can leak reasoning-channel tokens when it is sent.
+  static func dictatePromptGenerationConfig(
+    for model: PromptModel
+  ) -> GeminiChatRequest.GeminiGenerationConfig? {
+    guard let level = model.dictatePromptThinkingLevel else { return nil }
+    return GeminiChatRequest.GeminiGenerationConfig(
+      responseModalities: nil,
+      speechConfig: nil,
+      thinkingConfig: .init(thinkingLevel: level, thinkingBudget: nil))
   }
 
   /// Performs a Gemini Dictate Prompt request: prepends history, appends the caller-built
@@ -1316,7 +1521,7 @@ class SpeechService {
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
-      generationConfig: nil,
+      generationConfig: Self.dictatePromptGenerationConfig(for: model),
       model: nil
     )
     request.httpBody = try JSONEncoder().encode(chatRequest)
@@ -1470,7 +1675,9 @@ class SpeechService {
     model: PromptModel,
     textInstruction: String? = nil,
     promptStarted: ContinuousClock.Instant,
-    providerLabel: String
+    providerLabel: String,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
@@ -1493,13 +1700,15 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: true,
       supportsScreenshot: true,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
+      fieldContext: fieldContext,
+      fieldAllowsWindowImage: fieldAllowsWindowImage,
       logPrefix: "PROMPT-MODE-GEMINI")
     var userParts = geminiUserParts(from: envelope)
     let historyContents = Self.promptHistoryContents(
       mode: mode,
       isComposeTurn: Self.isComposeTurn(
-        usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+        usesScreenshotSelection: promptUsesScreenshotSelection,
         selectedText: clipboardContext),
       turnKind: promptTurnKind)
 
@@ -1611,7 +1820,9 @@ class SpeechService {
     model: PromptModel,
     textInstruction: String? = nil,
     promptStarted: ContinuousClock.Instant,
-    providerLabel: String
+    providerLabel: String,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     let apiKey = try ProviderCredentials.require(.openAI)
 
@@ -1636,7 +1847,9 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: model.supportsImageInput,
       supportsScreenshot: true,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
+      fieldContext: fieldContext,
+      fieldAllowsWindowImage: fieldAllowsWindowImage,
       logPrefix: "PROMPT-MODE-OPENAI")
     var userContent = openAIUserContent(from: envelope)
     // Kept for the agent path, which builds its own request from the same ingredients.
@@ -1711,6 +1924,9 @@ class SpeechService {
       if let screenshot = envelope.screenshot {
         parts.append(["text": envelope.screenshotLabel])
         parts.append(["inline_data": ["mime_type": "image/jpeg", "data": screenshot.base64EncodedString()]])
+      }
+      if let fieldBlock = envelope.fieldBlock {
+        parts.append(["text": fieldBlock])
       }
       if let selectionBlock = envelope.selectionBlock {
         parts.append(["text": selectionBlock])
@@ -1881,7 +2097,9 @@ class SpeechService {
     model: PromptModel,
     textInstruction: String? = nil,
     promptStarted: ContinuousClock.Instant,
-    providerLabel: String
+    providerLabel: String,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     // Three shapes share this path. MLX takes the picker's rawValue and resolves the weights
     // itself. A local server takes the tag the user typed. The custom endpoint sends the sentinel
@@ -1955,10 +2173,13 @@ class SpeechService {
         // feeds the local model should arrive with the layout the user spoke.
         spokenOffline = TranscriptionModel.loadSelected().isOffline
       }
-      let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
-        spoken,
-        glossaryTerms: glossaryTermsForEchoCheck(),
-        mode: "DICTATE-PROMPT")
+      let stripped =
+        Self.canEchoGlossary(TranscriptionModel.loadSelected())
+        ? TextProcessingUtility.strippingTrailingGlossaryEcho(
+          spoken,
+          glossaryTerms: glossaryTermsForEchoCheck(),
+          mode: "DICTATE-PROMPT")
+        : spoken
       if stripped != spoken {
         noteEchoStrip(original: spoken, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
@@ -1990,13 +2211,19 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: false,
       supportsScreenshot: false,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
+      fieldContext: fieldContext,
+      fieldAllowsWindowImage: fieldAllowsWindowImage,
       logPrefix: "PROMPT-MODE-LOCAL")
 
     let dictationHeader = Self.additionalDictationHeader(
       turnKind: promptTurnKind, hasSelection: clipboardContext != nil)
     var userText = ""
+    if let fieldBlock = envelope.fieldBlock {
+      userText += fieldBlock
+    }
     if let selectionBlock = envelope.selectionBlock {
+      if !userText.isEmpty { userText += "\n\n" }
       userText += selectionBlock
     }
     if let dictationHeader {
@@ -2292,9 +2519,10 @@ class SpeechService {
       DebugLogger.log("READ-ALOUD-REWRITE: Disabled by user, using original text")
       return text
     }
-    // Cloud rewrite cannot run in Offline Mode; the on-device voice also skips it so Read Aloud
-    // stays a local path (the Gemini call would otherwise die at the network guard).
-    if OfflineMode.isEnabled || ReadAloudPreferences.model.provider == .system {
+    // Cloud rewrite cannot run in Offline Mode; an on-device voice also skips it so Read Aloud
+    // stays a local path (the Gemini call would otherwise die at the network guard, and for a
+    // local voice "on-device" would be a lie).
+    if OfflineMode.isEnabled || ReadAloudPreferences.model.provider.isOnDevice {
       DebugLogger.log("READ-ALOUD-REWRITE: Skipped — Offline Mode / on-device voice")
       return text
     }
@@ -2397,6 +2625,11 @@ class SpeechService {
         trimmedText, voiceIdentifier: voice, onChunkReady: onChunkReady)
     }
 
+    if model.provider == .localMLX {
+      return try await speakWithQwen3Voice(
+        trimmedText, model: model, personaID: voice, onChunkReady: onChunkReady)
+    }
+
     // ChunkTTSService handles splitting, parallelism, retry/rate-limit coordination, and
     // merging. Every cloud provider returns raw PCM (s16le 24kHz mono), so the merged result
     // feeds playback unchanged — we only supply a per-chunk synthesizer for the chosen provider.
@@ -2428,6 +2661,8 @@ class SpeechService {
       }
     case .system:
       throw TranscriptionError.networkError("On-device TTS should not reach the cloud chunk path")
+    case .localMLX:
+      throw TranscriptionError.networkError("On-device TTS should not reach the cloud chunk path")
     }
 
     let chunkService = ChunkTTSService(chunkSize: chunkSize)
@@ -2435,6 +2670,45 @@ class SpeechService {
     return try await chunkService.synthesize(
       text: trimmedText, model: model, onChunkReady: onChunkReady,
       synthesizeText: synthesizeChunk)
+  }
+
+  /// On-device Read Aloud through Qwen3-TTS. Reached when the selected model is one of the two
+  /// `.localMLX` checkpoints; `personaID` is a `Qwen3VoicePersonas` id, not a provider voice name.
+  ///
+  /// Long text is chunked inside `Qwen3TTSService` and synthesized sequentially against one loaded
+  /// model, so the weights are paid for once per Read Aloud, not once per chunk.
+  func speakWithQwen3Voice(
+    _ text: String,
+    model: TTSModel? = nil,
+    personaID: String? = nil,
+    onChunkReady: ((Data, Int, Int) -> Void)? = nil
+  ) async throws -> Data {
+    // The caller already resolved the model it dispatched on; re-reading UserDefaults here
+    // could pair a persona resolved for a different checkpoint than the one this run uses.
+    let model = model ?? ReadAloudPreferences.model
+    guard let modelType = model.qwen3ModelType else {
+      throw TranscriptionError.networkError("Qwen3 voice selected for a non-Qwen3 model")
+    }
+    let persona: Qwen3VoicePersona
+    if let personaID {
+      persona = modelType == .customVoice
+        ? Qwen3VoicePersona.customVoiceSpeaker(for: personaID)
+        : Qwen3VoicePersona.persona(for: personaID)
+    } else {
+      persona = ReadAloudPreferences.qwen3Persona(for: model)
+    }
+
+    if !Qwen3ModelManager.shared.isModelAvailable(modelType) {
+      // `defer`, not a plain call after: a failed download must also dismiss the popup, or the
+      // "Processing" window stays on screen with nothing running behind it. Same shape as the
+      // dictation branch above.
+      defer { PopupNotificationWindow.dismissProcessing() }
+      try await Qwen3ModelManager.shared.ensureReady(modelType) { status in
+        PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: "Read Aloud")
+      }
+    }
+    return try await Qwen3TTSService.shared.synthesizePCM(
+      text: text, persona: persona, modelType: modelType, onChunkReady: onChunkReady)
   }
 
   /// On-device Read Aloud. Reached from `readSelectionAloud` / `readProseAloud` when the
@@ -3221,14 +3495,12 @@ class SpeechService {
   /// would still cut a long LAN dictation after the Task deadline was raised
   /// (a 5-minute recording needs 330s). Cloud providers keep `LLMHTTPSession.shared`.
   /// The Task deadline remains the precise cap; this session only raises the ceiling
-  /// to `NetworkDeadline.selfHostedTranscriptionTimeoutCap`.
+  /// to `NetworkDeadline.selfHostedTranscriptionTimeoutCap`. Built through
+  /// `LLMHTTPSession.makeSession` so a redirect strips the bearer token and
+  /// Cloudflare Access headers the same way chat does.
   private static let selfHostedTranscriptionSession: URLSession = {
-    let config = URLSessionConfiguration.default
     let cap = NetworkDeadline.selfHostedTranscriptionTimeoutCap
-    config.timeoutIntervalForRequest = cap
-    config.timeoutIntervalForResource = cap
-    OfflineModeURLProtocol.install(on: config)
-    return URLSession(configuration: config)
+    return LLMHTTPSession.makeSession(requestTimeout: cap, resourceTimeout: cap)
   }()
 
   /// POSTs `request` and retries once on HTTP 429 with exponential backoff. Returns the

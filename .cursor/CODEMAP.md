@@ -15,6 +15,7 @@ tree disagree, the tree wins; fix the row.
 | Dictate / Dictate Prompt / Read Aloud   | `SpeechService.swift` (transcribe, executePrompt, readSelectionAloud) → `TranscriptionProvider.swift`               |
 | Recording & chunking                    | `AudioRecorder.swift`, `ChunkedDictateRecorder.swift`, `AudioChunker.swift`, `AudioMerger.swift`, `AudioTranscoder.swift`, `Chunk*.swift` |
 | Streaming dictation                     | `DictateStreamingSession.swift`, `TranscriptMerger.swift`, `SpeechTextSanitizer.swift`, `TextProcessingUtility.swift` |
+| Dictate Live (text at cursor, Parakeet) | `LiveDictation.swift` (availability, joiner, drift), `LiveDictationSession.swift`, `toggleLiveDictation`/`performLiveDictation` in `MenuBarController.swift`, `ChunkedDictateRecorder.RotationPolicy` |
 | Offline dictation (WhisperKit)          | `LocalSpeechService.swift` — read its actor doc comment before touching speed; `ModelManager.swift`; `ParakeetBackend.swift` (recommended model) |
 | Text-to-speech                          | `ChunkTTSService.swift`, `SystemTTSService.swift`, `TTSPlaybackSession.swift`, `TextChunker.swift`                  |
 | Clipboard / paste at cursor             | `ClipboardManager.swift`, `AccessibilityPermissionManager.swift`, `PermissionStatusChecker.swift`                   |

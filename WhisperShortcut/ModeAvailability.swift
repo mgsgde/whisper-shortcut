@@ -25,7 +25,9 @@ enum BlockReason: Equatable {
 }
 
 enum IgnoreReason: Equatable {
-  case otherMeetingSegmentActive, liveMeetingActive, otherModeRecording, otherProcessing
+  case otherMeetingSegmentActive, meetingSegmentProcessing, liveMeetingActive, otherModeRecording, otherProcessing
+  /// Dictate Live has stopped recording and is still decoding / inserting its last pieces.
+  case liveDictationFinishing
 }
 
 enum ModeAvailability: Equatable {
@@ -38,12 +40,18 @@ struct ModeAvailabilityInput: Equatable {
   var appState: AppState
   var isLiveMeetingActive: Bool
   var activeMeetingSegment: MeetingSegment?
+  /// The active segment has stopped recording and its text is on the way.
+  var meetingSegmentIsProcessing: Bool
   var pendingMeetingSegment: MeetingSegment?
   var pendingRecordingMode: AppState.RecordingMode?
   var currentJobMode: AppState.RecordingMode?
   var isTTSPlaying: Bool
+  /// A Dictate Live session is still open (recording or inserting its last pieces).
+  var isLiveDictationFinishing = false
   var isOfflineMode: Bool
-  var readAloudUsesSystemVoice: Bool
+  /// True when Read Aloud runs on this Mac: the macOS voice or an on-device MLX voice. Offline
+  /// Mode blocks only the cloud voices.
+  var readAloudRunsOnDevice: Bool
   var hasTranscriptionCredential: Bool
   var hasPromptCredential: Bool
   var hasImprovementCredential: Bool
@@ -79,7 +87,7 @@ enum ModeAvailabilityRules {
       return dictatePrompt(i)
     case .readAloudSelection:
       if let early = readAloudEarly(i) { return early }
-      if i.isOfflineMode, !i.readAloudUsesSystemVoice { return .blocked(.offlineModeReadAloud) }
+      if i.isOfflineMode, !i.readAloudRunsOnDevice { return .blocked(.offlineModeReadAloud) }
       if i.isLiveMeetingActive { return .ignored(.liveMeetingActive) }
       // DRIFT F3 (fixed): a non-meeting recording owns the microphone; a synthetic ⌘C into the
       // frontmost app would be pointless and the poll would abandon silently afterwards. A start
@@ -128,6 +136,10 @@ enum ModeAvailabilityRules {
   private static func meetingSegmentArm(
     _ i: ModeAvailabilityInput, own: MeetingSegment, hasCredential: Bool, need: CredentialNeed
   ) -> ModeAvailability {
+    // A processing segment has no recorder left to stop; a second press must not reach one.
+    if i.activeMeetingSegment == own, i.meetingSegmentIsProcessing {
+      return .ignored(.meetingSegmentProcessing)
+    }
     if i.activeMeetingSegment == own || i.pendingMeetingSegment == own { return .stop }
     if i.activeMeetingSegment != nil || i.pendingMeetingSegment != nil {
       return .ignored(.otherMeetingSegmentActive)
@@ -139,6 +151,11 @@ enum ModeAvailabilityRules {
     if i.isLiveMeetingActive {
       return meetingSegmentArm(
         i, own: .dictation, hasCredential: i.hasTranscriptionCredential, need: .transcription)
+    }
+    // A second press while Dictate Live inserts its last pieces must not cancel: the text not yet
+    // at the cursor would be lost silently.
+    if i.appState.isTranscriptionPipelineProcessing, i.isLiveDictationFinishing {
+      return .ignored(.liveDictationFinishing)
     }
     // A long Dictate Prompt also runs through the chunk phases; Dictate must not cancel it.
     if i.appState.isTranscriptionPipelineProcessing, i.currentJobMode != .prompt {

@@ -134,6 +134,10 @@ class SettingsWindowController: NSWindowController {
 extension SettingsWindowController: NSWindowDelegate {
   func windowDidResignKey(_ notification: Notification) {
     if NSApp.modalWindow != nil { return }
+    // Don't close while an attached sheet (e.g. Send My Settings) is up — presenting a SwiftUI
+    // .sheet resigns the parent's key status, and closing the parent here would take the sheet
+    // with it or orphan it behind the window. Same guard as ChatWindowController.
+    if window?.attachedSheet != nil { return }
     let closeOnFocusLoss: Bool
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss) != nil {
       closeOnFocusLoss = UserDefaults.standard.bool(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)

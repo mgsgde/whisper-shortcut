@@ -139,14 +139,10 @@ struct ModelGroupHeader: View {
   }
 }
 
-/// What every model picker shows under its tiles: the selected model's description, then cost and
-/// the comparison link on one line. It used to be three stacked rows ("Cost:", then "Tip: Compare
-/// models (speed, intelligence, pricing): gemini-models"), repeated under each picker.
+/// What every model picker shows under its tiles: the selected model's description, then its cost.
 struct ModelDetailsFooter: View {
   let description: String
   let costLevel: CostLevel
-  /// The link goes to Google's Gemini comparison page, so only pickers that list Gemini show it.
-  var showsCompareLink = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -162,12 +158,6 @@ struct ModelDetailsFooter: View {
         Text(costLevel.title)
           .fontWeight(.semibold)
           .foregroundColor(SettingsConstants.costLevelColor(for: costLevel))
-        if showsCompareLink, let url = URL(string: AppConstants.geminiModelsComparisonURL) {
-          Text(verbatim: "·")
-            .foregroundColor(.secondary)
-          Link("Compare Gemini models", destination: url)
-            .pointerCursorOnHover()
-        }
       }
       .font(.caption)
     }

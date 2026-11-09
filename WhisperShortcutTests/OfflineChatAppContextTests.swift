@@ -51,7 +51,8 @@ struct OfflineChatAppContextTests {
   }
 
   /// The real README, so a long new first sentence shows up here rather than as slower offline
-  /// replies. ~4 characters per token: 6,200 characters is about 1,550 tokens.
+  /// replies. ~4 characters per token: 6,500 characters is about 1,625 tokens. The Gemma 4 26B
+  /// catalogue line is why this moved up from 6,200.
   @Test func realReadmeStaysWithinBudget() throws {
     let readmeURL = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
@@ -62,7 +63,7 @@ struct OfflineChatAppContextTests {
     let block = OfflineChatAppContext.block(
       readme: readme, currentModel: .qwen34BInstruct2507,
       shortcuts: [("Dictate", "⌘ + 1")], appVersion: "1")
-    #expect(block.count < 6_200, "offline app context is \(block.count) characters")
+    #expect(block.count < 6_500, "offline app context is \(block.count) characters")
   }
 
   @Test func appQuestionsTurnOnTheFullSection() {

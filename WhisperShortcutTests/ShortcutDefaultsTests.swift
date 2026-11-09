@@ -66,6 +66,43 @@ struct ShortcutDefaultsTests {
       key: .four, modifiers: [.control, .option], in: direct, excluding: "Toggle Dictation") == "Read Aloud")
   }
 
+  @Test("App Store save leaves the hidden Read Aloud and Glossary bindings untouched")
+  func appStoreSaveSkipsHiddenShortcutKeys() throws {
+    let suiteName = "ShortcutDefaultsTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let manager = ShortcutConfigManager(userDefaults: defaults)
+    let readAloudKey = "shortcut_read_aloud"
+    let glossaryKey = "shortcut_add_to_glossary"
+    let recordingKey = "shortcut_start_recording"
+
+    // The direct download saved bindings for both; the App Store build then saves a config in
+    // which they are disabled.
+    var config = ShortcutConfig.default
+    config.readAloud = ShortcutDefinition(key: .six, modifiers: [.control, .option], isEnabled: true)
+    config.addToGlossary = ShortcutDefinition(key: .seven, modifiers: [.control, .option], isEnabled: true)
+    manager.saveConfiguration(config, isAppStore: false)
+    let readAloudBefore = try #require(defaults.data(forKey: readAloudKey))
+    let glossaryBefore = try #require(defaults.data(forKey: glossaryKey))
+
+    let disabled = ShortcutConfig.availableInThisBuild(config, isAppStore: true)
+    #expect(!disabled.readAloud.isEnabled)
+    config = disabled
+    config.startRecording = ShortcutDefinition(key: .nine, modifiers: [.control, .option])
+    manager.saveConfiguration(config, isAppStore: true)
+
+    #expect(defaults.data(forKey: readAloudKey) == readAloudBefore)
+    #expect(defaults.data(forKey: glossaryKey) == glossaryBefore)
+    // The other slots are still written.
+    let saved = try JSONDecoder().decode(
+      ShortcutDefinition.self, from: try #require(defaults.data(forKey: recordingKey)))
+    #expect(saved.key == .nine)
+
+    // The direct build writes the disabled state through like any other slot.
+    manager.saveConfiguration(config, isAppStore: false)
+    #expect(defaults.data(forKey: readAloudKey) != readAloudBefore)
+  }
+
   @Test("Legacy defaults are the ⌘-digit set existing installs were running on")
   func legacyDefaults() {
     let legacy = ShortcutConfig.legacyCommandDigit

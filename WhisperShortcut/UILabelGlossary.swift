@@ -18,7 +18,7 @@ enum UILabelGlossary {
       ("Chat", String(localized: "Chat", comment: "Settings tab and feature")),
       ("Meetings", String(localized: "Meetings", comment: "Settings tab")),
       ("Claude & AI Apps", String(localized: "Claude & AI Apps", comment: "Settings tab")),
-      ("Privacy & Permissions", String(localized: "Privacy & Permissions", comment: "Settings tab")),
+      ("Privacy & Permissions", String(localized: "Permissions & Privacy", comment: "Settings tab")),
       ("About", String(localized: "About", comment: "Settings tab")),
       ("Offline Mode", String(localized: "Offline Mode")),
       ("Glossary", String(localized: "Glossary", comment: "Dictation term list")),
@@ -27,7 +27,7 @@ enum UILabelGlossary {
       ("Welcome Tour", String(localized: "Welcome Tour")),
       ("Shortcuts", String(localized: "Shortcuts")),
       ("Send Feedback", String(localized: "Send Feedback")),
-      ("Share Usage Report", String(localized: "Share Usage Report")),
+      ("Send My Settings", String(localized: "Send My Settings")),
     ]
   }
 

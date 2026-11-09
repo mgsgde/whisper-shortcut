@@ -118,6 +118,7 @@ class SettingsViewModel: ObservableObject {
       target.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
       target.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
       target.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
+      target.liveDictate = currentConfig.liveDictate.isEnabled ? currentConfig.liveDictate : nil
     }
     apply(to: &data)
     apply(to: &persisted)
@@ -178,6 +179,9 @@ class SettingsViewModel: ObservableObject {
               default: SettingsDefaults.transcriptionThinkingEffort),
     .string(\.openRouterTranscriptionModelID, key: UserDefaultsKeys.openRouterTranscriptionModelID,
             default: SettingsDefaults.openRouterTranscriptionModelID),
+    .bool(\.filterKnownWhisperHallucinations,
+          key: UserDefaultsKeys.filterKnownWhisperHallucinations,
+          default: SettingsDefaults.filterKnownWhisperHallucinations),
 
     // Notifications
     .bool(\.showPopupNotifications, key: UserDefaultsKeys.showPopupNotifications,
@@ -200,13 +204,16 @@ class SettingsViewModel: ObservableObject {
 
     // Dictation behaviour
     .bool(\.autoPasteAfterDictation, key: UserDefaultsKeys.autoPasteAfterDictation,
-          default: SettingsDefaults.autoPasteAfterDictation),
+          default: AutoPasteDefault.effectiveDefault),
     .bool(\.restoreClipboardAfterPaste, key: UserDefaultsKeys.restoreClipboardAfterPaste,
           default: SettingsDefaults.restoreClipboardAfterPaste),
     .bool(\.clearClipboardAfterAutoPaste, key: UserDefaultsKeys.clearClipboardAfterAutoPaste,
           default: SettingsDefaults.clearClipboardAfterAutoPaste),
     .bool(\.fnKeyDictation, key: UserDefaultsKeys.fnKeyDictation,
           default: SettingsDefaults.fnKeyDictation),
+    .custom(\.dictateMode,
+            load: { DictateMode.loadFromUserDefaults() },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.dictateMode) }),
 
     // Screenshot. The folder bookmark itself is owned by `ScreenshotSaveLocation` and written
     // when the user picks a folder, so only the toggle round-trips here.
@@ -238,6 +245,19 @@ class SettingsViewModel: ObservableObject {
           default: SettingsDefaults.chatCloseOnFocusLoss),
     .bool(\.settingsCloseOnFocusLoss, key: UserDefaultsKeys.settingsCloseOnFocusLoss,
           default: SettingsDefaults.settingsCloseOnFocusLoss),
+    .bool(\.showDockIcon, key: UserDefaultsKeys.showDockIcon,
+          default: SettingsDefaults.showDockIcon),
+
+    // Chat appearance. The notice is what makes a long-lived chat window re-render its
+    // transcript with the new typeface without being rebuilt.
+    .rawValue(\.chatFontDesign, key: UserDefaultsKeys.chatFontDesign,
+              default: SettingsDefaults.chatFontDesign,
+              onDidChange: { data in
+                NotificationCenter.default.post(
+                  name: .chatFontDesignChanged, object: data.chatFontDesign)
+              }),
+    .bool(\.chatFollowNewContent, key: UserDefaultsKeys.chatFollowNewContent,
+          default: SettingsDefaults.chatFollowNewContent),
 
     // Live Meeting
     .custom(\.liveMeetingChunkInterval,
@@ -282,6 +302,7 @@ class SettingsViewModel: ObservableObject {
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
     data.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
+    data.liveDictate = currentConfig.liveDictate.isEnabled ? currentConfig.liveDictate : nil
 
     for slot in Self.slots { slot.load(&data) }
 
@@ -411,6 +432,10 @@ class SettingsViewModel: ObservableObject {
       field: .addToGlossaryShortcut, label: String(localized: "Add Selection to Glossary"),
       read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 },
       applyToConfig: { $0.addToGlossary = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.addToGlossary) }),
+    ConfigurableShortcutSlot(
+      field: .liveDictateShortcut, label: String(localized: "Dictate Live"),
+      read: { $0.liveDictate }, write: { $0.liveDictate = $1 },
+      applyToConfig: { $0.liveDictate = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.liveDictate) }),
   ]
 
   /// The shortcut half of `data` as a `ShortcutConfig`. Also used by the onboarding Done step,
@@ -432,6 +457,7 @@ class SettingsViewModel: ObservableObject {
     let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
     let readAloud = data.readAloud ?? disable(factory.readAloud)
     let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
+    let liveDictate = data.liveDictate ?? disable(factory.liveDictate)
     let newConfig = ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
@@ -439,7 +465,8 @@ class SettingsViewModel: ObservableObject {
       openChat: openChat,
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
-      addToGlossary: addToGlossary
+      addToGlossary: addToGlossary,
+      liveDictate: liveDictate
     )
     return newConfig
   }
@@ -674,8 +701,10 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
-  /// Deletes all UserDefaults, context data, chat sessions, and meeting transcripts, then terminates
-  /// the app so the user can relaunch with defaults. API keys and Google OAuth tokens (Keychain) are preserved.
+  /// Deletes UserDefaults, context data, chat sessions, meeting transcripts, the meeting-audio
+  /// backlog, recent transcriptions, raw model responses, pending telemetry and the live-meeting
+  /// marker, then terminates the app so the user can relaunch with defaults. Downloaded models
+  /// and Keychain items (API keys, OAuth tokens) are preserved.
   func resetAllDataAndRestart() {
     do {
       try ContextLogger.shared.deleteAllContextData()
@@ -685,14 +714,8 @@ class SettingsViewModel: ObservableObject {
 
     ChatSessionStore.shared.deleteAllSessions()
 
-    let fm = FileManager.default
     let appSupport = AppSupportPaths.whisperShortcutApplicationSupportURL()
-    let meetingsDir = appSupport.appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-    try? fm.removeItem(at: meetingsDir)
-
-    let systemPromptsFile = appSupport.appendingPathComponent("UserContext")
-      .appendingPathComponent(SystemPromptsStore.fileName)
-    try? fm.removeItem(at: systemPromptsFile)
+    Self.removeResetAllPrivateData(appSupport: appSupport)
 
     let bundleID = Bundle.main.bundleIdentifier ?? ""
     UserDefaults.standard.removePersistentDomain(forName: bundleID)
@@ -700,6 +723,27 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.synchronize()
     DebugLogger.log("RESET: Cleared all app data; terminating app")
     NSApplication.shared.terminate(nil)
+  }
+
+  /// On-disk private data "Reset all to defaults" removes, besides the context folder
+  /// (`ContextLogger.deleteAllContextData`) and the UserDefaults domain. Downloaded models
+  /// (WhisperKit, MLXModels, FluidAudio) are not in this list.
+  nonisolated static func resetAllPrivateDataURLs(appSupport: URL) -> [URL] {
+    [
+      appSupport.appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory),
+      appSupport.appendingPathComponent("UserContext").appendingPathComponent(SystemPromptsStore.fileName),
+      appSupport.appendingPathComponent(MeetingAudioBacklog.directoryName),
+      appSupport.appendingPathComponent(TranscriptionHistoryStore.fileName),
+      AppSupportPaths.debugRawResponsesURL(in: appSupport),
+      appSupport.appendingPathComponent(TelemetryService.pendingFileName),
+      appSupport.appendingPathComponent(LiveMeetingRecordingMarker.fileName),
+    ]
+  }
+
+  nonisolated static func removeResetAllPrivateData(appSupport: URL, fileManager: FileManager = .default) {
+    for url in resetAllPrivateDataURLs(appSupport: appSupport) {
+      try? fileManager.removeItem(at: url)
+    }
   }
 
 }

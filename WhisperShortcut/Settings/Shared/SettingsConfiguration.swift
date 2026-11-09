@@ -194,12 +194,14 @@ enum PromptModel: String, CaseIterable {
   // offline Whisper and route through `MLXChatProvider`.
   case localMLXQwen34BInstruct = "local-mlx-qwen3-4b-instruct-2507"
   case localMLXQwen359B = "local-mlx-qwen3.5-9b"
+  case localMLXGemma426BA4B = "local-mlx-gemma-4-26b-a4b"
 
   /// Maps a catalogue entry to its picker / settings enum case.
   static func forLocalLLMModel(_ type: LocalLLMModelType) -> PromptModel {
     switch type {
     case .qwen34BInstruct2507: return .localMLXQwen34BInstruct
     case .qwen359B: return .localMLXQwen359B
+    case .gemma426BA4B: return .localMLXGemma426BA4B
     }
   }
 
@@ -208,13 +210,9 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .localMLXQwen34BInstruct: return .qwen34BInstruct2507
     case .localMLXQwen359B: return .qwen359B
+    case .localMLXGemma426BA4B: return .gemma426BA4B
     default: return nil
     }
-  }
-
-  /// Every in-process MLX model offered on this Mac (Chat; Dictate Prompt narrows it via `supportsDictatePrompt`).
-  static var localMLXModels: [PromptModel] {
-    LocalLLMModelType.offerable.map(\.promptModel)
   }
 
   var displayName: String {
@@ -265,6 +263,8 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "Qwen3 4B Instruct (Offline)")
     case .localMLXQwen359B:
       return String(localized: "Qwen3.5 9B (Offline)")
+    case .localMLXGemma426BA4B:
+      return String(localized: "Gemma 4 26B A4B (Offline)")
     }
   }
 
@@ -300,6 +300,7 @@ enum PromptModel: String, CaseIterable {
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
     case .localMLXQwen359B: return "mlx9b"
+    case .localMLXGemma426BA4B: return "mlxgemma"
     }
   }
 
@@ -349,6 +350,8 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline")
     case .localMLXQwen359B:
       return String(localized: "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM")
+    case .localMLXGemma426BA4B:
+      return String(localized: "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Chat only, needs 32 GB RAM")
     }
   }
   
@@ -357,7 +360,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .claudeHaiku55:
       return .low
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return .freeOffline
     case .gemini31Pro, .geminiImagePro:
       return .medium
@@ -394,7 +397,7 @@ enum PromptModel: String, CaseIterable {
       return .chatGPTPlan
     case .localModel:
       return .local
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return .localMLX
     }
   }
@@ -508,7 +511,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return false
     default:
       return true
@@ -526,7 +529,7 @@ enum PromptModel: String, CaseIterable {
     // Dictate-Prompt-only until its chat tool-calling path is validated separately.
     case .localModel:
       return false
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return true
     // Not offered at all in the App Store build (OpenAI approval pending).
     case .chatGPTPlanChat:
@@ -594,8 +597,19 @@ enum PromptModel: String, CaseIterable {
     case .grok43, .grok47,
          .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeHaiku55, .claudeSonnet55, .claudeOpus55,
-         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return nil
+    }
+  }
+
+  /// Thinking level Dictate Prompt sends. Chat's `high` and `medium` become `low` (the
+  /// measured 4–5× latency win); `low` and `minimal` stay. Nil when the model has no
+  /// `thinkingLevel` (non-Gemini, or a Gemini model with no thinking knob).
+  var dictatePromptThinkingLevel: String? {
+    guard let level = geminiThinkingConfig?["thinkingLevel"] as? String else { return nil }
+    switch level {
+    case "high", "medium": return "low"
+    default: return level
     }
   }
 
@@ -637,7 +651,7 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -652,7 +666,7 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel,
-         .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
     default:
@@ -910,6 +924,8 @@ enum TTSProvider {
   case xai
   /// On-device `AVSpeechSynthesizer`. No key, no network.
   case system
+  /// On-device Qwen3-TTS VoiceDesign through MLX (`mlx-audio-swift`). No key, no network.
+  case localMLX
 
   var displayName: String {
     switch self {
@@ -917,6 +933,16 @@ enum TTSProvider {
     case .openai: return "OpenAI"
     case .xai: return "xAI (Grok)"
     case .system: return "macOS"
+    case .localMLX: return String(localized: "Qwen3 (On-Device)")
+    }
+  }
+
+  /// Whether Read Aloud with this provider never leaves the Mac. Offline Mode allows exactly
+  /// these; the cloud providers are what it blocks.
+  var isOnDevice: Bool {
+    switch self {
+    case .system, .localMLX: return true
+    case .gemini, .openai, .xai: return false
     }
   }
 
@@ -930,6 +956,12 @@ enum TTSProvider {
     case .openai: return ChatModelProvider.openai.hasCredential
     case .xai: return ChatModelProvider.grok.hasCredential
     case .system: return true
+    // No key, but the weights have to be on disk — same "is it usable right now" question the
+    // macOS voice answers with `true`. Either checkpoint counts: a user who downloaded only
+    // CustomVoice has a working on-device provider.
+    case .localMLX:
+      return Qwen3ModelManager.shared.isModelAvailable(.voiceDesign)
+        || Qwen3ModelManager.shared.isModelAvailable(.customVoice)
     }
   }
 
@@ -942,6 +974,7 @@ enum TTSProvider {
     case .openai: return UserDefaultsKeys.selectedReadAloudVoiceOpenAI
     case .xai: return UserDefaultsKeys.selectedReadAloudVoiceXAI
     case .system: return UserDefaultsKeys.selectedReadAloudVoiceSystem
+    case .localMLX: return UserDefaultsKeys.selectedReadAloudVoiceQwen3
     }
   }
 
@@ -956,6 +989,7 @@ enum TTSProvider {
     case .openai: raw = TTSVoice.openAIVoices
     case .xai: raw = TTSVoice.xaiVoices
     case .system: return SystemTTSService.voices
+    case .localMLX: raw = Qwen3VoicePersona.pickerVoices
     }
     // Stable sort by gender: Swift's sort isn't guaranteed stable, so tie-break on original index.
     return raw.enumerated()
@@ -1086,6 +1120,12 @@ enum TTSModel: String, CaseIterable {
   case grokVoiceTTS = "grok-voice-tts-1.0"
   /// On-device macOS voices (`AVSpeechSynthesizer`). Automatic Offline Mode choice.
   case systemMacOS = "system-macos"
+  /// On-device Qwen3-TTS VoiceDesign (MLX). The voice is a natural-language persona description
+  /// rather than a fixed speaker id — see `Qwen3VoicePersonas`.
+  case qwen3VoiceDesign = "qwen3-tts-voicedesign-1.7b"
+  /// On-device Qwen3-TTS CustomVoice 0.6B (MLX). Nine fixed speakers, a third of the download and
+  /// several times faster than VoiceDesign, but none of the speakers is German-native.
+  case qwen3CustomVoice = "qwen3-tts-customvoice-0.6b"
 
   var provider: TTSProvider {
     switch self {
@@ -1093,6 +1133,7 @@ enum TTSModel: String, CaseIterable {
     case .openAIGpt4oMiniTTS: return .openai
     case .grokVoiceTTS: return .xai
     case .systemMacOS: return .system
+    case .qwen3VoiceDesign, .qwen3CustomVoice: return .localMLX
     }
   }
 
@@ -1103,6 +1144,17 @@ enum TTSModel: String, CaseIterable {
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
     case .grokVoiceTTS: return "Grok Voice TTS"
     case .systemMacOS: return String(localized: "macOS (On-Device)")
+    case .qwen3VoiceDesign: return String(localized: "Qwen3 TTS VoiceDesign 1.7B (On-Device)")
+    case .qwen3CustomVoice: return String(localized: "Qwen3 TTS CustomVoice 0.6B (On-Device)")
+    }
+  }
+
+  /// The Qwen3 checkpoint this model runs, or nil for every other provider.
+  var qwen3ModelType: Qwen3ModelType? {
+    switch self {
+    case .qwen3VoiceDesign: return .voiceDesign
+    case .qwen3CustomVoice: return .customVoice
+    default: return nil
     }
   }
 
@@ -1118,6 +1170,10 @@ enum TTSModel: String, CaseIterable {
       return String(localized: "xAI's Grok Voice TTS • Expressive multilingual speech • Needs an xAI API key")
     case .systemMacOS:
       return String(localized: "On-device macOS voices • No internet, no API key • Automatic choice in Offline Mode")
+    case .qwen3VoiceDesign:
+      return String(localized: "Alibaba's Qwen3 TTS VoiceDesign 1.7B • Natural German voices from a description • 10 languages • ~2.9GB • Offline")
+    case .qwen3CustomVoice:
+      return String(localized: "Alibaba's Qwen3 TTS CustomVoice 0.6B • Nine fixed speakers, fastest local option • ~1.8GB • Offline")
     }
   }
 
@@ -1137,7 +1193,7 @@ enum TTSModel: String, CaseIterable {
       return AppConstants.openAISpeechEndpoint
     case .xai:
       return AppConstants.xaiTTSEndpoint
-    case .system:
+    case .system, .localMLX:
       return ""
     }
   }
@@ -1150,16 +1206,31 @@ enum TTSModel: String, CaseIterable {
     case .openai: return "alloy"
     case .xai: return "eve"
     case .system: return SystemTTSService.defaultVoiceIdentifier
+    case .localMLX:
+      // VoiceDesign and CustomVoice have disjoint speaker catalogues, so the default depends on
+      // which checkpoint this model runs.
+      return qwen3ModelType == .customVoice
+        ? Qwen3VoicePersona.customVoiceSpeakers[0].id
+        : Qwen3VoicePersona.default.id
     }
   }
 
   /// The voices selectable for this model's provider (for the Read Aloud voice picker).
-  var availableVoices: [TTSVoice] { provider.voices }
+  var availableVoices: [TTSVoice] {
+    // The two Qwen3 checkpoints share a provider but not a speaker catalogue.
+    if qwen3ModelType == .customVoice { return Qwen3VoicePersona.customVoicePickerVoices }
+    return provider.voices
+  }
 
   /// Whether the user has the API key this TTS model's provider needs. Gates Read Aloud so a
   /// single provider key is enough. See `TTSProvider.hasCredential` for why this is not its own switch.
   var hasRequiredCredential: Bool {
-    provider.hasCredential
+    // The two Qwen3 checkpoints are separate downloads under one provider, so the answer is
+    // per model: having VoiceDesign on disk must not make CustomVoice look ready.
+    if let type = qwen3ModelType {
+      return Qwen3ModelManager.shared.isModelAvailable(type)
+    }
+    return provider.hasCredential
   }
 
   /// Actionable message when this TTS model can't run Read Aloud for lack of a credential.
@@ -1169,6 +1240,7 @@ enum TTSModel: String, CaseIterable {
     case .openai: return String(localized: "Add your OpenAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model.")
     case .xai: return String(localized: "Add your xAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model.")
     case .system: return String(localized: "On-device macOS voices need no API key.")
+    case .localMLX: return String(localized: "Download the Qwen3 voice model in Settings → Read Aloud to use it.")
     }
   }
 
@@ -1179,7 +1251,7 @@ enum TTSModel: String, CaseIterable {
 
   var costLevel: CostLevel {
     switch provider {
-    case .system: return .free
+    case .system, .localMLX: return .free
     case .gemini, .openai, .xai: return .low
     }
   }
@@ -1187,13 +1259,17 @@ enum TTSModel: String, CaseIterable {
   /// Whether this TTS model may be offered while Offline Mode is on.
   var isSelectableUnderOfflineMode: Bool {
     guard OfflineMode.isEnabled else { return true }
-    return provider == .system
+    return provider == .system || provider == .localMLX
   }
 
   /// Models grouped for display in the Read Aloud picker (on-device first, then cloud).
+  /// Qwen3 needs Apple silicon and 16 GB of RAM (CustomVoice) or 32 GB (VoiceDesign) — below that
+  /// the tiles would end in a multi-gigabyte download the model then cannot run.
   static var readAloudModels: [TTSModel] {
-    [.systemMacOS, .gemini38FlashLiteTTS, .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
+    [.systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice, .gemini38FlashLiteTTS,
+     .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
       .filter(\.isSelectableUnderOfflineMode)
+      .filter { $0.qwen3ModelType?.isOfferable ?? true }
   }
 
   /// Maps removed/renamed persisted raw values onto current cases.
@@ -1328,6 +1404,28 @@ enum ConfirmAboveDuration: Double, CaseIterable {
       return t
     }
     return SettingsDefaults.confirmAboveDuration
+  }
+}
+
+// MARK: - Dictate Mode
+enum DictateMode: String, CaseIterable {
+  case dictate
+  case live
+
+  var displayName: String {
+    switch self {
+    case .dictate: return String(localized: "Dictate")
+    case .live: return String(localized: "Dictate Live")
+    }
+  }
+
+  /// Loads value from UserDefaults or returns SettingsDefaults.dictateMode.
+  static func loadFromUserDefaults() -> DictateMode {
+    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictateMode),
+       let mode = DictateMode(rawValue: raw) {
+      return mode
+    }
+    return SettingsDefaults.dictateMode
   }
 }
 
@@ -1471,6 +1569,28 @@ enum WhisperLanguage: String, CaseIterable {
   var languageCode: String? {
     return self == .auto ? nil : self.rawValue
   }
+
+  /// The model's own language name for Qwen3-ASR, which takes English names ("German"), not
+  /// BCP-47 codes. nil means auto-detect.
+  ///
+  /// Qwen3-ASR covers 11 languages; every other case here (Dutch, Polish, Turkish, …) has no
+  /// equivalent and falls back to auto-detection rather than being forced into a wrong name.
+  var qwen3LanguageName: String? {
+    switch self {
+    case .auto: return nil
+    case .en: return "English"
+    case .de: return "German"
+    case .es: return "Spanish"
+    case .fr: return "French"
+    case .it: return "Italian"
+    case .pt: return "Portuguese"
+    case .ru: return "Russian"
+    case .ja: return "Japanese"
+    case .ko: return "Korean"
+    case .zh: return "Chinese"
+    case .nl, .pl, .tr, .sv, .da, .no, .fi, .cs, .hu, .ro, .el, .ar, .hi: return nil
+    }
+  }
 }
 
 // MARK: - Settings Tab Definition
@@ -1487,9 +1607,9 @@ enum SettingsTab: String, CaseIterable {
   case chat = "Chat"
   case meetings = "Meetings"
   case aiApps = "Claude & AI Apps"
-  // The raw value is both the sidebar label and the persisted selection; a stored "Permissions"
-  // from an older build simply falls back to General once (`SettingsTab(rawValue:) ?? .general`).
-  case permissions = "Privacy & Permissions"
+  // Persisted selection. A stored "Privacy & Permissions" (or older "Permissions") falls back
+  // to General once (`SettingsTab(rawValue:) ?? .general`). The sidebar label is `displayName`.
+  case permissions = "Permissions & Privacy"
   case about = "About"
 
   /// What the sidebar shows. The raw value is the persisted identity and stays English.
@@ -1505,8 +1625,45 @@ enum SettingsTab: String, CaseIterable {
     case .chat: return "Chat"
     case .meetings: return "Meetings"
     case .aiApps: return "Claude & AI Apps"
-    case .permissions: return "Privacy & Permissions"
+    case .permissions: return "Permissions & Privacy"
     case .about: return "About"
+    }
+  }
+
+  /// Which sidebar section this tab is listed under. Purely presentational — the tab itself,
+  /// its content and its persisted raw value are unchanged.
+  var section: SettingsSection {
+    switch self {
+    case .general, .accounts, .permissions: return .general
+    case .speechToText, .speechToPrompt, .templates, .readAloud: return .dictation
+    case .chat, .meetings: return .chatAndMeetings
+    case .screenshot, .aiApps, .about: return .more
+    }
+  }
+
+  /// The sidebar's sections, in display order.
+  static var sections: [SettingsSection] { SettingsSection.allCases }
+
+  /// A sidebar section header. Purely presentational: it groups tabs, it does not own settings.
+  enum SettingsSection: String, CaseIterable {
+    case general = "General"
+    case dictation = "Dictation"
+    case chatAndMeetings = "Chat & Meetings"
+    case more = "More"
+
+    /// The section header. English key, translated like every other user-visible string.
+    var displayName: LocalizedStringResource {
+      switch self {
+      case .general: return "General"
+      case .dictation: return "Dictation"
+      case .chatAndMeetings: return "Chat & Meetings"
+      case .more: return "More"
+      }
+    }
+
+    /// The tabs shown under this header, in `SettingsTab.allCases` order.
+    var tabs: [SettingsTab] {
+      SettingsTab.allCases.filter { $0.section == self }
     }
   }
 }
@@ -1547,6 +1704,19 @@ enum ReadAloudSpeed: Double, CaseIterable {
   }
 }
 
+// MARK: - Dictation Preferences (UserDefaults Accessors)
+/// Read accessors for dictation behaviour that code outside the Settings window needs. Same shape
+/// as `ReadAloudPreferences`: coalesce-with-default in one place instead of at every call site.
+enum DictationPreferences {
+  /// Whether a transcript that is entirely a known Whisper silence hallucination is dropped.
+  /// Read by `TextProcessingUtility.validateSpeechText` on the offline Whisper path.
+  static var filterKnownWhisperHallucinations: Bool {
+    UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.filterKnownWhisperHallucinations,
+      default: SettingsDefaults.filterKnownWhisperHallucinations)
+  }
+}
+
 // MARK: - Read Aloud Preferences (UserDefaults Accessors)
 /// Centralized read accessors for Read Aloud preferences so MenuBarController, SpeechService,
 /// and SettingsViewModel don't each have to coalesce-with-default the same UserDefaults keys.
@@ -1580,6 +1750,15 @@ enum ReadAloudPreferences {
       return model.defaultVoice
     }
     return stored
+  }
+
+  /// The Qwen3 persona for `model`, resolved from the stored speaker id. The two checkpoints have
+  /// disjoint catalogues, so this is the only place that knows which one a stored id belongs to.
+  static func qwen3Persona(for model: TTSModel) -> Qwen3VoicePersona {
+    let stored = voice(for: model)
+    return model.qwen3ModelType == .customVoice
+      ? Qwen3VoicePersona.customVoiceSpeaker(for: stored)
+      : Qwen3VoicePersona.persona(for: stored)
   }
 }
 
@@ -1723,6 +1902,40 @@ enum OpenRouterChatPreferences {
       keyToAdopt: (!hasAccountKey && !proxy.isEmpty) ? proxy : nil)
   }
 
+  /// New raw value for a slot still set to the custom-endpoint sentinel, or nil to leave it.
+  ///
+  /// Dictate Prompt cannot move to `openRouterChat`: that model fails `supportsDictatePrompt` and
+  /// `SpeechService.performPrompt` throws. The slot takes `dictatePromptReplacement` only when that
+  /// model can run Dictate Prompt (the preferred-model helper's pick); otherwise it stays put.
+  static func migratedSelectionRawValue(
+    key: String, current: String?, dictatePromptReplacement: String?
+  ) -> String? {
+    let old = PromptModel.customOpenAIEndpoint.rawValue
+    guard current == old else { return nil }
+    if key == UserDefaultsKeys.selectedPromptModel {
+      guard let replacement = dictatePromptReplacement, replacement != old,
+        let model = PromptModel(rawValue: replacement), model.supportsDictatePrompt
+      else { return nil }
+      return replacement
+    }
+    return PromptModel.openRouterChat.rawValue
+  }
+
+  /// Applies `migratedSelectionRawValue` to every entry. Keys that stay put are copied through.
+  static func migratedSelections(
+    _ selections: [String: String], dictatePromptReplacement: String?
+  ) -> [String: String] {
+    var updated = selections
+    for (key, value) in selections {
+      if let rewritten = migratedSelectionRawValue(
+        key: key, current: value, dictatePromptReplacement: dictatePromptReplacement)
+      {
+        updated[key] = rewritten
+      }
+    }
+    return updated
+  }
+
   /// One-time move of an OpenRouter-pointed custom endpoint onto the OpenRouter provider. Idempotent:
   /// once the custom URL is cleared the plan is nil.
   @MainActor
@@ -1745,8 +1958,10 @@ enum OpenRouterChatPreferences {
     defaults.removeObject(forKey: UserDefaultsKeys.customOpenAIChatModelID)
     KeychainManager.shared.delete(.customOpenAIChatAPIKey)
 
-    let old = PromptModel.customOpenAIEndpoint.rawValue
-    let new = PromptModel.openRouterChat.rawValue
+    let dictatePromptReplacement = ModelSelectionReconciler.preferredPromptModel(
+      among: PromptModel.dictatePromptCapableModels,
+      hasKey: { $0.hasCredential }
+    )?.rawValue
     let selectionKeys = [
       UserDefaultsKeys.selectedChatModel,
       UserDefaultsKeys.selectedPromptModel,
@@ -1754,17 +1969,26 @@ enum OpenRouterChatPreferences {
       UserDefaultsKeys.selectedMeetingSummaryModel,
       UserDefaultsKeys.selectedReadAloudModel,
     ]
-    for key in selectionKeys where defaults.string(forKey: key) == old {
-      defaults.set(new, forKey: key)
+    var selections: [String: String] = [:]
+    for key in selectionKeys {
+      if let value = defaults.string(forKey: key) { selections[key] = value }
+    }
+    let rewritten = migratedSelections(selections, dictatePromptReplacement: dictatePromptReplacement)
+    for (key, value) in rewritten where selections[key] != value {
+      defaults.set(value, forKey: key)
     }
     // The pre-Offline-Mode snapshot restores these same slots later; rewrite it too.
+    // Dictate Prompt is excluded from the OpenRouter rewrite there as well.
     if var snapshot = defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections) {
-      var changed = false
-      for (key, value) in snapshot where (value as? String) == old {
-        snapshot[key] = new
-        changed = true
+      var strings: [String: String] = [:]
+      for (key, value) in snapshot {
+        if let string = value as? String { strings[key] = string }
       }
-      if changed { defaults.set(snapshot, forKey: UserDefaultsKeys.offlineModePreOfflineSelections) }
+      let migrated = migratedSelections(strings, dictatePromptReplacement: dictatePromptReplacement)
+      if migrated != strings {
+        for (key, value) in migrated { snapshot[key] = value }
+        defaults.set(snapshot, forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+      }
     }
     DebugLogger.log(
       "OPENROUTER-CHAT: migrated custom endpoint → OpenRouter provider (model=\(plan.modelID ?? modelID))")
@@ -1844,9 +2068,24 @@ enum OpenAIChatPreferences {
 
   static var resolvedAPIKey: String? { resolvedCredential?.key }
 
-  /// True when URL + any usable API key are set — required before the Custom endpoint model can run.
+  /// True when the Custom endpoint can run: a base URL plus a usable key, or a keyless local
+  /// host (a Whisper box on the LAN does not need — and must not receive — the OpenAI key).
   static var isConfigured: Bool {
-    customEndpointBaseURL != nil && resolvedAPIKey != nil
+    guard let base = customEndpointBaseURL else { return false }
+    if resolvedAPIKey != nil { return true }
+    return allowsKeylessRequests(baseURL: base)
+  }
+
+  /// A local/LAN host can be called without any API key. Used so Chat and Dictate Prompt stay
+  /// selectable for a keyless Whisper / Ollama box after the OpenAI-key fallback is withheld
+  /// from `http://` URLs.
+  static func allowsKeylessRequests(baseURL: String) -> Bool {
+    guard let host = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?
+      .host
+    else {
+      return false
+    }
+    return OfflineMode.isLocalHost(host)
   }
 
   static func isCustomEndpointModel(_ model: String) -> Bool {
@@ -2035,6 +2274,7 @@ struct SettingsDefaults {
   static let screenshotCapture: ShortcutDefinition? = nil
   static let readAloud: ShortcutDefinition? = nil
   static let addToGlossary: ShortcutDefinition? = nil
+  static let liveDictate: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   // Chat defaults to 3.8 Flash — the current Gemini workhorse (GA 2026-09-02), same
@@ -2063,9 +2303,17 @@ struct SettingsDefaults {
   static let selectedPromptModel = PromptModel.gemini38Flash
   static let selectedChatModel = PromptModel.gemini38Flash
   static let chatCloseOnFocusLoss = true
+  /// Prose typeface of the chat transcript. `.sans` (San Francisco) is what the chat has always
+  /// used; serif and rounded are opt-in choices in Settings → Chat → Appearance.
+  static let chatFontDesign: ChatFontDesign = .sans
+  /// Off by default: the chat never scrolls on its own unless the user opts in.
+  static let chatFollowNewContent = false
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
   static let settingsCloseOnFocusLoss = false
+  /// Off by default: the app is a menu-bar app (`LSUIElement`). Turning this on gives it a Dock
+  /// icon so it can be reached with ⌘-Tab. See `DockIconPreference`.
+  static let showDockIcon = false
 
   // MARK: - Read Aloud (Chat TTS)
   /// Default Read Aloud TTS model when the user hasn't picked one. User selection is persisted
@@ -2079,6 +2327,9 @@ struct SettingsDefaults {
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
   static let punctuationMode = PunctuationMode.automatic
+  /// On by default: the filter only ever drops a transcript that is *nothing but* a known
+  /// hallucination, so leaving it off costs the user a pasted "Thank you." and buys nothing.
+  static let filterKnownWhisperHallucinations = true
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
@@ -2096,6 +2347,7 @@ struct SettingsDefaults {
   // permission (it simulates a ⌘V keystroke). Keeping it opt-in means a fresh
   // install never requires Accessibility, which it must not for its core features
   // (App Store Guideline 2.4.5). Users enable it explicitly in Settings → General.
+  // An unset key does not use this constant: `AutoPasteDefault.effectiveDefault`.
   static let autoPasteAfterDictation = false
 
   /// OFF by default: with auto-paste on, the text is already at the cursor, but some users
@@ -2120,7 +2372,11 @@ struct SettingsDefaults {
     #endif
   }
 
+  static let dictateMode: DictateMode = .dictate
+
   // MARK: - Screenshot Settings
+  /// Front window as fallback: when the focused field is empty, short or unreadable, Dictate Prompt
+  /// attaches a picture of that window, never the whole screen. The key is unchanged.
   static let screenshotInPromptMode = true
   static let screenshotSaveEnabled = false
 
@@ -2184,6 +2440,44 @@ struct SettingsDefaults {
   static let showAlert = false
 }
 
+/// Whether auto-paste is on when the user has never written `autoPasteAfterDictation`.
+///
+/// A plain `true` default would make `autoPasteIfEnabled` show the Accessibility dialog after
+/// every dictation until the permission is granted. The direct build therefore follows the
+/// permission: on once it is granted, off until then, and never a prompt for a user who left
+/// the setting alone. The App Store build cannot paste (Guideline 2.4.5), so its default stays
+/// off. A value the user stored still wins — nothing here writes the key.
+enum AutoPasteDefault {
+  /// Fallback used wherever the key is missing. False in the App Store build; in the direct
+  /// build, true exactly when Accessibility is already granted.
+  static var effectiveDefault: Bool {
+    #if APP_STORE
+      return false
+    #else
+      return resolved(
+        stored: nil,
+        accessibilityGranted: AccessibilityPermissionManager.hasAccessibilityPermission())
+    #endif
+  }
+
+  /// Pure decision. `stored` is the user's toggle when the key exists, and nil when it does not.
+  /// A stored value always wins. When unset, the result is `accessibilityGranted` — callers pass
+  /// that in, so a test does not need the process's real Accessibility state. The App Store
+  /// build does not consult this for its own default; `effectiveDefault` is false there.
+  static func resolved(stored: Bool?, accessibilityGranted: Bool) -> Bool {
+    if let stored { return stored }
+    return accessibilityGranted
+  }
+
+  /// The value in effect now: the stored bool, or `effectiveDefault` when the key was never written.
+  static var currentValue: Bool {
+    let defaults = UserDefaults.standard
+    let key = UserDefaultsKeys.autoPasteAfterDictation
+    guard defaults.object(forKey: key) != nil else { return effectiveDefault }
+    return defaults.bool(forKey: key)
+  }
+}
+
 // MARK: - Settings Data Models
 /// `Equatable` so the settings round-trip test can assert that saving and re-loading the whole
 /// struct is the identity — comparing field by field would silently skip a newly added setting.
@@ -2200,11 +2494,15 @@ struct SettingsData: Equatable {
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
   var addToGlossary: ShortcutDefinition? = SettingsDefaults.addToGlossary
+  var liveDictate: ShortcutDefinition? = SettingsDefaults.liveDictate
 
   // MARK: - Transcription tuning
   var transcriptionTemperature: TranscriptionTemperature = SettingsDefaults.transcriptionTemperature
   var transcriptionThinkingEffort: TranscriptionThinkingEffort = SettingsDefaults.transcriptionThinkingEffort
   var openRouterTranscriptionModelID: String = SettingsDefaults.openRouterTranscriptionModelID
+  /// Drop a transcript that is entirely a known Whisper silence hallucination. See
+  /// `TextProcessingUtility.knownWhisperHallucinations`.
+  var filterKnownWhisperHallucinations: Bool = SettingsDefaults.filterKnownWhisperHallucinations
 
   // MARK: - Read Aloud
   var readAloudSmartRewriteEnabled: Bool = SettingsDefaults.readAloudSmartRewriteEnabled
@@ -2215,6 +2513,7 @@ struct SettingsData: Equatable {
   var readAloudVoiceOpenAI: String = ""
   var readAloudVoiceXAI: String = ""
   var readAloudVoiceSystem: String = ""
+  var readAloudVoiceQwen3: String = ""
 
   /// The selected Read Aloud voice id for `provider` ("" → provider default).
   func readAloudVoice(for provider: TTSProvider) -> String {
@@ -2223,6 +2522,7 @@ struct SettingsData: Equatable {
     case .openai: return readAloudVoiceOpenAI
     case .xai: return readAloudVoiceXAI
     case .system: return readAloudVoiceSystem
+    case .localMLX: return readAloudVoiceQwen3
     }
   }
 
@@ -2232,6 +2532,7 @@ struct SettingsData: Equatable {
     case .openai: readAloudVoiceOpenAI = id
     case .xai: readAloudVoiceXAI = id
     case .system: readAloudVoiceSystem = id
+    case .localMLX: readAloudVoiceQwen3 = id
     }
   }
 
@@ -2243,6 +2544,11 @@ struct SettingsData: Equatable {
   var selectedReadAloudModel: TTSModel = SettingsDefaults.readAloudModel
   var chatCloseOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
+  var showDockIcon: Bool = SettingsDefaults.showDockIcon
+  /// Prose typeface of the chat transcript (Settings → Chat → Appearance).
+  var chatFontDesign: ChatFontDesign = SettingsDefaults.chatFontDesign
+  /// Follow new chat content while at the bottom (Settings → Chat → Appearance).
+  var chatFollowNewContent: Bool = SettingsDefaults.chatFollowNewContent
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage
@@ -2264,6 +2570,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Fn Key Dictation
   var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation
+  var dictateMode: DictateMode = SettingsDefaults.dictateMode
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode
@@ -2294,6 +2601,7 @@ enum SettingsFocusField: Hashable {
   case screenshotCapture
   case readAloudShortcut
   case addToGlossaryShortcut
+  case liveDictateShortcut
   /// A dictation template's own shortcut (Settings → Dictate Prompt → Templates).
   case templateShortcut(UUID)
   /// The generic template shortcut that starts the last-used template (same section).

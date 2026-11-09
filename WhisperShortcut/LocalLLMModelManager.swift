@@ -18,6 +18,7 @@ import MLXLMCommon
 enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   case qwen34BInstruct2507 = "qwen3-4b-instruct-2507"
   case qwen359B = "qwen3.5-9b"
+  case gemma426BA4B = "gemma-4-26b-a4b"
   // Qwen3 8B was removed 2026-09-30: on the offline Dictate Prompt benchmark it scored 30/36 rule
   // checks vs 34/36 for 4B Instruct, appended instead of editing on every round of
   // `edit-not-append`, and ran at twice the latency (plans/model-audits/2026-09-30-offline-prompt.md).
@@ -28,6 +29,7 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     switch self {
     case .qwen34BInstruct2507: return "Qwen3 4B Instruct"
     case .qwen359B: return "Qwen3.5 9B"
+    case .gemma426BA4B: return "Gemma 4 26B A4B"
     }
   }
 
@@ -36,6 +38,7 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     switch self {
     case .qwen34BInstruct2507: return "mlx-community/Qwen3-4B-Instruct-2507-4bit"
     case .qwen359B: return "mlx-community/Qwen3.5-9B-MLX-4bit"
+    case .gemma426BA4B: return "mlx-community/gemma-4-26B-A4B-it-qat-4bit"
     }
   }
 
@@ -43,6 +46,7 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     switch self {
     case .qwen34BInstruct2507: return 2300
     case .qwen359B: return 5600
+    case .gemma426BA4B: return 15600
     }
   }
 
@@ -74,6 +78,7 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     switch self {
     case .qwen34BInstruct2507: return true
     case .qwen359B: return false
+    case .gemma426BA4B: return false
     }
   }
 
@@ -82,6 +87,7 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     switch self {
     case .qwen34BInstruct2507: return 0
     case .qwen359B: return 16
+    case .gemma426BA4B: return 32
     }
   }
 

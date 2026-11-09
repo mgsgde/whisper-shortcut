@@ -9,7 +9,7 @@ let package = Package(
   name: "LocalASRBench",
   platforms: [.macOS(.v15)],
   dependencies: [
-    .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.17.4"),
+    .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.18.2"),
     // Same pin as the app, so the Whisper arm is the Whisper users run today.
     .package(url: "https://github.com/argmaxinc/WhisperKit", exact: "1.1.0"),
   ],

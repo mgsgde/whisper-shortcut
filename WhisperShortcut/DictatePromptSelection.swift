@@ -25,6 +25,32 @@ enum DictatePromptSelectionDecision {
       && string != nil
   }
 
+  /// True when the copied pasteboard content is a VS Code-family "copy with no selection".
+  ///
+  /// In VS Code, Cursor and Windsurf, ⌘C with nothing selected copies the whole current line. That
+  /// line is not a selection, so it must not reach the model as one (incident 2026-11-06: ⌘2 over
+  /// an empty bullet "  - " sent the selection "-" with a 2.5-minute packing list). The editor
+  /// marks such copies with `"isFromEmptySelection":true` in its `vscode-editor-data` metadata,
+  /// exposed either as that pasteboard type directly or inside Chromium's
+  /// `org.chromium.web-custom-data` pickle (strings are UTF-16LE there; UTF-8 is a fallback).
+  static func isEditorEmptySelectionLineCopy(customData: Data?, vscodeEditorData: String?) -> Bool {
+    if let vscodeEditorData, containsEmptySelectionMarker(vscodeEditorData) { return true }
+    guard let customData else { return false }
+    if let utf16 = String(data: customData, encoding: .utf16LittleEndian),
+      containsEmptySelectionMarker(utf16)
+    {
+      return true
+    }
+    if let utf8 = String(data: customData, encoding: .utf8), containsEmptySelectionMarker(utf8) {
+      return true
+    }
+    return false
+  }
+
+  private static func containsEmptySelectionMarker(_ text: String) -> Bool {
+    text.range(of: #""isFromEmptySelection"\s*:\s*true"#, options: .regularExpression) != nil
+  }
+
   /// App Store build with a local model: there is no synthetic ⌘C (it would need Accessibility), so
   /// the user copies first and the clipboard is read as-is. It counts as a selection only when the
   /// pasteboard changed since the last Dictate Prompt run consumed it (or since launch) **and** that
@@ -122,17 +148,45 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
   static let lateCopyWatch: TimeInterval = 2.0
   static let pollInterval: Duration = .milliseconds(15)
 
+  /// True when a macOS Service supplied this selection. That text is the selection itself, so
+  /// Dictate Prompt must not switch to screenshot-selection mode and ignore it.
+  let isFromService: Bool
+
   private let lock = NSLock()
   private var isResolved = false
   private var text: String?
   private var waiters: [CheckedContinuation<String?, Never>] = []
 
-  init() {}
+  /// Focused-field snapshot taken at shortcut press. Independent of the selection slot.
+  private var fieldResolved = false
+  private var field: FocusedFieldSnapshot?
+  /// False when the field was a password field, secure input, or a password manager, and when
+  /// the read had not finished before the waiter's timeout.
+  private var fieldAllowsWindowImage = true
+  private var fieldWaiters: [(id: UUID, continuation: CheckedContinuation<FieldSlot, Never>)] = []
+
+  private struct FieldSlot {
+    let snapshot: FocusedFieldSnapshot?
+    let allowsWindowImage: Bool
+  }
+
+  init(isFromService: Bool = false) {
+    self.isFromService = isFromService
+  }
 
   /// Already decided at creation (the App Store clipboard path).
   static func resolved(_ text: String?) -> DictatePromptSelectionCapture {
     let capture = DictatePromptSelectionCapture()
     capture.resolve(text)
+    capture.resolveField(nil)
+    return capture
+  }
+
+  /// Selected text a macOS Service handed over. Resolved immediately: there is no pasteboard poll.
+  static func fromService(_ text: String) -> DictatePromptSelectionCapture {
+    let capture = DictatePromptSelectionCapture(isFromService: true)
+    capture.resolve(text)
+    capture.resolveField(nil)
     return capture
   }
 
@@ -150,6 +204,71 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
     waiters = []
     lock.unlock()
     for waiter in pending { waiter.resume(returning: normalized) }
+  }
+
+  /// First call wins. `allowsWindowImage` is false for a password field or password manager, so a
+  /// missing snapshot there is not a reason to attach a window image.
+  func resolveField(_ field: FocusedFieldSnapshot?, allowsWindowImage: Bool = true) {
+    lock.lock()
+    guard !fieldResolved else {
+      lock.unlock()
+      return
+    }
+    fieldResolved = true
+    self.field = field
+    self.fieldAllowsWindowImage = allowsWindowImage
+    let pending = fieldWaiters
+    fieldWaiters = []
+    lock.unlock()
+    let slot = FieldSlot(snapshot: field, allowsWindowImage: allowsWindowImage)
+    for waiter in pending {
+      waiter.continuation.resume(returning: slot)
+    }
+  }
+
+  /// The field snapshot, or nil when nothing was readable. Nil if the slot is still unresolved
+  /// when `timeout` elapses — it does not hang.
+  func fieldValue(timeout: Duration = .milliseconds(400)) async -> FocusedFieldSnapshot? {
+    await fieldSlot(timeout: timeout).snapshot
+  }
+
+  /// Whether a missing field may fall back to a front-window image. Unresolved after `timeout`
+  /// counts as not allowed: an unfinished read might have been a password field.
+  func fieldAllowsWindowImage(timeout: Duration = .milliseconds(400)) async -> Bool {
+    await fieldSlot(timeout: timeout).allowsWindowImage
+  }
+
+  private func fieldSlot(timeout: Duration) async -> FieldSlot {
+    let id = UUID()
+    return await withCheckedContinuation { continuation in
+      lock.lock()
+      if fieldResolved {
+        let slot = FieldSlot(snapshot: field, allowsWindowImage: fieldAllowsWindowImage)
+        lock.unlock()
+        continuation.resume(returning: slot)
+        return
+      }
+      fieldWaiters.append((id, continuation))
+      lock.unlock()
+      Task {
+        try? await Task.sleep(for: timeout)
+        self.resumeFieldIfPending(id)
+      }
+    }
+  }
+
+  /// Resumes a waiter that is still pending with no field and no window image. A resolve that
+  /// already ran removed the waiter, so this does not resume twice. Privacy first: an unfinished
+  /// read might have been a password field.
+  private func resumeFieldIfPending(_ id: UUID) {
+    lock.lock()
+    guard let index = fieldWaiters.firstIndex(where: { $0.id == id }) else {
+      lock.unlock()
+      return
+    }
+    let waiter = fieldWaiters.remove(at: index)
+    lock.unlock()
+    waiter.continuation.resume(returning: FieldSlot(snapshot: nil, allowsWindowImage: false))
   }
 
   /// The selected text, or nil for "nothing selected — compose". Suspends only while the copy poll

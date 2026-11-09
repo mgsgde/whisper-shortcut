@@ -146,21 +146,13 @@ struct SystemPromptSectionEditor: View {
         .font(.callout.weight(.semibold))
         .foregroundStyle(.orange)
       Text(
-        "macOS blocked WhisperShortcut from reading system-prompts.md (\(reason)). Until that is fixed, the app uses its default prompts. Your file has not been changed. Give WhisperShortcut Full Disk Access in Privacy & Security, then quit and reopen the app."
+        "macOS blocked WhisperShortcut from reading system-prompts.md (\(reason)). Until that is fixed, the app uses its default prompts. Your file has not been changed. This happens when a different build of WhisperShortcut created the file. Quit and reopen WhisperShortcut, and click Allow when macOS asks about data from other apps. If macOS doesn't ask, install WhisperShortcut again from where you got it (App Store or website)."
       )
       .font(.footnote)
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
       .textSelection(.enabled)
       HStack(spacing: 12) {
-        Button("Open Privacy & Security") {
-          if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-            NSWorkspace.shared.open(url)
-          }
-        }
-        .buttonStyle(.bordered)
-        .font(.callout)
-        .pointerCursorOnHover()
         Button("Try again") { load(resetBaseline: true) }
           .buttonStyle(.bordered)
           .font(.callout)
@@ -193,6 +185,17 @@ struct SystemPromptSectionEditor: View {
   static func isOwnSave(onDisk: String?, lastSaved: String) -> Bool {
     let onDiskBody = (onDisk ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     return onDiskBody == lastSaved.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Save rule. Only the glossary is a line list Chat appends to while the user is typing
+  /// (`remember_dictation_term`): there the user's deletions win and lines added on disk since
+  /// the last load or save are kept (same merge as Chat memory / folder map). Prose prompts are
+  /// saved as edited, since a line merge would append changed lines and contradict itself.
+  static func textToSave(
+    section: SystemPromptSection, edited: String, loaded: String, onDisk: String
+  ) -> String {
+    guard section == .whisperGlossary else { return edited }
+    return LineListMerge.textToSave(edited: edited, loaded: loaded, onDisk: onDisk)
   }
 
   /// `resetBaseline` is true when the page opens: the loaded text becomes what Revert returns to.
@@ -236,11 +239,16 @@ struct SystemPromptSectionEditor: View {
 
   private func save() {
     guard text != lastSavedText, unreadableReason == nil else { return }
-    let toSave = text
+    let onDisk = section == .whisperGlossary
+      ? (SystemPromptsStore.shared.loadSection(section) ?? "") : ""
+    let toSave = Self.textToSave(
+      section: section, edited: text, loaded: lastSavedText, onDisk: onDisk)
     let previous = lastSavedText
     // Set before writing: the store posts `.contextFileDidUpdate` synchronously, and `load` must
-    // see this text as already saved rather than reload over it.
+    // see this text as already saved rather than reload over it. Assign `lastSavedText` first
+    // so a merge that updates `text` does not schedule another autosave.
     lastSavedText = toSave
+    if toSave != text { text = toSave }
     if SystemPromptsStore.shared.updateSection(section, content: toSave) {
       saveFailed = false
     } else {

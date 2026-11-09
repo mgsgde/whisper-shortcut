@@ -28,8 +28,14 @@ final class MeetingListService: ObservableObject {
     return f
   }()
 
+  /// Parses `Meeting-YYYY-MM-DD-HHMMSS` stems. Pinned to `en_US_POSIX` and the Gregorian calendar
+  /// for the same reason `LiveMeetingTranscriptStore.generateStem()` is: the stem is written with
+  /// those, so it must be read with those. A formatter that inherits the user's calendar would read
+  /// "2026" as a Buddhist or Japanese era year and date the meeting centuries off.
   private static let timestampFilenameFormatter: DateFormatter = {
     let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.calendar = Calendar(identifier: .gregorian)
     f.dateFormat = "yyyy-MM-dd-HHmmss"
     return f
   }()
@@ -131,10 +137,22 @@ final class MeetingListService: ObservableObject {
   }
 
   /// Persists the full note list for a meeting. Rewrites the whole (small) file — notes are
-  /// append-only, so this is always the complete history.
+  /// append-only, so this is always the complete history. An empty list removes the file: after a
+  /// hand edit deleted the last note, a leftover file would resurrect it on the next read.
   func saveNotes(_ notes: [LiveMeetingNote], transcriptFileURL: URL) {
     let url = Self.notesURL(transcriptFileURL: transcriptFileURL)
-    guard !notes.isEmpty else { return }
+    guard !notes.isEmpty else {
+      // Deleting is the correct write for "no notes left", but a failure here is not noise: the
+      // file would stay behind and the next read would resurrect notes the user just deleted.
+      guard FileManager.default.fileExists(atPath: url.path) else { return }
+      do {
+        try FileManager.default.removeItem(at: url)
+      } catch {
+        DebugLogger.logError(
+          "MEETING-LIBRARY: Removing empty notes file failed: \(error.logDescription)")
+      }
+      return
+    }
     do {
       try LiveMeetingTranscriptStore.notesMarkdown(notes)
         .write(to: url, atomically: true, encoding: .utf8)

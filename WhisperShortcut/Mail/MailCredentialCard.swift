@@ -123,10 +123,13 @@ struct MailCredentialCardView: View {
       case .fixed(let host, let port, _):
         GridRow {
           label("Server")
-          Text("\(host) · SSL, port \(port)")
-            .font(.system(size: 12))
-            .foregroundColor(ChatTheme.secondaryText)
-            .textSelection(.enabled)
+          // NSTextView, not SwiftUI `.textSelection`: this card floats over the chat list next to
+          // the 60 fps typing indicator, the churn that wedges SelectionOverlay.
+          SelectableProseText(
+            plain: "\(host) · SSL, port \(port)",
+            font: .systemFont(ofSize: 12),
+            color: NSColor(ChatTheme.secondaryText),
+            hugsContentWidth: true)
         }
       case .choose(_, let detected):
         GridRow {

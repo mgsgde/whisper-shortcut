@@ -1,5 +1,10 @@
 # Share Usage Report — Let a User Hand Over What the App Learned About Itself
 
+**Superseded in its UI (2026-11-04):** the "Share Usage Report" button and `UsageReportSheet` were
+replaced by **"Send My Settings"** (`FeedbackReportSheet` + `ConfigurationReport`). The usage report
+below is still built by `UsageReport.swift` and rides along in that sheet when "Save usage data" is
+on; the sheet adds the effective settings, prompt status, and optionally glossary and prompt texts.
+
 **Status:** **Slices A–D implemented (2026-08-03).** Slice D landed together with outcome-signals
 Slice 2: the Chat block now carries a retry rate and a stop count. 157 tests pass.
 

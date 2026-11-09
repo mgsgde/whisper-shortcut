@@ -41,6 +41,22 @@ final class LiveMeetingSession: NSObject {
   /// The set of kept, untranscribed meeting audio changed (a chunk was kept, or a retry ran); the
   /// owner refreshes the status menu's retry row.
   private let onBacklogChanged: () -> Void
+  /// How long `stop()` waits for the recorder's final chunk before finishing the session anyway.
+  private let stopSafetyNetDelay: TimeInterval
+  /// Replaces the body of an end-of-meeting pass (consolidation + summary, which call an LLM). Tests
+  /// inject one so they neither need a key nor spend a request; production leaves it nil. Pass
+  /// scheduling (one in flight per stem, rerun when dirty) stays real.
+  private let postProcessingOverride: (@MainActor (URL, [LiveMeetingChunk]) async -> Void)?
+  /// The two LLM requests of a pass. Tests inject them so the real pass (epoch gating, rename,
+  /// file handling) runs without a key; production leaves it nil and uses the selected models.
+  struct PostProcessingCalls {
+    var consolidate: (String) async throws -> String
+    var summarize: (String) async throws -> String
+  }
+  private let postProcessingCalls: PostProcessingCalls?
+  /// Shows the alert for a chunk that failed after its meeting ended. Tests capture it instead of
+  /// opening a window; production leaves it nil.
+  private let presentEndedMeetingAlert: ((String) -> Void)?
 
   init(
     transcribeChunk: @escaping (URL) async throws -> String,
@@ -48,7 +64,11 @@ final class LiveMeetingSession: NSObject {
     appStateIsRecordingMeeting: @escaping () -> Bool,
     onStopping: @escaping () -> Void,
     onFinished: @escaping () -> Void,
-    onBacklogChanged: @escaping () -> Void
+    onBacklogChanged: @escaping () -> Void,
+    stopSafetyNetDelay: TimeInterval = 30,
+    postProcessingOverride: (@MainActor (URL, [LiveMeetingChunk]) async -> Void)? = nil,
+    postProcessingCalls: PostProcessingCalls? = nil,
+    presentEndedMeetingAlert: ((String) -> Void)? = nil
   ) {
     self.transcribeChunk = transcribeChunk
     self.cleanUpAudioFile = cleanUpAudioFile
@@ -56,6 +76,10 @@ final class LiveMeetingSession: NSObject {
     self.onStopping = onStopping
     self.onFinished = onFinished
     self.onBacklogChanged = onBacklogChanged
+    self.stopSafetyNetDelay = stopSafetyNetDelay
+    self.postProcessingOverride = postProcessingOverride
+    self.postProcessingCalls = postProcessingCalls
+    self.presentEndedMeetingAlert = presentEndedMeetingAlert
     super.init()
     // The meeting bar's preference (automatic / always mix / microphone only) can change mid-meeting.
     audioPreferenceObserver = NotificationCenter.default.addObserver(
@@ -162,10 +186,11 @@ final class LiveMeetingSession: NSObject {
     guard !didShowSystemAudioAlert else { return }
     didShowSystemAudioAlert = true
     PopupNotificationWindow.showError(
-      "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only.",
-      title: "System Audio Not Recorded",
+      "WhisperShortcut can't hear the other participants, so only your microphone is recorded. Turn on WhisperShortcut under Privacy & Security › Screen & System Audio Recording.",
+      title: "System Audio Is Off",
       retryAction: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) },
-      retryActionTitle: "Open System Settings")
+      retryActionTitle: "Open System Settings",
+      showsSupport: false)
   }
 
   // MARK: - Session state
@@ -181,6 +206,28 @@ final class LiveMeetingSession: NSObject {
   private var transcriptURL: URL?
   private var pendingChunks: Int = 0
   private var safeguardTimer: Timer?
+  /// Armed by `stop()`. When it fires for the current meeting it zeroes `pendingChunks` and finishes
+  /// the session even if a chunk is still transcribing; that chunk then lands as a late chunk (see
+  /// `appendToTranscript`). The handle is kept so tests can fire one left over from an earlier meeting.
+  private var stopSafetyNet: DispatchWorkItem?
+  /// How a meeting ended, by generation, so a chunk still transcribing afterwards can find the file
+  /// it belongs to: renamed by the user at End, or deleted because they discarded. Only recent
+  /// generations are kept.
+  private enum FinishedMeeting {
+    case discarded
+    case saved(URL)
+  }
+  private var finishedMeetings: [Int: FinishedMeeting] = [:]
+  /// Generations whose late-failure alert was shown; one per ended meeting, however many chunks fail.
+  private var endedMeetingAlertShown: Set<Int> = []
+  /// Bumped per transcript stem on every write to its transcript (a chunk, recovered audio). A pass
+  /// whose number is no longer current was overtaken: its view of the transcript is stale, so it
+  /// stops before the next LLM call and must not overwrite the file, the summary or alert.
+  private var postProcessingEpochs: [String: Int] = [:]
+  /// Stems with a pass running. At most one per stem, so N late chunks do not start N passes.
+  private var postProcessingInFlight: Set<String> = []
+  /// Stems that asked for a pass while one was running; one rerun follows it.
+  private var postProcessingDirty: [String: URL] = [:]
   /// ID of the last chunk already covered by a live note. Robust against chunk trimming.
   private var lastNotedChunkID: UUID? = nil
   /// When non-nil, `finish()` renames the transcript file to this stem (or timestamp-suffix) before ending.
@@ -211,9 +258,9 @@ final class LiveMeetingSession: NSObject {
   /// in, two bullets out) so calls are fast, but a slow response must not let a second call start
   /// and race on `lastNotedChunkID` — that would either duplicate or skip a segment.
   private var noteUpdateInFlight: Bool = false
-  /// Bumped on every session start. A live-note Task captures the generation it launched under so a
-  /// straggler from a previous meeting (its API call can outlive a stop+restart) no-ops instead of
-  /// clearing the in-flight flag — or writing note/chunk state — for the newer session.
+  /// Bumped on every session start. A Task that can outlive the meeting (live notes, a chunk
+  /// transcription, the stop safety net) captures the generation it launched under and leaves the
+  /// newer session alone instead of writing into it or finishing it.
   private var sessionGeneration = 0
   /// Minimum new transcript characters before a live note is generated. Below this a segment is
   /// usually a greeting or a stray sentence and produces a note not worth its API call.
@@ -231,6 +278,14 @@ final class LiveMeetingSession: NSObject {
   /// True while this session holds a recorder. Combined with `appState` by the owner to decide
   /// whether a meeting is active.
   var isRecording: Bool { recorder != nil }
+
+  #if DEBUG
+  /// Chunks whose transcription has not finished.
+  var pendingChunkCount: Int { pendingChunks }
+
+  /// The stop safety net `stop()` armed, so a test can fire one from an earlier meeting.
+  var stopSafetyNetForTesting: DispatchWorkItem? { stopSafetyNet }
+  #endif
 
   /// True when a meeting is active (recording, or stopping with pending chunks).
   private var isActive: Bool { appStateIsRecordingMeeting() || recorder != nil }
@@ -331,8 +386,26 @@ final class LiveMeetingSession: NSObject {
     return true
   }
 
+  #if DEBUG
+  /// Points the session at `url` and bumps the generation, without opening a microphone.
+  /// Tests deliver chunks through the recorder delegate; production goes through `start()`.
+  func beginSessionWithoutRecorder(transcriptFile url: URL) {
+    transcriptURL = url
+    LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem =
+      url.deletingPathExtension().lastPathComponent
+    stopping = false
+    finalized = false
+    awaitingFinalChunk = false
+    pendingChunks = 0
+    discard = false
+    preferredName = nil
+    sessionGeneration += 1
+  }
+  #endif
+
   /// Records the user's meeting name / discard choice, then stops. Posted by the in-window
-  /// "end meeting" affordance.
+  /// "end meeting" affordance. The name and discard are stored before `stop()`, so a second
+  /// press still updates them when `stop()` itself no-ops.
   func end(preferredName name: String?, discard shouldDiscard: Bool) {
     preferredName = name
     discard = shouldDiscard
@@ -363,6 +436,13 @@ final class LiveMeetingSession: NSObject {
   }
 
   func stop() {
+    // A second Stop while the final chunk is still draining re-arms the recorder. No second
+    // finish callback arrives, so the meeting sits until the safety net. The name and discard
+    // choice are applied by `end()` before this returns.
+    guard !stopping else {
+      DebugLogger.log("LIVE-MEETING: Stop ignored (already stopping)")
+      return
+    }
     DebugLogger.log("LIVE-MEETING: User requested stop")
     LiveMeetingRecordingMarker.clear()
 
@@ -381,17 +461,19 @@ final class LiveMeetingSession: NSObject {
     stopOutputRouteMonitor()
     tearDownSystemCapture()
 
-    // Safety net: if the final chunk never arrives within 30s, finish anyway so the UI
-    // doesn't get stuck in "stopping" forever.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-      guard let self = self else { return }
-      if self.stopping && !self.finalized {
-        DebugLogger.logWarning("LIVE-MEETING: Final chunk timeout; finishing session anyway")
-        self.awaitingFinalChunk = false
-        self.pendingChunks = 0
-        self.finish()
-      }
+    // Safety net: if the final chunk never arrives, finish anyway so the UI doesn't stay on
+    // "stopping". Tied to this generation — a later meeting must not be finished by it.
+    let generation = sessionGeneration
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, generation == self.sessionGeneration else { return }
+      guard self.stopping, !self.finalized else { return }
+      DebugLogger.logWarning("LIVE-MEETING: Final chunk timeout; finishing session anyway")
+      self.awaitingFinalChunk = false
+      self.pendingChunks = 0
+      self.finish()
     }
+    stopSafetyNet = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + stopSafetyNetDelay, execute: work)
   }
 
   private func showSafeguardAlert(thresholdMinutes: Int) {
@@ -438,6 +520,9 @@ final class LiveMeetingSession: NSObject {
 
     if shouldDiscard {
       if let url = transcriptURL {
+        // A summary pass still running for this meeting (it ended, was resumed, now discarded)
+        // must not write the transcript back.
+        noteTranscriptWrite(stem: url.deletingPathExtension().lastPathComponent)
         try? FileManager.default.removeItem(at: url)
         let summaryURL = url.deletingPathExtension().appendingPathExtension("summary.md")
         try? FileManager.default.removeItem(at: summaryURL)
@@ -460,6 +545,15 @@ final class LiveMeetingSession: NSObject {
 
     // Capture URL for the post-processing Task before we clear it.
     let transcriptURLForPostProcessing: URL? = shouldDiscard ? nil : transcriptURL
+
+    // A chunk still transcribing finds its way home through this: the renamed file, or nowhere.
+    if shouldDiscard {
+      finishedMeetings[sessionGeneration] = .discarded
+    } else if let url = transcriptURL {
+      finishedMeetings[sessionGeneration] = .saved(url)
+    }
+    finishedMeetings = finishedMeetings.filter { $0.key > sessionGeneration - 16 }
+    endedMeetingAlertShown = endedMeetingAlertShown.filter { $0 > sessionGeneration - 16 }
 
     preferredName = nil
     safeguardTimer?.invalidate()
@@ -515,97 +609,162 @@ final class LiveMeetingSession: NSObject {
     }
   }
 
+  /// Epoch a pass for `stem` would start under; see `postProcessingEpochs`.
+  private func postProcessingEpoch(for stem: String) -> Int { postProcessingEpochs[stem] ?? 0 }
+
+  /// The transcript for `stem` just changed on disk.
+  private func noteTranscriptWrite(stem: String) {
+    postProcessingEpochs[stem, default: 0] += 1
+  }
+
+  /// Rewrites the transcript with consolidated speaker labels unless a newer write overtook this
+  /// pass. Runs on the main actor, where every other transcript write happens, so the check and the
+  /// write cannot interleave with a late chunk.
+  private func writeConsolidatedTranscript(
+    _ text: String, to url: URL, stem: String, epoch: Int
+  ) throws -> Bool {
+    guard postProcessingEpoch(for: stem) == epoch,
+      FileManager.default.fileExists(atPath: url.path)
+    else { return false }
+    try text.write(to: url, atomically: true, encoding: .utf8)
+    MeetingListService.shared.invalidateCache(for: nil)
+    return true
+  }
+
+  /// Starts an end-of-meeting pass for the transcript, or queues one when a pass for the same
+  /// meeting is already running (it then reruns once, reading the file as it is by then).
   private func runPostProcessing(
     transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk]
   ) {
+    let stem = transcriptURL.deletingPathExtension().lastPathComponent
+    guard !postProcessingInFlight.contains(stem) else {
+      postProcessingDirty[stem] = transcriptURL
+      return
+    }
+    postProcessingInFlight.insert(stem)
+    let epoch = postProcessingEpoch(for: stem)
     Task {
-      // Build the input from the file on disk: the in-memory store keeps only the newest chunks,
-      // so a long meeting would otherwise be summarised (and overwritten) as a fragment.
-      var sourceChunks = chunksSnapshot
-      if let fileText = try? String(contentsOf: transcriptURL, encoding: .utf8) {
-        let parsed = LiveMeetingTranscriptStore.parseTranscript(fileText)
-        if !parsed.isEmpty { sourceChunks = parsed }
-      }
-      let transcriptText = sourceChunks.map { "\($0.timestampString) \($0.text)" }.joined(
-        separator: "\n\n")
-      guard !transcriptText.isEmpty else { return }
-      let model = PromptModel.loadSelectedMeetingSummary()
-      guard model.hasRequiredCredential else {
-        DebugLogger.logWarning(
-          "LIVE-MEETING: No credential for \(model.rawValue) — skipping post-processing")
-        return
-      }
-
-      // Skip consolidation when the transcript has at most one distinct speaker — there is nothing
-      // to reconcile, and the pass echoes the whole transcript back as (paid) output. When it runs,
-      // route to the provider's cheapest model: relabeling is mechanical and doesn't need the
-      // summary model's quality.
-      var finalTranscript = transcriptText
-      if MeetingListService.skipsSpeakerConsolidation(provider: model.provider) {
-        DebugLogger.log(
-          "LIVE-MEETING: Skipping speaker consolidation (on-device summary model \(model.rawValue))")
-      } else if MeetingListService.distinctSpeakerCount(in: transcriptText) >= 2 {
-        do {
-          let consolidated = try await MeetingListService.consolidateSpeakerLabels(
-            transcript: transcriptText, model: model.speakerConsolidationModel)
-          let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
-          if !Self.acceptsConsolidation(original: transcriptText, consolidated: trimmed) {
-            DebugLogger.logWarning(
-              "LIVE-MEETING: Speaker consolidation rejected (timestamps differ or empty) — keeping original transcript")
-          } else {
-            finalTranscript = trimmed
-            if let data = trimmed.data(using: .utf8) {
-              try data.write(to: transcriptURL, options: .atomic)
-            }
-            await MainActor.run {
-              MeetingListService.shared.invalidateCache(for: nil)
-            }
-            DebugLogger.log("LIVE-MEETING: Speaker labels consolidated and transcript rewritten")
-          }
-        } catch {
-          DebugLogger.logWarning(
-            "LIVE-MEETING: Speaker consolidation failed (using raw transcript): \(error.localizedDescription)"
-          )
-        }
+      if let postProcessingOverride {
+        await postProcessingOverride(transcriptURL, chunksSnapshot)
       } else {
-        DebugLogger.log("LIVE-MEETING: Skipping speaker consolidation (<2 distinct speakers)")
+        await performPostProcessing(
+          transcriptURL: transcriptURL, chunks: chunksSnapshot, stem: stem, epoch: epoch)
       }
+      await MainActor.run {
+        self.postProcessingInFlight.remove(stem)
+        if let url = self.postProcessingDirty.removeValue(forKey: stem) {
+          self.runPostProcessing(transcriptURL: url, chunks: [])
+        }
+      }
+    }
+  }
 
-      // Generate summary from the (possibly consolidated) transcript
-      var textForSummary = finalTranscript
-      if textForSummary.count > MeetingListService.meetingContextMaxChars {
-        textForSummary = String(textForSummary.suffix(MeetingListService.meetingContextMaxChars))
+  private func performPostProcessing(
+    transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk], stem: String, epoch: Int
+  ) async {
+    // Overtaken by a newer write, or the meeting was discarded, renamed or deleted meanwhile.
+    func isCurrent() async -> Bool {
+      await MainActor.run {
+        self.postProcessingEpoch(for: stem) == epoch
+          && FileManager.default.fileExists(atPath: transcriptURL.path)
       }
+    }
+    let injected = postProcessingCalls != nil
+    func superseded() {
+      DebugLogger.log("LIVE-MEETING: Post-processing superseded by a transcript change; a newer pass follows")
+    }
+    // Build the input from the file on disk: the in-memory store keeps only the newest chunks,
+    // so a long meeting would otherwise be summarised (and overwritten) as a fragment.
+    var sourceChunks = chunksSnapshot
+    if let fileText = try? String(contentsOf: transcriptURL, encoding: .utf8) {
+      let parsed = LiveMeetingTranscriptStore.parseTranscript(fileText)
+      if !parsed.isEmpty { sourceChunks = parsed }
+    }
+    let transcriptText = sourceChunks.map { "\($0.timestampString) \($0.text)" }.joined(
+      separator: "\n\n")
+    guard !transcriptText.isEmpty else { return }
+    let model = PromptModel.loadSelectedMeetingSummary()
+    guard injected || model.hasRequiredCredential else {
+      DebugLogger.logWarning(
+        "LIVE-MEETING: No credential for \(model.rawValue) — skipping post-processing")
+      return
+    }
+
+    // Skip consolidation when the transcript has at most one distinct speaker — there is nothing
+    // to reconcile, and the pass echoes the whole transcript back as (paid) output. When it runs,
+    // route to the provider's cheapest model: relabeling is mechanical and doesn't need the
+    // summary model's quality.
+    var finalTranscript = transcriptText
+    let calls = postProcessingCalls ?? PostProcessingCalls(
+      consolidate: {
+        try await MeetingListService.consolidateSpeakerLabels(
+          transcript: $0, model: model.speakerConsolidationModel)
+      },
+      summarize: { try await MeetingListService.generateSummaryText(transcript: $0, model: model) })
+    if !injected, MeetingListService.skipsSpeakerConsolidation(provider: model.provider) {
+      DebugLogger.log(
+        "LIVE-MEETING: Skipping speaker consolidation (on-device summary model \(model.rawValue))")
+    } else if MeetingListService.distinctSpeakerCount(in: transcriptText) >= 2 {
+      guard await isCurrent() else { return superseded() }
       do {
-        let summary = try await MeetingListService.generateSummaryText(
-          transcript: textForSummary, model: model)
-        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-          MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
-          DebugLogger.log("LIVE-MEETING: Summary saved to .summary.md")
-          // Push the fresh summary to the chat sidebar so it can derive a meeting title live
-          // (ChatView subscribes to .chatMeetingSummaryReady; without this it relies on the
-          // slower backfill recovery path).
-          let stem = transcriptURL.deletingPathExtension().lastPathComponent
-          await MainActor.run {
-            NotificationCenter.default.post(
-              name: .chatMeetingSummaryReady, object: nil,
-              userInfo: ["stem": stem, "summary": trimmed])
+        let consolidated = try await calls.consolidate(transcriptText)
+        let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !Self.acceptsConsolidation(original: transcriptText, consolidated: trimmed) {
+          DebugLogger.logWarning(
+            "LIVE-MEETING: Speaker consolidation rejected (timestamps differ or empty) — keeping original transcript")
+        } else {
+          finalTranscript = trimmed
+          let wrote = try await MainActor.run {
+            try self.writeConsolidatedTranscript(trimmed, to: transcriptURL, stem: stem, epoch: epoch)
           }
+          guard wrote else { return superseded() }
+          DebugLogger.log("LIVE-MEETING: Speaker labels consolidated and transcript rewritten")
         }
       } catch {
-        DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.logDescription)")
-        // Don't lose the summary silently: the transcript is saved, so tell the user it can be
-        // regenerated from the meeting library (the recovery path handles a transient outage).
-        let offline = OfflineMode.isEnabled
+        DebugLogger.logWarning(
+          "LIVE-MEETING: Speaker consolidation failed (using raw transcript): \(error.localizedDescription)"
+        )
+      }
+    } else {
+      DebugLogger.log("LIVE-MEETING: Skipping speaker consolidation (<2 distinct speakers)")
+    }
+
+    // Generate summary from the (possibly consolidated) transcript
+    guard await isCurrent() else { return superseded() }
+    var textForSummary = finalTranscript
+    if textForSummary.count > MeetingListService.meetingContextMaxChars {
+      textForSummary = String(textForSummary.suffix(MeetingListService.meetingContextMaxChars))
+    }
+    do {
+      let summary = try await calls.summarize(textForSummary)
+      let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard await isCurrent() else { return superseded() }
+      if !trimmed.isEmpty {
+        MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
+        DebugLogger.log("LIVE-MEETING: Summary saved to .summary.md")
+        // Push the fresh summary to the chat sidebar so it can derive a meeting title live
+        // (ChatView subscribes to .chatMeetingSummaryReady; without this it relies on the
+        // slower backfill recovery path).
         await MainActor.run {
-          PopupNotificationWindow.showError(
-            verbatim: offline
-              ? String(localized: "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Meetings → Meeting Summary Model; you can then regenerate the summary from the meeting library.")
-              : String(localized: "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back."),
-            title: "Live Meeting – Summary Failed"
-          )
+          NotificationCenter.default.post(
+            name: .chatMeetingSummaryReady, object: nil,
+            userInfo: ["stem": stem, "summary": trimmed])
         }
+      }
+    } catch {
+      DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.logDescription)")
+      // An overtaken pass fails for a transcript that is about to be summarised again.
+      guard await isCurrent() else { return superseded() }
+      // Don't lose the summary silently: the transcript is saved, so tell the user it can be
+      // regenerated from the meeting library (the recovery path handles a transient outage).
+      let offline = OfflineMode.isEnabled
+      await MainActor.run {
+        PopupNotificationWindow.showError(
+          verbatim: offline
+            ? String(localized: "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Meetings → Meeting Summary Model; you can then regenerate the summary from the meeting library.")
+            : String(localized: "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back."),
+          title: "Live Meeting – Summary Failed"
+        )
       }
     }
   }
@@ -618,6 +777,19 @@ final class LiveMeetingSession: NSObject {
       return String(localized: "Part of this meeting couldn't be transcribed: \(reason)")
     }
     return String(localized: "Part of this meeting couldn't be transcribed: \(reason)\n\nRecording continues and the audio is kept on this Mac. It is transcribed again when the meeting ends, or choose Retry Meeting Transcription in the menu bar menu.")
+  }
+
+  static func endedMeetingFailureMessage(error: Error) -> String {
+    let reason = SpeechErrorFormatter.formatForUser(error)
+    return String(localized: "Part of a meeting that has already ended couldn't be transcribed: \(reason)\n\nThe audio is kept on this Mac. Choose Retry Meeting Transcription in the menu bar menu to transcribe it.")
+  }
+
+  private func showEndedMeetingAlert(_ message: String) {
+    if let presentEndedMeetingAlert {
+      presentEndedMeetingAlert(message)
+    } else {
+      PopupNotificationWindow.showError(verbatim: message, title: "Live Meeting – Transcription Failed")
+    }
   }
 
   /// Warns the moment a meeting starts without a network path, instead of a chunk interval later.
@@ -767,6 +939,9 @@ final class LiveMeetingSession: NSObject {
         DebugLogger.logError("MEETING-BACKLOG: Failed to write transcript for \(stem): \(error)")
         return (0, error)
       }
+      // A pass already running for this meeting started without these chunks and the audio is
+      // about to be deleted, so it must not rewrite the transcript or summary from its older view.
+      noteTranscriptWrite(stem: stem)
       if isShownMeeting { store.replaceChunks(merged) }
       MeetingListService.shared.invalidateCache(for: nil)
       MeetingListService.shared.refresh()
@@ -804,6 +979,8 @@ final class LiveMeetingSession: NSObject {
     let newStem = "\(currentStem)-\(sanitized)"
     let dir = url.deletingLastPathComponent()
     let newURL = dir.appendingPathComponent("\(newStem).txt")
+    // A pass still running under the old name would write its copy back to the old file.
+    noteTranscriptWrite(stem: currentStem)
     do {
       if FileManager.default.fileExists(atPath: newURL.path) {
         try FileManager.default.removeItem(at: newURL)
@@ -863,33 +1040,99 @@ final class LiveMeetingSession: NSObject {
     return fileURL
   }
 
-  private func appendToTranscript(_ text: String, chunkStartTime: TimeInterval) {
-    guard let url = transcriptURL else { return }
-
-    var finalText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let timestamp = Self.formatTimestamp(elapsedSeconds: chunkStartTime)
-    finalText = "\(timestamp) \(finalText)"
-    finalText = "\(finalText)\n\n"
-
-    do {
-      let handle = try FileHandle(forWritingTo: url)
-      handle.seekToEndOfFile()
-      if let data = finalText.data(using: .utf8) {
-        handle.write(data)
-      }
-      try handle.close()
-      DebugLogger.log("LIVE-MEETING: Appended chunk to transcript")
-    } catch {
-      DebugLogger.logError("LIVE-MEETING: Failed to append to transcript: \(error)")
+  /// Where a chunk recorded in `generation` belongs now, or nil when it belongs nowhere.
+  ///
+  /// A transcription can outlive its meeting: the stop safety net fires at 30s, a request may take
+  /// 60s plus retries. By then the user may have discarded the meeting (its file is gone and must
+  /// stay gone) or named it (the file moved, so the URL captured at delivery points at nothing).
+  /// `finished` is true once the meeting has ended, so the late text needs its summary redone.
+  /// Also nil when the transcript is gone: a meeting that was resumed and then discarded, or deleted
+  /// from the library, still has an earlier generation recorded as saved.
+  private func destination(
+    forChunkOf generation: Int, capturedURL: URL?
+  ) -> (url: URL, finished: Bool)? {
+    let found: (url: URL, finished: Bool)
+    switch finishedMeetings[generation] {
+    case .discarded:
+      return nil
+    case .saved(let url):
+      found = (url, true)
+    case nil:
+      guard let capturedURL else { return nil }
+      found = (capturedURL, false)
     }
+    return FileManager.default.fileExists(atPath: found.url.path) ? found : nil
+  }
 
+  /// True while `generation` is the meeting being recorded: it is the newest one and has not ended.
+  /// `sessionGeneration` alone only changes at the next `start()`, so a meeting finished by the
+  /// stop safety net would still look current.
+  private func isLive(_ generation: Int) -> Bool {
+    generation == sessionGeneration && finishedMeetings[generation] == nil
+  }
+
+  /// Writes `text` into its meeting's transcript at `chunkStartTime`'s place in speaking order.
+  ///
+  /// `url` and `generation` are the meeting the chunk was recorded for. The text goes to that
+  /// meeting's file as it is now (see `destination`) and never creates one: a file that is no longer
+  /// there was deleted on purpose. The in-memory store follows the file, so a chunk for the meeting
+  /// the store shows (also a resumed one) appears in it, and a chunk for an older meeting does not
+  /// show up in the next one.
+  private func appendToTranscript(
+    _ text: String, chunkStartTime: TimeInterval, url: URL?, generation: Int
+  ) {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmedText.isEmpty {
-      LiveMeetingTranscriptStore.shared.appendChunk(startTime: chunkStartTime, text: trimmedText)
-      // `appendChunk` hops to the main queue, so the new chunk isn't visible yet — evaluate the
-      // note threshold after it lands.
-      DispatchQueue.main.async { [weak self] in self?.refreshLiveNotes() }
+    guard !trimmedText.isEmpty else { return }
+    // Nil when the meeting was discarded or its transcript is gone (also deleted or renamed from
+    // the library); either way the text has nowhere to go and must not recreate a file.
+    guard let target = destination(forChunkOf: generation, capturedURL: url) else {
+      DebugLogger.log("LIVE-MEETING: Dropping chunk (its meeting was discarded or its transcript is gone)")
+      return
     }
+    let fileURL = target.url
+
+    let existing = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+    let merged = MeetingAudioBacklog.merge(
+      [LiveMeetingChunk(startTime: chunkStartTime, text: trimmedText)],
+      into: LiveMeetingTranscriptStore.parseTranscript(existing))
+    do {
+      try MeetingAudioBacklog.transcriptText(merged).write(
+        to: fileURL, atomically: true, encoding: .utf8)
+      DebugLogger.log(
+        "LIVE-MEETING: Wrote chunk to transcript at \(Self.formatTimestamp(elapsedSeconds: chunkStartTime))"
+      )
+    } catch {
+      DebugLogger.logError("LIVE-MEETING: Failed to write transcript: \(error)")
+      return
+    }
+
+    let stem = fileURL.deletingPathExtension().lastPathComponent
+    // Any pass already running for this meeting started without this text.
+    noteTranscriptWrite(stem: stem)
+    let store = LiveMeetingTranscriptStore.shared
+    if store.currentMeetingFilenameStem == stem {
+      store.appendChunk(startTime: chunkStartTime, text: trimmedText)
+    }
+
+    if generation == sessionGeneration && !target.finished {
+      // Notes run on the next turn so they see the chunk just inserted.
+      DispatchQueue.main.async { [weak self] in self?.refreshLiveNotes() }
+    } else if target.finished {
+      lateChunkLanded(in: fileURL, merged: merged)
+    }
+  }
+
+  /// A chunk reached a meeting that had already ended. The library list and any summary were built
+  /// without it, so refresh the first and redo the second. A meeting resumed into the same file
+  /// will summarise when it ends, and one with audio still waiting for a retry summarises after it.
+  private func lateChunkLanded(in fileURL: URL, merged: [LiveMeetingChunk]) {
+    MeetingListService.shared.invalidateCache(for: nil)
+    MeetingListService.shared.refresh()
+    let stem = fileURL.deletingPathExtension().lastPathComponent
+    let resumedHere = !finalized && transcriptURL?.deletingPathExtension().lastPathComponent == stem
+    guard !resumedHere, MeetingAudioBacklog.items(stem: stem).isEmpty else { return }
+    DebugLogger.log("LIVE-MEETING: Late chunk landed after the meeting ended; redoing its summary")
+    runPostProcessing(transcriptURL: fileURL, chunks: merged)
   }
 
   static func formatTimestamp(elapsedSeconds: TimeInterval) -> String {
@@ -968,8 +1211,15 @@ final class LiveMeetingSession: NSObject {
         segment: segment, recentNotes: recentNotes, model: model)
       let bullets = Self.parseBullets(raw)
       await MainActor.run {
-        // A straggler from a previous session must not write into the current meeting's state.
-        guard generation == self.sessionGeneration else { return }
+        // A straggler from a previous session must not write into the current meeting's state —
+        // and neither may a note that lands after this meeting ended. `sessionGeneration` alone
+        // does not catch that: it only changes at the next `start()`, so a generation still looks
+        // current while the meeting is being wrapped up. Writing then would re-persist the whole
+        // store over a file the user may already have hand-edited from the ended-meeting view.
+        guard self.isLive(generation) else {
+          DebugLogger.log("LIVE-MEETING-NOTES: Dropping note for a meeting that is no longer live")
+          return
+        }
         self.consecutiveNoteFailures = 0
         // An empty response is a valid answer: the prompt tells the model to stay silent when a
         // segment carries nothing worth remembering. The segment still counts as noted.
@@ -1139,9 +1389,11 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     }
 
     pendingChunks += 1
-    // Captured now: the backlog folder must match the stem this chunk belongs to, even if the
-    // session finishes (and clears `transcriptURL`) while the call is still out.
-    let stem = transcriptURL?.deletingPathExtension().lastPathComponent
+    // Captured now: the transcript file and the bookkeeping belong to this meeting. The call can
+    // outlive `finish()` (which clears `transcriptURL`) and a later `start()` (which reuses this
+    // object). A late success must not write into the new meeting or decrement its pending count.
+    let generation = sessionGeneration
+    let chunkTranscriptURL = transcriptURL
 
     Task {
       do {
@@ -1154,7 +1406,8 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         } else {
           await MainActor.run {
             // Appending also evaluates whether the accumulated segment is worth a live note.
-            self.appendToTranscript(trimmedText, chunkStartTime: startTime)
+            self.appendToTranscript(
+              trimmedText, chunkStartTime: startTime, url: chunkTranscriptURL, generation: generation)
           }
         }
 
@@ -1176,12 +1429,27 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         }()
         // Keep the audio: losing a meeting because the Wi-Fi dropped is not acceptable, and the
         // chunk can be transcribed later at its original timestamp.
+        // The backlog folder follows the meeting's name as it is now: renamed at End, or none when
+        // the meeting was discarded.
+        let stem = await MainActor.run {
+          self.destination(forChunkOf: generation, capturedURL: chunkTranscriptURL)?.url
+            .deletingPathExtension().lastPathComponent
+        }
         let kept = stem.map {
           MeetingAudioBacklog.retain(audioURL, stem: $0, startTime: startTime)
         } ?? false
         if !kept { cleanUpAudioFile(audioURL) }
         await MainActor.run {
           if kept { self.onBacklogChanged() }
+          // A failure for a meeting that has ended (stopped, or replaced by a newer one) must not
+          // tell the user "Recording continues" or consume the current meeting's one-shot alerts.
+          // The kept audio still needs a word: nothing else will mention it.
+          guard self.isLive(generation) else {
+            if kept, self.endedMeetingAlertShown.insert(generation).inserted {
+              self.showEndedMeetingAlert(Self.endedMeetingFailureMessage(error: error))
+            }
+            return
+          }
           if isRateLimitOrQuota {
             if !self.didShowRateLimitAlert {
               self.didShowRateLimitAlert = true
@@ -1205,6 +1473,12 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
       }
 
       await MainActor.run {
+        guard self.isLive(generation) else {
+          DebugLogger.log(
+            "LIVE-MEETING: Chunk \(chunkIndex) finished after its meeting ended; leaving pending count and flush state alone"
+          )
+          return
+        }
         self.pendingChunks -= 1
         // Transcribed, empty, or failed — either way this chunk is settled, so a flush waiting on it
         // may proceed with whatever landed.
@@ -1247,10 +1521,11 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
       let nsError = error as NSError
       if nsError.domain == "LiveMeetingRecorder" && nsError.code == 2001 {
         PopupNotificationWindow.showError(
-          "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
-          title: "Microphone Access Needed",
-          retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
-          retryActionTitle: "Open System Settings"
+          "Turn on WhisperShortcut under Privacy & Security › Microphone.",
+          title: "Microphone Is Off",
+          retryAction: { PermissionStatusChecker.requestThenOpenSystemSettings(for: .microphone) },
+          retryActionTitle: "Open System Settings",
+          showsSupport: false
         )
         return
       }

@@ -55,6 +55,7 @@ enum ShortcutValidation {
       ("Open Settings", config.openSettings), ("Open Chat", config.openChat),
       ("Screenshot", config.screenshotCapture), ("Read Aloud", config.readAloud),
       ("Add to Glossary", config.addToGlossary),
+      ("Dictate Live", config.liveDictate),
     ]
     return conflictingSlot(key: key, modifiers: modifiers, among: slots, excluding: excluding)
   }
@@ -86,6 +87,7 @@ struct MCPSetting {
     case string(maxLength: Int)
     case enumeration(options: () -> [Option])
     case shortcut
+    case stringList(maxItems: Int, maxLength: Int)
   }
 
   let id: String
@@ -222,6 +224,11 @@ enum MCPSettingsCatalog {
       if value is NSNull { return "Disabled" }
       guard let dict = value as? [String: Any], let def = shortcutDefinition(from: dict) else { return "Disabled" }
       return def.displayStringWithSeparator
+    case .stringList:
+      let items = ((value as? [Any]) ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      if items.isEmpty { return "(none)" }
+      return items.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " / ")
     }
   }
 
@@ -249,6 +256,7 @@ enum MCPSettingsCatalog {
     case "Screenshot shortcut": return String(localized: "Screenshot shortcut")
     case "Read Aloud shortcut": return String(localized: "Read Aloud shortcut")
     case "Add to Glossary shortcut": return String(localized: "Add to Glossary shortcut")
+    case "Dictate Live shortcut": return String(localized: "Dictate Live shortcut")
     case "Open Chat shortcut": return String(localized: "Open Chat shortcut")
     case "Open Settings shortcut": return String(localized: "Open Settings shortcut")
     case "Show dictation notifications": return String(localized: "Show dictation notifications")
@@ -274,6 +282,8 @@ enum MCPSettingsCatalog {
     case "Use my writing style in Dictate Prompt": return String(localized: "Use my writing style in Dictate Prompt")
     case "Let Dictate Prompt use read-only tools": return String(localized: "Let Dictate Prompt use read-only tools")
     case "Let Claude search the web": return String(localized: "Let Claude search the web")
+    case "Quick prompts": return String(localized: "Quick prompts")
+    case "Also show often-used prompts": return String(localized: "Also show often-used prompts")
     default: return english
     }
   }
@@ -432,7 +442,8 @@ enum MCPSettingsCatalog {
     let defaults = deps.defaults
 
     func boolSetting(
-      id: String, title: String, category: String, key: String, defaultValue: Bool,
+      id: String, title: String, category: String, key: String,
+      defaultValue: @autoclosure @escaping () -> Bool,
       proposalOnly: Bool = false, unavailableReason: @escaping () -> String? = { nil },
       enablingRefused: @escaping () -> String? = { nil },
       afterApply: @escaping (Bool) -> Void = { _ in }
@@ -440,7 +451,9 @@ enum MCPSettingsCatalog {
       MCPSetting(
         id: id, title: title, category: category, kind: .bool, proposalOnly: proposalOnly,
         unavailableReason: unavailableReason,
-        read: { defaults.object(forKey: key) != nil ? defaults.bool(forKey: key) : defaultValue },
+        // Re-read the default on every read. The catalog is built once and kept, and auto-paste's
+        // unset value follows the Accessibility permission, which can change after that.
+        read: { defaults.object(forKey: key) != nil ? defaults.bool(forKey: key) : defaultValue() },
         validate: { value in
           guard let b = value as? Bool else { return "\(title) needs true or false." }
           if b, let reason = enablingRefused() { return reason }
@@ -657,6 +670,7 @@ enum MCPSettingsCatalog {
     // respected. Reads through the injected `defaults` with the same migration helper the real
     // loader (`TranscriptionModel.loadSelected()`, which hardcodes `.standard` and has
     // write-side-effects the catalog's `read` must not have) uses.
+    // Always a proposal: a meeting or email an AI app reads could contain text meant to change the model.
     settings.append(MCPSetting(
       id: "dictation.transcription_model", title: "Dictation model", category: "models",
       kind: .enumeration(options: {
@@ -669,6 +683,7 @@ enum MCPSettingsCatalog {
             reason: $0.pickerSetupBadge)
         }
       }),
+      proposalOnly: true,
       read: {
         guard let raw = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
           return SettingsDefaults.selectedTranscriptionModel.rawValue
@@ -752,6 +767,7 @@ enum MCPSettingsCatalog {
     // MARK: meetings.transcription_model
     // JSON null clears the key. `TranscriptionModel.loadSelectedForMeeting()` treats a missing key
     // as "same as dictation" — that is the fallback the Settings loader already uses.
+    // Always a proposal: a meeting or email an AI app reads could contain text meant to change the model.
     settings.append(MCPSetting(
       id: "meetings.transcription_model", title: "Meeting transcription model", category: "models",
       kind: .enumeration(options: {
@@ -764,6 +780,7 @@ enum MCPSettingsCatalog {
             reason: $0.pickerSetupBadge)
         }
       }),
+      proposalOnly: true,
       read: {
         guard let raw = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) else {
           return NSNull()
@@ -845,6 +862,13 @@ enum MCPSettingsCatalog {
       validate: { value in
         guard let raw = value as? String, let model = TTSModel(rawValue: raw), TTSModel.readAloudModels.contains(model) else {
           return "Unknown Read Aloud model."
+        }
+        // An on-device voice is missing weights, not a key — say so, or an AI app tells the user
+        // to add an API key for a model that has none.
+        if model.qwen3ModelType != nil {
+          return model.hasRequiredCredential
+            ? nil
+            : "\(model.displayName) is not downloaded yet. Download it in WhisperShortcut Settings → Read Aloud first."
         }
         return model.hasRequiredCredential ? nil : "\(model.displayName) needs a key or setup the user hasn't added yet."
       },
@@ -999,6 +1023,9 @@ enum MCPSettingsCatalog {
       id: "shortcuts.add_to_glossary", title: "Add to Glossary shortcut", slot: "Add to Glossary",
       keyPath: \.addToGlossary, unavailableReason: directDownloadOnly))
     settings.append(shortcutSetting(
+      id: "shortcuts.live_dictate", title: "Dictate Live shortcut", slot: "Dictate Live",
+      keyPath: \.liveDictate, unavailableReason: directDownloadOnly))
+    settings.append(shortcutSetting(
       id: "shortcuts.open_chat", title: "Open Chat shortcut", slot: "Open Chat",
       keyPath: \.openChat))
     settings.append(shortcutSetting(
@@ -1031,7 +1058,7 @@ enum MCPSettingsCatalog {
     // without Accessibility — matching `dictate_prompt.screenshot_context`'s pattern below.
     settings.append(boolSetting(
       id: "clipboard.auto_paste", title: "Auto-paste after dictation", category: "clipboard",
-      key: UserDefaultsKeys.autoPasteAfterDictation, defaultValue: SettingsDefaults.autoPasteAfterDictation,
+      key: UserDefaultsKeys.autoPasteAfterDictation, defaultValue: AutoPasteDefault.effectiveDefault,
       enablingRefused: {
         deps.hasAccessibilityPermission() ? nil : "Needs the Accessibility permission, which the user has to grant themselves."
       }))
@@ -1098,13 +1125,16 @@ enum MCPSettingsCatalog {
 
     // MARK: read_aloud.voice.*
     // `""` is the provider default, the same sentinel `SettingsSlot.string` persists.
-    func voiceSetting(id: String, title: String, provider: TTSProvider) {
+    func voiceSetting(
+      id: String, title: String, provider: TTSProvider, voices: (() -> [TTSVoice])? = nil
+    ) {
       let key = provider.voiceUserDefaultsKey
+      let catalogue = voices ?? { provider.voices }
       settings.append(enumSetting(
         id: id, title: title, category: "read_aloud",
         allOptions: {
           [MCPSetting.Option("", "Provider default")]
-            + provider.voices.map { MCPSetting.Option($0.id, $0.displayName) }
+            + catalogue().map { MCPSetting.Option($0.id, $0.displayName) }
         },
         current: { defaults.string(forKey: key) ?? "" },
         applyValue: { raw in defaults.set(raw, forKey: key) }))
@@ -1113,6 +1143,12 @@ enum MCPSettingsCatalog {
     voiceSetting(id: "read_aloud.voice.openai", title: "OpenAI voice", provider: .openai)
     voiceSetting(id: "read_aloud.voice.xai", title: "xAI voice", provider: .xai)
     voiceSetting(id: "read_aloud.voice.system", title: "macOS voice", provider: .system)
+    // The two Qwen3 checkpoints share one provider key but not one speaker catalogue, so the
+    // options follow the selected Read Aloud model — otherwise an AI app could set a CustomVoice
+    // speaker id while VoiceDesign is selected, and the persona would silently fall back.
+    voiceSetting(
+      id: "read_aloud.voice.qwen3", title: "Qwen3 voice", provider: .localMLX,
+      voices: { ReadAloudPreferences.model.availableVoices })
 
     // MARK: screenshot.save_enabled — refused turning ON without a folder chosen (MCP never opens
     // the picker); `enablingRefused`, not `unavailableReason`, so the entry stays visible and OFF
@@ -1146,13 +1182,50 @@ enum MCPSettingsCatalog {
     // MARK: dictate_prompt.screenshot_context — on needs Screen Recording already granted.
     // The Settings toggle prompts via SCShareableContent; MCP only reads the injected check.
     settings.append(boolSetting(
-      id: "dictate_prompt.screenshot_context", title: "Screenshot context", category: "dictate_prompt",
+      id: "dictate_prompt.screenshot_context", title: "Front window as fallback", category: "dictate_prompt",
       key: UserDefaultsKeys.screenshotInPromptMode, defaultValue: SettingsDefaults.screenshotInPromptMode,
+      proposalOnly: true,
       enablingRefused: {
         deps.hasScreenRecordingPermission()
           ? nil
           : "Grant Screen Recording in Settings → Permissions first."
       }))
+
+    // MARK: dictate_prompt.quick_prompts — read live on every ⌘2 by QuickActionStore.current().
+    let quickPromptsTitle = "Quick prompts"
+    let quickPromptsMaxItems = QuickActionStore.maxCustomEntries
+    let quickPromptsMaxLength = 300
+    func cleanedQuickPrompts(_ value: Any) -> (items: [String]?, error: String?) {
+      guard let raw = value as? [Any], raw.allSatisfy({ $0 is String }) else {
+        return (nil, "\(quickPromptsTitle) needs a list of strings.")
+      }
+      let items = raw.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      if items.count > quickPromptsMaxItems {
+        return (nil, "\(quickPromptsTitle): at most \(quickPromptsMaxItems) entries.")
+      }
+      if let i = items.firstIndex(where: { $0.count > quickPromptsMaxLength }) {
+        return (nil, "\(quickPromptsTitle): entry \(i + 1) is longer than \(quickPromptsMaxLength) characters.")
+      }
+      return (items, nil)
+    }
+    settings.append(MCPSetting(
+      id: "dictate_prompt.quick_prompts", title: quickPromptsTitle, category: "dictate_prompt",
+      kind: .stringList(maxItems: quickPromptsMaxItems, maxLength: quickPromptsMaxLength),
+      read: { defaults.stringArray(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) ?? [] },
+      validate: { value in cleanedQuickPrompts(value).error },
+      apply: { value in
+        let result = cleanedQuickPrompts(value)
+        if let error = result.error { throw MCPConfigError(message: error) }
+        defaults.set(result.items ?? [], forKey: UserDefaultsKeys.dictatePromptCustomQuickActions)
+      },
+      normalizeForLabel: { cleanedQuickPrompts($0).items ?? $0 }))
+
+    // MARK: dictate_prompt.learned_quick_prompts
+    settings.append(boolSetting(
+      id: "dictate_prompt.learned_quick_prompts", title: "Also show often-used prompts",
+      category: "dictate_prompt", key: UserDefaultsKeys.dictatePromptLearnedQuickActionsEnabled,
+      defaultValue: true))
 
     // MARK: general.launch_at_login — always a proposal: a background-login change the user should see coming.
     settings.append(MCPSetting(

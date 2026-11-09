@@ -1,12 +1,21 @@
 import SwiftUI
 import AppKit
 
-/// Prose typeface family for the chat. All options are system fonts (no bundled
-/// files), so flipping `ChatTheme.bodyFontDesign` A/B-tests them app-wide instantly.
-enum ChatFontDesign {
+/// Prose typeface family for the chat. All options are system fonts (no bundled files).
+/// The user picks one in Settings → Chat → Appearance; `ChatTheme.bodyFontDesign` reads it.
+enum ChatFontDesign: String, CaseIterable {
   case sans     // San Francisco (SF Pro) — the macOS system font
   case serif    // New York (Apple's optically-sized system serif)
   case rounded  // SF Pro Rounded
+
+  /// Label shown in the Settings picker.
+  var displayName: String {
+    switch self {
+    case .sans: return String(localized: "Sans")
+    case .serif: return String(localized: "Serif")
+    case .rounded: return String(localized: "Rounded")
+    }
+  }
 
   var swiftUI: Font.Design {
     switch self {
@@ -59,9 +68,13 @@ enum ChatTheme {
   /// over a heavier nudge); bold/headings set their own weights.
   static let bodyRegularNSWeight = NSFont.Weight.regular
 
-  /// A/B switch for the prose typeface. `.sans` = San Francisco (default); flip to
-  /// `.serif` (New York) or `.rounded` (SF Pro Rounded) to compare legibility in-app.
-  static let bodyFontDesign: ChatFontDesign = .sans
+  /// The prose typeface the user picked in Settings → Chat → Appearance. Read straight from
+  /// `UserDefaults` (not cached) so a change applies on the next render; the default is `.sans`,
+  /// which is what the chat has always used.
+  static var bodyFontDesign: ChatFontDesign {
+    UserDefaults.standard.string(forKey: UserDefaultsKeys.chatFontDesign)
+      .flatMap(ChatFontDesign.init(rawValue:)) ?? SettingsDefaults.chatFontDesign
+  }
 
   /// SwiftUI prose font honoring `bodyFontDesign`. Used on the streaming-text and
   /// user-bubble paths.

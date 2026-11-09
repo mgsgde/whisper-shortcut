@@ -10,12 +10,25 @@ enum UserDefaultsKeys {
   /// chat scroll view. Stored as [String: String]. Lets the scroll position survive window
   /// hide/show (incl. the cross-screen resize that recreates the list), tab switches, and relaunch.
   static let chatScrollAnchors = "chatScrollAnchors"
+  /// Per-session follow flag: sessions whose chat was left scrolled to the bottom, stored as an
+  /// array of session UUID strings. Without it a tab switch back to a live conversation stopped
+  /// the autoscroll, because a bottom-read session still has a top message.
+  static let chatScrollFollowing = "chatScrollFollowing"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"
   /// Last Settings sidebar pane (`SettingsTab.rawValue`). Restored on next open, matching
   /// the macOS HIG recommendation for multi-pane settings windows.
   static let settingsSelectedTab = "settingsSelectedTab"
+  /// One-shot migration flag: the `settingsCloseOnFocusLoss` default moved true → false in 7.62,
+  /// but older builds had already written `true` out explicitly, so the new default never reached
+  /// those installs. See `FullAppDelegate.migrateSettingsCloseOnFocusLossToOff`.
+  static let didMigrateSettingsCloseOnFocusLossToOff = "didMigrateSettingsCloseOnFocusLossToOff"
+
+  // MARK: - Dock Icon
+  /// Show a Dock icon (activation policy `.regular`) so the app can be reached with ⌘-Tab.
+  /// Default false: this is a menu-bar app (`LSUIElement`). See `DockIconPreference`.
+  static let showDockIcon = "showDockIcon"
 
   // MARK: - Model Settings
   static let selectedTranscriptionModel = "selectedTranscriptionModel"
@@ -32,6 +45,10 @@ enum UserDefaultsKeys {
   // MARK: - Whisper Settings
   static let whisperLanguage = "whisperLanguage"
   static let punctuationMode = "punctuationMode"
+  /// When true, a transcript that is *entirely* one of the known Whisper silence hallucinations
+  /// ("Thank you.", "Thanks for watching!") is treated as no speech instead of being pasted.
+  /// Default: enabled. See `TextProcessingUtility.knownWhisperHallucinations`.
+  static let filterKnownWhisperHallucinations = "filterKnownWhisperHallucinations"
   
   // MARK: - Notification Settings
   static let showPopupNotifications = "showPopupNotifications"
@@ -78,6 +95,13 @@ enum UserDefaultsKeys {
   /// transcribe. The raw value predates the removal of the hold-to-talk gesture and is kept
   /// so a value the user already stored still wins over the default.
   static let fnKeyDictation = "holdFnToDictate"
+  static let dictateMode = "dictateMode"
+
+  // MARK: - Chat Appearance
+  /// Prose typeface of the chat transcript (`ChatFontDesign` raw value). Absent → `.sans`.
+  static let chatFontDesign = "chatFontDesign"
+  /// Bool: the chat follows new content (streaming replies, live notes) while at the bottom. Absent → off.
+  static let chatFollowNewContent = "chatFollowNewContent"
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
@@ -106,6 +130,10 @@ enum UserDefaultsKeys {
   /// the app in System Settings). macOS suppresses the prompt after a prior denial, so once this
   /// is set we deep-link into System Settings instead of re-prompting.
   static let hasShownAccessibilityPrompt = "hasShownAccessibilityPrompt"
+  /// Whether this app has called a Screen Recording request API (`CGRequestScreenCaptureAccess`
+  /// or `SCShareableContent`). `CGPreflightScreenCaptureAccess` cannot tell "never asked" from
+  /// "denied"; once this is set, a missing grant is `.denied`.
+  static let hasRequestedScreenRecording = "hasRequestedScreenRecording"
   static let hasAppliedLaunchAtLoginDefault = "hasAppliedLaunchAtLoginDefault"
   static let hasCompletedOnboarding = "hasCompletedOnboarding"
   /// WelcomeStep.rawValue the onboarding tour is currently on. Persisted so a mid-tour
@@ -237,6 +265,12 @@ enum UserDefaultsKeys {
   /// The user's own Dictate Prompt quick prompts, in display order. `[String]`. May contain
   /// blank entries while editing; readers drop them.
   static let dictatePromptCustomQuickActions = "dictatePromptCustomQuickActions"
+  /// Dictate Prompt instructions last run from the card (an entry or typed text), most recent
+  /// first. `[String]`, at most `QuickActionStore.cardEntries`. Leads the card's list.
+  static let dictatePromptRecentQuickActions = "dictatePromptRecentQuickActions"
+  /// Whether the last Dictate Prompt run picked a list entry. `Bool`. True → the card opens with
+  /// the first (most recent) entry highlighted; false or unset → on the text field.
+  static let dictatePromptPreselectRecent = "dictatePromptPreselectRecent"
   /// JSON-encoded `[DictationTemplate]`. Absent means no templates (today's behaviour).
   static let dictationTemplates = "dictationTemplates"
   /// JSON-encoded `ShortcutDefinition` for the generic template shortcut. Absent means
@@ -273,6 +307,8 @@ enum UserDefaultsKeys {
   static let selectedReadAloudVoiceOpenAI = "selectedReadAloudVoiceOpenAI"
   static let selectedReadAloudVoiceXAI = "selectedReadAloudVoiceXAI"
   static let selectedReadAloudVoiceSystem = "selectedReadAloudVoiceSystem"
+  /// Qwen3-TTS VoiceDesign persona id (see `Qwen3VoicePersonas`).
+  static let selectedReadAloudVoiceQwen3 = "selectedReadAloudVoiceQwen3"
 
   /// Snapshot of model selections taken when Offline Mode is turned on, restored when it is
   /// turned off. Dictionary of UserDefaults key → raw value. See `ModelSelectionReconciler`.
@@ -292,6 +328,11 @@ enum UserDefaultsKeys {
   /// models?" offer the user declined. A key for a provider not in this list asks again.
   /// See `CloudModelOffer`.
   static let cloudModelOfferDeclinedProviders = "cloudModelOfferDeclinedProviders"
+
+  /// Bundle path for which the user chose Not Now on the move-to-Applications offer.
+  /// The same path is not offered again; a different path (a new download) is.
+  /// See `ApplicationsFolderMove.shouldOffer`.
+  static let applicationsMoveDeclinedPath = "applicationsMoveDeclinedPath"
 
   // MARK: - MCP Server
 
