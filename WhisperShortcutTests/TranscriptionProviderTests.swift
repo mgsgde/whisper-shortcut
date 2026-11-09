@@ -149,6 +149,8 @@ struct TranscriptionProviderTests {
     // they would be removed. Pinned here because the fix lives in a subtitle string, which nothing
     // else would catch.
     #expect(!TranscriptionModel.openAIGPTTranscribe.honorsSystemPrompt)
+    // Own servers mostly run Whisper, where a prompt is text to continue, not an instruction.
+    #expect(!TranscriptionModel.selfHostedTranscription.honorsSystemPrompt)
     for offline in [TranscriptionModel.whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge] {
       #expect(!offline.honorsSystemPrompt, "\(offline.rawValue)")
     }
@@ -157,7 +159,7 @@ struct TranscriptionProviderTests {
     // general disclaimer.
     for instructable in [TranscriptionModel.gemini31FlashLite, .gemini38Flash,
                          .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
-                         .openRouterTranscription, .selfHostedTranscription] {
+                         .openRouterTranscription] {
       #expect(instructable.honorsSystemPrompt, "\(instructable.rawValue)")
     }
 
