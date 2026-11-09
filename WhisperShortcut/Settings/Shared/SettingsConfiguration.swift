@@ -926,6 +926,9 @@ enum TTSProvider {
   case system
   /// On-device Qwen3-TTS VoiceDesign through MLX (`mlx-audio-swift`). No key, no network.
   case localMLX
+  /// The user's own OpenAI-compatible server (LiteLLM, LM Studio, mlx-audio). Shares the base
+  /// URL and key Dictate, Dictate Prompt and Chat already use — see `CustomEndpointPreferences`.
+  case custom
 
   var displayName: String {
     switch self {
@@ -934,6 +937,7 @@ enum TTSProvider {
     case .xai: return "xAI (Grok)"
     case .system: return "macOS"
     case .localMLX: return String(localized: "Qwen3 (On-Device)")
+    case .custom: return String(localized: "Own server")
     }
   }
 
@@ -943,6 +947,19 @@ enum TTSProvider {
     switch self {
     case .system, .localMLX: return true
     case .gemini, .openai, .xai: return false
+    // A server, even on the LAN: same call `.selfHostedTranscription` makes. Offline Mode's own
+    // host rule is `allowedInOfflineMode`.
+    case .custom: return false
+    }
+  }
+
+  /// Whether Offline Mode may keep this provider. On-device ones always; the own server only when
+  /// its URL is on this machine or network (the rule the network guard uses); cloud never.
+  var allowedInOfflineMode: Bool {
+    switch self {
+    case .system, .localMLX: return true
+    case .gemini, .openai, .xai: return false
+    case .custom: return OfflineMode.allows(CustomEndpointPreferences.baseURL.flatMap { URL(string: $0) })
     }
   }
 
@@ -950,6 +967,10 @@ enum TTSProvider {
   /// the picker and the reconciler share its trim: Gemini through the `.gemini` requirement,
   /// OpenAI and xAI through their key kinds, on-device macOS with nothing to configure.
   /// A second switch here called `hasNonEmpty` and treated a whitespace-only key as present.
+  ///
+  /// `.custom` is usable once the shared own-server base URL is set. A key is optional (keyless
+  /// self-hosted servers exist), so only the URL counts. Without one the picker does not offer it
+  /// and the reconciler moves a stored selection away.
   var hasCredential: Bool {
     switch self {
     case .gemini: return ChatModelProvider.gemini.hasCredential
@@ -962,6 +983,7 @@ enum TTSProvider {
     case .localMLX:
       return Qwen3ModelManager.shared.isModelAvailable(.voiceDesign)
         || Qwen3ModelManager.shared.isModelAvailable(.customVoice)
+    case .custom: return CustomEndpointPreferences.baseURL != nil
     }
   }
 
@@ -975,6 +997,7 @@ enum TTSProvider {
     case .xai: return UserDefaultsKeys.selectedReadAloudVoiceXAI
     case .system: return UserDefaultsKeys.selectedReadAloudVoiceSystem
     case .localMLX: return UserDefaultsKeys.selectedReadAloudVoiceQwen3
+    case .custom: return UserDefaultsKeys.selectedReadAloudVoiceCustom
     }
   }
 
@@ -982,6 +1005,8 @@ enum TTSProvider {
   /// (stable within each group). Voice ids are provider-specific (a Gemini voice name is not
   /// valid for OpenAI/xAI and vice versa). Live-verified 2026-05-30 against each provider's docs.
   /// `.system` voices come from `AVSpeechSynthesisVoice.speechVoices()` at call time.
+  /// `.custom` returns nothing: the catalogue lives on the user's server (`GET /v1/audio/voices`
+  /// on mlx-audio, empty for voice-pack-less models), so Settings shows a free-text voice field.
   var voices: [TTSVoice] {
     let raw: [TTSVoice]
     switch self {
@@ -990,6 +1015,7 @@ enum TTSProvider {
     case .xai: raw = TTSVoice.xaiVoices
     case .system: return SystemTTSService.voices
     case .localMLX: raw = Qwen3VoicePersona.pickerVoices
+    case .custom: return []
     }
     // Stable sort by gender: Swift's sort isn't guaranteed stable, so tie-break on original index.
     return raw.enumerated()
@@ -1126,6 +1152,8 @@ enum TTSModel: String, CaseIterable {
   /// On-device Qwen3-TTS CustomVoice 0.6B (MLX). Nine fixed speakers, a third of the download and
   /// several times faster than VoiceDesign, but none of the speakers is German-native.
   case qwen3CustomVoice = "qwen3-tts-customvoice-0.6b"
+  /// The user's own OpenAI-compatible `/audio/speech` server (LiteLLM, LM Studio, mlx-audio).
+  case ownServerTTS = "own-server-tts"
 
   var provider: TTSProvider {
     switch self {
@@ -1134,6 +1162,7 @@ enum TTSModel: String, CaseIterable {
     case .grokVoiceTTS: return .xai
     case .systemMacOS: return .system
     case .qwen3VoiceDesign, .qwen3CustomVoice: return .localMLX
+    case .ownServerTTS: return .custom
     }
   }
 
@@ -1146,6 +1175,7 @@ enum TTSModel: String, CaseIterable {
     case .systemMacOS: return String(localized: "macOS (On-Device)")
     case .qwen3VoiceDesign: return String(localized: "Qwen3 TTS VoiceDesign 1.7B (On-Device)")
     case .qwen3CustomVoice: return String(localized: "Qwen3 TTS CustomVoice 0.6B (On-Device)")
+    case .ownServerTTS: return String(localized: "Own server (OpenAI-compatible)")
     }
   }
 
@@ -1174,6 +1204,8 @@ enum TTSModel: String, CaseIterable {
       return String(localized: "Alibaba's Qwen3 TTS VoiceDesign 1.7B • Natural German voices from a description • 10 languages • ~2.9GB • Offline")
     case .qwen3CustomVoice:
       return String(localized: "Alibaba's Qwen3 TTS CustomVoice 0.6B • Nine fixed speakers, fastest local option • ~1.8GB • Offline")
+    case .ownServerTTS:
+      return String(localized: "Your own OpenAI-compatible server • LiteLLM, LM Studio or mlx-audio • Runs on your hardware or your own bill")
     }
   }
 
@@ -1184,7 +1216,8 @@ enum TTSModel: String, CaseIterable {
   /// `gemini-3.1-flash-tts-preview` with the same request body as the non-streaming call).
   /// For OpenAI the model id is passed in the request body. **xAI takes no model id at all** —
   /// `SpeechService` `synthesizeXAITTS` selects the voice with `voice_id` and omits `model`; see
-  /// the note there. `.system` has no network endpoint.
+  /// the note there. `.system` has no network endpoint. `.custom` is the shared own-server base
+  /// URL with `/audio/speech` appended (empty when the user has not set a URL yet).
   var apiEndpoint: String {
     switch provider {
     case .gemini:
@@ -1195,6 +1228,8 @@ enum TTSModel: String, CaseIterable {
       return AppConstants.xaiTTSEndpoint
     case .system, .localMLX:
       return ""
+    case .custom:
+      return CustomEndpointPreferences.ttsURL ?? ""
     }
   }
 
@@ -1212,6 +1247,8 @@ enum TTSModel: String, CaseIterable {
       return qwen3ModelType == .customVoice
         ? Qwen3VoicePersona.customVoiceSpeakers[0].id
         : Qwen3VoicePersona.default.id
+    // `alloy` is the OpenAI default and the name most OpenAI-compatible servers accept.
+    case .custom: return "alloy"
     }
   }
 
@@ -1241,6 +1278,7 @@ enum TTSModel: String, CaseIterable {
     case .xai: return String(localized: "Add your xAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model.")
     case .system: return String(localized: "On-device macOS voices need no API key.")
     case .localMLX: return String(localized: "Download the Qwen3 voice model in Settings → Read Aloud to use it.")
+    case .custom: return String(localized: "Set the Own server URL in Settings → Read Aloud, or pick a different voice model.")
     }
   }
 
@@ -1253,21 +1291,25 @@ enum TTSModel: String, CaseIterable {
     switch provider {
     case .system, .localMLX: return .free
     case .gemini, .openai, .xai: return .low
+    // The user's own hardware or their own provider bill — no per-character cost to us.
+    case .custom: return .free
     }
   }
 
   /// Whether this TTS model may be offered while Offline Mode is on.
   var isSelectableUnderOfflineMode: Bool {
     guard OfflineMode.isEnabled else { return true }
-    return provider == .system || provider == .localMLX
+    // The own server counts as local only when its URL is local; a remote URL is a cloud provider
+    // in Offline Mode's eyes.
+    return provider.allowedInOfflineMode
   }
 
-  /// Models grouped for display in the Read Aloud picker (on-device first, then cloud).
+  /// Models grouped for display in the Read Aloud picker (on-device first, then cloud, then your own server).
   /// Qwen3 needs Apple silicon and 16 GB of RAM (CustomVoice) or 32 GB (VoiceDesign) — below that
   /// the tiles would end in a multi-gigabyte download the model then cannot run.
   static var readAloudModels: [TTSModel] {
     [.systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice, .gemini38FlashLiteTTS,
-     .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
+     .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS, .ownServerTTS]
       .filter(\.isSelectableUnderOfflineMode)
       .filter { $0.qwen3ModelType?.isOfferable ?? true }
   }
@@ -1774,9 +1816,16 @@ enum ReadAloudPreferences {
   /// The voice the user picked for `model`'s provider, or that provider's default voice. Falls
   /// back to the default when the stored id is empty or no longer in the provider's catalogue
   /// (e.g. a voice the provider has since removed).
+  ///
+  /// `.custom` has no in-app catalogue — the ids live on the user's server — so any non-empty
+  /// stored value is used as typed. Filtering it against `availableVoices` would silently
+  /// replace every custom voice with `alloy`.
   static func voice(for model: TTSModel) -> String {
     let stored = (UserDefaults.standard.string(forKey: model.provider.voiceUserDefaultsKey) ?? "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
+    if model.provider == .custom {
+      return stored.isEmpty ? model.defaultVoice : stored
+    }
     guard !stored.isEmpty, model.availableVoices.contains(where: { $0.id == stored }) else {
       return model.defaultVoice
     }
@@ -2441,6 +2490,9 @@ struct SettingsDefaults {
   /// Model id sent to the shared custom endpoint for transcription. The self-hosted path
   /// hardcoded this before the id was stored.
   static let customTranscriptionModelID = "whisper-1"
+  /// Model id sent to the shared custom endpoint for Read Aloud. `tts-1` is what LiteLLM and
+  /// LM Studio proxies expose by default; an `mlx-audio` server wants its own model path.
+  static let customTTSModelID = "tts-1"
   /// [OpenInference](https://openinference.de/) preset — EU-hosted GLM 5.2, OpenAI-compatible.
   static let openInferenceEndpointURL = "https://openinference.de/api/v1"
   static let openInferenceModelID = "zai-org/GLM-5.2"
@@ -2544,6 +2596,8 @@ struct SettingsData: Equatable {
   var readAloudVoiceXAI: String = ""
   var readAloudVoiceSystem: String = ""
   var readAloudVoiceQwen3: String = ""
+  /// Free-text voice id for the user's own server; empty → `alloy`.
+  var readAloudVoiceCustom: String = ""
 
   /// The selected Read Aloud voice id for `provider` ("" → provider default).
   func readAloudVoice(for provider: TTSProvider) -> String {
@@ -2553,6 +2607,7 @@ struct SettingsData: Equatable {
     case .xai: return readAloudVoiceXAI
     case .system: return readAloudVoiceSystem
     case .localMLX: return readAloudVoiceQwen3
+    case .custom: return readAloudVoiceCustom
     }
   }
 
@@ -2563,6 +2618,7 @@ struct SettingsData: Equatable {
     case .xai: readAloudVoiceXAI = id
     case .system: readAloudVoiceSystem = id
     case .localMLX: readAloudVoiceQwen3 = id
+    case .custom: readAloudVoiceCustom = id
     }
   }
 

@@ -206,9 +206,9 @@ enum ModelSelectionReconciler {
     let ttsRaw = UserDefaults.standard.string(forKey: ttsKey) ?? SettingsDefaults.readAloudModel.rawValue
     let ttsCurrent = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(ttsRaw))
       ?? SettingsDefaults.readAloudModel
-    // On-device voices stay: Offline Mode is exactly what they are for. Only a cloud voice has to
-    // move to the macOS voice.
-    if !ttsCurrent.provider.isOnDevice {
+    // On-device voices stay: Offline Mode is exactly what they are for, and so is an own server on
+    // this machine or network. Only a cloud voice has to move to the macOS voice.
+    if !ttsCurrent.provider.allowedInOfflineMode {
       UserDefaults.standard.set(TTSModel.systemMacOS.rawValue, forKey: ttsKey)
       DebugLogger.log(
         "MODEL-RECONCILE: \(ttsKey): \(ttsCurrent.rawValue) → \(TTSModel.systemMacOS.rawValue) (Offline Mode)")
@@ -476,6 +476,13 @@ enum ModelSelectionReconciler {
     return readAloudCloudPreference.first(where: { hasKeyForProvider($0.provider) })
   }
 
+  /// Only a lost cloud key is recorded for a later upgrade. An own server that lost its URL was
+  /// never a cloud choice: recording it would let a later cloud key move Read Aloud to a cloud
+  /// voice the user never picked (same reasoning as the on-device comment in `reconcileReadAloud`).
+  nonisolated static func recordsReadAloudFallback(current: TTSModel, replacement: TTSModel) -> Bool {
+    replacement == .systemMacOS && current.provider != .custom
+  }
+
   private static func reconcileReadAloud() {
     let key = UserDefaultsKeys.selectedReadAloudModel
     let recordKey = UserDefaultsKeys.keylessReadAloudFallback
@@ -503,9 +510,17 @@ enum ModelSelectionReconciler {
     // selection here would silently send the user's text to a cloud provider they did not pick,
     // which is the same failure `reconcileTranscription` documents for offline Whisper.
     if current.provider == .system || current.provider == .localMLX { return }
-    guard let replacement = TTSModel.readAloudModels.first(where: { hasKey($0.provider) }) else { return }
+    // An own server that lost its URL was a deliberate non-cloud choice: fall back to the macOS
+    // voice, never straight to a cloud voice the user happens to have a key for.
+    let replacement: TTSModel
+    if current.provider == .custom {
+      replacement = .systemMacOS
+    } else {
+      guard let keyed = TTSModel.readAloudModels.first(where: { hasKey($0.provider) }) else { return }
+      replacement = keyed
+    }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
-    if replacement == .systemMacOS {
+    if recordsReadAloudFallback(current: current, replacement: replacement) {
       UserDefaults.standard.set(current.rawValue, forKey: recordKey)
     }
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")

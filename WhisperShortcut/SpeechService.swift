@@ -2657,6 +2657,13 @@ class SpeechService {
         guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
         return try await self.synthesizeXAITTS(text: chunkText, voice: voice, model: model)
       }
+    case .custom:
+      // Whole chunks, like xAI: the server returns one WAV per request and the header is what
+      // carries the sample rate (see `synthesizeCustomTTS`). Default chunk size applies.
+      synthesizeChunk = { [weak self] chunkText, _ in
+        guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
+        return try await self.synthesizeCustomTTS(text: chunkText, voice: voice, model: model)
+      }
     case .system:
       throw TranscriptionError.networkError("On-device TTS should not reach the cloud chunk path")
     case .localMLX:
@@ -2948,6 +2955,151 @@ class SpeechService {
       throw TranscriptionError.networkError("xAI TTS failed (HTTP \(http.statusCode)): \(bodyText)")
     }
     return data
+  }
+
+  // MARK: - Own-server TTS (OpenAI-compatible /audio/speech)
+
+  /// Read Aloud through the user's own OpenAI-compatible server — LiteLLM, LM Studio, or a local
+  /// MLX audio server (`mlx-audio`, `oMLX`, `vllm-mlx`). Same endpoint and key as Dictate,
+  /// Dictate Prompt and Chat (`CustomEndpointPreferences`), a different model id.
+  ///
+  /// **`response_format: "wav"`, not `"pcm"`.** `mlx-audio` does accept `pcm`/`raw`, but it emits
+  /// raw s16le at *the model's own* sample rate and never says which one (verified 2026-11-03
+  /// against its `/v1/audio/speech` handler, which forwards `response_format` to
+  /// `mlx_audio.audio_io.write`). A WAV header carries sample rate and channel count, so the
+  /// conversion below is deterministic for any OpenAI-compatible server, not just `mlx-audio`.
+  /// The cost is that the whole chunk arrives at once instead of streaming — the same trade xAI
+  /// already makes (`synthesizeXAITTS`).
+  ///
+  /// Key, extra headers and Azure `api-key` come from the shared own-server settings, resolved the
+  /// way Chat and Dictate Prompt resolve them (`customTTSRequest`).
+  private func synthesizeCustomTTS(text: String, voice: String, model: TTSModel) async throws -> Data {
+    guard let baseURL = CustomEndpointPreferences.baseURL, let shaped = CustomEndpointPreferences.ttsURL,
+      let url = URL(string: shaped)
+    else {
+      // No base URL yet. The picker hides the model without one, so this is a stale selection.
+      throw TranscriptionError.networkError(
+        String(
+          localized:
+            "Read Aloud is set to your own server, but no server URL is configured. Set it in Settings → Read Aloud, or pick a different voice model."
+        ))
+    }
+    if OfflineMode.isEnabled, !OfflineMode.allows(url) {
+      throw TranscriptionError.networkError(
+        String(localized: "Offline Mode is on and your own server URL is not on this machine or network."))
+    }
+    let apiKey = try Self.customTTSCredential(
+      baseURL: baseURL,
+      proxyKey: KeychainManager.shared.get(.customOpenAIChatAPIKey),
+      openAIKey: KeychainManager.shared.get(.openAI))
+    let request = try Self.customTTSRequest(
+      url: url, baseURL: baseURL, apiKey: apiKey,
+      extraHeaders: CustomEndpointPreferences.extraHeaders,
+      model: CustomEndpointPreferences.ttsModelID, voice: voice, text: text)
+
+    let (data, http) = try await Self.performWithRetryOn429(
+      request: request, session: makeTranscriptionURLSession(), logPrefix: "TTS-CUSTOM")
+    guard http.statusCode == 200 else {
+      let bodyText = String(data: data, encoding: .utf8)?.prefix(200) ?? ""
+      throw TranscriptionError.networkError("Own server TTS failed (HTTP \(http.statusCode)): \(bodyText)")
+    }
+    return try Self.wavToS16le24k(data)
+  }
+
+  /// The key Read Aloud sends: the shared own-server key, else the OpenAI key from Accounts when
+  /// the server may take it (`OpenAIChatPreferences.resolveCredential`, the Chat rule). Empty means
+  /// no header, allowed only for a local host. Anything else is a clear error instead of a 401.
+  static func customTTSCredential(baseURL: String, proxyKey: String?, openAIKey: String?) throws -> String {
+    let resolved = OpenAIChatPreferences.resolveCredential(
+      proxyKey: proxyKey, openAIKey: openAIKey,
+      allowsOpenAIKeyFallback: CustomEndpointAuth.acceptsOpenAIAPIKey(baseURL: baseURL))
+    if let resolved { return resolved.key }
+    if OpenAIChatPreferences.allowsKeylessRequests(baseURL: baseURL) { return "" }
+    throw TranscriptionError.networkError(
+      String(localized: "No API key for your own server. Enter the server's key in Settings → Read Aloud, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI."))
+  }
+
+  /// The `/audio/speech` request. Extra headers go on first, then the auth headers
+  /// (`Authorization: Bearer`, or only `api-key` on Azure), so a configured extra header can not
+  /// displace the key.
+  static func customTTSRequest(
+    url: URL, baseURL: String, apiKey: String, extraHeaders: [String: String],
+    model: String, voice: String, text: String
+  ) throws -> URLRequest {
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    for (name, value) in extraHeaders { request.setValue(value, forHTTPHeaderField: name) }
+    for (name, value) in CustomEndpointAuth.headers(baseURL: baseURL, apiKey: apiKey) {
+      request.setValue(value, forHTTPHeaderField: name)
+    }
+    let body: [String: Any] = ["model": model, "input": text, "voice": voice, "response_format": "wav"]
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    return request
+  }
+
+  /// Decodes a WAV body into the s16le 24 kHz mono layout `AudioMerger` / `TTSPlaybackSession`
+  /// expect, reusing `SystemTTSService.convertToS16le24k` for the actual resample.
+  ///
+  /// A non-WAV body is an error, not something to hand the player: a JSON error object or an MP3
+  /// would otherwise play as noise. The first 120 characters name what came back.
+  /// Servers that stream the WAV cannot know its length and write 0 or 0xFFFFFFFF into the RIFF
+  /// and data size fields, which AVAudioFile rejects or reads as empty. Patches both fields from
+  /// the actual byte count; a header whose sizes already fit the body is returned untouched.
+  static func repairedStreamingWavHeader(_ data: Data) -> Data {
+    var bytes = [UInt8](data)
+    func u32(_ at: Int) -> UInt32 {
+      UInt32(bytes[at]) | UInt32(bytes[at + 1]) << 8 | UInt32(bytes[at + 2]) << 16 | UInt32(bytes[at + 3]) << 24
+    }
+    func put(_ v: UInt32, at: Int) { for i in 0..<4 { bytes[at + i] = UInt8((v >> (8 * UInt32(i))) & 0xFF) } }
+    guard bytes.count > 12, String(decoding: bytes[8..<12], as: UTF8.self) == "WAVE" else { return data }
+    var offset = 12
+    while offset + 8 <= bytes.count {
+      let id = String(decoding: bytes[offset..<offset + 4], as: UTF8.self)
+      let size = u32(offset + 4)
+      if id == "data" {
+        let available = bytes.count - (offset + 8)
+        guard size == 0 || size == 0xFFFF_FFFF || Int(size) > available else {
+          return data
+        }
+        put(UInt32(available), at: offset + 4)
+        put(UInt32(bytes.count - 8), at: 4)
+        return Data(bytes)
+      }
+      let next = offset + 8 + Int(size) + Int(size & 1)
+      guard size != 0xFFFF_FFFF, next <= bytes.count else { return data }
+      offset = next
+    }
+    return data
+  }
+
+  static func wavToS16le24k(_ data: Data) throws -> Data {
+    guard data.count > 12, data.prefix(4) == Data("RIFF".utf8) else {
+      let preview = String(data: data.prefix(120), encoding: .utf8) ?? "<\(data.count) bytes>"
+      throw TranscriptionError.networkError(
+        "Own server TTS did not return WAV audio: \(preview)")
+    }
+
+    let tempURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("custom-tts-\(UUID().uuidString).wav")
+    defer { try? FileManager.default.removeItem(at: tempURL) }
+    try repairedStreamingWavHeader(data).write(to: tempURL, options: .atomic)
+
+    let file = try AVAudioFile(forReading: tempURL)
+    let sourceFormat = file.processingFormat
+    DebugLogger.log(
+      "TTS-CUSTOM: WAV \(file.length) frames, \(Int(sourceFormat.sampleRate)) Hz, \(sourceFormat.channelCount) ch → 24000 Hz mono")
+    guard file.length > 0,
+          let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: AVAudioFrameCount(file.length))
+    else {
+      throw TranscriptionError.networkError("Own server TTS returned an empty WAV file")
+    }
+    try file.read(into: buffer)
+    guard let pcm = SystemTTSService.convertToS16le24k(buffer) else {
+      throw TranscriptionError.networkError(
+        "Own server TTS returned audio in a format the app cannot convert (\(sourceFormat))")
+    }
+    return pcm
   }
 
   // MARK: - OpenAI Transcription (cloud)

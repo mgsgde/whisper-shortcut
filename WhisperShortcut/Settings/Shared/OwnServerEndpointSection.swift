@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The one **Own server** form: an OpenAI-compatible server the user runs or rents — LiteLLM,
 /// OpenInference, a self-hosted gateway, or a customer's own tenant (Azure OpenAI / Microsoft
-/// Foundry, Vertex AI). Dictate, Dictate Prompt and Chat all read the same base URL, key and
+/// Foundry, Vertex AI). Dictate, Dictate Prompt, Chat and Read Aloud all read the same base URL, key and
 /// headers (`CustomEndpointPreferences`); only the model id differs per route.
 ///
 /// It used to be two forms with two URL shapes ("full URL to /v1/audio/transcriptions" in Dictate,
@@ -16,10 +16,12 @@ import SwiftUI
 struct OwnServerEndpointSection: View {
   /// Which tab is showing the form — decides which model fields appear.
   enum Route {
-    case dictate, dictatePrompt, chat
+    case dictate, dictatePrompt, chat, readAloud
 
-    var showsTranscriptionModel: Bool { self != .chat }
-    var showsChatModel: Bool { self != .dictate }
+    var showsTranscriptionModel: Bool { self == .dictate || self == .dictatePrompt }
+    var showsChatModel: Bool { self == .dictatePrompt || self == .chat }
+    /// Read Aloud's own pair: the `/audio/speech` model id and the voice id.
+    var showsSpeechFields: Bool { self == .readAloud }
   }
 
   let route: Route
@@ -30,11 +32,13 @@ struct OwnServerEndpointSection: View {
 
   /// One sentence for the Accounts card and this form's own header, so the two cannot drift.
   static let subtitle: LocalizedStringResource =
-    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions, which LM Studio and mlx_lm.server do not serve."
+    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt, Chat and Read Aloud; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions and Read Aloud needs /audio/speech, which LM Studio and mlx_lm.server do not serve."
 
   @State private var endpointURL: String = ""
   @State private var chatModelID: String = ""
   @State private var transcriptionModelID: String = ""
+  @State private var ttsModelID: String = ""
+  @State private var ttsVoiceID: String = ""
   @State private var apiKey: String = ""
   @State private var isKeyVisible = false
   @State private var transcriptionOverride: String = ""
@@ -115,7 +119,7 @@ struct OwnServerEndpointSection: View {
           Text("Set up: \(hostLabel)")
             .font(.body)
             .fontWeight(.medium)
-          Text("Shared with Dictate, Dictate Prompt and Chat. Changing the server changes it for all three.")
+          Text("Shared with Dictate, Dictate Prompt, Chat and Read Aloud. Changing the server changes it for all of them.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -294,6 +298,42 @@ struct OwnServerEndpointSection: View {
         Text(route == .dictatePrompt
           ? "Then applies it to your selected text. On Azure, your deployment name. It must match what the server actually serves."
           : "The model id your server expects, and it must match what the server actually serves. On Azure, your deployment name.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+
+    if route.showsSpeechFields {
+      fieldRow("TTS model:") {
+        TextField(SettingsDefaults.customTTSModelID, text: $ttsModelID)
+          .textFieldStyle(.roundedBorder)
+          .font(.system(.body, design: .monospaced))
+          .frame(height: SettingsConstants.textFieldHeight)
+          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+          .onChange(of: ttsModelID) { _, newValue in
+            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customTTSModelID)
+          }
+      } caption: {
+        Text("The text-to-speech model your server serves, e.g. tts-1 or the model name in your LiteLLM config.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      fieldRow("Voice:") {
+        TextField(TTSModel.ownServerTTS.defaultVoice, text: $ttsVoiceID)
+          .textFieldStyle(.roundedBorder)
+          .font(.system(.body, design: .monospaced))
+          .frame(height: SettingsConstants.textFieldHeight)
+          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+          .onChange(of: ttsVoiceID) { _, newValue in
+            UserDefaults.standard.set(
+              newValue.trimmingCharacters(in: .whitespacesAndNewlines),
+              forKey: UserDefaultsKeys.selectedReadAloudVoiceCustom)
+          }
+      } caption: {
+        Text("The voice id your server accepts, e.g. alloy. mlx-audio lists them at /v1/audio/voices.")
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -599,7 +639,7 @@ struct OwnServerEndpointSection: View {
             Label("No key: fine for a local server without auth.", systemImage: "info.circle")
               .labelStyle(OwnServerStatusLabelStyle(tint: .secondary))
           } else {
-            Label("Chat needs this server's key.", systemImage: "exclamationmark.circle.fill")
+            Label("This server needs its key.", systemImage: "exclamationmark.circle.fill")
               .labelStyle(OwnServerStatusLabelStyle(tint: .orange))
           }
         }
@@ -644,7 +684,7 @@ struct OwnServerEndpointSection: View {
   private var isReadyForRoute: Bool {
     switch route {
     case .dictate: return CustomEndpointPreferences.isTranscriptionConfigured
-    case .dictatePrompt, .chat: return CustomEndpointPreferences.isConfigured
+    case .dictatePrompt, .chat, .readAloud: return CustomEndpointPreferences.isConfigured
     }
   }
 
@@ -679,6 +719,8 @@ struct OwnServerEndpointSection: View {
     endpointURL = defaults.string(forKey: UserDefaultsKeys.customOpenAIChatEndpointURL) ?? ""
     chatModelID = defaults.string(forKey: UserDefaultsKeys.customOpenAIChatModelID) ?? ""
     transcriptionModelID = defaults.string(forKey: UserDefaultsKeys.customTranscriptionModelID) ?? ""
+    ttsModelID = defaults.string(forKey: UserDefaultsKeys.customTTSModelID) ?? ""
+    ttsVoiceID = defaults.string(forKey: UserDefaultsKeys.selectedReadAloudVoiceCustom) ?? ""
     transcriptionOverride = defaults.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL) ?? ""
     apiKey = KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? ""
     headers = KeychainManager.shared.getCustomTranscriptionHeaders()

@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt, Chat and Read Aloud; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions and Read Aloud needs /audio/speech, which LM Studio and mlx_lm.server do not serve." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden Sie Ihren eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt, Chat und Vorlesen; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions und Vorlesen braucht /audio/speech, die LM Studio und mlx_lm.server nicht anbieten."
+          }
+        }
+      }
+    },
     "Removed from %@'s settings. %@" : {
       "localizations" : {
         "de" : {
@@ -4830,12 +4840,12 @@
         }
       }
     },
-    "Chat needs this server's key." : {
+    "This server needs its key." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Chat braucht den Schlüssel dieses Servers."
+            "value" : "Dieser Server braucht seinen Schlüssel."
           }
         }
       }
@@ -12557,6 +12567,17 @@
         }
       }
     },
+    "Needs URL" : {
+      "comment" : "Tile badge: own server URL missing",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL fehlt"
+          }
+        }
+      }
+    },
     "Needs one account; you pay the provider" : {
       "localizations" : {
         "de" : {
@@ -18355,16 +18376,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Freigegebene Ordner:"
-          }
-        }
-      }
-    },
-    "Shared with Dictate, Dictate Prompt and Chat. Changing the server changes it for all three." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemeinsam für Diktieren, Dictate Prompt und Chat. Eine Änderung am Server gilt für alle drei."
           }
         }
       }
@@ -26247,16 +26258,6 @@
         }
       }
     },
-    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions, which LM Studio and mlx_lm.server do not serve." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbinde deinen eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt und Chat; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions, das LM Studio und mlx_lm.server nicht anbieten."
-          }
-        }
-      }
-    },
     "MLX" : {
       "localizations" : {
         "de" : {
@@ -26313,6 +26314,106 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bis einschließlich /v1, z. B. http://localhost:4000/v1 für LiteLLM. Der Port gehört zur URL – tragen Sie ein, worauf Ihr Server hört. Die App ergänzt /audio/transcriptions fürs Diktieren und /chat/completions für den Chat."
+          }
+        }
+      }
+    },
+    "Own server (OpenAI-compatible)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigener Server (OpenAI-kompatibel)"
+          }
+        }
+      }
+    },
+    "Set the Own server URL in Settings → Read Aloud, or pick a different voice model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legen Sie die URL des eigenen Servers in Einstellungen → Vorlesen fest, oder wählen Sie ein anderes Sprachmodell."
+          }
+        }
+      }
+    },
+    "Read Aloud is set to your own server, but no server URL is configured. Set it in Settings → Read Aloud, or pick a different voice model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen ist auf Ihren eigenen Server eingestellt, aber es ist keine Server-URL hinterlegt. Legen Sie sie in Einstellungen → Vorlesen fest, oder wählen Sie ein anderes Sprachmodell."
+          }
+        }
+      }
+    },
+    "Your own OpenAI-compatible server • LiteLLM, LM Studio or mlx-audio • Runs on your hardware or your own bill" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener OpenAI-kompatibler Server • LiteLLM, LM Studio oder mlx-audio • Läuft auf Ihrer Hardware oder auf Ihre Rechnung"
+          }
+        }
+      }
+    },
+    "TTS model:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TTS-Modell:"
+          }
+        }
+      }
+    },
+    "Shared with Dictate, Dictate Prompt, Chat and Read Aloud. Changing the server changes it for all of them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemeinsam für Diktieren, Dictate Prompt, Chat und Vorlesen. Eine Änderung am Server gilt für alle."
+          }
+        }
+      }
+    },
+    "The text-to-speech model your server serves, e.g. tts-1 or the model name in your LiteLLM config." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Sprachausgabe-Modell Ihres Servers, z. B. tts-1 oder der Modellname in Ihrer LiteLLM-Konfiguration."
+          }
+        }
+      }
+    },
+    "The voice id your server accepts, e.g. alloy. mlx-audio lists them at /v1/audio/voices." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimm-ID, die Ihr Server akzeptiert, z. B. alloy. mlx-audio listet sie unter /v1/audio/voices auf."
+          }
+        }
+      }
+    },
+    "No API key for your own server. Enter the server's key in Settings → Read Aloud, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein API-Schlüssel für Ihren eigenen Server. Tragen Sie den Schlüssel des Servers unter Einstellungen → Vorlesen ein oder hinterlegen Sie unter Einstellungen → Konten einen OpenAI-Schlüssel, falls der Server an OpenAI weiterleitet."
+          }
+        }
+      }
+    },
+    "Offline Mode is on and your own server URL is not on this machine or network." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist aktiv und die URL Ihres eigenen Servers liegt nicht auf diesem Rechner oder in diesem Netzwerk."
           }
         }
       }
