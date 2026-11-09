@@ -212,6 +212,9 @@ final class LiveMeetingSession: NSObject {
   /// Set to true on stop; cleared when the recorder delivers its final chunk. Gates `finish()` so
   /// post-processing can't start before the last audio arrives.
   private var awaitingFinalChunk: Bool = false
+  /// The recorder died while a rotated chunk was still being delivered; that chunk's arrival (not a
+  /// "final" chunk, the recorder will never send one) ends the wait for audio.
+  private var drainingAfterRecorderFailure: Bool = false
   private var transcriptURL: URL?
   private var pendingChunks: Int = 0
   private var safeguardTimer: Timer?
@@ -308,6 +311,11 @@ final class LiveMeetingSession: NSObject {
 
   func endMeetingAfterRecorderFailureForTesting() { endMeetingAfterRecorderFailure() }
 
+  /// Lets a test drive `liveMeetingRecorder(didFailWithError:)` without opening a popup window.
+  var suppressRecorderFailurePopupForTesting = false
+
+  var recorderForTesting: LiveMeetingRecorder? { recorder }
+
   /// The stop safety net `stop()` armed, so a test can fire one from an earlier meeting.
   var stopSafetyNetForTesting: DispatchWorkItem? { stopSafetyNet }
   #endif
@@ -377,6 +385,7 @@ final class LiveMeetingSession: NSObject {
     stopping = false
     finalized = false
     awaitingFinalChunk = false
+    drainingAfterRecorderFailure = false
     pendingChunks = 0
     didShowRateLimitAlert = false
     didShowTranscriptionFailureAlert = false
@@ -546,7 +555,12 @@ final class LiveMeetingSession: NSObject {
     // AVAudioRecorder delivers its final chunk async via audioRecorderDidFinishRecording,
     // so wait for it before finalizing (prevents a race where post-processing rewrites
     // the transcript file while a late chunk is still being appended).
-    if afterRecorderFailure {
+    if afterRecorderFailure, recorder?.hasUndeliveredChunks == true {
+      // The failure beat the delivery of the chunk cut just before it. Keep the delegate and wait
+      // for that chunk (the safety net still bounds the wait); see `liveMeetingRecorder(didFinishChunk:)`.
+      awaitingFinalChunk = true
+      drainingAfterRecorderFailure = true
+    } else if afterRecorderFailure {
       awaitingFinalChunk = false
       // Nothing more is expected from a dead recorder; a stray callback must not reach this
       // session (or the next meeting).
@@ -584,6 +598,7 @@ final class LiveMeetingSession: NSObject {
     let stem = transcriptURL?.deletingPathExtension().lastPathComponent
     let nothingCaptured = LiveMeetingTranscriptStore.shared.chunks.isEmpty
       && pendingChunks == 0
+      && !recorder.hasUndeliveredChunks
       && (stem.map { MeetingAudioBacklog.items(stem: $0).isEmpty } ?? true)
       && (transcriptURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) }?.isEmpty ?? true)
     if nothingCaptured { discard = true }
@@ -676,6 +691,7 @@ final class LiveMeetingSession: NSObject {
     safeguardTimer = nil
     stopping = false
     awaitingFinalChunk = false
+    drainingAfterRecorderFailure = false
     discard = false
     stopOutputRouteMonitor()
     tearDownSystemCapture()
@@ -1536,6 +1552,10 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     if isFinal {
       awaitingFinalChunk = false
     }
+    if drainingAfterRecorderFailure, recorder?.hasUndeliveredChunks != true {
+      awaitingFinalChunk = false
+      drainingAfterRecorderFailure = false
+    }
 
     if isSilent {
       DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent audio)")
@@ -1686,6 +1706,9 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         recorderDied = true
       }
       defer { if recorderDied { self.endMeetingAfterRecorderFailure() } }
+      #if DEBUG
+      if self.suppressRecorderFailurePopupForTesting { return }
+      #endif
 
       // Microphone permission denied/restricted: offer a direct jump to the Microphone
       // privacy pane instead of leaving the user with only "Contact Support".

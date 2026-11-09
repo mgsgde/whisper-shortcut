@@ -86,4 +86,40 @@ struct LiveMeetingRecorderFailureTests {
     let text = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
     #expect(text.contains("captured before the failure"))
   }
+
+  @Test("A failure that beats the delivery of the chunk cut just before it keeps that chunk")
+  func failureBeforeRotatedChunkArrives() async throws {
+    let store = LiveMeetingTranscriptStore.shared
+    store.clearForNewMeeting()
+    defer { store.clearForNewMeeting() }
+    let (dir, file) = try makeFile()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let box = Box()
+    let session = makeSession(box: box)
+    session.suppressRecorderFailurePopupForTesting = true
+    session.beginSessionWithoutRecorder(transcriptFile: file)
+    session.attachInactiveRecorderForTesting()
+    let chunkURL = URL(fileURLWithPath: "/tmp/r205-rotated.wav")
+    session.recorderForTesting?.markUndeliveredChunkForTesting(chunkURL)
+
+    // The recorder reports its death while the rotated chunk is still queued behind stop()/mixing.
+    session.liveMeetingRecorder(didFailWithError: NSError(domain: "test", code: 1))
+    for _ in 0..<50 where box.stopping == 0 { try await Task.sleep(nanoseconds: 20_000_000) }
+
+    #expect(box.stopping == 1)
+    #expect(box.finished == 0)
+    #expect(FileManager.default.fileExists(atPath: file.path))
+
+    // The chunk arrives (the recorder removes it from its queue before delivering).
+    session.recorderForTesting?.clearUndeliveredChunksForTesting()
+    session.liveMeetingRecorder(
+      didFinishChunk: chunkURL, chunkIndex: 0, startTime: 5, isSilent: false, isFinal: false)
+    for _ in 0..<50 where box.pending.isEmpty { try await Task.sleep(nanoseconds: 20_000_000) }
+    box.pending.removeFirst().resume(returning: "the chunk that raced the failure")
+    for _ in 0..<100 where box.finished == 0 { try await Task.sleep(nanoseconds: 20_000_000) }
+
+    #expect(box.finished == 1)
+    let text = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+    #expect(text.contains("the chunk that raced the failure"))
+  }
 }

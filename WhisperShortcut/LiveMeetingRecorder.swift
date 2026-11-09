@@ -105,6 +105,15 @@ class LiveMeetingRecorder: NSObject {
   /// `stopForTermination` hands them back so the audio is not lost. Main thread only.
   private var undeliveredChunks: [URL: (startTime: TimeInterval, isSilent: Bool)] = [:]
 
+  /// True while a chunk cut by rotation is still queued behind `stop()` / mixing and has not been
+  /// handed to the delegate. A failure reported in that window arrives before the chunk does.
+  var hasUndeliveredChunks: Bool { !undeliveredChunks.isEmpty }
+
+  #if DEBUG
+  func markUndeliveredChunkForTesting(_ url: URL) { undeliveredChunks[url] = (0, false) }
+  func clearUndeliveredChunksForTesting() { undeliveredChunks = [:] }
+  #endif
+
   /// Flag indicating if session is active
   private(set) var isSessionActive: Bool = false
 
