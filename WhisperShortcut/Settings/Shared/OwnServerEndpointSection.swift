@@ -32,7 +32,7 @@ struct OwnServerEndpointSection: View {
 
   /// One sentence for the Accounts card and this form's own header, so the two cannot drift.
   static let subtitle: LocalizedStringResource =
-    "One OpenAI-compatible server for Dictate, Dictate Prompt, Chat and Read Aloud: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all of them use the same URL and key."
+    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt, Chat and Read Aloud; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions and Read Aloud needs /audio/speech, which LM Studio and mlx_lm.server do not serve."
 
   @State private var endpointURL: String = ""
   @State private var chatModelID: String = ""
@@ -639,7 +639,7 @@ struct OwnServerEndpointSection: View {
             Label("No key: fine for a local server without auth.", systemImage: "info.circle")
               .labelStyle(OwnServerStatusLabelStyle(tint: .secondary))
           } else {
-            Label("Chat needs this server's key.", systemImage: "exclamationmark.circle.fill")
+            Label("This server needs its key.", systemImage: "exclamationmark.circle.fill")
               .labelStyle(OwnServerStatusLabelStyle(tint: .orange))
           }
         }

@@ -476,6 +476,13 @@ enum ModelSelectionReconciler {
     return readAloudCloudPreference.first(where: { hasKeyForProvider($0.provider) })
   }
 
+  /// Only a lost cloud key is recorded for a later upgrade. An own server that lost its URL was
+  /// never a cloud choice: recording it would let a later cloud key move Read Aloud to a cloud
+  /// voice the user never picked (same reasoning as the on-device comment in `reconcileReadAloud`).
+  nonisolated static func recordsReadAloudFallback(current: TTSModel, replacement: TTSModel) -> Bool {
+    replacement == .systemMacOS && current.provider != .custom
+  }
+
   private static func reconcileReadAloud() {
     let key = UserDefaultsKeys.selectedReadAloudModel
     let recordKey = UserDefaultsKeys.keylessReadAloudFallback
@@ -505,7 +512,7 @@ enum ModelSelectionReconciler {
     if current.provider == .system || current.provider == .localMLX { return }
     guard let replacement = TTSModel.readAloudModels.first(where: { hasKey($0.provider) }) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
-    if replacement == .systemMacOS {
+    if recordsReadAloudFallback(current: current, replacement: replacement) {
       UserDefaults.standard.set(current.rawValue, forKey: recordKey)
     }
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")

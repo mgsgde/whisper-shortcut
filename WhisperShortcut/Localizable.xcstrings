@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt, Chat and Read Aloud; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions and Read Aloud needs /audio/speech, which LM Studio and mlx_lm.server do not serve." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden Sie Ihren eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt, Chat und Vorlesen; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions und Vorlesen braucht /audio/speech, die LM Studio und mlx_lm.server nicht anbieten."
+          }
+        }
+      }
+    },
     "Removed from %@'s settings. %@" : {
       "localizations" : {
         "de" : {
@@ -4830,12 +4840,12 @@
         }
       }
     },
-    "Chat needs this server's key." : {
+    "This server needs its key." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Chat braucht den Schlüssel dieses Servers."
+            "value" : "Dieser Server braucht seinen Schlüssel."
           }
         }
       }
@@ -12553,6 +12563,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel fehlt"
+          }
+        }
+      }
+    },
+    "Needs URL" : {
+      "comment" : "Tile badge: own server URL missing",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL fehlt"
           }
         }
       }
@@ -26343,16 +26364,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TTS-Modell:"
-          }
-        }
-      }
-    },
-    "One OpenAI-compatible server for Dictate, Dictate Prompt, Chat and Read Aloud: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all of them use the same URL and key." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein OpenAI-kompatibler Server für Diktieren, Dictate Prompt, Chat und Vorlesen: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder selbst betrieben. Sie richten ihn einmal ein; alle nutzen dieselbe URL und denselben Schlüssel."
           }
         }
       }

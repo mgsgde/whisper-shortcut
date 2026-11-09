@@ -378,6 +378,10 @@ extension TTSModel: PickerCuratedModel {
     if qwen3ModelType != nil {
       return String(localized: "Needs download", comment: "Tile badge: on-device model not downloaded yet")
     }
+    // The own server needs a URL, not a provider key; the tile stays visible as the setup path.
+    if self == .ownServerTTS {
+      return String(localized: "Needs URL", comment: "Tile badge: own server URL missing")
+    }
     return String(localized: "Needs key", comment: "Tile badge: API key missing")
   }
 

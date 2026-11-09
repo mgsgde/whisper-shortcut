@@ -3043,6 +3043,36 @@ class SpeechService {
   ///
   /// A non-WAV body is an error, not something to hand the player: a JSON error object or an MP3
   /// would otherwise play as noise. The first 120 characters name what came back.
+  /// Servers that stream the WAV cannot know its length and write 0 or 0xFFFFFFFF into the RIFF
+  /// and data size fields, which AVAudioFile rejects or reads as empty. Patches both fields from
+  /// the actual byte count; a header whose sizes already fit the body is returned untouched.
+  static func repairedStreamingWavHeader(_ data: Data) -> Data {
+    var bytes = [UInt8](data)
+    func u32(_ at: Int) -> UInt32 {
+      UInt32(bytes[at]) | UInt32(bytes[at + 1]) << 8 | UInt32(bytes[at + 2]) << 16 | UInt32(bytes[at + 3]) << 24
+    }
+    func put(_ v: UInt32, at: Int) { for i in 0..<4 { bytes[at + i] = UInt8((v >> (8 * UInt32(i))) & 0xFF) } }
+    guard bytes.count > 12, String(decoding: bytes[8..<12], as: UTF8.self) == "WAVE" else { return data }
+    var offset = 12
+    while offset + 8 <= bytes.count {
+      let id = String(decoding: bytes[offset..<offset + 4], as: UTF8.self)
+      let size = u32(offset + 4)
+      if id == "data" {
+        let available = bytes.count - (offset + 8)
+        guard size == 0 || size == 0xFFFF_FFFF || Int(size) > available else {
+          return data
+        }
+        put(UInt32(available), at: offset + 4)
+        put(UInt32(bytes.count - 8), at: 4)
+        return Data(bytes)
+      }
+      let next = offset + 8 + Int(size) + Int(size & 1)
+      guard size != 0xFFFF_FFFF, next <= bytes.count else { return data }
+      offset = next
+    }
+    return data
+  }
+
   static func wavToS16le24k(_ data: Data) throws -> Data {
     guard data.count > 12, data.prefix(4) == Data("RIFF".utf8) else {
       let preview = String(data: data.prefix(120), encoding: .utf8) ?? "<\(data.count) bytes>"
@@ -3053,7 +3083,7 @@ class SpeechService {
     let tempURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("custom-tts-\(UUID().uuidString).wav")
     defer { try? FileManager.default.removeItem(at: tempURL) }
-    try data.write(to: tempURL, options: .atomic)
+    try repairedStreamingWavHeader(data).write(to: tempURL, options: .atomic)
 
     let file = try AVAudioFile(forReading: tempURL)
     let sourceFormat = file.processingFormat
