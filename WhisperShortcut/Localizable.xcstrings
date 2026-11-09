@@ -27028,6 +27028,26 @@
           }
         }
       }
+    },
+    "Downloading the offline model (%lld%%). Continue unlocks when it is done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modell wird geladen (%lld%%). Weiter ist möglich, sobald es fertig ist."
+          }
+        }
+      }
+    },
+    "Finish this step first — the orange note above says what is missing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen Sie zuerst diesen Schritt ab – der orange Hinweis darüber sagt, was noch fehlt."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
