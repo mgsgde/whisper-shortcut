@@ -195,32 +195,22 @@ struct CodeBlockExtractor {
   ) {
     var blocks: [ExtractedCodeBlock] = []
     var result = content
-    // Match ```language\n...code...\n``` (multiline, non-greedy)
-    let pattern = "```(\\w*)\\n([\\s\\S]*?)\\n```"
-    guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-      return (content, [], .identity)
-    }
     let nsContent = content as NSString
-    let matches = regex.matches(in: content, range: NSRange(location: 0, length: nsContent.length))
+    let fences = scanFences(in: content)
     // Process matches in reverse order so replacement indices stay valid
     var placeholderLengths: [Int] = []
     var originalRanges: [(start: Int, length: Int)] = []
-    for match in matches.reversed() {
-      let langRange = match.range(at: 1)
-      let codeRange = match.range(at: 2)
-      let language = langRange.location != NSNotFound ? nsContent.substring(with: langRange) : nil
-      let code = codeRange.location != NSNotFound ? nsContent.substring(with: codeRange) : ""
-      let lang = (language?.isEmpty ?? true) ? nil : language
+    for fence in fences.reversed() {
       let index = blocks.count
-      blocks.insert(ExtractedCodeBlock(code: code, language: lang), at: 0)
+      blocks.insert(ExtractedCodeBlock(code: fence.code, language: fence.language), at: 0)
       let placeholder = "\n\n\(placeholderPrefix)\(index)\(placeholderSuffix)\n\n"
       // Character (not UTF-16) units, to match the paragraph offsets in ParagraphCitationBuilder.
       placeholderLengths.insert(placeholder.count, at: 0)
       originalRanges.insert(
-        (start: nsContent.substring(to: match.range.location).count,
-         length: nsContent.substring(with: match.range).count),
+        (start: nsContent.substring(to: fence.range.location).count,
+         length: nsContent.substring(with: fence.range).count),
         at: 0)
-      result = (result as NSString).replacingCharacters(in: match.range, with: placeholder)
+      result = (result as NSString).replacingCharacters(in: fence.range, with: placeholder)
     }
 
     var shifts: [(processedEnd: Int, delta: Int)] = []
@@ -233,6 +223,96 @@ struct CodeBlockExtractor {
       shifts.append((processedEnd: processedStart + placeholderLength, delta: running))
     }
     return (result, blocks, OffsetMap(shifts: shifts))
+  }
+
+  /// One fenced block found by `scanFences`: the UTF-16 range it occupies in the source (opening
+  /// fence line through the end of the closing fence line, or the end of the text when unclosed).
+  struct FenceMatch {
+    let range: NSRange
+    let code: String
+    let language: String?
+  }
+
+  /// Line-based CommonMark-style fence scanner (R212). Opening fence: optional indentation, then
+  /// 3+ backticks or tildes and an optional info string (first word = language; a backtick fence's
+  /// info string may not contain a backtick). Closing fence: same character, at least as long,
+  /// only whitespace after. Unclosed fences run to the end of the text (streaming, truncation).
+  /// CRLF is tolerated; indentation of the opening fence is stripped from the code lines.
+  static func scanFences(in content: String) -> [FenceMatch] {
+    let ns = content as NSString
+    let total = ns.length
+    // Line table: (start, contentEnd excluding "\n"/"\r\n", next line start).
+    var lines: [(start: Int, end: Int, next: Int)] = []
+    var pos = 0
+    while pos < total {
+      var nl = ns.range(of: "\n", range: NSRange(location: pos, length: total - pos)).location
+      if nl == NSNotFound { nl = total }
+      var end = nl
+      if end > pos, ns.character(at: end - 1) == 0x0D { end -= 1 }
+      lines.append((pos, end, min(nl + 1, total)))
+      pos = nl + 1
+    }
+
+    func fenceHead(_ line: String) -> (indent: Int, char: Character, length: Int, info: String)? {
+      var indent = 0
+      var idx = line.startIndex
+      while idx < line.endIndex, line[idx] == " " || line[idx] == "\t" {
+        indent += 1
+        idx = line.index(after: idx)
+      }
+      guard idx < line.endIndex, line[idx] == "`" || line[idx] == "~" else { return nil }
+      let ch = line[idx]
+      var len = 0
+      while idx < line.endIndex, line[idx] == ch {
+        len += 1
+        idx = line.index(after: idx)
+      }
+      guard len >= 3 else { return nil }
+      let info = String(line[idx...]).trimmingCharacters(in: .whitespaces)
+      if ch == "`", info.contains("`") { return nil }
+      return (indent, ch, len, info)
+    }
+
+    var result: [FenceMatch] = []
+    var i = 0
+    while i < lines.count {
+      let line = ns.substring(with: NSRange(location: lines[i].start, length: lines[i].end - lines[i].start))
+      guard let head = fenceHead(line) else { i += 1; continue }
+      let language = head.info.split(whereSeparator: { $0 == " " || $0 == "\t" }).first.map(String.init)
+      var codeLines: [String] = []
+      var j = i + 1
+      var closedAt: Int?
+      while j < lines.count {
+        let text = ns.substring(with: NSRange(location: lines[j].start, length: lines[j].end - lines[j].start))
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if trimmed.count >= head.length, trimmed.allSatisfy({ $0 == head.char }) {
+          closedAt = j
+          break
+        }
+        // Strip up to the opening fence's indentation from the code line.
+        var drop = 0
+        var k = text.startIndex
+        while drop < head.indent, k < text.endIndex, text[k] == " " || text[k] == "\t" {
+          drop += 1
+          k = text.index(after: k)
+        }
+        codeLines.append(String(text[k...]))
+        j += 1
+      }
+      let endOffset: Int
+      if let c = closedAt {
+        // Include a trailing "\r" of the closing line so no stray CR is left behind.
+        endOffset = min(lines[c].end + (lines[c].next - lines[c].end > 1 ? 1 : 0), total)
+      } else {
+        endOffset = total
+      }
+      result.append(FenceMatch(
+        range: NSRange(location: lines[i].start, length: endOffset - lines[i].start),
+        code: codeLines.joined(separator: "\n"),
+        language: (language?.isEmpty ?? true) ? nil : language))
+      i = (closedAt ?? lines.count) + 1
+    }
+    return result
   }
 
   /// Checks if a trimmed paragraph is a code block placeholder and returns the index.
