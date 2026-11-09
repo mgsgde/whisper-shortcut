@@ -255,4 +255,26 @@ struct MCPMeetingToolsTests {
     let c = try cursor(r.text)
     #expect(c.contains("@"))  // the next cursor issued is still the new format
   }
+
+  @Test("Live delta over the cap returns the oldest chunks and advances next_since only that far")
+  func liveDeltaOverCapKeepsOldest() throws {
+    let dir = try makeDir()
+    let filler = String(repeating: "x", count: 9_000)
+    // Ten chunks of ~9 kB at 01:00, 02:00, ... 10:00 — together well over the 60 000 cap.
+    let text = (1...10).map { "[\(String(format: "%02d", $0)):00] Speaker A: C\($0) \(filler)" }.joined(separator: "\n\n") + "\n"
+    try write(dir, "\(live).txt", text)
+    let tools = MCPMeetingTools(meetingsDirectory: dir, liveStem: { live }, meetingTitles: { [:] })
+    let r = tools.call(name: "get_live_transcript", arguments: ["since": "00:30"])
+    #expect(!r.isError)
+    #expect(r.text.contains("C1 "), "the oldest chunk must be returned")
+    #expect(!r.text.contains("C10 "), "the newest chunk does not fit and must wait for the next call")
+    #expect(r.text.contains("more chunk(s) are available"))
+    #expect(!r.text.contains("until"))
+    let marker = "next_since: "
+    let next = r.text.components(separatedBy: marker).last?.prefix(5) ?? ""
+    #expect(next != "10:00")
+    // Following the cursor delivers the rest.
+    let second = tools.call(name: "get_live_transcript", arguments: ["since": String(r.text.components(separatedBy: marker).last ?? "")])
+    #expect(second.text.contains("C10 "))
+  }
 }
