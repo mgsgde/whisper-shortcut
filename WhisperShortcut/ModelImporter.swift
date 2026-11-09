@@ -9,16 +9,11 @@
 //  sandbox surface that has to be guarded on every access. After an import the model is a normal
 //  model — Delete, completeness checks and updates work exactly as they do for a download.
 //
-//  Two details make the difference between a working import and a broken one:
-//
-//  - A Hugging Face cache stores snapshot files as *relative symlinks* into `../../blobs/<hash>`
-//    (and, since huggingface_hub 1.32, a repo blob may itself link into a shared blob store at
-//    the cache root). `FileManager.copyItem` copies those links as links, so a naive copy of a
-//    snapshot folder produces a model whose files are all dangling. Every file is therefore
-//    copied through `resolvingSymlinksInPath()`.
-//  - On APFS, copying a file on the same volume is a clone (copy-on-write): instant and without
-//    extra blocks. Across volumes it is a real copy of every byte. The plan says which one it
-//    will be, so the UI can promise the right thing.
+//  A Hugging Face cache stores snapshot files as *relative symlinks* into `../../blobs/<hash>`
+//  (and, since huggingface_hub 1.32, a repo blob may itself link into a shared blob store at the
+//  cache root). `FileManager.copyItem` copies those links as links, so a naive copy of a snapshot
+//  folder produces a model whose files are all dangling. Every file is therefore copied through
+//  `resolvingSymlinksInPath()`.
 //
 
 import Foundation
@@ -29,6 +24,15 @@ struct ModelImportPlan: Identifiable {
     case whisper(OfflineModelType)
     case mlx(LocalLLMModelType)
     case qwen3(Qwen3ModelType)
+
+    /// Which call site may offer this plan — each Settings section only imports its own family.
+    var group: ModelImportGroup {
+      switch self {
+      case .whisper: return .speechToText
+      case .mlx: return .chat
+      case .qwen3(let type): return type == .asr ? .speechToText : .readAloud
+      }
+    }
   }
 
   let id = UUID()
@@ -40,15 +44,35 @@ struct ModelImportPlan: Identifiable {
   let source: URL
   /// Where the files go inside the app container.
   let destination: URL
-  /// Bytes that will be written when the copy is not a clone.
+  /// Bytes that will be copied, real file sizes with symlinks resolved.
   let byteCount: Int64
-  /// True when source and destination sit on the same volume, so APFS clones instead of copying.
-  let willClone: Bool
+  /// For a Whisper plan only: a local `openai/whisper-<variant>` tokenizer snapshot found next to
+  /// the weights, so the import can copy it in instead of needing the network afterwards.
+  var whisperTokenizerSource: URL?
 
-  /// The size the sheet shows: what the copy costs when it is not a clone.
+  init(
+    family: Family, displayName: String, source: URL, destination: URL, byteCount: Int64,
+    whisperTokenizerSource: URL? = nil
+  ) {
+    self.family = family
+    self.displayName = displayName
+    self.source = source
+    self.destination = destination
+    self.byteCount = byteCount
+    self.whisperTokenizerSource = whisperTokenizerSource
+  }
+
   var sizeLabel: String {
     ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
   }
+}
+
+/// Which Settings section may offer a plan — Speech to Text imports Whisper and Qwen3-ASR, the
+/// chat/offline-LLM sections import MLX chat models, Read Aloud imports Qwen3 TTS.
+enum ModelImportGroup {
+  case speechToText
+  case chat
+  case readAloud
 }
 
 enum ModelImportError: LocalizedError {
@@ -79,9 +103,15 @@ enum ModelImportError: LocalizedError {
 
 enum ModelImporter {
 
+  /// Free space must cover the resolved size plus this margin, same idea as `DiskSpace` but a
+  /// smaller margin: an import's size is measured exactly, a download's is only estimated.
+  private static let spaceMargin = 1.1
+
   // MARK: - Discovery
 
-  /// Every model this app can use that sits in `folder`, in catalogue order.
+  /// Every model this app can use that sits in `folder`, in catalogue order. Models already fully
+  /// on disk are left out — importing them again would just be a slower way to see what the
+  /// download list already shows.
   ///
   /// The folder may be an LM Studio models directory, a Hugging Face cache root, or any folder
   /// that contains one of them — the search looks at the folder itself and one level down, which
@@ -90,13 +120,16 @@ enum ModelImporter {
     let roots = searchRoots(for: folder)
     var plans: [ModelImportPlan] = []
 
-    for type in OfflineModelType.allCases where type.engine == .whisperKit {
+    for type in OfflineModelType.offerable where type.engine == .whisperKit {
+      guard !isComplete(at: whisperDestination(for: type), family: .whisper(type)) else { continue }
       if let plan = whisperPlan(for: type, in: roots) { plans.append(plan) }
     }
-    for type in LocalLLMModelType.allCases {
+    for type in LocalLLMModelType.allCases where type.isOfferable {
+      guard !isComplete(at: mlxDestination(for: type), family: .mlx(type)) else { continue }
       if let plan = mlxPlan(for: type, in: roots) { plans.append(plan) }
     }
     for type in Qwen3ModelType.allCases where type.isOfferable {
+      guard !isComplete(at: qwen3Destination(for: type), family: .qwen3(type)) else { continue }
       if let plan = qwen3Plan(for: type, in: roots) { plans.append(plan) }
     }
     return plans
@@ -115,6 +148,20 @@ enum ModelImporter {
     return roots
   }
 
+  /// Whether `directory` already holds a complete model for `family` — the same bar the loader
+  /// uses, so a half-written folder is never treated as "already have it".
+  private static func isComplete(at directory: URL, family: ModelImportPlan.Family) -> Bool {
+    switch family {
+    case .whisper:
+      return FileManager.default.fileExists(atPath: directory.path)
+        && ModelManager.incompleteComponent(at: directory) == nil
+    case .mlx:
+      return MLXModelPaths.layout.hasRequiredFiles(at: directory)
+    case .qwen3:
+      return Qwen3ModelManager.shared.layout.hasRequiredFiles(at: directory)
+    }
+  }
+
   // MARK: - Whisper
 
   /// A WhisperKit model in the user's folder, or nil. Tried in this order per root: a real
@@ -130,16 +177,16 @@ enum ModelImporter {
 
     for root in roots {
       // A real Hugging Face cache: models--argmaxinc--whisperkit-coreml/snapshots/<hash>/<folder>
-      let snapshots = root
-        .appendingPathComponent("models--argmaxinc--whisperkit-coreml")
-        .appendingPathComponent("snapshots")
+      let repoFolder = root.appendingPathComponent("models--argmaxinc--whisperkit-coreml")
+      let snapshots = repoFolder.appendingPathComponent("snapshots")
       if let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) {
-        for hash in hashes.sorted() {
+        for hash in preferredOrder(in: repoFolder, among: hashes) {
           let candidate = snapshots.appendingPathComponent(hash).appendingPathComponent(folderName)
           if ModelManager.incompleteComponent(at: candidate) == nil {
             return plan(
               family: .whisper(type), displayName: type.displayName, source: candidate,
-              destination: whisperDestination(for: type))
+              destination: whisperDestination(for: type),
+              whisperTokenizerSource: whisperTokenizerSource(for: type, in: roots))
           }
         }
       }
@@ -150,7 +197,8 @@ enum ModelImporter {
       ] where ModelManager.incompleteComponent(at: candidate) == nil {
         return plan(
           family: .whisper(type), displayName: type.displayName, source: candidate,
-          destination: whisperDestination(for: type))
+          destination: whisperDestination(for: type),
+          whisperTokenizerSource: whisperTokenizerSource(for: type, in: roots))
       }
     }
     return nil
@@ -166,19 +214,52 @@ enum ModelImporter {
       .appendingPathComponent("openai_whisper-\(type.whisperKitModelName ?? type.rawValue)")
   }
 
+  /// A local `openai/whisper-<variant>` tokenizer cache snapshot in the same folder tree, if any
+  /// — lets the import copy the tokenizer in instead of needing the network afterwards.
+  private static func whisperTokenizerSource(for type: OfflineModelType, in roots: [URL]) -> URL? {
+    guard let variant = ModelManager.tokenizerVariant(for: type) else { return nil }
+    let repoName = "models--openai--" + ModelManager.tokenizerRepoName(for: variant)
+    for root in roots {
+      let repoFolder = root.appendingPathComponent(repoName)
+      let snapshots = repoFolder.appendingPathComponent("snapshots")
+      guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else {
+        continue
+      }
+      for hash in preferredOrder(in: repoFolder, among: hashes) {
+        let candidate = snapshots.appendingPathComponent(hash)
+        if FileManager.default.fileExists(
+          atPath: candidate.appendingPathComponent("tokenizer.json").path) {
+          return candidate
+        }
+      }
+    }
+    return nil
+  }
+
   // MARK: - MLX and Qwen3
 
-  /// An MLX chat model in the user's folder, or nil. Destination is the plain
-  /// `models/<org>/<repo>` path `MLXModelPaths.localDirectory` looks in first.
+  private static func mlxDestination(for type: LocalLLMModelType) -> URL {
+    MLXModelPaths.hubDirectory
+      .appendingPathComponent("models")
+      .appendingPathComponent(type.huggingFaceID)
+  }
+
+  private static func qwen3Destination(for type: Qwen3ModelType) -> URL {
+    Qwen3ModelManager.shared.rootDirectory
+      .appendingPathComponent("models")
+      .appendingPathComponent(type.huggingFaceID)
+  }
+
+  /// An MLX chat model in the user's folder, or nil.
   private static func mlxPlan(
     for type: LocalLLMModelType, in roots: [URL]
   ) -> ModelImportPlan? {
-    guard let source = hubSource(for: type.huggingFaceID, in: roots) else { return nil }
+    guard let source = hubSource(
+      for: type.huggingFaceID, in: roots, hasRequiredFiles: MLXModelPaths.layout.hasRequiredFiles)
+    else { return nil }
     return plan(
       family: .mlx(type), displayName: type.displayName, source: source,
-      destination: MLXModelPaths.hubDirectory
-        .appendingPathComponent("models")
-        .appendingPathComponent(type.huggingFaceID))
+      destination: mlxDestination(for: type))
   }
 
   /// A Qwen3 audio model in the user's folder, or nil. Only offered models are searched, so a
@@ -186,56 +267,68 @@ enum ModelImporter {
   private static func qwen3Plan(
     for type: Qwen3ModelType, in roots: [URL]
   ) -> ModelImportPlan? {
-    guard let source = hubSource(for: type.huggingFaceID, in: roots) else { return nil }
+    guard let source = hubSource(
+      for: type.huggingFaceID, in: roots,
+      hasRequiredFiles: Qwen3ModelManager.shared.layout.hasRequiredFiles)
+    else { return nil }
     return plan(
       family: .qwen3(type), displayName: type.displayName, source: source,
-      destination: Qwen3ModelManager.shared.rootDirectory
-        .appendingPathComponent("models")
-        .appendingPathComponent(type.huggingFaceID))
+      destination: qwen3Destination(for: type))
   }
 
   /// The folder holding a Hub repo's files: a cache snapshot, or a plain `<org>/<repo>` checkout.
-  private static func hubSource(for huggingFaceID: String, in roots: [URL]) -> URL? {
+  /// `hasRequiredFiles` is the loader's own completeness check, so a half-downloaded repo in the
+  /// user's folder is never offered as an import.
+  private static func hubSource(
+    for huggingFaceID: String, in roots: [URL], hasRequiredFiles: (URL) -> Bool
+  ) -> URL? {
     let cacheFolder = "models--" + huggingFaceID.replacingOccurrences(of: "/", with: "--")
-    let parts = huggingFaceID.split(separator: "/").map(String.init)
 
     for root in roots {
       // Cache layout: models--<org>--<repo>/snapshots/<hash>
-      let snapshots = root.appendingPathComponent(cacheFolder).appendingPathComponent("snapshots")
+      let repoFolder = root.appendingPathComponent(cacheFolder)
+      let snapshots = repoFolder.appendingPathComponent("snapshots")
       if let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) {
-        for hash in hashes.sorted() {
+        for hash in preferredOrder(in: repoFolder, among: hashes) {
           let candidate = snapshots.appendingPathComponent(hash)
-          if hasHubFiles(at: candidate) { return candidate }
+          if hasRequiredFiles(candidate) { return candidate }
         }
       }
-      // Plain checkout: <org>/<repo>, or models/<org>/<repo>.
-      var plain = [root.appendingPathComponent(huggingFaceID)]
-      if parts.count == 2 {
-        plain.append(root.appendingPathComponent(parts[0]).appendingPathComponent(parts[1]))
-      }
-      plain.append(root.appendingPathComponent("models").appendingPathComponent(huggingFaceID))
-      for candidate in plain where hasHubFiles(at: candidate) { return candidate }
+      // Plain checkout: <org>/<repo>, or models/<org>/<repo> (LM Studio's layout).
+      for candidate in [
+        root.appendingPathComponent(huggingFaceID),
+        root.appendingPathComponent("models").appendingPathComponent(huggingFaceID),
+      ] where hasRequiredFiles(candidate) { return candidate }
     }
     return nil
   }
 
-  /// `config.json` plus at least one weights file — the same bar the loaders use, so an
-  /// interrupted download in the user's folder is not offered as an import.
-  private static func hasHubFiles(at directory: URL) -> Bool {
-    let fm = FileManager.default
-    guard fm.fileExists(atPath: directory.appendingPathComponent("config.json").path) else {
-      return false
+  /// Orders a repo's snapshot hashes to try: the one `refs/main` names first — Hub keeps it
+  /// pointed at the default revision — then every other snapshot, newest-modified first. Plain
+  /// lexicographic order (`sorted()`) could land on an older, stale snapshot when a repo has more
+  /// than one.
+  private static func preferredOrder(in repoFolder: URL, among hashes: [String]) -> [String] {
+    let pinned = (try? String(contentsOf: repoFolder.appendingPathComponent("refs/main"), encoding: .utf8))?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let snapshots = repoFolder.appendingPathComponent("snapshots")
+    let rest = hashes.filter { $0 != pinned }.sorted { a, b in
+      modificationDate(of: snapshots.appendingPathComponent(a))
+        > modificationDate(of: snapshots.appendingPathComponent(b))
     }
-    guard let contents = try? fm.contentsOfDirectory(atPath: directory.path) else { return false }
-    return contents.contains { $0.hasSuffix(".safetensors") || $0.hasSuffix(".bin") }
+    guard let pinned, hashes.contains(pinned) else { return rest }
+    return [pinned] + rest
+  }
+
+  private static func modificationDate(of url: URL) -> Date {
+    (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+      ?? .distantPast
   }
 
   // MARK: - Plan construction
 
-  /// Builds a plan and measures what the copy will cost. `willClone` is decided here, not in the
-  /// UI, so the sheet and `perform` cannot disagree about whether free space is needed.
   private static func plan(
-    family: ModelImportPlan.Family, displayName: String, source: URL, destination: URL
+    family: ModelImportPlan.Family, displayName: String, source: URL, destination: URL,
+    whisperTokenizerSource: URL? = nil
   ) -> ModelImportPlan {
     ModelImportPlan(
       family: family,
@@ -243,32 +336,25 @@ enum ModelImporter {
       source: source,
       destination: destination,
       byteCount: byteCount(at: source),
-      willClone: sameVolume(source, destination.deletingLastPathComponent()))
+      whisperTokenizerSource: whisperTokenizerSource)
   }
 
   /// Sum of the real file sizes, following symlinks — a cache snapshot's links are tiny, the
-  /// blobs they point at are the gigabytes.
-  private static func byteCount(at directory: URL) -> Int64 {
+  /// blobs they point at are the gigabytes. Internal (not `private`) so tests can check it against
+  /// a known fixture instead of hand-writing an expected byte count.
+  static func byteCount(at directory: URL) -> Int64 {
     let fm = FileManager.default
     guard let enumerator = fm.enumerator(
-      at: directory, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey])
+      at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey])
     else { return 0 }
     var total: Int64 = 0
     for case let url as URL in enumerator {
-      let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-      guard values?.isRegularFile == true else { continue }
-      total += Int64(values?.fileSize ?? 0)
+      let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+      if values?.isDirectory == true { continue }
+      let resolved = values?.isSymbolicLink == true ? url.resolvingSymlinksInPath() : url
+      total += Int64((try? resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
     }
     return total
-  }
-
-  /// Whether a copy between these two directories stays on one volume, i.e. clones on APFS.
-  private static func sameVolume(_ a: URL, _ b: URL) -> Bool {
-    let keys: Set<URLResourceKey> = [.volumeIdentifierKey]
-    guard let left = try? a.resourceValues(forKeys: keys).volumeIdentifier,
-      let right = try? b.resourceValues(forKeys: keys).volumeIdentifier
-    else { return false }
-    return String(describing: left) == String(describing: right)
   }
 
   // MARK: - Import
@@ -276,29 +362,33 @@ enum ModelImporter {
   /// Copies one plan into the app container. Reports 0…1 by bytes written.
   ///
   /// The copy is written to a sibling temporary folder first and moved into place at the end, so
-  /// an interrupted import never leaves a half-written model that `isModelAvailable` might
-  /// mistake for a complete one.
+  /// an interrupted import never leaves a half-written model that `isModelAvailable` might mistake
+  /// for a complete one. If the destination already holds a partial download (not a complete
+  /// model), the import replaces it instead of refusing.
   static func perform(_ plan: ModelImportPlan, onProgress: (Double) -> Void) throws {
     let fm = FileManager.default
     let destination = plan.destination
+    let parent = destination.deletingLastPathComponent()
 
-    guard !fm.fileExists(atPath: destination.path) else {
+    // A previous import that crashed or was force-quit mid-copy can leave its staging folder
+    // behind; clear it before starting a new one.
+    removeStaleStaging(in: parent)
+
+    let destinationOccupied = fm.fileExists(atPath: destination.path)
+    if destinationOccupied && isComplete(at: destination, family: plan.family) {
       throw ModelImportError.destinationExists(plan.displayName)
     }
 
-    let parent = destination.deletingLastPathComponent()
     try fm.createDirectory(at: parent, withIntermediateDirectories: true)
 
-    // A clone needs no free space; a real copy does.
-    if !plan.willClone {
-      let needed = Int64(Double(plan.byteCount) * DiskSpace.downloadMargin)
-      if let available = try? parent.resourceValues(
-        forKeys: [.volumeAvailableCapacityForImportantUsageKey]
-      ).volumeAvailableCapacityForImportantUsage, available < needed {
-        throw ModelImportError.notEnoughSpace(
-          needed: ByteCountFormatter.string(fromByteCount: needed, countStyle: .file),
-          available: ByteCountFormatter.string(fromByteCount: available, countStyle: .file))
-      }
+    let needed = Int64(Double(plan.byteCount) * spaceMargin)
+    let volumeRoot = firstExistingAncestor(of: destination)
+    if let available = try? volumeRoot.resourceValues(
+      forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+    ).volumeAvailableCapacityForImportantUsage, available < needed {
+      throw ModelImportError.notEnoughSpace(
+        needed: ByteCountFormatter.string(fromByteCount: needed, countStyle: .file),
+        available: ByteCountFormatter.string(fromByteCount: available, countStyle: .file))
     }
 
     let staging = parent.appendingPathComponent(".import-\(UUID().uuidString)")
@@ -311,7 +401,21 @@ enum ModelImporter {
         written += bytes
         onProgress(min(1, Double(written) / Double(total)))
       }
-      try fm.moveItem(at: staging, to: destination)
+      if destinationOccupied {
+        let aside = parent.appendingPathComponent(".import-old-\(UUID().uuidString)")
+        try fm.moveItem(at: destination, to: aside)
+        do {
+          try fm.moveItem(at: staging, to: destination)
+        } catch {
+          try? fm.moveItem(at: aside, to: destination)
+          throw error
+        }
+        try? fm.removeItem(at: aside)
+      } else {
+        try fm.moveItem(at: staging, to: destination)
+      }
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as ModelImportError {
       throw error
     } catch {
@@ -319,14 +423,38 @@ enum ModelImporter {
     }
     onProgress(1)
     DebugLogger.log(
-      "MODEL-IMPORT: imported \(plan.displayName) from \(plan.source.path) "
-        + "(\(plan.sizeLabel), \(plan.willClone ? "cloned" : "copied"))")
+      "MODEL-IMPORT: imported \(plan.displayName) from \(plan.source.path) (\(plan.sizeLabel))")
+  }
+
+  /// Removes `.import-*` staging (and swapped-aside) folders left in `parent` by a previous
+  /// import that never finished.
+  private static func removeStaleStaging(in parent: URL) {
+    guard let entries = try? FileManager.default.contentsOfDirectory(atPath: parent.path) else {
+      return
+    }
+    for entry in entries where entry.hasPrefix(".import-") {
+      try? FileManager.default.removeItem(at: parent.appendingPathComponent(entry))
+    }
+  }
+
+  /// The nearest ancestor of `url` that exists on disk, for the free-space check — a nested
+  /// destination's immediate parent may not have been created yet.
+  private static func firstExistingAncestor(of url: URL) -> URL {
+    var candidate = url
+    while !FileManager.default.fileExists(atPath: candidate.path) {
+      let next = candidate.deletingLastPathComponent()
+      if next.path == candidate.path { return candidate }
+      candidate = next
+    }
+    return candidate
   }
 
   /// Recursive copy that follows symlinks, so a Hugging Face snapshot arrives as real files.
+  /// Checked for cancellation per file/directory, so a multi-gigabyte copy stops promptly.
   private static func copyDereferencing(
     _ from: URL, to: URL, onBytes: (Int64) -> Void
   ) throws {
+    if Task.isCancelled { throw CancellationError() }
     let fm = FileManager.default
     let values = try from.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
 
@@ -359,10 +487,33 @@ enum ModelImporter {
   // MARK: - Post-import
 
   /// Whisper's tokenizer is not part of the CoreML repo — it lives in `openai/whisper-<variant>`
-  /// and WhisperKit fetches it on first load. An imported model therefore needs one network
-  /// round-trip before it can load offline; this does it right after the import.
-  static func finishWhisperImport(_ type: OfflineModelType) async throws {
-    guard let path = ModelManager.shared.resolveModelPath(for: type) else { return }
-    try await ModelManager.prefetchTokenizer(for: type, modelFolder: path)
+  /// and WhisperKit fetches it on first load. This finishes an import by either copying in a
+  /// tokenizer snapshot found next to the weights, or — only if there is none — fetching it over
+  /// the network. Never throws: a failed network fetch just leaves the model needing one more
+  /// network round-trip, which the caller detects via `ModelManager.isModelAvailable` and the
+  /// row's own Download action resolves later.
+  static func finishWhisperImport(_ plan: ModelImportPlan) async {
+    guard case .whisper(let type) = plan.family,
+      let destinationPath = ModelManager.shared.resolveModelPath(for: type)
+    else { return }
+
+    if let tokenizerSource = plan.whisperTokenizerSource,
+      let bundled = ModelManager.bundledTokenizerFolder(for: type, modelFolder: destinationPath) {
+      do {
+        try copyDereferencing(tokenizerSource, to: bundled) { _ in }
+        DebugLogger.log("MODEL-IMPORT: copied tokenizer for \(type.displayName) from \(tokenizerSource.path)")
+        return
+      } catch {
+        DebugLogger.logWarning(
+          "MODEL-IMPORT: tokenizer copy failed (\(error.localizedDescription)), trying the network")
+      }
+    }
+
+    do {
+      try await ModelManager.prefetchTokenizer(for: type, modelFolder: destinationPath)
+    } catch {
+      DebugLogger.logWarning(
+        "MODEL-IMPORT: tokenizer prefetch failed, \(type.displayName) needs the network once: \(error.localizedDescription)")
+    }
   }
 }
