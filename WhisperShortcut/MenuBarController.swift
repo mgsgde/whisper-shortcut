@@ -265,6 +265,7 @@ class MenuBarController: NSObject {
     },
     onPlaybackCompleted: { [weak self] in
       guard let self else { return }
+      self.readAloudRequestIsOpen = false
       NotificationCenter.default.post(name: .ttsDidStop, object: nil)
       // Only flip to completion feedback while still `.speaking` — the user may have started a
       // recording during playback, whose state must not be clobbered. The feedback state
@@ -903,12 +904,12 @@ class MenuBarController: NSObject {
     }
     if isTTSRunning {
       DebugLogger.log("TTS: Read Aloud synthesis cancelled via indicator ✕")
-      finishReadAloudSession()
+      finishReadAloudSession(userStopped: true)
       return
     }
     if ttsPlayback.isPlaying {
       DebugLogger.log("TTS: Read Aloud playback stopped via indicator ✕")
-      finishReadAloudSession(cancelNetworkWork: !ttsPlayback.isStreamClosed)
+      finishReadAloudSession(cancelNetworkWork: !ttsPlayback.isStreamClosed, userStopped: true)
       return
     }
     if case .processing(.prompting) = appState {
@@ -1829,7 +1830,7 @@ class MenuBarController: NSObject {
 
     // Read Aloud: TTS network work and/or local playback
     if isTTSRunning || ttsPlayback.isPlaying {
-      finishReadAloudSession(cancelNetworkWork: isTTSRunning)
+      finishReadAloudSession(cancelNetworkWork: isTTSRunning, userStopped: true)
       return
     }
 
@@ -3464,13 +3465,22 @@ class MenuBarController: NSObject {
   /// only aborts the inner TTS network call; cancelling this handle also kills the rewrite stage and
   /// stops a not-yet-started TTS from racing past a user-initiated Stop.
   private var currentReadAloudTask: Task<Void, Never>?
+  /// A logged Read Aloud request that has neither finished playing nor been stopped, so a Stop
+  /// is logged once and only for a request that exists.
+  private var readAloudRequestIsOpen = false
 
   /// Tears down an active Read Aloud session and posts `ttsDidStop` so chat/menu UI reset.
   private func finishReadAloudSession(
     cancelNetworkWork: Bool = true,
     stopPlayback: Bool = true,
-    transitionToIdle: Bool = true
+    transitionToIdle: Bool = true,
+    userStopped: Bool = false
   ) {
+    // The user ended a reading that had not finished: a verdict on the `readAloud` row.
+    if userStopped, readAloudRequestIsOpen {
+      readAloudRequestIsOpen = false
+      ContextLogger.shared.logSignal(.readAloudStopped, mode: InteractionMode.readAloud.rawValue)
+    }
     // Capture BEFORE `transitionToIdleAndCleanup` flips `appState` to idle. It only posts
     // `ttsDidStop` when leaving a TTS-synthesizing state (`isTTSRunning == true`); for the
     // audio-playing path the prior state is `.speaking` and it won't post on its own.
@@ -3519,12 +3529,12 @@ class MenuBarController: NSObject {
     switch availability(.readAloudChat) {
     case .stop:
       if isTTSRunning {
-        finishReadAloudSession()
+        finishReadAloudSession(userStopped: true)
       } else {
         // With progressive playback, audio can already be playing while later chunks are still
         // being synthesized, so Stop has to kill the network work too — unless the stream is
         // already closed, in which case there is nothing left to cancel.
-        finishReadAloudSession(cancelNetworkWork: !ttsPlayback.isStreamClosed)
+        finishReadAloudSession(cancelNetworkWork: !ttsPlayback.isStreamClosed, userStopped: true)
       }
       return true
     case .ignored(.otherProcessing):
@@ -3549,6 +3559,14 @@ class MenuBarController: NSObject {
     appState = .processing(.ttsProcessing)
     NotificationCenter.default.post(name: .ttsDidStart, object: nil)
     TelemetryService.shared.started(.readAloud)
+    // One row per user request, here at the single entry every Read Aloud path goes through.
+    let readAloudModel = ReadAloudPreferences.model
+    let frontmost = NSWorkspace.shared.frontmostApplication
+    let isOwnApp = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+    ContextLogger.shared.logReadAloud(
+      text: text, model: readAloudModel.rawValue, voice: ReadAloudPreferences.voice(for: readAloudModel),
+      app: frontmost.flatMap { isOwnApp ? nil : InteractionTargetApp(bundleId: $0.bundleIdentifier, name: $0.localizedName) })
+    readAloudRequestIsOpen = true
     let playbackGeneration = ttsPlayback.begin(expectedCharacters: text.count)
 
     currentReadAloudTask = Task { [weak self] in
@@ -3723,7 +3741,7 @@ class MenuBarController: NSObject {
     Task { @MainActor in
       switch await self.copySelection(logPrefix: "GLOSSARY") {
       case .selected(let selection):
-        self.reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(selection))
+        self.reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(selection, source: .glossaryShortcut))
         // `restorePendingSnapshot()` compares against our own last write. A synthetic ⌘C is
         // another app's write, so that guard can never pass — name the foreign change count.
         if self.clipboardManager.restorePendingSnapshot(
@@ -3762,7 +3780,7 @@ class MenuBarController: NSObject {
   }
 
   func addToGlossaryFromService(text: String) {
-    reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(text))
+    reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(text, source: .glossaryShortcut))
   }
 
   /// What the shared synthetic ⌘C poll found.

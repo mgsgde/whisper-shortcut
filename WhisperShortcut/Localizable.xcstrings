@@ -27048,6 +27048,16 @@
           }
         }
       }
+    },
+    "Glossary shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glossar-Kurzbefehl"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

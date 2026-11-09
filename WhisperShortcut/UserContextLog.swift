@@ -7,6 +7,8 @@ enum InteractionMode: String, Codable, CaseIterable {
   case transcription
   case prompt
   case chat = "geminiChat"
+  /// One Read Aloud request: the text that was read, the voice, the app it came from.
+  case readAloud
 }
 
 /// Who wrote a system-prompt history row. Raw values are the JSONL `source` strings
@@ -18,6 +20,10 @@ enum PromptHistorySource: String, CaseIterable {
   case mcp
   case mcpUndo = "mcp-undo"
   case voiceFeedback = "voice-feedback"
+  /// A hand edit in Settings (the system-prompt editors and the glossary editor).
+  case settings
+  /// The Glossary shortcut ("Add Selection to Glossary").
+  case glossaryShortcut
 
   var displayName: String {
     switch self {
@@ -26,6 +32,8 @@ enum PromptHistorySource: String, CaseIterable {
     case .chat: return String(localized: "Chat")
     case .mcp: return String(localized: "AI app (MCP)")
     case .mcpUndo: return String(localized: "AI app (MCP) undo")
+    case .settings: return String(localized: "Settings")
+    case .glossaryShortcut: return String(localized: "Glossary shortcut")
     }
   }
 

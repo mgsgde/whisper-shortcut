@@ -249,7 +249,7 @@ struct SystemPromptSectionEditor: View {
     // so a merge that updates `text` does not schedule another autosave.
     lastSavedText = toSave
     if toSave != text { text = toSave }
-    if SystemPromptsStore.shared.updateSection(section, content: toSave) {
+    if SystemPromptsStore.shared.updateSection(section, content: toSave, source: .settings) {
       saveFailed = false
     } else {
       lastSavedText = previous

@@ -22,6 +22,10 @@ struct MCPConfigEnvironment {
   /// The `get_settings` / `update_settings` catalog. Built once per environment; tests pass a
   /// catalog built from fake `MCPSettingsCatalog.Dependencies`.
   var settingsCatalog: [MCPSetting] = []
+  /// Error-log lines for `get_recent_interactions` with `include_errors`. Tests hand in lines.
+  var errorLog: (_ query: InteractionLogQuery) -> [ErrorLogLine] = { ErrorLogReader.load($0) }
+  /// Rows of `system-prompts-history.jsonl`, oldest first, for `get_config_history`.
+  var configHistory: () -> [UnifiedSystemPromptHistoryEntry] = { ConfigHistoryReader.load() }
 
   var applier: MCPConfigApplier { MCPConfigApplier(targets: targets, changeLog: changeLog) }
 
@@ -85,7 +89,8 @@ struct MCPConfigTools {
   ]
 
   static let readToolNames: Set<String> = [
-    "get_configuration", "get_recent_interactions", "get_settings", "get_proposal_status",
+    "get_configuration", "get_recent_interactions", "get_config_history", "get_settings",
+    "get_proposal_status",
   ]
   static let writeToolNames: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
@@ -125,6 +130,12 @@ struct MCPConfigTools {
       "description": InteractionLogTool.description(subject: "The user's recent dictations, Dictate Prompt turns and chats"),
       "inputSchema": InteractionLogTool.parameters,
       "annotations": ["title": "Get Recent Interactions", "readOnlyHint": true, "openWorldHint": false],
+    ],
+    [
+      "name": "get_config_history",
+      "description": ConfigHistoryTool.description,
+      "inputSchema": ConfigHistoryTool.parameters,
+      "annotations": ["title": "Get Config History", "readOnlyHint": true, "openWorldHint": false],
     ],
     [
       "name": "get_settings",
@@ -264,6 +275,7 @@ struct MCPConfigTools {
     switch name {
     case "get_configuration": return getConfiguration(arguments)
     case "get_recent_interactions": return getRecentInteractions(arguments)
+    case "get_config_history": return getConfigHistory(arguments)
     case "add_glossary_terms": return addGlossaryTerms(arguments)
     case "update_system_prompt": return updateSystemPrompt(arguments)
     case "update_writing_style_profile": return updateWritingStyle(arguments)
@@ -396,10 +408,26 @@ struct MCPConfigTools {
     }
     let rows = env.interactionLog(query)
     let page = InteractionLogReader.page(entries: rows.entries, signals: rows.signals, query: query)
+    let errors = query.includeErrors ? env.errorLog(query) : []
     let out = InteractionLogReader.result(
-      page, query: query, fieldCap: Self.maxFieldCharacters, budget: MCPMeetingTools.maxResultCharacters)
+      page, query: query, fieldCap: Self.maxFieldCharacters, budget: MCPMeetingTools.maxResultCharacters,
+      errors: errors)
     let text = json(out)
     log("get_recent_interactions", "applied", "read", len: text.count)
+    return (text, false)
+  }
+
+  // MARK: - get_config_history
+
+  /// Read-only and not behind the usage-data toggles: it is the history of the app's own
+  /// configuration (the same texts `get_configuration` can return), not what the user dictated.
+  private func getConfigHistory(_ args: [String: Any]) -> MCPToolResult {
+    let parsed = ConfigHistoryQuery.parse(args)
+    guard let query = parsed.query else {
+      return reject("get_config_history", "bad arguments", parsed.error ?? "Invalid arguments.")
+    }
+    let text = json(ConfigHistoryReader.result(rows: env.configHistory(), query: query))
+    log("get_config_history", "applied", "read", len: text.count)
     return (text, false)
   }
 

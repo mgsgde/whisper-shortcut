@@ -59,8 +59,12 @@ If **Save usage data** is enabled (Settings → Privacy & Permissions, off by de
 
 Nothing reads these logs on its own. They are read only when you ask:
 
-- the in-app **Chat** reads them with its `read_recent_interactions` tool when you ask it why something went wrong or to tune the app; what it reads is sent to the chat model you selected, like any message you send it;
+- the in-app **Chat** reads them with its `read_recent_interactions` tool when you ask it why something went wrong or to tune the app; what it reads is sent to the chat model you selected, like any message you send it. On request it can also read the app's own error lines (`include_errors`, from `UserContext/errors-*.log`, kept 30 days) and the change history below;
 - an **AI app** you connected over MCP (Settings → Claude & AI Apps) reads them with `get_recent_interactions`, only if you also turned on "Let AI apps read my recent dictations"; what it reads goes to that app and its model provider.
+
+Besides dictations, Dictate Prompt turns and chats, the log also holds, since November 2026: each **Read Aloud** request (the text that was read, cut at 2,000 characters, the voice model and voice, the app it came from, and whether you stopped it early), and for each chat turn the **names and success** of the tools the chat called (never their arguments or results).
+
+`UserContext/system-prompts-history.jsonl` records every change to the Dictation, Dictate Prompt and Chat instructions and the Glossary, whoever made it: you in Settings, the Glossary shortcut, the Chat, or an AI app. It keeps the changed text and is kept even when Save usage data is off; the Chat and AI apps read it with `read_config_history` / `get_config_history` (only the added and removed lines) so they do not re-add something you removed.
 
 Earlier versions (until November 2026) had a Smart Improvement feature that sent samples of these logs to your Smart Improvement model on a schedule; it has been removed.
 

@@ -157,7 +157,7 @@ final class SystemPromptsStore {
   /// Deliberately dumb: no model, no fuzzy matching, no network. The user has told the app the
   /// correct spelling by selecting it — the app's job is to store it verbatim, which is also what
   /// makes this usable in Offline Mode, where every model-driven learning path is switched off.
-  func appendToWhisperGlossary(_ raw: String) -> GlossaryAppendResult {
+  func appendToWhisperGlossary(_ raw: String, source: PromptHistorySource) -> GlossaryAppendResult {
     let term = Self.normaliseTerm(raw)
     guard !term.isEmpty, term.count <= Self.maxTermCharacters,
       term.split(separator: " ").count <= Self.maxTermWords
@@ -172,7 +172,7 @@ final class SystemPromptsStore {
     }
 
     let updated = existing.isEmpty ? term : existing + ", " + term
-    updateSection(.whisperGlossary, content: updated)
+    updateSection(.whisperGlossary, content: updated, source: source)
     DebugLogger.log("GLOSSARY: Added \(DebugLogger.redacted(term)) (\(updated.count) chars total)")
     return .added(term)
   }
@@ -227,31 +227,43 @@ final class SystemPromptsStore {
   /// Recreate the system-prompts file with app defaults. Used after "Delete context data".
   func resetSystemPromptsToDefaults() {
     ensureDirectoryExists()
+    let before = sectionsOnDisk()
     if write(defaultFormattedContent(), reason: "reset to defaults") {
+      recordChanges(from: before, source: .settings)
       NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
     }
   }
 
   /// Save full file content from the editor. Parses sections and rewrites so format is canonical.
   @discardableResult
-  func saveFullContent(_ rawContent: String) -> Bool {
+  func saveFullContent(_ rawContent: String, source: PromptHistorySource) -> Bool {
     if case .unreadable = currentFile() { return refuseWrite("save") }
-    return write(formatContent(parseSections(from: rawContent)), reason: "save")
+    let before = sectionsOnDisk()
+    guard write(formatContent(parseSections(from: rawContent)), reason: "save") else { return false }
+    recordChanges(from: before, source: source)
+    return true
   }
 
   /// Update a single section (e.g. when the chat tool or an AI app applies a change). Writes the full file.
   /// Returns false — and leaves the file alone — when the file exists but cannot be read, because the
   /// only thing to merge the section into would then be the defaults.
+  ///
+  /// `source` is required: this is the one place a section's content changes for a user's or a
+  /// model's edit, so it is also the one place that appends the history row
+  /// (`system-prompts-history.jsonl`) — exactly one when the content changed, none when it did not.
+  /// A call site cannot forget it, and none writes it a second time.
   @discardableResult
-  func updateSection(_ section: SystemPromptSection, content: String) -> Bool {
+  func updateSection(_ section: SystemPromptSection, content: String, source: PromptHistorySource) -> Bool {
     var parsed: [SystemPromptSection: String]
     switch currentFile() {
     case .contents(let existing): parsed = parseSections(from: existing)
     case .missing: parsed = parseSections(from: defaultFormattedContent())
     case .unreadable: return refuseWrite("update section \(section.rawValue)")
     }
+    let before = parsed
     parsed[section] = content
     guard write(formatContent(parsed), reason: "update section \(section.rawValue)") else { return false }
+    recordChanges(from: before, source: source)
     NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
     return true
   }
@@ -339,6 +351,97 @@ final class SystemPromptsStore {
     let names = upgrades.keys.map(\.rawValue).sorted().joined(separator: ", ")
     if write(formatContent(parsed), reason: "lift unedited default(s): \(names)") {
       NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    }
+  }
+
+  // MARK: - Change history
+
+  /// Where history rows go: `system-prompts-history.jsonl` next to the prompts file, so a store
+  /// rooted in a scratch directory (tests) keeps its history there and never in the real log.
+  var historyFileURL: URL { contextDirectoryURL.appendingPathComponent(Self.historyFileName) }
+  static let historyFileName = "system-prompts-history.jsonl"
+  private let historyLock = NSLock()
+
+  /// Sections as they are on disk now (trimmed bodies), for comparing before and after a write.
+  /// An absent file reads as the defaults it is about to be created with.
+  private func sectionsOnDisk() -> [SystemPromptSection: String] {
+    switch readFile() {
+    case .contents(let text): return parseSections(from: text)
+    case .missing, .unreadable: return parseSections(from: defaultFormattedContent())
+    }
+  }
+
+  /// Appends one history row for every section whose content differs from `before`. Not part of
+  /// the "Save usage data" switch: this is the record of changes to the app's own configuration,
+  /// the thing that lets the user (and a model) see why behaviour changed.
+  private func recordChanges(from before: [SystemPromptSection: String], source: PromptHistorySource) {
+    let after = sectionsOnDisk()
+    for section in SystemPromptSection.allCases {
+      let old = (before[section] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      let new = (after[section] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      guard old != new else { continue }
+      appendHistoryRow(
+        UnifiedSystemPromptHistoryEntry(
+          ts: UserContextLog.nowString(now()), section: section.rawValue, source: source.rawValue,
+          previousLength: old.count, newLength: new.count, content: new, model: nil),
+        previousContent: old)
+    }
+  }
+
+  /// Settings autosaves on every typing pause; one edit would otherwise write dozens of rows and
+  /// push older, meaningful ones out of the 500-line file.
+  static let settingsCoalesceWindow: TimeInterval = 10 * 60
+  /// Injectable clock, for tests.
+  var now: () -> Date = Date.init
+  /// What each section held when the current Settings editing session began (in memory, set when a
+  /// session's first row is appended), to recognise an edit that was typed back to where it began.
+  private var settingsSessionStart: [String: String] = [:]
+
+  /// Appends `entry`, except that a Settings edit continues the previous row when that row is the
+  /// last line of the file, is also a Settings edit of the same section and is under ten minutes
+  /// old: the row is replaced, keeping its `previousLength` (the length before the session began).
+  /// If the section is then back to what it held before the session, the row is dropped.
+  private func appendHistoryRow(_ entry: UnifiedSystemPromptHistoryEntry, previousContent: String) {
+    historyLock.lock()
+    defer { historyLock.unlock() }
+    do {
+      let decoder = JSONDecoder()
+      let existing = (try? String(contentsOf: historyFileURL, encoding: .utf8)) ?? ""
+      var lines = existing.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+      let rows = lines.map { $0.data(using: .utf8).flatMap { try? decoder.decode(UnifiedSystemPromptHistoryEntry.self, from: $0) } }
+      if entry.source == PromptHistorySource.settings.rawValue,
+        let lastRow = rows.last ?? nil, lastRow.section == entry.section,
+        lastRow.source == PromptHistorySource.settings.rawValue,
+        let lastDate = UserContextLog.timestamp(lastRow.ts), now().timeIntervalSince(lastDate) < Self.settingsCoalesceWindow
+      {
+        let beforeSession = rows.dropLast().reversed().compactMap { $0 }.first { $0.section == entry.section }?.content
+          ?? settingsSessionStart[entry.section]
+        lines.removeLast()
+        if let beforeSession,
+          beforeSession.trimmingCharacters(in: .whitespacesAndNewlines) == entry.content
+        {
+          settingsSessionStart[entry.section] = nil
+          DebugLogger.log("SYSTEM-PROMPTS: Settings edit of \(entry.section) reverted, history row dropped")
+        } else {
+          let merged = UnifiedSystemPromptHistoryEntry(
+            ts: entry.ts, section: entry.section, source: entry.source,
+            previousLength: lastRow.previousLength, newLength: entry.newLength,
+            content: entry.content, model: nil)
+          lines.append(String(decoding: try JSONEncoder().encode(merged), as: UTF8.self))
+          DebugLogger.log("SYSTEM-PROMPTS: Coalesced Settings history row (\(entry.section))")
+        }
+        try (lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n"))
+          .write(to: historyFileURL, atomically: true, encoding: .utf8)
+        return
+      }
+      if entry.source == PromptHistorySource.settings.rawValue {
+        settingsSessionStart[entry.section] = previousContent
+      }
+      let data = try JSONEncoder().encode(entry)
+      try UserContextLog.appendLine(data, to: historyFileURL)
+      DebugLogger.log("SYSTEM-PROMPTS: Appended history row (\(entry.section), \(entry.source))")
+    } catch {
+      DebugLogger.logError("SYSTEM-PROMPTS: Failed to append history row: \(error.logDescription)")
     }
   }
 

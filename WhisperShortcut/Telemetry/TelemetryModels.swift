@@ -41,6 +41,7 @@ enum TelemetryArea: String, CaseIterable, Codable {
     case .transcription: self = .dictation
     case .prompt: self = .prompt
     case .chat: self = .chat
+    case .readAloud: self = .readAloud
     case nil: self = .other
     }
   }
@@ -95,6 +96,9 @@ enum TelemetryCountName: String, CaseIterable, Codable {
     case .noSpeechDetected: self = .noSpeechDetected
     case .noInputSignal: self = .noInputSignal
     case .glossaryEchoRemoved: self = .glossaryEchoRemoved
+    // No new count name: the schema on the server is closed. Stopping Read Aloud is a user
+    // cancel, which the area (`readAloud`) already tells apart.
+    case .readAloudStopped: self = .cancelledWhileProcessing
     }
   }
 }

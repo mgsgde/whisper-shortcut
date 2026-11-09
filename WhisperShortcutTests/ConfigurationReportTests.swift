@@ -38,8 +38,8 @@ struct ConfigurationReportTests {
     defer { try? FileManager.default.removeItem(at: dir) }
 
     let store = SystemPromptsStore(contextDirectoryURL: dir)
-    #expect(store.updateSection(.dictation, content: "Please keep it short. \(Self.promptSentinel)"))
-    #expect(store.updateSection(.whisperGlossary, content: "Foo\n\(Self.glossarySentinel)"))
+    #expect(store.updateSection(.dictation, content: "Please keep it short. \(Self.promptSentinel)", source: .settings))
+    #expect(store.updateSection(.whisperGlossary, content: "Foo\n\(Self.glossarySentinel)", source: .settings))
 
     let suite = "config-report-tests-\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!

@@ -86,7 +86,7 @@ final class GlossaryFastLearner {
       if cleaned != glossary {
         glossary = cleaned
         prunedWrongSpelling = true
-        SystemPromptsStore.shared.updateSection(.whisperGlossary, content: glossary)
+        SystemPromptsStore.shared.updateSection(.whisperGlossary, content: glossary, source: .chat)
         DebugLogger.log("GLOSSARY-LEARN: chat tool removed competing spelling \(DebugLogger.redacted(wrong))")
       }
     }
@@ -116,7 +116,7 @@ final class GlossaryFastLearner {
       to: term, keepingLinesOf: "", transcripts: recentTranscriptionResults())
     let entry = misheardAs.map { "\(spelled) (not \"\($0)\")" } ?? spelled
     let newGlossary = glossary.isEmpty ? entry : glossary + "\n" + entry
-    SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary)
+    SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary, source: .chat)
     DebugLogger.log("GLOSSARY-LEARN: chat tool added \(DebugLogger.redacted(entry)) to glossary")
     return [
       "ok": true, "status": "added", "glossary_entry": entry,
@@ -250,7 +250,7 @@ final class GlossaryFastLearner {
     let newGlossary = glossary.isEmpty
       ? additions.joined(separator: "\n")
       : glossary + "\n" + additions.joined(separator: "\n")
-    SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary)
+    SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary, source: .chat)
     DebugLogger.log("GLOSSARY-LEARN: added \(additions.count) term(s) from typed chat text")
   }
 
