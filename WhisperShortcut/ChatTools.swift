@@ -1133,10 +1133,17 @@ enum ChatToolRegistry {
     [(name: String, title: String, description: String, filename: String)] = [
       (
         name: "readme",
-        title: "README — Project Overview",
+        title: "README — Overview",
         description:
-          "App overview, features, system requirements, install, and BYOK API key setup.",
+          "Short overview: what the app does, download, shortcuts, providers, privacy. For how a feature works, read 'guide'.",
         filename: "README.md"
+      ),
+      (
+        name: "guide",
+        title: "User Guide",
+        description:
+          "Full manual: every feature in detail, settings paths, transcription model comparison, Chat commands and folders, Live Meeting, Claude/MCP, Offline Mode, tuning from usage.",
+        filename: "guide.md"
       ),
       (
         name: "data-directories",
@@ -1167,7 +1174,7 @@ enum ChatToolRegistry {
           "name": [
             "type": "string",
             "description":
-              "The doc identifier as returned by list_whisper_shortcut_docs (e.g. 'readme', 'data-directories').",
+              "The doc identifier as returned by list_whisper_shortcut_docs (e.g. 'readme', 'guide', 'data-directories').",
           ],
         ] as [String: Any],
         "required": ["name"],
