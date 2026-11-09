@@ -1100,7 +1100,10 @@ final class LiveMeetingSession: NSObject {
     MeetingAudioBacklog.removeIfEmpty(stem: stem)
 
     // The summary is only worth writing once the transcript is whole (see `finish()`).
-    if failure == nil, !isStillLive {
+    // `finish()` of a meeting that ended mid-retry queued its own pass, which post-processes once;
+    // doing it here as well would summarise twice.
+    let queuedPassFollows = hasPendingRetry && (pendingRetryAll || pendingRetryStems.contains(stem))
+    if failure == nil, !isStillLive, !queuedPassFollows {
       if merged.isEmpty {
         let text = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
         merged = LiveMeetingTranscriptStore.parseTranscript(text)

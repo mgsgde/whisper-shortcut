@@ -86,4 +86,48 @@ struct LiveMeetingRetryBacklogTests {
     #expect(LiveMeetingTranscriptStore.parseTranscript(onDisk).map(\.text) == ["recovered words", "later"])
     #expect(MeetingAudioBacklog.items(stem: stem).isEmpty)
   }
+
+  @Test("A retry pass leaves post-processing to the queued pass of a meeting that ended mid-retry")
+  func queuedPassOwnsPostProcessing() async throws {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("r207-pp-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let stem = "Meeting-r207pp-\(UUID().uuidString)"
+    let file = MeetingListService.transcriptURL(forStem: stem)
+    try FileManager.default.createDirectory(
+      at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "[00:00] hello\n\n".write(to: file, atomically: true, encoding: .utf8)
+    defer {
+      try? FileManager.default.removeItem(at: file)
+      MeetingAudioBacklog.remove(stem: stem)
+    }
+    _ = try Self.keepAudio(stem: stem, start: 15)
+
+    final class Count: @unchecked Sendable { var passes = 0 }
+    let count = Count()
+    let calls = Calls(reply: "recovered")
+    let session = LiveMeetingSession(
+      transcribeChunk: { url in
+        calls.urls.append(url)
+        return calls.reply
+      },
+      cleanUpAudioFile: { _ in },
+      appStateIsRecordingMeeting: { false },
+      onStopping: {},
+      onFinished: {},
+      onBacklogChanged: {},
+      stopSafetyNetDelay: 3600,
+      postProcessingOverride: { _, _ in count.passes += 1 },
+      presentEndedMeetingAlert: { _ in })
+
+    // Two requests for the same stem: the first runs, the second is queued behind it.
+    async let first: Void = session.retryBacklog(stems: [stem], announce: false)
+    async let second: Void = session.retryBacklog(stems: [stem], announce: false)
+    _ = await (first, second)
+    for _ in 0..<50 where count.passes == 0 { try await Task.sleep(nanoseconds: 20_000_000) }
+    try await Task.sleep(nanoseconds: 200_000_000)
+
+    #expect(count.passes == 1)
+  }
 }
