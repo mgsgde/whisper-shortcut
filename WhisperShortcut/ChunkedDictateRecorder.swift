@@ -89,6 +89,11 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   private var isRecorderAActive = true
   private var isSessionActive = false
 
+  /// Wall time of the latest `startRecording()` request, and whether this process has
+  /// already opened the mic once (cold starts block much longer than warm ones).
+  private var sessionRequestedAt: Date?
+  private static var hasStartedOnceThisProcess = false
+
   /// URLs of all chunks recorded this session, in order (the active one is appended on stop).
   private var chunkURLs: [URL] = []
 
@@ -127,6 +132,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   func startRecording() {
     startGeneration += 1
     let generation = startGeneration
+    sessionRequestedAt = Date()
     requestMicrophonePermission { [weak self] granted in
       guard let self, self.startGeneration == generation else {
         DebugLogger.logAudio("AUDIO: Ignoring microphone permission — the recording start was cancelled")
@@ -287,12 +293,19 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     consecutiveSilenceSamples = 0
 
     audioQueue.async { [weak self] in
+      let recordCallStart = Date()
       if recorder.record() {
+        let recordMs = Date().timeIntervalSince(recordCallStart) * 1000
         DispatchQueue.main.async {
           // Only the first chunk of a session is "recording began"; rotations reuse this path.
           guard let self, self.activeRecorder === recorder, self.isSessionActive,
             self.chunkURLs.isEmpty
           else { return }
+          let sinceMs = self.sessionRequestedAt.map { Date().timeIntervalSince($0) * 1000 } ?? -1
+          let first = !Self.hasStartedOnceThisProcess
+          DebugLogger.logAudio(
+            "SPEED: MIC-START record()=\(Int(recordMs))ms sinceRequest=\(Int(sinceMs))ms firstInProcess=\(first)")
+          Self.hasStartedOnceThisProcess = true
           self.delegate?.audioRecorderDidBeginRecording()
         }
         return
