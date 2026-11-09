@@ -60,16 +60,20 @@ enum PermissionStatusChecker {
   /// URL scheme (same approach AccessibilityPermissionManager uses for AX).
   static func openSystemSettings(for kind: PermissionKind) {
     let urlString: String
+    let reload: Bool
     switch kind {
     case .microphone:
       urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+      reload = false
     case .accessibility:
       urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+      reload = true
     case .screenRecording:
       urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+      reload = true
     }
     if let url = URL(string: urlString) {
-      Task { @MainActor in SystemSettingsOpener.open(url) }
+      Task { @MainActor in SystemSettingsOpener.open(url, reloadingPrivacyList: reload) }
     } else {
       let fallback = URL(fileURLWithPath: "/System/Applications/System Settings.app")
       Task { @MainActor in SystemSettingsOpener.open(fallback) }
@@ -107,7 +111,10 @@ enum PermissionStatusChecker {
   static func requestAccessibilityAccess() -> Bool {
     let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
     let options = [promptKey: true] as CFDictionary
-    return AXIsProcessTrustedWithOptions(options)
+    let trusted = AXIsProcessTrustedWithOptions(options)
+    DebugLogger.log(
+      "ACCESSIBILITY: requested via native prompt (trusted=\(trusted), bundle=\(Bundle.main.bundlePath))")
+    return trusted
   }
 
   /// Fires the native permission request before deep-linking into Privacy & Security. Call on the

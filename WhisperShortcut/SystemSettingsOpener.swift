@@ -9,8 +9,42 @@ enum SystemSettingsOpener {
   private static var observer: NSObjectProtocol?
 
   static func open(_ url: URL) {
-    lowerFloatingWindows()
-    NSWorkspace.shared.open(url)
+    open(url, reloadingPrivacyList: false)
+  }
+
+  /// With `reloadingPrivacyList`, for the Accessibility and Screen Recording panes, which list an
+  /// app only after `tccd` registered it. Two things can make the list come up without
+  /// WhisperShortcut on a fresh Mac. (a) A deep link into an already running System Settings only
+  /// navigates; the privacy list is not reloaded, so an entry added since it was first shown stays
+  /// missing. A sandboxed app cannot quit System Settings, so a running one is bounced through the
+  /// Privacy & Security root pane first, then sent to the target pane. Not yet verified on a fresh
+  /// Mac. (b) The pane was opened right after the permission request, before `tccd` had written
+  /// the new entry. Waiting 0.5 s before opening gives it time.
+  static func open(_ url: URL, reloadingPrivacyList: Bool) {
+    guard reloadingPrivacyList else {
+      lowerFloatingWindows()
+      NSWorkspace.shared.open(url)
+      return
+    }
+    let running = !NSRunningApplication.runningApplications(
+      withBundleIdentifier: "com.apple.systempreferences"
+    ).isEmpty
+    if running, let root = URL(string: "x-apple.systempreferences:com.apple.preference.security") {
+      DebugLogger.log(
+        "SYSTEM-SETTINGS: already running — opening Privacy & Security first so the list reloads")
+      lowerFloatingWindows()
+      NSWorkspace.shared.open(root)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        MainActor.assumeIsolated { _ = NSWorkspace.shared.open(url) }
+      }
+    } else {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        MainActor.assumeIsolated {
+          lowerFloatingWindows()
+          NSWorkspace.shared.open(url)
+        }
+      }
+    }
   }
 
   /// `NSWorkspace.open` returns before System Settings is frontmost, so `didBecomeActive` can
