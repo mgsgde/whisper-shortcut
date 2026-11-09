@@ -47,22 +47,6 @@ struct ModelImportSection: View {
         if isScanning {
           ProgressView().controlSize(.small)
         }
-
-        if isImporting {
-          ProgressView(value: progress)
-            .progressViewStyle(.linear)
-            .frame(width: 120)
-          Text(currentName)
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .lineLimit(1)
-          Button("Cancel Import") {
-            activeImport?.cancel()
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .pointerCursorOnHover()
-        }
       }
     }
     .sheet(isPresented: $showSheet) {
@@ -142,13 +126,19 @@ struct ModelImportSection: View {
                   .foregroundColor(.secondary)
               }
               Spacer()
-              Button("Import") {
-                importOne(plan)
+              if isImporting && currentName == plan.displayName {
+                ProgressView(value: progress)
+                  .progressViewStyle(.linear)
+                  .frame(width: 120)
+              } else {
+                Button("Import") {
+                  importOne(plan)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isImporting)
+                .pointerCursorOnHover()
               }
-              .buttonStyle(.borderedProminent)
-              .controlSize(.small)
-              .disabled(isImporting)
-              .pointerCursorOnHover()
             }
             .padding(10)
             .background(Color(.controlBackgroundColor))
@@ -160,9 +150,13 @@ struct ModelImportSection: View {
 
       HStack {
         Spacer()
-        Button("Done") { showSheet = false }
-          .keyboardShortcut(.defaultAction)
-          .disabled(isImporting)
+        if isImporting {
+          Button("Cancel Import") { activeImport?.cancel() }
+            .keyboardShortcut(.cancelAction)
+        } else {
+          Button("Done") { showSheet = false }
+            .keyboardShortcut(.defaultAction)
+        }
       }
     }
     .padding(20)
