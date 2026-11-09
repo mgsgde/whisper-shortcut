@@ -82,6 +82,36 @@ enum InlineCitationExtractor {
   private static let partialMarker = try! NSRegularExpression(
     pattern: #"[ \t]*(?:\[(?:\[\d*\]?\]?(?:\([^()\s]*)?|(?:web|x|post|news)(?::\d*)?)|\(\[[^\]\n]*(?:\]\([^()\s]*)?)$"#)
 
+  /// UTF-16 ranges of closed inline code spans (a backtick run closed by a run of the same
+  /// length). An unclosed run is not a span.
+  static func inlineCodeSpans(in text: String) -> [NSRange] {
+    let ns = text as NSString
+    var spans: [NSRange] = []
+    var i = 0
+    while i < ns.length {
+      guard ns.character(at: i) == 0x60 else { i += 1; continue }
+      var open = i
+      while open < ns.length, ns.character(at: open) == 0x60 { open += 1 }
+      let runLength = open - i
+      var j = open
+      var closed: Int?
+      while j < ns.length {
+        guard ns.character(at: j) == 0x60 else { j += 1; continue }
+        var end = j
+        while end < ns.length, ns.character(at: end) == 0x60 { end += 1 }
+        if end - j == runLength { closed = end; break }
+        j = end
+      }
+      if let closed {
+        spans.append(NSRange(location: i, length: closed - i))
+        i = closed
+      } else {
+        i = open
+      }
+    }
+    return spans
+  }
+
   /// The paragraph with every marker removed, plus the cited sources in first-cited order.
   /// A URL that is also in the reply's footer list reuses that entry's title.
   static func extract(
@@ -114,12 +144,25 @@ enum InlineCitationExtractor {
       removals.append(match.range)
     }
 
+    // Markers inside an inline code span are literal text the model is showing (`[web:1]`), not
+    // citations (R217).
+    let codeSpans = inlineCodeSpans(in: paragraph)
+    if !codeSpans.isEmpty {
+      removals.removeAll { removal in
+        codeSpans.contains { NSIntersectionRange($0, removal).length > 0 }
+      }
+      cited.removeAll { entry in codeSpans.contains { NSLocationInRange(entry.location, $0) } }
+    }
+
     var text = paragraph
     for range in removals.sorted(by: { $0.location > $1.location }) {
       text = (text as NSString).replacingCharacters(in: range, with: "")
     }
-    text = partialMarker.stringByReplacingMatches(
-      in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+    // A trailing partial marker is only a cut-off citation outside an (unclosed) code span.
+    if text.filter({ $0 == "`" }).count % 2 == 0 {
+      text = partialMarker.stringByReplacingMatches(
+        in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+    }
 
     var seen: Set<String> = []
     // Enumerated tie-break: `sorted` is not stable, and a group's URLs share one location.
