@@ -666,4 +666,22 @@ struct MCPSettingsCatalogTests {
     #expect(env.changeLog.undo(changeID) == .undone)
     #expect(env.testDefaults.stringArray(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) == [])
   }
+
+  // MARK: - Qwen3 voice validated against the model in the same batch (R220)
+
+  @Test("qwen3 voice is judged against the read_aloud.model set in the same batch")
+  func qwen3VoiceFollowsBatchModel() {
+    let env = MCPTestEnv()
+    guard let voice = env.settingsCatalog.first(where: { $0.id == "read_aloud.voice.qwen3" }) else {
+      Issue.record("missing read_aloud.voice.qwen3"); return
+    }
+    let speaker = Qwen3VoicePersona.customVoiceSpeakers[0].id
+    let persona = Qwen3VoicePersona.default.id
+    // Right pairs accepted.
+    #expect(voice.validateWithBatch(speaker, batch: ["read_aloud.model": TTSModel.qwen3CustomVoice.rawValue]) == nil)
+    #expect(voice.validateWithBatch(persona, batch: ["read_aloud.model": TTSModel.qwen3VoiceDesign.rawValue]) == nil)
+    // Wrong pairs rejected.
+    #expect(voice.validateWithBatch(persona, batch: ["read_aloud.model": TTSModel.qwen3CustomVoice.rawValue]) != nil)
+    #expect(voice.validateWithBatch(speaker, batch: ["read_aloud.model": TTSModel.qwen3VoiceDesign.rawValue]) != nil)
+  }
 }

@@ -78,7 +78,7 @@ extension MCPConfigTools {
       if let unavailable = setting.unavailableReason() {
         return reject(tool, "unavailable", "\(setting.title): \(unavailable)")
       }
-      if let problem = setting.validate(to) {
+      if let problem = setting.validateWithBatch(to, batch: changes) {
         return reject(tool, "invalid value", "\(setting.title): \(problem)")
       }
       validated.append(ValidatedChange(setting: setting, from: setting.read(), to: to))
