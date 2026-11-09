@@ -274,7 +274,7 @@ enum ChatToolRegistry {
       return .refused(["error": "Unknown action '\(action)'. Use read, append, replace, or remove."])
     }
 
-    let limit = isGlossary ? SystemPromptsStore.glossaryCharBudget : instructionsSectionLimitChars
+    let limit = isGlossary ? SystemPromptsStore.glossaryCharBudget : instructionsSectionLimit(for: section)
     guard updated.count <= limit else {
       return .refused([
         "error": isGlossary
@@ -446,11 +446,20 @@ enum ChatToolRegistry {
   /// classification, which it does far more reliably than picking between similar tools.
   static let updateInstructionsToolName = "update_app_instructions"
 
-  /// Per-section ceiling. A system prompt that grows without bound degrades every response in
-  /// that mode, and unlike the glossary the damage is diffuse and hard to attribute. Sized against
-  /// the shipped default: Dictate Prompt is ~3.3k chars, so this leaves room for roughly twenty
-  /// user rules before the model is told to consolidate instead of appending further.
+  /// Per-section ceiling, relative to the shipped default: the default's length plus
+  /// `instructionsSectionHeadroomChars`, never below `instructionsSectionLimitChars` (the floor).
+  /// A system prompt that grows without bound degrades every response in that mode, and unlike the
+  /// glossary the damage is diffuse and hard to attribute. The old flat 5,000 ceiling stopped
+  /// working once the defaults grew past it (Dictate Prompt ~5.4k, Chat ~6.7k), which refused every
+  /// append on fresh settings. The headroom is room for roughly twenty user rules before the model
+  /// is told to consolidate instead of appending further.
   static let instructionsSectionLimitChars = 5_000
+  static let instructionsSectionHeadroomChars = 2_000
+
+  static func instructionsSectionLimit(for section: SystemPromptSection) -> Int {
+    max(instructionsSectionLimitChars,
+        MCPProposalWindows.defaultText(for: section).count + instructionsSectionHeadroomChars)
+  }
 
   /// Sections the chat may edit, mapped from the model-facing enum values. Same names as MCP
   /// `update_system_prompt`.

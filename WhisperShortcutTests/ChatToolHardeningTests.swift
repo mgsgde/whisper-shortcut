@@ -212,6 +212,26 @@ struct ChatToolHardeningTests {
     #expect(WorkspaceWriteTools.existingFileSize(url) == 1234)
   }
 
+  // MARK: section limit relative to the default
+
+  @Test("Section limit leaves 2,000 characters of headroom over every shipped default")
+  func sectionLimitHasHeadroom() {
+    for section in [SystemPromptSection.promptMode, .chat, .dictation] {
+      let limit = ChatToolRegistry.instructionsSectionLimit(for: section)
+      #expect(limit >= MCPProposalWindows.defaultText(for: section).count + 2_000)
+      #expect(limit >= 5_000)
+    }
+  }
+
+  @Test("A default plus one 40-character rule fits the limit for Dictate Prompt and Chat")
+  func defaultPlusRuleFits() {
+    let rule = String(repeating: "r", count: 40)
+    for section in [SystemPromptSection.promptMode, .chat] {
+      let updated = MCPProposalWindows.defaultText(for: section) + "\n" + rule
+      #expect(updated.count <= ChatToolRegistry.instructionsSectionLimit(for: section))
+    }
+  }
+
   // MARK: approval preview
 
   /// What the executor treats as the section's current text (blank falls back to the default).
