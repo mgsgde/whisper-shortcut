@@ -207,4 +207,84 @@ struct LogGapsTests {
     #expect(added.allSatisfy { $0.count <= ConfigHistoryQuery.maxLineCharacters + 1 })
     #expect(changes[0]["added_more"] as? Int == 20)
   }
+
+  // MARK: - Settings autosave coalescing
+
+  private final class Clock: @unchecked Sendable {
+    var date = Date(timeIntervalSince1970: 1_800_000_000)
+  }
+
+  private func clockedStore() -> (SystemPromptsStore, Clock) {
+    let store = scratchStore()
+    let clock = Clock()
+    store.now = { clock.date }
+    return (store, clock)
+  }
+
+  @Test("Two Settings writes in the window make one row: first previousLength, last content")
+  func coalesces() {
+    let (store, clock) = clockedStore()
+    store.updateSection(.promptMode, content: "Be", source: .settings)
+    let first = rows(store).first
+    clock.date += 120
+    store.updateSection(.promptMode, content: "Be brief and kind.", source: .settings)
+    let all = rows(store)
+    #expect(all.count == 1)
+    #expect(all.first?.previousLength == first?.previousLength)
+    #expect(all.first?.content == "Be brief and kind.")
+    #expect(all.first?.newLength == "Be brief and kind.".count)
+  }
+
+  @Test("A Settings write after ten minutes starts a new row")
+  func windowExpires() {
+    let (store, clock) = clockedStore()
+    store.updateSection(.promptMode, content: "One.", source: .settings)
+    clock.date += 11 * 60
+    store.updateSection(.promptMode, content: "Two.", source: .settings)
+    #expect(rows(store).map(\.content) == ["One.", "Two."])
+  }
+
+  @Test("A chat write between two Settings writes breaks the run: three rows")
+  func otherSourceBreaksRun() {
+    let (store, clock) = clockedStore()
+    store.updateSection(.promptMode, content: "One.", source: .settings)
+    clock.date += 30
+    store.updateSection(.promptMode, content: "Two.", source: .chat)
+    clock.date += 30
+    store.updateSection(.promptMode, content: "Three.", source: .settings)
+    #expect(rows(store).map(\.source) == ["settings", "chat", "settings"])
+  }
+
+  @Test("A different section breaks the run")
+  func otherSectionBreaksRun() {
+    let (store, clock) = clockedStore()
+    store.updateSection(.promptMode, content: "One.", source: .settings)
+    clock.date += 30
+    store.updateSection(.chat, content: "Two.", source: .settings)
+    clock.date += 30
+    store.updateSection(.promptMode, content: "Three.", source: .settings)
+    #expect(rows(store).count == 3)
+  }
+
+  @Test("An edit typed back to where the session began leaves no row")
+  func revertDropsRow() {
+    let (store, clock) = clockedStore()
+    let original = store.loadSection(.promptMode) ?? ""
+    store.updateSection(.promptMode, content: "Typing…", source: .settings)
+    #expect(rows(store).count == 1)
+    clock.date += 60
+    store.updateSection(.promptMode, content: original, source: .settings)
+    #expect(rows(store).isEmpty)
+  }
+
+  @Test("Reverting to the content before an earlier row drops only the session's row")
+  func revertKeepsEarlierRows() {
+    let (store, clock) = clockedStore()
+    store.updateSection(.promptMode, content: "Base.", source: .chat)
+    clock.date += 30
+    store.updateSection(.promptMode, content: "Base. Extra.", source: .settings)
+    clock.date += 30
+    store.updateSection(.promptMode, content: "Base.", source: .settings)
+    #expect(rows(store).map(\.source) == ["chat"])
+  }
 }

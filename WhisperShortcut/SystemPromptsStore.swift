@@ -382,15 +382,61 @@ final class SystemPromptsStore {
       guard old != new else { continue }
       appendHistoryRow(
         UnifiedSystemPromptHistoryEntry(
-          ts: UserContextLog.nowString(), section: section.rawValue, source: source.rawValue,
-          previousLength: old.count, newLength: new.count, content: new, model: nil))
+          ts: UserContextLog.nowString(now()), section: section.rawValue, source: source.rawValue,
+          previousLength: old.count, newLength: new.count, content: new, model: nil),
+        previousContent: old)
     }
   }
 
-  private func appendHistoryRow(_ entry: UnifiedSystemPromptHistoryEntry) {
+  /// Settings autosaves on every typing pause; one edit would otherwise write dozens of rows and
+  /// push older, meaningful ones out of the 500-line file.
+  static let settingsCoalesceWindow: TimeInterval = 10 * 60
+  /// Injectable clock, for tests.
+  var now: () -> Date = Date.init
+  /// What each section held when the current Settings editing session began (in memory, set when a
+  /// session's first row is appended), to recognise an edit that was typed back to where it began.
+  private var settingsSessionStart: [String: String] = [:]
+
+  /// Appends `entry`, except that a Settings edit continues the previous row when that row is the
+  /// last line of the file, is also a Settings edit of the same section and is under ten minutes
+  /// old: the row is replaced, keeping its `previousLength` (the length before the session began).
+  /// If the section is then back to what it held before the session, the row is dropped.
+  private func appendHistoryRow(_ entry: UnifiedSystemPromptHistoryEntry, previousContent: String) {
     historyLock.lock()
     defer { historyLock.unlock() }
     do {
+      let decoder = JSONDecoder()
+      let existing = (try? String(contentsOf: historyFileURL, encoding: .utf8)) ?? ""
+      var lines = existing.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+      let rows = lines.map { $0.data(using: .utf8).flatMap { try? decoder.decode(UnifiedSystemPromptHistoryEntry.self, from: $0) } }
+      if entry.source == PromptHistorySource.settings.rawValue,
+        let lastRow = rows.last ?? nil, lastRow.section == entry.section,
+        lastRow.source == PromptHistorySource.settings.rawValue,
+        let lastDate = UserContextLog.timestamp(lastRow.ts), now().timeIntervalSince(lastDate) < Self.settingsCoalesceWindow
+      {
+        let beforeSession = rows.dropLast().reversed().compactMap { $0 }.first { $0.section == entry.section }?.content
+          ?? settingsSessionStart[entry.section]
+        lines.removeLast()
+        if let beforeSession,
+          beforeSession.trimmingCharacters(in: .whitespacesAndNewlines) == entry.content
+        {
+          settingsSessionStart[entry.section] = nil
+          DebugLogger.log("SYSTEM-PROMPTS: Settings edit of \(entry.section) reverted, history row dropped")
+        } else {
+          let merged = UnifiedSystemPromptHistoryEntry(
+            ts: entry.ts, section: entry.section, source: entry.source,
+            previousLength: lastRow.previousLength, newLength: entry.newLength,
+            content: entry.content, model: nil)
+          lines.append(String(decoding: try JSONEncoder().encode(merged), as: UTF8.self))
+          DebugLogger.log("SYSTEM-PROMPTS: Coalesced Settings history row (\(entry.section))")
+        }
+        try (lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n"))
+          .write(to: historyFileURL, atomically: true, encoding: .utf8)
+        return
+      }
+      if entry.source == PromptHistorySource.settings.rawValue {
+        settingsSessionStart[entry.section] = previousContent
+      }
       let data = try JSONEncoder().encode(entry)
       try UserContextLog.appendLine(data, to: historyFileURL)
       DebugLogger.log("SYSTEM-PROMPTS: Appended history row (\(entry.section), \(entry.source))")
