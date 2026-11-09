@@ -21,6 +21,9 @@ enum MeetingAudioBacklog {
 
   static let directoryName = "MeetingAudio"
 
+  /// Serializes the exists / remove / move sequence of `retain`.
+  private static let retainLock = NSLock()
+
   static var rootURL: URL {
     AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(directoryName)
   }
@@ -45,6 +48,9 @@ enum MeetingAudioBacklog {
   /// the caller then still owns `audioURL`.
   @discardableResult
   static func retain(_ audioURL: URL, stem: String, startTime: TimeInterval) -> Bool {
+    // A failure path off the main thread and the termination hook can retain the same file at once.
+    retainLock.lock()
+    defer { retainLock.unlock() }
     // Nothing to keep (already moved or deleted): do not clear an existing chunk for it below.
     guard FileManager.default.fileExists(atPath: audioURL.path) else { return false }
     let dir = directory(stem: stem)
