@@ -56,6 +56,9 @@ struct OwnServerEndpointSection: View {
   @State private var isChecking = false
   @State private var hasChecked = false
   @State private var checkedServer: DiscoveredServer?
+  /// True when Check found no answer on the typed base and rewrote the field to the `/v1` form
+  /// that did answer. Requests never insert `/v1` themselves.
+  @State private var didAppendV1 = false
   /// Model ids the last successful probe reported, for the "From this server…" menu. Empty until
   /// something answered, which is what hides that menu.
   @State private var probedModelIDs: [String] = []
@@ -178,6 +181,12 @@ struct OwnServerEndpointSection: View {
               "Reachable · \(checkedServer.modelIDs.count) models",
               systemImage: "checkmark.circle.fill")
               .labelStyle(OwnServerStatusLabelStyle(tint: .green))
+            if didAppendV1 {
+              Text("The URL now ends in /v1, because that is the address this server answered on.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
           } else {
             Label("No answer", systemImage: "xmark.circle")
               .labelStyle(OwnServerStatusLabelStyle(tint: .secondary))
@@ -425,13 +434,32 @@ struct OwnServerEndpointSection: View {
     checkTask?.cancel()
     isChecking = true
     hasChecked = false
+    didAppendV1 = false
     checkTask = Task {
       let server = await LocalServerDiscovery.probe(
         baseURL: typed, apiKey: apiKey, headers: headerDictionary)
       guard !Task.isCancelled else { return }
+      if server == nil, let withV1 = CustomEndpointAuth.baseAppendingV1(typed) {
+        let fallback = await LocalServerDiscovery.probe(
+          baseURL: withV1, apiKey: apiKey, headers: headerDictionary)
+        guard !Task.isCancelled else { return }
+        if let fallback {
+          // Set before writing the field: its onChange clears a probe whose URL it does not
+          // recognise, and would cancel this task.
+          probedModelIDs = fallback.modelIDs
+          probedBaseURL = withV1
+          didAppendV1 = true
+          endpointURL = withV1
+          checkedServer = fallback
+          hasChecked = true
+          isChecking = false
+          return
+        }
+      }
       checkedServer = server
       hasChecked = true
       isChecking = false
+      didAppendV1 = false
       probedModelIDs = server?.modelIDs ?? []
       probedBaseURL = server?.baseURL
     }
@@ -446,6 +474,7 @@ struct OwnServerEndpointSection: View {
     checkTask = nil
     isChecking = false
     hasChecked = false
+    didAppendV1 = false
     checkedServer = nil
     probedModelIDs = []
     probedBaseURL = nil

@@ -394,9 +394,11 @@ struct Qwen3TTSService {
       {
         referenceAudio = MLXArray(cached.samples)
         referenceText = cached.text
-      } else {
+      } else if !Qwen3VoiceReferenceStore.isUserProvided(for: persona.id) {
         // No usable clip yet: create one first, so the preview is the voice the user will get and
-        // not a one-off sample that the next Read Aloud would replace.
+        // not a one-off sample that the next Read Aloud would replace. A clip the user imported
+        // is never replaced here — `createVoiceReference` overwrites whatever is stored, and
+        // `synthesizePCM` refuses to do that.
         _ = try await createVoiceReference(for: persona, modelType: modelType)
         if let cached = Qwen3VoiceReferenceStore.reference(for: persona.id),
           cached.sampleRate == model.sampleRate

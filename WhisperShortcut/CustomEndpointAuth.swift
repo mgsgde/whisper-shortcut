@@ -137,38 +137,21 @@ enum CustomEndpointAuth {
   ///   - **Adds a missing `api-version`** on a classic Azure deployment URL, which is required
   ///     there and is the single most common way that URL is pasted wrong.
   ///   - **Treats a pasted full endpoint as a base.** A trailing `/chat/completions`,
-  ///     `/audio/transcriptions` or `/completions` is removed before the new suffix is
-  ///     appended, so Dictate and Chat do not stack paths. The query string stays
-  ///     (Azure `api-version`).
+  ///     `/audio/transcriptions`, `/audio/speech` or `/completions` is removed before the new
+  ///     suffix is appended, so Dictate, Chat and Read Aloud do not stack paths. The query
+  ///     string stays (Azure `api-version`).
+  ///
+  /// Does not insert `/v1`. A server the user reached at `http://localhost:8000` keeps that
+  /// base; Check offers the `/v1` form only when that is the address that actually answers.
   ///
   /// Returns `nil` for a URL that cannot be parsed, so the caller can surface a real error rather
   /// than POST to a mangled string.
   static func endpointURL(appending pathSuffix: String, to base: String) -> String? {
-    let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty, var components = URLComponents(string: trimmed), components.host != nil
-    else {
-      return nil
-    }
-
+    guard var components = normalizedBase(base) else { return nil }
     let isAzure = isAzureHost(components.host ?? "")
 
     var path = components.path
     while path.hasSuffix("/") { path.removeLast() }
-
-    // A bare Azure resource host is the form the portal shows. Point it at the v1 surface, which
-    // needs no api-version and takes the deployment name as the `model` field.
-    if isAzure && path.isEmpty {
-      path = "/openai/v1"
-    }
-
-    // Longer suffixes first: `/chat/completions` also ends in `/completions`, and trimming
-    // only the short one would leave `/v1/chat` in front of the new route.
-    let pastedEndpointSuffixes = ["/chat/completions", "/audio/transcriptions", "/completions"]
-    if let pasted = pastedEndpointSuffixes.first(where: { path.hasSuffix($0) }) {
-      path.removeLast(pasted.count)
-      while path.hasSuffix("/") { path.removeLast() }
-    }
-
     if !path.hasSuffix("/\(pathSuffix)") {
       path += "/\(pathSuffix)"
     }
@@ -183,6 +166,52 @@ enum CustomEndpointAuth {
       }
     }
 
+    return components.string
+  }
+
+  /// The base URL requests and the Check probe share: pasted route suffixes removed, a bare
+  /// Azure host pointed at `/openai/v1`, trailing slashes dropped. `/v1` is not added — a host
+  /// that answered without it must keep working.
+  static func normalizedBase(_ raw: String) -> URLComponents? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, var components = URLComponents(string: trimmed), components.host != nil
+    else {
+      return nil
+    }
+
+    let isAzure = isAzureHost(components.host ?? "")
+    var path = components.path
+    while path.hasSuffix("/") { path.removeLast() }
+
+    // A bare Azure resource host is the form the portal shows. Point it at the v1 surface, which
+    // needs no api-version and takes the deployment name as the `model` field.
+    if isAzure && path.isEmpty {
+      path = "/openai/v1"
+    }
+
+    // Longer suffixes first: `/chat/completions` also ends in `/completions`, and trimming
+    // only the short one would leave `/v1/chat` in front of the new route.
+    let pastedEndpointSuffixes = [
+      "/chat/completions", "/audio/transcriptions", "/audio/speech", "/completions",
+    ]
+    if let pasted = pastedEndpointSuffixes.first(where: { path.hasSuffix($0) }) {
+      path.removeLast(pasted.count)
+      while path.hasSuffix("/") { path.removeLast() }
+    }
+
+    components.path = path
+    return components
+  }
+
+  /// `raw` with `/v1` on the normalized base, or nil when that base already ends in `/v1`.
+  /// Check uses this when the plain base does not answer. Request builders do not.
+  static func baseAppendingV1(_ raw: String) -> String? {
+    guard var components = normalizedBase(raw) else { return nil }
+    var path = components.path
+    while path.hasSuffix("/") { path.removeLast() }
+    guard !path.hasSuffix("/v1") else { return nil }
+    path += "/v1"
+    components.path = path
     return components.string
   }
 }

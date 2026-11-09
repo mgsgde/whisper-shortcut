@@ -74,11 +74,13 @@ struct LocalServerDiscoveryTests {
 
   // MARK: - URL shaping (probe only; the form field keeps what was typed)
 
-  @Test("The probe URL is {base}/v1/models", arguments: [
+  @Test("The probe URL is the normalized base plus /models", arguments: [
     ("http://localhost:8000/v1", "http://localhost:8000/v1/models"),
     ("http://localhost:8000/v1/", "http://localhost:8000/v1/models"),
-    ("http://localhost:8000", "http://localhost:8000/v1/models"),
-    ("http://localhost:8000/", "http://localhost:8000/v1/models"),
+    // A bare host is probed as typed. Inserting /v1 here used to report "Reachable" for an
+    // address dictation then 404'd; Check writes /v1 into the field only when that form answers.
+    ("http://localhost:8000", "http://localhost:8000/models"),
+    ("http://localhost:8000/", "http://localhost:8000/models"),
     ("https://example.com/openai/v1", "https://example.com/openai/v1/models"),
     // A pasted full endpoint URL is stripped first, exactly as `CustomEndpointAuth` does for the
     // real request — otherwise a running server would report "no answer".

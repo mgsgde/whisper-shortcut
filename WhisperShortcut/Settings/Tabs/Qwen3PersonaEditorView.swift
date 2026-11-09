@@ -336,18 +336,23 @@ struct Qwen3PersonaFormView: View {
     let persona = Qwen3VoicePersona(
       id: id, gender: gender, summary: trimmedName, language: language,
       prompt: usesRecording ? "" : trimmedPrompt)
-    Qwen3CustomPersonas.save(persona)
 
     if let referenceURL {
       // Importing is the slow part (decode, resample, maybe a local transcription), so the form
       // stays open with a spinner instead of closing and leaving the user without feedback.
+      // The persona is persisted only after the clip is in: a failed import must not leave a
+      // saved persona with an empty description and no recording.
       isImportingReference = true
       referenceError = nil
+      let url = referenceURL
+      let transcript = referenceTranscript
       Task {
         defer { isImportingReference = false }
         do {
-          _ = try await Qwen3TTSService.shared.importVoiceReference(
-            from: referenceURL, for: persona, transcript: referenceTranscript)
+          try await Qwen3CustomPersonas.save(persona) {
+            _ = try await Qwen3TTSService.shared.importVoiceReference(
+              from: url, for: persona, transcript: transcript)
+          }
           onSaved()
           dismiss()
         } catch {
@@ -356,6 +361,8 @@ struct Qwen3PersonaFormView: View {
       }
       return
     }
+
+    Qwen3CustomPersonas.save(persona)
 
     // Only a changed description (or language) invalidates the frozen voice — the voice is the
     // description. Renaming or flipping the gender label keeps it; a needless reset costs a
