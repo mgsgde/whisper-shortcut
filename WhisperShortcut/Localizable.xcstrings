@@ -26928,6 +26928,186 @@
           }
         }
       }
+    },
+    "Import a Model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell importieren"
+          }
+        }
+      }
+    },
+    "Import from folder…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus Ordner importieren…"
+          }
+        }
+      }
+    },
+    "Importing…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird importiert…"
+          }
+        }
+      }
+    },
+    "Models found" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gefundene Modelle"
+          }
+        }
+      }
+    },
+    "Import" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importieren"
+          }
+        }
+      }
+    },
+    "Model Imported" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell importiert"
+          }
+        }
+      }
+    },
+    "Already have these models in LM Studio or a Hugging Face cache? Import one instead of downloading it again. The files are copied once into the app's own folder; on the same disk that copy takes no extra space." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie haben diese Modelle schon in LM Studio oder einem Hugging-Face-Cache? Importieren Sie eines, statt es erneut herunterzuladen. Die Dateien werden einmal in den Ordner der App kopiert; auf derselben Festplatte braucht diese Kopie keinen zusätzlichen Platz."
+          }
+        }
+      }
+    },
+    "Choose the folder that holds your models — your LM Studio models folder or your Hugging Face cache." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie den Ordner mit Ihren Modellen: Ihren LM-Studio-Modellordner oder Ihren Hugging-Face-Cache."
+          }
+        }
+      }
+    },
+    "No model this app can use was found in that folder. Pick the folder that holds your LM Studio models or your Hugging Face cache." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In diesem Ordner wurde kein Modell gefunden, das diese App nutzen kann. Wählen Sie den Ordner mit Ihren LM-Studio-Modellen oder Ihren Hugging-Face-Cache."
+          }
+        }
+      }
+    },
+    "Pick the ones to import. They are copied into the app's own folder and work like a normal download afterwards." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie die Modelle zum Importieren. Sie werden in den Ordner der App kopiert und funktionieren danach wie ein normaler Download."
+          }
+        }
+      }
+    },
+    "%@ is already downloaded. Delete it first if you want to replace it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist bereits heruntergeladen. Löschen Sie es zuerst, wenn Sie es ersetzen möchten."
+          }
+        }
+      }
+    },
+    "%@ was imported. The first use may take a moment to load the model into memory." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde importiert. Die erste Verwendung kann einen Moment dauern, bis das Modell in den Arbeitsspeicher geladen ist."
+          }
+        }
+      }
+    },
+    "%@ — no extra space on this disk" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ — kein zusätzlicher Platz auf dieser Festplatte"
+          }
+        }
+      }
+    },
+    "%@ — copied from another disk" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ — von einer anderen Festplatte kopiert"
+          }
+        }
+      }
+    },
+    "The model could not be imported: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell konnte nicht importiert werden: %@"
+          }
+        }
+      }
+    },
+    "Not enough disk space to import this model. About %@ is needed, but only %@ is free." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht genug Speicherplatz, um dieses Modell zu importieren. Benötigt werden etwa %@, frei sind nur %@."
+          }
+        }
+      }
+    },
+    "The audio file could not be decoded." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Audiodatei konnte nicht dekodiert werden."
+          }
+        }
+      }
+    },
+    "The audio file contained no audio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Audiodatei enthielt kein Audio."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
