@@ -64,6 +64,7 @@ enum MCPClientInstallerError: LocalizedError {
   case wrongFolder(expected: String)
   case notAJSONObject(file: String)
   case runningFromTemporaryLocation
+  case notUTF8(file: String)
 
   var errorDescription: String? {
     switch self {
@@ -73,6 +74,8 @@ enum MCPClientInstallerError: LocalizedError {
       return String(localized: "Please choose the folder \(expected) and click Allow.")
     case .notAJSONObject(let file):
       return String(localized: "\(file) is not valid JSON, so it was left untouched. Fix or remove the file and try again.")
+    case .notUTF8(let file):
+      return String(localized: "\(file) is not valid UTF-8 text, so it was left untouched. Fix or remove the file and try again.")
     case .runningFromTemporaryLocation:
       return String(
         localized:
@@ -140,7 +143,8 @@ enum MCPClientInstaller {
   }
 
   static func mergeCodex(existing: String?, serverName: String, url: String, token: String) -> String {
-    var text = droppingServerTables(existing: existing, serverName: serverName).text
+    let crlf = usesCRLF(existing)
+    var text = droppingServerTables(existing: normalizingLineEndings(existing), serverName: serverName).text
     // Trim trailing blank lines left behind, then separate with exactly one blank line.
     while text.hasSuffix("\n\n") { text.removeLast() }
     if !text.isEmpty {
@@ -149,7 +153,25 @@ enum MCPClientInstaller {
     }
     let header = "[mcp_servers.\(serverName)]"
     text += "\(header)\nurl = \"\(url)\"\nhttp_headers = { Authorization = \"Bearer \(token)\" }\n"
+    return crlf ? text.replacingOccurrences(of: "\n", with: "\r\n") : text
+  }
+
+  /// The Codex config as text. Nil for a missing file; throws when the bytes are not UTF-8, so a
+  /// file we cannot read is never replaced by only our table.
+  static func codexText(from data: Data?) throws -> String? {
+    guard let data else { return nil }
+    guard let text = String(data: data, encoding: .utf8) else {
+      throw MCPClientInstallerError.notUTF8(file: "The existing Codex config file")
+    }
     return text
+  }
+
+  private static func usesCRLF(_ text: String?) -> Bool {
+    text?.contains("\r\n") == true
+  }
+
+  private static func normalizingLineEndings(_ text: String?) -> String? {
+    text?.replacingOccurrences(of: "\r\n", with: "\n")
   }
 
   /// Removes `serverName` from a Claude Code or Claude Desktop config. Nil when there is nothing
@@ -177,9 +199,11 @@ enum MCPClientInstaller {
   /// table exists. Otherwise never two blank lines in a row, ending with one newline, or empty
   /// when nothing remains.
   static func removeCodex(existing: String?, serverName: String) -> String? {
-    let dropped = droppingServerTables(existing: existing, serverName: serverName)
+    let crlf = usesCRLF(existing)
+    let dropped = droppingServerTables(existing: normalizingLineEndings(existing), serverName: serverName)
     guard dropped.removed else { return nil }
-    return collapsingBlankLines(dropped.text)
+    let collapsed = collapsingBlankLines(dropped.text)
+    return crlf ? collapsed.replacingOccurrences(of: "\n", with: "\r\n") : collapsed
   }
 
   /// Drops `[mcp_servers.<name>]` and `[mcp_servers."<name>"]`, plus sub-tables of either form.
@@ -190,15 +214,25 @@ enum MCPClientInstaller {
     let quotedHeader = "[mcp_servers.\"\(serverName)\"]"
     let subPrefix = "[mcp_servers.\(serverName)."
     let quotedSubPrefix = "[mcp_servers.\"\(serverName)\"."
+    let spaceAndCR = CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\r"))
     var kept: [Substring] = []
+    // Blank and comment lines seen while skipping our table. They may belong to the next table
+    // (a comment directly above it), so they are emitted only if the next header is not ours.
+    var pending: [Substring] = []
     var skipping = false
     var removed = false
     for line in (existing ?? "").split(separator: "\n", omittingEmptySubsequences: false) {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      let trimmed = line.trimmingCharacters(in: spaceAndCR)
       if trimmed.hasPrefix("[") {
         skipping = trimmed == header || trimmed == quotedHeader
           || trimmed.hasPrefix(subPrefix) || trimmed.hasPrefix(quotedSubPrefix)
-        if skipping { removed = true }
+        if skipping { removed = true } else { kept.append(contentsOf: pending) }
+        pending.removeAll()
+      } else if skipping, trimmed.isEmpty || trimmed.hasPrefix("#") {
+        pending.append(line)
+        continue
+      } else if skipping {
+        pending.removeAll()
       }
       if !skipping { kept.append(line) }
     }
@@ -262,8 +296,12 @@ enum MCPClientInstaller {
   /// (mode 0600) when the file already exists — that copy holds other apps' bearer tokens.
   /// `Data.write(.atomic)` replaces the inode, so an existing file gets its previous mode back
   /// and a new file is owner-only.
-  private static func writeConfigAtomically(_ output: Data, to file: URL) throws {
+  /// A symlinked dotfile stays a symlink: the target is resolved first, and its mode, backup and
+  /// replacement all belong to the target. The backup is written once and never overwritten, so it
+  /// keeps the original file from before our first change.
+  static func writeConfigAtomically(_ output: Data, to link: URL) throws {
     let fm = FileManager.default
+    let file = link.resolvingSymlinksInPath()
     let existed = fm.fileExists(atPath: file.path)
     let originalPermissions: NSNumber? = existed
       ? (try fm.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber)
@@ -272,10 +310,14 @@ enum MCPClientInstaller {
       let existingData = try Data(contentsOf: file)
       let backup = file.deletingLastPathComponent()
         .appendingPathComponent(file.lastPathComponent + ".whispershortcut-backup")
-      try existingData.write(to: backup, options: .atomic)
-      try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+      if !fm.fileExists(atPath: backup.path) {
+        try existingData.write(to: backup, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+      }
     }
     try output.write(to: file, options: .atomic)
+    // A file we create is owner-only; an existing file gets its own mode back, never a looser one
+    // read from anything but the real target.
     let permissions = originalPermissions ?? NSNumber(value: 0o600)
     try fm.setAttributes([.posixPermissions: permissions], ofItemAtPath: file.path)
   }
@@ -285,7 +327,7 @@ enum MCPClientInstaller {
       switch installerError {
       case .cancelled, .wrongFolder:
         return
-      case .notAJSONObject, .runningFromTemporaryLocation:
+      case .notAJSONObject, .notUTF8, .runningFromTemporaryLocation:
         break
       }
     }
@@ -325,7 +367,7 @@ enum MCPClientInstaller {
             existing: existingData, serverName: serverName, url: url, token: token,
             executablePath: try stableExecutablePath(Bundle.main.executablePath))
         case .codex:
-          let text = existingData.flatMap { String(data: $0, encoding: .utf8) }
+          let text = try codexText(from: existingData)
           output = Data(mergeCodex(existing: text, serverName: serverName, url: url, token: token).utf8)
         }
         try writeConfigAtomically(output, to: file)
