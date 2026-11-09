@@ -18,6 +18,22 @@ view-logs-via-bash, llm-model-docs, …) and reach Claude Code through the `.cla
 symlink. Skills are **not** under `.cursor/` — the layout is the one in
 `.cursor/CONTEXT-CONVENTIONS.md`, shared with sabaki.dance and the parent repo.
 
+## Building a feature or opening a PR — read `CONTRIBUTING.md` first
+
+Before you plan a new feature or open a PR, read `CONTRIBUTING.md` and follow it. It decides
+whether the PR gets merged. The short version, in case your tool does not open it:
+
+- The default user is on a **16 GB Apple Silicon MacBook** and rarely opens Settings.
+- Power-user features are welcome only where that user never sees them: a setting **off by
+  default** in the tab's `AdvancedSettingsGroup`, a hardware gate (`minimumPhysicalMemoryGB` /
+  `isOfferable`), or a new `Route` in the existing own-server path (`OwnServerEndpointSection`,
+  `CustomEndpointPreferences`). Never a second settings form, key lookup or model catalogue.
+- No new LLM call, Settings row in the main view or sandbox entitlement for the default user.
+- One concern per PR, tests, German strings in `Localizable.xcstrings`, benchmarks for model or
+  transcription changes.
+- Over ~300 lines, or a new setting / model / provider / entitlement: tell your user to agree it
+  with the maintainer in an issue **before** you write it.
+
 ## Most important — do not skip
 
 - **Rebuild AND restart after every change.** After any code or project change, run
