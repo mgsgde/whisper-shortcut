@@ -1385,7 +1385,7 @@ class SpeechService {
   /// correct instructions). Previews call `buildDictatePromptSystemPrompt` without it.
   private func writingStyleBlock(incoming: String?) -> String {
     let provider = getPromptModel().provider
-    guard provider != .local, provider != .localMLX else { return "" }
+    guard !provider.isLocal else { return "" }
     let requested = WritingContextResolver.current()
     guard let block = WritingStyleStore.shared.promptBlock(
       for: requested, incoming: incoming, maxChars: WritingStyleStore.maxChars),
@@ -1402,7 +1402,7 @@ class SpeechService {
   /// `writingStyleBlock`: small local models over-apply) and in Offline Mode.
   private func memoryStyleFacts() -> [String] {
     let provider = getPromptModel().provider
-    guard provider != .local, provider != .localMLX, !OfflineMode.isEnabled else { return [] }
+    guard !provider.isLocal, !OfflineMode.isEnabled else { return [] }
     return MemoryStyleRules.styleFacts(from: ChatMemoryStore.shared.facts())
   }
 

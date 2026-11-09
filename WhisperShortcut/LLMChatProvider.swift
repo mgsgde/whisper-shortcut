@@ -875,6 +875,19 @@ enum OpenAICompatibleStream {
 
 // MARK: - Provider Factory
 
+extension ChatModelProvider {
+  /// On this Mac: a local server (Ollama / LM Studio) or in-process MLX. An own server
+  /// (`.customOpenAI`) is not included — its host may be remote, so it still counts as cloud.
+  var isLocal: Bool {
+    switch self {
+    case .local, .localMLX:
+      return true
+    case .gemini, .grok, .openai, .anthropic, .customOpenAI, .openRouter, .chatGPTPlan:
+      return false
+    }
+  }
+}
+
 enum LLMProviderFactory {
   /// Returns the appropriate chat provider for the given model.
   static func provider(for model: PromptModel) -> LLMChatProvider {

@@ -76,5 +76,10 @@ struct MeetingOfflineMLXTests {
     #expect(!MeetingListService.skipsSpeakerConsolidation(provider: .gemini))
     #expect(!MeetingListService.skipsSpeakerConsolidation(provider: .openai))
     #expect(!MeetingListService.skipsSpeakerConsolidation(provider: .grok))
+    // An own server can be remote, so it stays on the cloud side of this check.
+    #expect(!MeetingListService.skipsSpeakerConsolidation(provider: .customOpenAI))
+    #expect(!ChatModelProvider.customOpenAI.isLocal)
+    #expect(ChatModelProvider.local.isLocal)
+    #expect(ChatModelProvider.localMLX.isLocal)
   }
 }

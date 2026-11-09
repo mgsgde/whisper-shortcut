@@ -460,10 +460,13 @@ class MenuBarController: NSObject {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     guard let statusItem = statusItem else { return }
 
-    // Initial setup
+    // Initial setup. `updateUI` just below replaces this; the guard keeps a missing-setup
+    // warning's tooltip from being overwritten in the meantime.
     if let button = statusItem.button {
       applyCurrentAppearance(to: button)
-      button.toolTip = appState.tooltip
+      if !missingSetupWarningActive {
+        button.toolTip = appState.tooltip
+      }
     }
 
     // Create menu. The delegate fires pending review/support prompts on open (menuWillOpen).
@@ -1145,7 +1148,7 @@ class MenuBarController: NSObject {
 
   @objc private func onboardingStatusDidChange() {
     if let menu = statusItem?.menu { refreshMenu(menu) }
-    applyMissingSetupWarningIfNeeded()
+    updateMenuBarIcon()
   }
 
   @objc private func chatReadAloudStopFromNotification() {
@@ -1212,13 +1215,14 @@ class MenuBarController: NSObject {
   private func updateUI() {
     updateMenuBarIcon()
     if let menu = statusItem?.menu { refreshMenu(menu) }
-    applyMissingSetupWarningIfNeeded()
     updateBlinking()
   }
 
   private func updateMenuBarIcon() {
     guard let button = statusItem?.button else { return }
     applyCurrentAppearance(to: button)
+    // The warning branch already set its own tooltip; the lines below would put the mic tooltip back.
+    if missingSetupWarningActive { return }
 
     // Show detailed chunk progress in tooltip during processing
     if case .processing(.processingChunks(let statuses, _)) = presentedState {
@@ -1232,9 +1236,34 @@ class MenuBarController: NSObject {
     }
   }
 
+  /// Idle, with nothing that can transcribe or call a model: no chat credential and the selected
+  /// transcription model has no usable credential. Checked against `hasRequiredCredential`, not
+  /// "is an offline model": a user whose only setup is OpenRouter or a self-hosted endpoint can
+  /// dictate, and used to be told to add an API key anyway.
+  private var missingSetupWarningActive: Bool {
+    guard case .idle = presentedState else { return false }
+    let model = TranscriptionModel.loadSelected()
+    return !ProviderCredentials.anyChatCredentialConfigured && !model.hasRequiredCredential
+  }
+
   /// Renders `presentedState` on the status item button: an SF Symbol template image
   /// when its `symbolName` is set (idle), otherwise the colored emoji from `icon`.
+  /// The missing-setup warning lives here so a later re-apply (blinking stops, onboarding
+  /// refresh) cannot put the mic symbol back over the ⚠️.
   private func applyCurrentAppearance(to button: NSStatusBarButton) {
+    if missingSetupWarningActive {
+      button.image = nil
+      button.title = "⚠️"
+      applyDevBadge(to: button)
+      let model = TranscriptionModel.loadSelected()
+      // "Needs a key" and "needs a download" are different states: a user who already picked an
+      // offline model must not be sent looking for an API key they do not need.
+      button.toolTip =
+        model.needsOfflineModelDownload
+        ? String(localized: "Download the selected offline model - click to configure")
+        : String(localized: "Add an API key or use an offline model - click to configure")
+      return
+    }
     let state = presentedState
     if let symbolName = state.symbolName {
       // mic.fill's stand made it clip against the menu bar bezel intermittently at 15pt.
@@ -1327,30 +1356,6 @@ class MenuBarController: NSObject {
       localized: Self.meetingRowTitle(
         isActive: isLiveMeetingActive,
         canResume: !LiveMeetingTranscriptStore.shared.chunks.isEmpty))
-  }
-
-  /// Swaps the menu-bar icon for ⚠️ when no API key (any provider) and no usable transcription is
-  /// configured.
-  private func applyMissingSetupWarningIfNeeded() {
-    let model = TranscriptionModel.loadSelected()
-    let canTranscribe = model.hasRequiredCredential
-    let hasAnyKey = ProviderCredentials.anyChatCredentialConfigured
-
-    // Handle special case when no API key (any provider) and no usable transcription is configured.
-    // Tested against `canTranscribe`, not just the offline model: a user whose only setup is
-    // OpenRouter or a self-hosted endpoint can dictate perfectly well, and used to be told to
-    // "add an API key" anyway.
-    if !hasAnyKey && !canTranscribe, let button = statusItem?.button {
-      button.image = nil
-      button.title = "⚠️"
-      applyDevBadge(to: button)
-      // "Needs a key" and "needs a download" are different states: a user who already picked an
-      // offline model must not be sent looking for an API key they do not need.
-      button.toolTip =
-        model.needsOfflineModelDownload
-        ? String(localized: "Download the selected offline model - click to configure")
-        : String(localized: "Add an API key or use an offline model - click to configure")
-    }
   }
 
   /// Rebuilds the "Recent Transcriptions" submenu and hides both history rows while there is
@@ -1622,6 +1627,22 @@ class MenuBarController: NSObject {
   private static func selectedPromptModel() -> PromptModel {
     PromptModel.loadPromptModel(
       forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
+  }
+
+  /// Whether processing this recording calls a paid or cloud API. Shared by the long-recording
+  /// cost warning and the silence gate, so they cannot disagree. A Dictate Prompt is fully local
+  /// only when the prompt model is on-device and transcription is offline; anything else still
+  /// spends an API call. A live meeting stays on the cloud side of both checks.
+  private static func recordingUsesCloudAPI(_ mode: AppState.RecordingMode) -> Bool {
+    switch mode {
+    case .transcription:
+      return !TranscriptionModel.loadSelected().isOffline
+    case .prompt:
+      let promptIsLocal = selectedPromptModel().provider.isLocal
+      return !(promptIsLocal && TranscriptionModel.loadSelected().isOffline)
+    case .liveMeeting:
+      return true
+    }
   }
 
   private static func selectedImprovementModel() -> PromptModel {
@@ -4275,20 +4296,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
       // The cost warning only makes sense when the run costs money: an offline / on-device model
       // has no API bill, and a modal on a long local dictation is just a hurdle.
-      let runCostsMoney: Bool = {
-        switch recordingMode {
-        case .transcription:
-          return !TranscriptionModel.loadSelected().isOffline
-        case .prompt:
-          let promptProvider = PromptModel.loadPromptModel(
-            forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel
-          ).provider
-          let promptIsLocal = promptProvider == .local || promptProvider == .localMLX
-          return !(promptIsLocal && TranscriptionModel.loadSelected().isOffline)
-        case .liveMeeting:
-          return true
-        }
-      }()
+      let runCostsMoney = Self.recordingUsesCloudAPI(recordingMode)
 
       if quickActionInstruction == nil,
          threshold != .never,
@@ -4372,12 +4380,8 @@ extension MenuBarController: AudioRecorderDelegate {
       if self.audioRecorder.lastRecordingWasSilent, quickActionInstruction == nil {
         // Only gate cloud-backed paths — offline Whisper has no API cost to protect against,
         // and gating silently has caused real recordings to be dropped on low-gain mics.
-        let usesCloudAPI: Bool = {
-          switch recordingMode {
-          case .transcription: return !TranscriptionModel.loadSelected().isOffline
-          case .prompt, .liveMeeting: return true
-          }
-        }()
+        // Same decision as the cost warning: a fully local Dictate Prompt is not cloud.
+        let usesCloudAPI = Self.recordingUsesCloudAPI(recordingMode)
 
         if usesCloudAPI {
           // A template turn that already has a selection may be a press-and-stop: the selection
@@ -4526,6 +4530,19 @@ extension MenuBarController: ShortcutDelegate {
       toggleTranscription()
       return
     }
+    #endif
+    startDictateForCurrentMode()
+  }
+
+  /// Starts Dictate, or Dictate Live when that mode is selected. Returns false when Live is
+  /// refused. Each caller keeps its own guard: ⌘1 only reaches here on `.start`, Fn only when
+  /// nothing is already recording or processing.
+  @discardableResult
+  private func startDictateForCurrentMode() -> Bool {
+    #if APP_STORE
+    toggleTranscription()
+    return true
+    #else
     switch LiveDictation.startDecision(
       mode: DictateMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
     {
@@ -4536,9 +4553,9 @@ extension MenuBarController: ShortcutDelegate {
       toggleLiveDictation()
     case .refuse(let reason):
       presentLiveUnavailable(reason)
+      return false
     }
-    #else
-    toggleTranscription()
+    return true
     #endif
   }
 
@@ -4924,27 +4941,12 @@ extension MenuBarController: FnDictationToggleDelegate {
     // fn-down must never cancel in-flight work or stop a recording the user started
     // otherwise — it only ever begins a fresh dictation.
     guard !isTranscriptionProcessing, !isDictationRecordingActive() else { return false }
-    #if APP_STORE
-    toggleTranscription()
-    fnStartedRecordingID = recording?.id
-    return isDictationRecordingActive()
-    #else
-    switch LiveDictation.startDecision(
-      mode: DictateMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
-    {
-    case .startDictate:
-      toggleTranscription()
-      fnStartedRecordingID = recording?.id
-    case .startLive:
-      toggleLiveDictation()  // the shortcut path: availability, Accessibility dialog
-      fnStartedRecordingID = recording?.id
-    case .refuse(let reason):
-      presentLiveUnavailable(reason)
+    guard startDictateForCurrentMode() else {
       fnStartedRecordingID = nil
       return false
     }
+    fnStartedRecordingID = recording?.id
     return isDictationRecordingActive()
-    #endif
   }
 
   func fnDictationStop() {
@@ -4958,14 +4960,15 @@ extension MenuBarController: FnDictationToggleDelegate {
     return recording?.id == id
   }
 
-  // During a live meeting ⌘1 never cancels either — its meeting branch runs first — so fn
-  // mirrors that and falls through to starting a dictation segment.
+  // Same decision as ⌘1. Dictate Live inserting its last pieces, and a Dictate Prompt still in
+  // the chunk phases, are not `.cancelProcessing`. A meeting never is either — that branch runs
+  // first in `ModeAvailability` — so Fn falls through to starting a dictation segment.
   func fnDictationIsProcessing() -> Bool {
-    return !isLiveMeetingActive && isTranscriptionProcessing
+    availability(.dictate) == .cancelProcessing
   }
 
   func fnDictationCancelProcessing() {
-    guard !isLiveMeetingActive, isTranscriptionProcessing else { return }
+    guard fnDictationIsProcessing() else { return }
     DebugLogger.log("SHORTCUTS: Cancelling in-flight transcription via Fn")
     cancelInFlightTranscription()
   }

@@ -56,6 +56,11 @@ class AudioRecorder: NSObject, DictationAudioRecording {
   private(set) var lastRecordingWasSilent: Bool = false
   private(set) var lastPeakPowerDb: Float = -160
 
+  /// Same generation as `ChunkedDictateRecorder`: a stop while the first microphone prompt is
+  /// still up must drop the later permission callback, or `beginRecording` turns the mic on
+  /// after the app has already gone back to idle.
+  private var startGeneration = 0
+
   /// True when at least 2 meter samples have landed and both were below the silence
   /// threshold — i.e., the user wasn't speaking in the moment before pressing Stop.
   /// Callers use this to skip the audio-tail capture delay when there's no tail to catch.
@@ -91,17 +96,23 @@ class AudioRecorder: NSObject, DictationAudioRecording {
   }
 
   func startRecording() {
+    startGeneration += 1
+    let generation = startGeneration
     // Request microphone permission first
     requestMicrophonePermission { [weak self] granted in
+      guard let self, self.startGeneration == generation else {
+        DebugLogger.logAudio("AUDIO: Ignoring microphone permission — the recording start was cancelled")
+        return
+      }
       if granted {
-        self?.beginRecording()
+        self.beginRecording()
       } else {
         let error = NSError(
           domain: Constants.errorDomain, code: Constants.permissionDeniedCode,
           userInfo: [
             NSLocalizedDescriptionKey: String(localized: "Microphone permission denied")
           ])
-        self?.delegate?.audioRecorderDidFailWithError(error)
+        self.delegate?.audioRecorderDidFailWithError(error)
       }
     }
   }
@@ -202,6 +213,7 @@ class AudioRecorder: NSObject, DictationAudioRecording {
 
   @discardableResult
   func stopRecording() -> Bool {
+    startGeneration += 1
     meteringTimer?.invalidate()
     meteringTimer = nil
 
@@ -216,6 +228,7 @@ class AudioRecorder: NSObject, DictationAudioRecording {
   }
 
   func cleanup() {
+    startGeneration += 1
     meteringTimer?.invalidate()
     meteringTimer = nil
     audioRecorder?.stop()
