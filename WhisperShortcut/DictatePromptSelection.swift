@@ -25,6 +25,42 @@ enum DictatePromptSelectionDecision {
       && string != nil
   }
 
+  /// One tick of the shared synthetic-⌘C poll (Dictate Prompt, Add to Glossary, Read Aloud).
+  enum PollTick: Equatable {
+    /// The pasteboard now holds the text ⌘C just copied.
+    case selected(String)
+    /// VS Code-family ⌘C with nothing selected copied the whole current line.
+    case editorLineCopy
+    /// Unchanged, flavors still arriving, or a delayed restore of our own paste.
+    case pending
+  }
+
+  /// A delayed clipboard restore from the previous paste also bumps the change count; that is
+  /// the old clipboard (maybe the previous patient's note), not what ⌘C just copied. A
+  /// VS Code-family whole-line copy is not a selection either. No string yet means the source
+  /// app is still writing flavors, so the caller keeps polling.
+  static func classifyPollTick(
+    changeCountBefore: Int,
+    changeCountAfter: Int,
+    lastOwnWriteChangeCount: Int?,
+    string: String?,
+    customData: Data?,
+    vscodeEditorData: String?
+  ) -> PollTick {
+    if let lastOwnWriteChangeCount, changeCountAfter == lastOwnWriteChangeCount {
+      return .pending
+    }
+    guard
+      acceptsCopy(
+        changeCountBefore: changeCountBefore, changeCountAfter: changeCountAfter, string: string),
+      let string
+    else { return .pending }
+    if isEditorEmptySelectionLineCopy(customData: customData, vscodeEditorData: vscodeEditorData) {
+      return .editorLineCopy
+    }
+    return .selected(string)
+  }
+
   /// True when the copied pasteboard content is a VS Code-family "copy with no selection".
   ///
   /// In VS Code, Cursor and Windsurf, ⌘C with nothing selected copies the whole current line. That

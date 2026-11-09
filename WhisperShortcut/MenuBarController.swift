@@ -3656,59 +3656,15 @@ class MenuBarController: NSObject {
       }
     }
     #endif
-    let before = NSPasteboard.general.changeCount
-    let copyStarted = Date()
-    simulateCopy()
-    // Polling `NSPasteboard.changeCount`: "nothing was copied" and "the app was slow to copy" are
-    // otherwise indistinguishable. The capture is held strongly by this task, so it always
-    // resolves within the deadline and a waiting job can never hang on it.
+    // The capture is held strongly by this task, so it always resolves within the deadline
+    // and a waiting job can never hang on it. The late watch is logging only and must not
+    // delay that resolve.
     Task { @MainActor in
-      let deadline = copyStarted.addingTimeInterval(DictatePromptSelectionCapture.pollDeadline)
-      while Date() < deadline {
-        try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
-        let after = NSPasteboard.general.changeCount
-        let text = NSPasteboard.general.string(forType: .string)
-        // A delayed clipboard restore from the previous paste also bumps the change count; that is
-        // the old clipboard (maybe the previous patient's note), not what ⌘C just copied.
-        if after == clipboardManager.lastOwnWriteChangeCount { continue }
-        guard DictatePromptSelectionDecision.acceptsCopy(
-          changeCountBefore: before, changeCountAfter: after, string: text)
-        else { continue }
-        // VS Code-family editors copy the whole line for ⌘C without a selection — not a selection.
-        let customData = NSPasteboard.general.data(
-          forType: NSPasteboard.PasteboardType("org.chromium.web-custom-data"))
-        let editorData = NSPasteboard.general.string(
-          forType: NSPasteboard.PasteboardType("vscode-editor-data"))
-        if DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
-          customData: customData, vscodeEditorData: editorData)
-        {
-          selection.resolve(nil)
-          clipboardManager.noteSelectionCopy(atChangeCount: after)
-          DebugLogger.log("\(logPrefix): ⌘C copied the whole line from an empty editor selection — compose turn")
-          return
-        }
+      switch await copySelection(logPrefix: logPrefix, watchLateCopy: true) {
+      case .selected(let text):
         selection.resolve(text)
-        clipboardManager.noteSelectionCopy(atChangeCount: after)
-        DebugLogger.log("\(logPrefix): Captured selection (\(text?.count ?? 0) chars)")
-        return
-      }
-      selection.resolve(nil)
-      clipboardManager.noteSelectionCopy(atChangeCount: NSPasteboard.general.changeCount)
-      DebugLogger.log("\(logPrefix): Nothing selected (⌘C copied nothing) — compose turn")
-      // The decision stands. Keep watching only so a slow ⌘C shows up in the logs instead of
-      // looking identical to "nothing was selected".
-      let watchUntil = copyStarted.addingTimeInterval(DictatePromptSelectionCapture.lateCopyWatch)
-      while Date() < watchUntil {
-        try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
-        let after = NSPasteboard.general.changeCount
-        guard DictatePromptSelectionDecision.copyProducedSelection(
-          changeCountBefore: before, changeCountAfter: after)
-        else { continue }
-        clipboardManager.noteSelectionCopy(atChangeCount: after)
-        let elapsedMs = Int(Date().timeIntervalSince(copyStarted) * 1000)
-        DebugLogger.logWarning(
-          "\(logPrefix): ⌘C copy arrived late after \(elapsedMs) ms (deadline 500 ms) — treated as compose")
-        return
+      case .editorLineCopy, .nothing:
+        selection.resolve(nil)
       }
     }
     return (true, selection)
@@ -3725,24 +3681,25 @@ class MenuBarController: NSObject {
   @objc internal func addSelectionToGlossary() {
     guard AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .glossary) else { return }
     captureClipboardRestorePointIfEnabled()
-    let before = NSPasteboard.general.changeCount
-    simulateCopy()
 
     Task { @MainActor in
-      let deadline = Date().addingTimeInterval(0.5)
-      while Date() < deadline {
-        try? await Task.sleep(for: .milliseconds(15))
-        guard NSPasteboard.general.changeCount != before else { continue }
-        let selection = NSPasteboard.general.string(forType: .string) ?? ""
+      switch await self.copySelection(logPrefix: "GLOSSARY") {
+      case .selected(let selection):
         self.reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(selection))
-        _ = self.clipboardManager.restorePendingSnapshot()
-        return
+        // `restorePendingSnapshot()` compares against our own last write. A synthetic ⌘C is
+        // another app's write, so that guard can never pass — name the foreign change count.
+        if self.clipboardManager.restorePendingSnapshot(
+          afterForeignWriteAt: NSPasteboard.general.changeCount)
+        {
+          DebugLogger.log("GLOSSARY: Restored the clipboard contents from before the selection copy")
+        }
+      case .editorLineCopy, .nothing:
+        DebugLogger.log("GLOSSARY: Nothing copied — no selection to add")
+        self.clipboardManager.discardRestorePoint()
+        PopupNotificationWindow.showInfo(
+          "Select the correctly spelled term first, then press the shortcut again.",
+          title: "Nothing Selected")
       }
-      DebugLogger.log("GLOSSARY: Nothing copied — no selection to add")
-      self.clipboardManager.discardRestorePoint()
-      PopupNotificationWindow.showInfo(
-        "Select the correctly spelled term first, then press the shortcut again.",
-        title: "Nothing Selected")
     }
   }
   #endif
@@ -3768,6 +3725,97 @@ class MenuBarController: NSObject {
 
   func addToGlossaryFromService(text: String) {
     reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(text))
+  }
+
+  /// What the shared synthetic ⌘C poll found.
+  private enum SelectionCopyResult {
+    case selected(String)
+    case editorLineCopy
+    case nothing
+  }
+
+  /// Synthetic ⌘C, then a poll of `NSPasteboard.changeCount`: "nothing was copied" and "the app
+  /// was slow to copy" are otherwise indistinguishable. Callers snapshot the restore point
+  /// first — once this runs, the pasteboard holds the selection, and a later snapshot would
+  /// restore that instead of what the user had copied.
+  ///
+  /// `watchLateCopy` stays Dictate-Prompt-only. The decision is already `.nothing`; the extra
+  /// wait only logs a slow ⌘C. Running it for Glossary or Read Aloud would let that watch call
+  /// `noteSelectionCopy` on a newer job's restore point.
+  @MainActor
+  private func copySelection(logPrefix: String, watchLateCopy: Bool = false) async -> SelectionCopyResult {
+    let before = NSPasteboard.general.changeCount
+    let copyStarted = Date()
+    DebugLogger.log("\(logPrefix): Posting synthetic Cmd+C; before changeCount = \(before)")
+    simulateCopy()
+    // Dictate Prompt's logs name the compose turn; the other callers do not have one.
+    let compose = watchLateCopy ? " — compose turn" : ""
+    let deadline = copyStarted.addingTimeInterval(DictatePromptSelectionCapture.pollDeadline)
+    while Date() < deadline {
+      try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
+      let after = NSPasteboard.general.changeCount
+      let text = NSPasteboard.general.string(forType: .string)
+      let ownWrite = clipboardManager.lastOwnWriteChangeCount
+      // Editor metadata stays unread until this tick could already be a selection. The
+      // Chromium custom-data blob is not a few bytes, and a pending tick never looks at it.
+      if case .pending = DictatePromptSelectionDecision.classifyPollTick(
+        changeCountBefore: before, changeCountAfter: after, lastOwnWriteChangeCount: ownWrite,
+        string: text, customData: nil, vscodeEditorData: nil)
+      {
+        continue
+      }
+      let customData = NSPasteboard.general.data(
+        forType: NSPasteboard.PasteboardType("org.chromium.web-custom-data"))
+      let editorData = NSPasteboard.general.string(
+        forType: NSPasteboard.PasteboardType("vscode-editor-data"))
+      switch DictatePromptSelectionDecision.classifyPollTick(
+        changeCountBefore: before, changeCountAfter: after, lastOwnWriteChangeCount: ownWrite,
+        string: text, customData: customData, vscodeEditorData: editorData)
+      {
+      case .pending:
+        continue
+      case .editorLineCopy:
+        clipboardManager.noteSelectionCopy(atChangeCount: after)
+        DebugLogger.log(
+          "\(logPrefix): ⌘C copied the whole line from an empty editor selection\(compose)")
+        return .editorLineCopy
+      case .selected(let selected):
+        clipboardManager.noteSelectionCopy(atChangeCount: after)
+        DebugLogger.log("\(logPrefix): Captured selection (\(selected.count) chars)")
+        return .selected(selected)
+      }
+    }
+    clipboardManager.noteSelectionCopy(atChangeCount: NSPasteboard.general.changeCount)
+    DebugLogger.log("\(logPrefix): Nothing selected (⌘C copied nothing)\(compose)")
+    if watchLateCopy {
+      let baseline = before
+      let started = copyStarted
+      let prefix = logPrefix
+      Task { @MainActor in
+        await self.watchLateSelectionCopy(
+          logPrefix: prefix, changeCountBefore: baseline, copyStarted: started)
+      }
+    }
+    return .nothing
+  }
+
+  /// The decision stands. Keep watching only so a slow ⌘C shows up in the logs instead of
+  /// looking identical to "nothing was selected".
+  @MainActor
+  private func watchLateSelectionCopy(logPrefix: String, changeCountBefore: Int, copyStarted: Date) async {
+    let watchUntil = copyStarted.addingTimeInterval(DictatePromptSelectionCapture.lateCopyWatch)
+    while Date() < watchUntil {
+      try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
+      let after = NSPasteboard.general.changeCount
+      guard DictatePromptSelectionDecision.copyProducedSelection(
+        changeCountBefore: changeCountBefore, changeCountAfter: after)
+      else { continue }
+      clipboardManager.noteSelectionCopy(atChangeCount: after)
+      let elapsedMs = Int(Date().timeIntervalSince(copyStarted) * 1000)
+      DebugLogger.logWarning(
+        "\(logPrefix): ⌘C copy arrived late after \(elapsedMs) ms (deadline 500 ms) — treated as compose")
+      return
+    }
   }
 
   /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
@@ -4797,38 +4845,37 @@ extension MenuBarController: ShortcutDelegate {
     // Snapshot before the synthetic ⌘C overwrites the user's clipboard (same setting and mechanism
     // as Dictate Prompt); `performReadSelectedTextAloud` puts it back once the selection is read.
     captureClipboardRestorePointIfEnabled()
-    let beforeChangeCount = NSPasteboard.general.changeCount
-    DebugLogger.log("READ-ALOUD: Posting synthetic Cmd+C; before changeCount = \(beforeChangeCount)")
     DispatchQueue.main.async { [weak self] in
-      guard let self = self else { return }
-      self.simulateCopy()
+      guard let self else { return }
       Task { @MainActor [weak self] in
         guard let self else { return }
         let start = Date()
-        let deadline = start.addingTimeInterval(0.5)
-        while Date() < deadline {
-          try? await Task.sleep(for: .milliseconds(15))
-          if NSPasteboard.general.changeCount != beforeChangeCount {
-            let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
-            DebugLogger.log("READ-ALOUD: Pasteboard changed after \(elapsedMs) ms")
-            // The user may have triggered another operation during the poll window; only
-            // proceed if we're still idle.
-            guard case .idle = self.appState else {
-              DebugLogger.logWarning("READ-ALOUD: Poll completed but state is no longer idle — abandoning")
-              self.clipboardManager.discardRestorePoint()
-              return
-            }
-            self.performReadSelectedTextAloud()
+        let result = await self.copySelection(logPrefix: "READ-ALOUD")
+        switch result {
+        case .selected:
+          let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+          DebugLogger.log("READ-ALOUD: Pasteboard changed after \(elapsedMs) ms")
+          // The user may have triggered another operation during the poll window; only
+          // proceed if we're still idle.
+          guard case .idle = self.appState else {
+            DebugLogger.logWarning("READ-ALOUD: Poll completed but state is no longer idle — abandoning")
+            self.clipboardManager.discardRestorePoint()
             return
           }
+          self.performReadSelectedTextAloud()
+        case .editorLineCopy, .nothing:
+          if case .nothing = result {
+            DebugLogger.logWarning(
+              "READ-ALOUD: Pasteboard never changed — Cmd+C did not land on a selection")
+          }
+          self.clipboardManager.discardRestorePoint()
+          guard case .idle = self.appState else {
+            DebugLogger.logWarning(
+              "READ-ALOUD: Poll timed out but state is no longer idle — skipping info popup")
+            return
+          }
+          self.showNoTextSelectedForReadAloud()
         }
-        DebugLogger.logWarning("READ-ALOUD: Pasteboard never changed — Cmd+C did not land on a selection")
-        self.clipboardManager.discardRestorePoint()
-        guard case .idle = self.appState else {
-          DebugLogger.logWarning("READ-ALOUD: Poll timed out but state is no longer idle — skipping info popup")
-          return
-        }
-        showNoTextSelectedForReadAloud()
       }
     }
   }
