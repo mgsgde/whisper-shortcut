@@ -1426,7 +1426,12 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (no speech detected)")
         cleanUpAudioFile(audioURL)
       } catch {
-        DebugLogger.logError("LIVE-MEETING: Chunk \(chunkIndex) transcription failed: \(error)")
+        // A cancellation (task torn down, URLSession cancelled) is not a failure: keep the audio,
+        // but say nothing and burn no one-shot alert.
+        let isCancellation = error is CancellationError || (error as? URLError)?.code == .cancelled
+        if !isCancellation {
+          DebugLogger.logError("LIVE-MEETING: Chunk \(chunkIndex) transcription failed: \(error)")
+        }
         let isRateLimitOrQuota: Bool = {
           if let te = error as? TranscriptionError {
             switch te {
@@ -1448,6 +1453,11 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
           MeetingAudioBacklog.retain(audioURL, stem: $0, startTime: startTime)
         } ?? false
         if !kept { cleanUpAudioFile(audioURL) }
+        if isCancellation {
+          DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) transcription cancelled; audio kept=\(kept)")
+          if kept { await MainActor.run { self.onBacklogChanged() } }
+          return
+        }
         await MainActor.run {
           if kept { self.onBacklogChanged() }
           // A failure for a meeting that has ended (stopped, or replaced by a newer one) must not

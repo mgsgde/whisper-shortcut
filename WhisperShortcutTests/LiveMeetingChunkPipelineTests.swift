@@ -517,6 +517,41 @@ struct LiveMeetingChunkPipelineTests {
     }
   }
 
+  @Test("A cancelled chunk keeps its audio but shows no alert")
+  func cancelledChunkShowsNoAlert() async throws {
+    try await withPreservedRecordingMarker {
+      let store = LiveMeetingTranscriptStore.shared
+      store.clearForNewMeeting()
+      defer { store.clearForNewMeeting() }
+
+      let dir = try makeDirectory()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
+      let stem = file.deletingPathExtension().lastPathComponent
+      defer { MeetingAudioBacklog.remove(stem: stem) }
+      FileManager.default.createFile(atPath: file.path, contents: Data())
+      let audio = dir.appendingPathComponent("chunk.wav")
+      FileManager.default.createFile(atPath: audio.path, contents: Data([0]))
+
+      let transcripts = ChunkTranscripts()
+      defer { transcripts.resumeOutstanding(returning: "") }
+      let box = Counters()
+      let session = makeSession(transcripts: transcripts, box: box)
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      deliver(session, index: 0, start: 15, audio: audio)
+      #expect(await waitUntil { transcripts.waiterCount == 1 })
+      session.stop()
+      session.stopSafetyNetForTesting?.perform()
+
+      transcripts.cancel(at: 0)
+      // The audio is retained exactly as for a failure...
+      #expect(await waitUntil { box.backlogChanged == 1 })
+      // ...but the ended-meeting alert (which a real failure shows here) stays silent.
+      let alerted = await waitUntil(timeout: 0.3) { !box.alerts.isEmpty }
+      #expect(!alerted)
+    }
+  }
+
   @Test("A stale stop safety net does not finish the next meeting")
   func staleStopSafetyNetDoesNotFinishTheNextMeeting() async throws {
     try await withPreservedRecordingMarker {
@@ -774,6 +809,17 @@ private final class ChunkTranscripts: @unchecked Sendable {
     resumed.insert(index)
     lock.unlock()
     continuation.resume(throwing: TranscriptionError.networkError("offline"))
+  }
+
+  func cancel(at index: Int) {
+    lock.lock()
+    guard let continuation = waiters[index], !resumed.contains(index) else {
+      lock.unlock()
+      return
+    }
+    resumed.insert(index)
+    lock.unlock()
+    continuation.resume(throwing: CancellationError())
   }
 
   func resumeOutstanding(returning text: String) {

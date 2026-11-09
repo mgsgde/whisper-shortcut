@@ -984,10 +984,18 @@ extension PopupNotificationWindow {
     return value
   }
 
+  private static let isRunningTests: Bool =
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+  /// Test override: lets a test that needs real popups opt back in.
+  static var allowDuringTestsForTesting = false
+
   /// Shared tail of every `show*` entry point: bail when popups are disabled, then retain and show.
   /// Errors pass `ignoresPreference`: "popups off" means no result/info toasts, not "hide why it
   /// failed" — with it off, a failed dictation left no trace at all.
   private static func present(ignoresPreference: Bool = false, _ make: () -> PopupNotificationWindow) {
+    // Test runs share the user's screen: a real popup from a deliberate failure case is noise.
+    guard !isRunningTests || allowDuringTestsForTesting else { return }
     guard ignoresPreference || arePopupNotificationsEnabled else { return }
     let popup = make()
     activePopups.insert(popup)
