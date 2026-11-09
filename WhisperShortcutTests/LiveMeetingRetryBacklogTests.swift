@@ -1,0 +1,59 @@
+import Foundation
+import Testing
+
+@testable import WhisperShortcut_AppStore
+
+/// Retry Meeting Transcription: which meetings it touches and what it leaves behind.
+@MainActor
+@Suite("Live meeting backlog retry", .serialized)
+struct LiveMeetingRetryBacklogTests {
+
+  /// Records every file it was asked to transcribe and answers with `reply`.
+  final class Calls: @unchecked Sendable {
+    var urls: [URL] = []
+    var reply: String
+    init(reply: String = "") { self.reply = reply }
+  }
+
+  static func makeSession(calls: Calls) -> LiveMeetingSession {
+    LiveMeetingSession(
+      transcribeChunk: { url in
+        calls.urls.append(url)
+        return calls.reply
+      },
+      cleanUpAudioFile: { _ in },
+      appStateIsRecordingMeeting: { false },
+      onStopping: {},
+      onFinished: {},
+      onBacklogChanged: {},
+      stopSafetyNetDelay: 3600,
+      postProcessingOverride: { _, _ in },
+      presentEndedMeetingAlert: { _ in })
+  }
+
+  static func keepAudio(stem: String, start: TimeInterval) throws -> URL {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("r207-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let wav = dir.appendingPathComponent("chunk.wav")
+    FileManager.default.createFile(atPath: wav.path, contents: Data([0]))
+    #expect(MeetingAudioBacklog.retain(wav, stem: stem, startTime: start))
+    return MeetingAudioBacklog.directory(stem: stem)
+      .appendingPathComponent(MeetingAudioBacklog.filename(startTime: start))
+  }
+
+  @Test("Kept audio of a meeting whose transcript was deleted is dropped, not transcribed")
+  func deletedTranscriptIsNotRecreated() async throws {
+    let stem = "Meeting-r210-\(UUID().uuidString)"
+    defer { MeetingAudioBacklog.remove(stem: stem) }
+    _ = try Self.keepAudio(stem: stem, start: 30)
+    let calls = Calls(reply: "should never appear")
+    let session = Self.makeSession(calls: calls)
+
+    await session.retryBacklog(stems: [stem], announce: false)
+
+    #expect(calls.urls.isEmpty)
+    #expect(MeetingAudioBacklog.items(stem: stem).isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: MeetingListService.transcriptURL(forStem: stem).path))
+  }
+}

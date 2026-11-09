@@ -939,9 +939,14 @@ final class LiveMeetingSession: NSObject {
   /// deleted, so a failed write never costs audio.
   @MainActor
   private func retryBacklog(stem: String) async -> (recovered: Int, error: Error?) {
-    let transcriptURL = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+    let transcriptURL = MeetingListService.transcriptURL(forStem: stem)
+    // The transcript file is created when recording starts, so a missing one was deleted on purpose
+    // (Finder, library). Retrying would bring the meeting back from the kept audio; drop that audio.
+    guard FileManager.default.fileExists(atPath: transcriptURL.path) else {
+      DebugLogger.log("MEETING-BACKLOG: Transcript for \(stem) is gone; discarding its kept audio")
+      MeetingAudioBacklog.remove(stem: stem)
+      return (0, nil)
+    }
     var recoveredChunks: [LiveMeetingChunk] = []
     var consumed: [URL] = []
     var failure: Error?
