@@ -107,7 +107,10 @@ enum PermissionStatusChecker {
   static func requestAccessibilityAccess() -> Bool {
     let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
     let options = [promptKey: true] as CFDictionary
-    return AXIsProcessTrustedWithOptions(options)
+    let trusted = AXIsProcessTrustedWithOptions(options)
+    DebugLogger.log(
+      "ACCESSIBILITY: requested via native prompt (trusted=\(trusted), bundle=\(Bundle.main.bundlePath))")
+    return trusted
   }
 
   /// Fires the native permission request before deep-linking into Privacy & Security. Call on the
