@@ -1,6 +1,10 @@
 # Live text while dictating (offline, Parakeet), opt-in
 
-Status: planned 2026-11-02. Supersedes queue row 65's "do not build yet": build it as an
+**Status: not needed (owner, 2026-11-08: „wir brauchen noch keine Vorschau. Also das Live-Diktieren,
+das war ein Feature, was ich brauchte, aber das habe ich implementiert.“). Do not build.** Dictate
+Live (#324–#339) is the shipped live feature. Kept for reference only.
+
+Original status: planned 2026-11-02. Supersedes queue row 65's "do not build yet": build it as an
 **opt-in setting, off by default**. The default dictation flow does not change.
 
 ## Why

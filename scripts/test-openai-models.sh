@@ -32,6 +32,8 @@ declare -a CURRENT_CHAT_MODELS=(
   # gpt-6-astra is deliberately not offered (research price-performance, see PromptModel).
   "gpt-6-sol"
   "gpt-6-luna"
+  # gpt-6.1-terra added 2026-11-08 ($1/$5, accepts reasoning_effort none).
+  "gpt-6.1-terra"
 )
 # gpt-audio (renamed from gpt-4o-audio-preview) requires audio modality — tested separately below.
 declare -a CURRENT_AUDIO_CHAT_MODELS=(
