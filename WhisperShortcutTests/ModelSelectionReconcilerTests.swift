@@ -335,4 +335,16 @@ struct ModelSelectionReconcilerTests {
     #expect(upgrade(.gemini38FlashTTS, keyed: []) == nil)
     #expect(upgrade(.systemMacOS, keyed: ["gemini"]) == .gemini38FlashLiteTTS)
   }
+
+  @Test("Unset meetings key stays unset: it follows dictation, not the factory default")
+  func unsetMeetingsKeyIsLeftAlone() {
+    let suite = "reconcile-unset-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let key = UserDefaultsKeys.selectedTranscriptionModelForMeetings
+    ModelSelectionReconciler.reconcileTranscription(
+      key: key, fallback: SettingsDefaults.selectedTranscriptionModel,
+      skipWhenUnset: true, defaults: defaults)
+    #expect(defaults.string(forKey: key) == nil)
+  }
 }

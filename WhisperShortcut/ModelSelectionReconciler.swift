@@ -122,8 +122,12 @@ enum ModelSelectionReconciler {
     reconcileReadAloud()
     reconcileTranscription(key: UserDefaultsKeys.selectedTranscriptionModel,
                            fallback: SettingsDefaults.selectedTranscriptionModel)
+    // An unset meetings key follows dictation (`TranscriptionModel.loadSelectedForMeeting`), which
+    // is reconciled above. Treating "unset" as the factory default here would write a cloud model
+    // into the key for an offline-dictation user and send meeting audio to the cloud.
     reconcileTranscription(key: UserDefaultsKeys.selectedTranscriptionModelForMeetings,
-                           fallback: SettingsDefaults.selectedTranscriptionModel)
+                           fallback: SettingsDefaults.selectedTranscriptionModel,
+                           skipWhenUnset: true)
   }
 
   // MARK: - Offline Mode snapshot / restore
@@ -528,8 +532,11 @@ enum ModelSelectionReconciler {
 
   // MARK: - Transcription (TranscriptionModel)
 
-  private static func reconcileTranscription(key: String, fallback: TranscriptionModel) {
-    let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
+  static func reconcileTranscription(key: String, fallback: TranscriptionModel,
+                                     skipWhenUnset: Bool = false,
+                                     defaults: UserDefaults = .standard) {
+    if skipWhenUnset && defaults.string(forKey: key) == nil { return }
+    let raw = defaults.string(forKey: key) ?? fallback.rawValue
     let current = TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(raw)) ?? fallback
     // Offline Whisper and self-hosted endpoints need no provider key — leave those selections
     // alone, unconditionally.

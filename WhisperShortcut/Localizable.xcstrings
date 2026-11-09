@@ -10591,7 +10591,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anweisungen, wie transkribiert werden soll (Füllwörter, Satzzeichen, Formatierung). Genutzt von Gemini, GPT-4o Transcribe, xAI Grok und OpenRouter. GPT Transcribe, dein eigener Server und jedes Offline-Modell (Whisper, Parakeet, Qwen3) ignorieren sie und nehmen ihr Vokabular aus dem Glossar. Einzelne Begriffe gehören nicht hierher, sondern ins Glossar."
+            "value" : "Anweisungen, wie transkribiert werden soll (Füllwörter, Satzzeichen, Formatierung). Genutzt von Gemini, GPT-4o Transcribe, xAI Grok und OpenRouter. GPT Transcribe, Ihr eigener Server und jedes Offline-Modell (Whisper, Parakeet, Qwen3) ignorieren sie und nehmen ihr Vokabular aus dem Glossar. Einzelne Begriffe gehören nicht hierher, sondern ins Glossar."
           }
         }
       }
@@ -11699,7 +11699,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mac-Ton ist alles, was dein Mac abspielt, außer WhisperShortcut."
+            "value" : "Mac-Ton ist alles, was Ihr Mac abspielt, außer WhisperShortcut."
           }
         }
       }
@@ -13981,7 +13981,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nur dein Mikrofon wird aufgenommen."
+            "value" : "Nur Ihr Mikrofon wird aufgenommen."
           }
         }
       }
@@ -20190,6 +20190,16 @@
         }
       }
     },
+    "%@ changed since the AI app suggested it. Decline it and ask the AI app again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat sich geändert, seit die KI-App es vorgeschlagen hat. Lehnen Sie den Vorschlag ab und fragen Sie die KI-App erneut."
+          }
+        }
+      }
+    },
     "This changed since the AI app suggested it. Decline it and ask the AI app again." : {
       "localizations" : {
         "de" : {
@@ -22079,7 +22089,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mit Headset hört dein Mikrofon die anderen nicht, deshalb wird auch der Ton deines Macs aufgenommen (alles außer WhisperShortcut)."
+            "value" : "Mit Headset hört Ihr Mikrofon die anderen nicht, deshalb wird auch der Ton Ihres Macs aufgenommen (alles außer WhisperShortcut)."
           }
         }
       }
@@ -22129,7 +22139,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ohne Headset hört dein Mikrofon die anderen über die Lautsprecher, deshalb wird nur das Mikrofon aufgenommen."
+            "value" : "Ohne Headset hört Ihr Mikrofon die anderen über die Lautsprecher, deshalb wird nur das Mikrofon aufgenommen."
           }
         }
       }
@@ -22599,7 +22609,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dein eigener Server ignoriert den System-Prompt unten — die meisten selbst gehosteten Server nutzen Whisper, das einen Prompt als fortzusetzenden Text liest, nicht als Anweisung. Dein Glossar erreicht ihn weiterhin als Vokabelhinweise."
+            "value" : "Ihr eigener Server ignoriert den System-Prompt unten — die meisten selbst gehosteten Server nutzen Whisper, das einen Prompt als fortzusetzenden Text liest, nicht als Anweisung. Ihr Glossar erreicht ihn weiterhin als Vokabelhinweise."
           }
         }
       }
@@ -24514,7 +24524,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine eigenen Vorlese-Stimmen für das Qwen3-Modell auf dem Gerät."
+            "value" : "Ihre eigenen Vorlese-Stimmen für das Qwen3-Modell auf dem Gerät."
           }
         }
       }
@@ -24544,7 +24554,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Behält deine Diktate und Prompts auf diesem Mac und lässt das Smart-Improvement-Modell bessere Prompts vorschlagen und deinen Schreibstil lernen. Standardmäßig aus."
+            "value" : "Behält Ihre Diktate und Prompts auf diesem Mac und lässt das Smart-Improvement-Modell bessere Prompts vorschlagen und Ihren Schreibstil lernen. Standardmäßig aus."
           }
         }
       }
@@ -24564,7 +24574,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lernt aus deiner letzten Nutzung …"
+            "value" : "Lernt aus Ihrer letzten Nutzung …"
           }
         }
       }
@@ -24584,7 +24594,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "An. Du bekommst eine Mitteilung, wenn es etwas zu prüfen gibt."
+            "value" : "An. Sie bekommen eine Mitteilung, wenn es etwas zu prüfen gibt."
           }
         }
       }
@@ -24594,7 +24604,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pausiert, solange der Offline-Modus an ist. Es wird nichts gespeichert oder gesendet; das Lernen geht weiter, sobald du den Offline-Modus ausschaltest."
+            "value" : "Pausiert, solange der Offline-Modus an ist. Es wird nichts gespeichert oder gesendet; das Lernen geht weiter, sobald Sie den Offline-Modus ausschalten."
           }
         }
       }
@@ -24604,7 +24614,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Läuft im Hintergrund; du bekommst eine Mitteilung, wenn es fertig ist. Setzt voraus, dass das Lernen an ist."
+            "value" : "Läuft im Hintergrund; Sie bekommen eine Mitteilung, wenn es fertig ist. Setzt voraus, dass das Lernen an ist."
           }
         }
       }
@@ -24614,7 +24624,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperShortcut lernt aus deiner Nutzung und wird von selbst besser: Schreibweisen, Prompts und die Art, wie du Nachrichten schreibst. Es gibt nichts einzurichten."
+            "value" : "WhisperShortcut lernt aus Ihrer Nutzung und wird von selbst besser: Schreibweisen, Prompts und die Art, wie Sie Nachrichten schreiben. Es gibt nichts einzurichten."
           }
         }
       }
@@ -24624,7 +24634,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine Nutzungsdaten bleiben auf diesem Mac. Wenn gelernt wird, geht eine Stichprobe an dein Smart-Improvement-Modell, und du prüfst jede Änderung, bevor sie gespeichert wird."
+            "value" : "Ihre Nutzungsdaten bleiben auf diesem Mac. Wenn gelernt wird, geht eine Stichprobe an Ihr Smart-Improvement-Modell, und Sie prüfen jede Änderung, bevor sie gespeichert wird."
           }
         }
       }
@@ -24634,7 +24644,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "💳 Abrechnung erforderlich\n\nDein API-Konto hat kein nutzbares Guthaben, oder dieses Modell setzt eine aktivierte Abrechnung voraus. Richte die Abrechnung für den Anbieter ein, dessen Schlüssel du verwendest:\n• Google: https://aistudio.google.com/app/apikey — aktiviere die Abrechnung für das Projekt, dem dein Schlüssel gehört (Vorschau-Modelle wie Gemini 3 Flash verlangen sie oft)\n• OpenAI: https://platform.openai.com/settings/organization/billing — Guthaben aufladen\n• xAI: https://console.x.ai — Guthaben aufladen\n\nHinweis: Abos von ChatGPT, Grok oder Gemini enthalten KEIN API-Guthaben — das Entwicklerkonto wird separat abgerechnet."
+            "value" : "💳 Abrechnung erforderlich\n\nIhr API-Konto hat kein nutzbares Guthaben, oder dieses Modell setzt eine aktivierte Abrechnung voraus. Richten Sie die Abrechnung für den Anbieter ein, dessen Schlüssel Sie verwenden:\n• Google: https://aistudio.google.com/app/apikey — aktivieren Sie die Abrechnung für das Projekt, dem Ihr Schlüssel gehört (Vorschau-Modelle wie Gemini 3 Flash verlangen sie oft)\n• OpenAI: https://platform.openai.com/settings/organization/billing — Guthaben aufladen\n• xAI: https://console.x.ai — Guthaben aufladen\n\nHinweis: Abos von ChatGPT, Grok oder Gemini enthalten KEIN API-Guthaben — das Entwicklerkonto wird separat abgerechnet."
           }
         }
       }
@@ -24874,7 +24884,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Stimme stammt aus deiner eigenen Aufnahme. Anhören spielt eine Probe; Aufnahme ersetzen zieht stattdessen eine beschriebene Stimme."
+            "value" : "Diese Stimme stammt aus Ihrer eigenen Aufnahme. Anhören spielt eine Probe; Aufnahme ersetzen zieht stattdessen eine beschriebene Stimme."
           }
         }
       }
@@ -24904,7 +24914,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Stimme kommt aus deiner Aufnahme — keine Beschreibung nötig."
+            "value" : "Die Stimme kommt aus Ihrer Aufnahme — keine Beschreibung nötig."
           }
         }
       }
@@ -26523,7 +26533,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verbinde deinen eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt und Chat; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions, das LM Studio und mlx_lm.server nicht anbieten."
+            "value" : "Verbinden Sie Ihren eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt und Chat; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions, das LM Studio und mlx_lm.server nicht anbieten."
           }
         }
       }

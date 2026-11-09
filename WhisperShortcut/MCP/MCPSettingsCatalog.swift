@@ -106,12 +106,17 @@ struct MCPSetting {
   /// Identity unless a setting stores a normalized form, in which case the label shows what
   /// will actually be stored.
   let normalizeForLabel: (Any) -> Any
+  /// Optional batch-aware validation: given the whole `update_settings` batch (id → new value), may
+  /// replace `validate` for this entry — e.g. a voice that must match the model set in the same
+  /// call. nil = use `validate`.
+  let validateInBatch: ((Any, [String: Any]) -> String?)?
 
   init(
     id: String, title: String, category: String, kind: Kind, proposalOnly: Bool = false,
     unavailableReason: @escaping () -> String? = { nil }, read: @escaping () -> Any,
     validate: @escaping (Any) -> String?, apply: @escaping (Any) throws -> Void,
-    normalizeForLabel: @escaping (Any) -> Any = { $0 }
+    normalizeForLabel: @escaping (Any) -> Any = { $0 },
+    validateInBatch: ((Any, [String: Any]) -> String?)? = nil
   ) {
     self.id = id
     self.title = title
@@ -123,6 +128,13 @@ struct MCPSetting {
     self.validate = validate
     self.apply = apply
     self.normalizeForLabel = normalizeForLabel
+    self.validateInBatch = validateInBatch
+  }
+
+  /// `validate`, or the batch-aware variant when the entry has one.
+  func validateWithBatch(_ value: Any, batch: [String: Any]) -> String? {
+    if let validateInBatch { return validateInBatch(value, batch) }
+    return validate(value)
   }
 }
 
@@ -340,6 +352,14 @@ enum MCPSettingsCatalog {
     return ShortcutDefinition(key: key, modifiers: modifiers, isEnabled: true, displayCharacter: nil)
   }
 
+  /// The `{"key", "modifiers"}` dictionary as `read` would hand it back (canonical key name,
+  /// sorted modifier names), or nil when `dict` is not a decodable shortcut. Lets `sameValue`
+  /// treat "option, control" and "control, option" as the same shortcut.
+  static func normalizedShortcutJSON(_ dict: [String: Any]) -> [String: Any]? {
+    guard let def = shortcutDefinition(from: dict), let normalized = json(of: def) as? [String: Any] else { return nil }
+    return normalized
+  }
+
   /// Inverse of `shortcutDefinition(from:)`: the same `{"key", "modifiers"}` shape `read` and
   /// `get_settings` hand back, and an AI app's `update_settings` call must accept.
   private static func json(of definition: ShortcutDefinition) -> Any {
@@ -376,12 +396,13 @@ enum MCPSettingsCatalog {
   /// Returns the first problem, or nil if every item in the batch is fine together.
   static func validateBatch(catalog: [MCPSetting], items: [(id: String, value: Any)]) -> String? {
     var byID: [String: Any] = [:]
+    let wholeBatch = Dictionary(items.map { ($0.id, $0.value) }, uniquingKeysWith: { _, last in last })
     for item in items {
       guard let setting = catalog.first(where: { $0.id == item.id }) else {
         return "Unknown setting: \(item.id)."
       }
       if let reason = setting.unavailableReason() { return "\(setting.title): \(reason)" }
-      if let problem = setting.validate(item.value) { return "\(setting.title): \(problem)" }
+      if let problem = setting.validateWithBatch(item.value, batch: wholeBatch) { return "\(setting.title): \(problem)" }
       byID[item.id] = item.value
     }
 
@@ -653,7 +674,10 @@ enum MCPSettingsCatalog {
         },
         apply: { value in
           guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
-          write(s)
+          write(s.trimmingCharacters(in: .whitespacesAndNewlines))
+        },
+        normalizeForLabel: { value in
+          (value as? String).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? value
         })
     }
 
@@ -761,7 +785,10 @@ enum MCPSettingsCatalog {
       },
       apply: { value in
         guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
-        OpenRouterChatPreferences.setModelID(s, defaults: defaults)
+        OpenRouterChatPreferences.setModelID(s.trimmingCharacters(in: .whitespacesAndNewlines), defaults: defaults)
+      },
+      normalizeForLabel: { value in
+        (value as? String).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? value
       }))
 
     // MARK: meetings.transcription_model
@@ -1126,18 +1153,35 @@ enum MCPSettingsCatalog {
     // MARK: read_aloud.voice.*
     // `""` is the provider default, the same sentinel `SettingsSlot.string` persists.
     func voiceSetting(
-      id: String, title: String, provider: TTSProvider, voices: (() -> [TTSVoice])? = nil
+      id: String, title: String, provider: TTSProvider, voices: (() -> [TTSVoice])? = nil,
+      voicesForBatchModel: ((TTSModel) -> [TTSVoice])? = nil
     ) {
       let key = provider.voiceUserDefaultsKey
       let catalogue = voices ?? { provider.voices }
-      settings.append(enumSetting(
+      let base = enumSetting(
         id: id, title: title, category: "read_aloud",
         allOptions: {
           [MCPSetting.Option("", "Provider default")]
             + catalogue().map { MCPSetting.Option($0.id, $0.displayName) }
         },
         current: { defaults.string(forKey: key) ?? "" },
-        applyValue: { raw in defaults.set(raw, forKey: key) }))
+        applyValue: { raw in defaults.set(raw, forKey: key) })
+      guard let voicesForBatchModel else { settings.append(base); return }
+      // The same batch may switch `read_aloud.model`: judge the voice against the incoming model,
+      // not the one saved today.
+      settings.append(MCPSetting(
+        id: base.id, title: base.title, category: base.category, kind: base.kind,
+        unavailableReason: base.unavailableReason, read: base.read, validate: base.validate,
+        apply: base.apply,
+        validateInBatch: { value, batch in
+          guard let rawModel = batch["read_aloud.model"] as? String, let model = TTSModel(rawValue: rawModel)
+          else { return base.validate(value) }
+          let allowed = [""] + voicesForBatchModel(model).map(\.id)
+          guard let raw = value as? String, allowed.contains(raw) else {
+            return "\(title) must be one of: \(allowed.joined(separator: ", "))."
+          }
+          return nil
+        }))
     }
     voiceSetting(id: "read_aloud.voice.gemini", title: "Gemini voice", provider: .gemini)
     voiceSetting(id: "read_aloud.voice.openai", title: "OpenAI voice", provider: .openai)
@@ -1148,7 +1192,8 @@ enum MCPSettingsCatalog {
     // speaker id while VoiceDesign is selected, and the persona would silently fall back.
     voiceSetting(
       id: "read_aloud.voice.qwen3", title: "Qwen3 voice", provider: .localMLX,
-      voices: { ReadAloudPreferences.model.availableVoices })
+      voices: { ReadAloudPreferences.model.availableVoices },
+      voicesForBatchModel: { $0.availableVoices })
 
     // MARK: screenshot.save_enabled — refused turning ON without a folder chosen (MCP never opens
     // the picker); `enablingRefused`, not `unavailableReason`, so the entry stays visible and OFF
@@ -1307,7 +1352,11 @@ extension MCPConfigApplier {
           }
           return .failure(error)
         }
-        applied.append(item)
+        // Record the value as read back (normalised: trimmed ids, canonical shortcuts, cleaned
+        // lists), so Undo compares `read()` with a value of the same shape.
+        applied.append(MCPSettingsChangeItem(
+          id: item.id, title: item.title, fromLabel: item.fromLabel, toLabel: item.toLabel,
+          fromJSON: item.fromJSON, toJSON: MCPSettingsCatalog.encodeValue(setting.read())))
       }
       let change = changeLog.recordSettings(items: applied, rationale: rationale, viaProposal: viaProposal)
       // One post per batch, whether this came from a direct `update_settings` apply or an

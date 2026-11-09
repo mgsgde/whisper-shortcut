@@ -221,14 +221,35 @@ struct MCPMeetingTools {
   }
 
   /// Keeps the newest part when over the cap.
-  static func capNewest(_ text: String, limit: Int = maxResultCharacters) -> String {
+  static func capNewest(_ text: String, limit: Int = maxResultCharacters, mentionsUntil: Bool = true) -> String {
     guard text.count > limit else { return text }
     let cut = text.count - limit
     var kept = String(text.suffix(limit))
     if let nl = kept.firstIndex(of: "\n"), kept.distance(from: kept.startIndex, to: nl) < 500 {
       kept = String(kept[kept.index(after: nl)...])
     }
-    return "[Output cut: the oldest \(cut) characters were removed to stay under \(limit). Pass `until` (mm:ss) to read the earlier part.]\n\n" + kept
+    // `until` exists on get_meeting only; get_live_transcript must not point at it.
+    let hint = mentionsUntil ? " Pass `until` (mm:ss) to read the earlier part." : ""
+    return "[Output cut: the oldest \(cut) characters were removed to stay under \(limit).\(hint)]\n\n" + kept
+  }
+
+  /// For a live delta: the OLDEST chunks that fit under `limit` (at least one), rendered, plus how
+  /// many were taken, so the caller can advance `next_since` only past what it actually returned.
+  /// A single chunk longer than the limit is cut at the limit.
+  func renderOldestFitting(_ chunks: [LiveMeetingChunk], limit: Int) -> (text: String, taken: Int) {
+    var parts: [String] = []
+    var length = 0
+    for chunk in chunks {
+      let piece = "[\(Self.format(chunk.startTime))] \(chunk.text)"
+      let added = piece.count + (parts.isEmpty ? 0 : 2)
+      if length + added > limit {
+        if parts.isEmpty { return (String(piece.prefix(limit)), 1) }
+        break
+      }
+      parts.append(piece)
+      length += added
+    }
+    return (parts.joined(separator: "\n\n"), parts.count)
   }
 
   /// Keeps the beginning (used for result lists ordered newest first).
@@ -268,7 +289,7 @@ struct MCPMeetingTools {
         return (out, false)
       }
       out += render(all)
-      out = Self.capNewest(out)
+      out = Self.capNewest(out, mentionsUntil: false)
       out += "\n\nnext_since: \(nextCursor(all.last!.startTime))"
       return (out, false)
     }
@@ -280,9 +301,14 @@ struct MCPMeetingTools {
       out += "No new transcript since \(Self.format(since)).\nnext_since: \(nextCursor(since))"
       return (out, false)
     }
-    out += render(fresh)
-    out = Self.capNewest(out)
-    out += "\n\nnext_since: \(nextCursor(fresh.last!.startTime))"
+    // Oldest first: whatever does not fit stays after `next_since` for the next call.
+    let body = renderOldestFitting(fresh, limit: Self.maxResultCharacters - out.count - 400)
+    out += body.text
+    let lastReturned = fresh[body.taken - 1]
+    if body.taken < fresh.count {
+      out += "\n\n[\(fresh.count - body.taken) more chunk(s) are available: call get_live_transcript again with next_since.]"
+    }
+    out += "\n\nnext_since: \(nextCursor(lastReturned.startTime))"
     return (out, false)
   }
 

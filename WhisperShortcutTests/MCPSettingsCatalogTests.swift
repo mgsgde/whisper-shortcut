@@ -612,4 +612,76 @@ struct MCPSettingsCatalogTests {
     if definition.modifiers.contains(.shift) { modifiers.append("shift") }
     return ["key": definition.key.mcpKeyName, "modifiers": modifiers]
   }
+
+  // MARK: - Stale accept, normalised comparison (R218, R219)
+
+  @Test("Accepting a settings proposal refuses when the setting changed since, and applies nothing")
+  func staleSettingsProposalRefused() {
+    let env = MCPTestEnv(level: .propose)
+    let r = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["notifications.enabled": false], "rationale": "r"], access: .write)
+    let id = obj(r)["id"] as? String ?? ""
+    // Changed by hand after the AI app proposed (from-value was `true`).
+    env.testDefaults.set(false, forKey: UserDefaultsKeys.showPopupNotifications)
+    let changesBefore = env.changeLog.changes.count
+    switch env.proposals.accept(id) {
+    case .success: Issue.record("stale settings proposal must not be accepted")
+    case .failure(let error): #expect(error.localizedDescription.contains("changed since"))
+    }
+    #expect(env.changeLog.changes.count == changesBefore)
+    #expect(env.proposals.status(of: id)?.status == .pending)
+  }
+
+  @Test("sameValue compares arrays element-wise and shortcuts regardless of modifier order")
+  func sameValueArraysAndShortcuts() {
+    #expect(MCPSettingsCatalog.sameValue(["A", "B"] as [Any], ["A", "B"] as [Any]))
+    #expect(!MCPSettingsCatalog.sameValue(["A", "B"] as [Any], ["B", "A"] as [Any]))
+    #expect(!MCPSettingsCatalog.sameValue(["A"] as [Any], ["A", "B"] as [Any]))
+    let a: [String: Any] = ["key": "a", "modifiers": ["option", "control"]]
+    let b: [String: Any] = ["key": "a", "modifiers": ["control", "option"]]
+    #expect(MCPSettingsCatalog.sameValue(a, b))
+  }
+
+  @Test("A model id with surrounding spaces is stored trimmed and a repeat call is no_change")
+  func modelIDTrimmed() {
+    let env = MCPTestEnv(level: .apply)
+    let args: [String: Any] = ["changes": ["chat.custom_endpoint_model_id": "  my-model  "], "rationale": "r"]
+    let first = env.tools().call(name: "update_settings", arguments: args, access: .write)
+    #expect(!first.isError)
+    #expect(env.testDefaults.string(forKey: UserDefaultsKeys.customOpenAIChatModelID) == "my-model")
+    let second = env.tools().call(name: "update_settings", arguments: args, access: .write)
+    #expect(obj(second)["status"] as? String == "no_change")
+  }
+
+  @Test("Undo of quick_prompts restores the previous list and an identical call is no_change")
+  func quickPromptsUndoAndNoChange() {
+    let env = MCPTestEnv(level: .apply)
+    let args: [String: Any] = [
+      "changes": ["dictate_prompt.quick_prompts": ["  A  ", "", "B"]], "rationale": "r"]
+    let r = env.tools().call(name: "update_settings", arguments: args, access: .write)
+    let changeID = obj(r)["change_id"] as? String ?? ""
+    #expect(!changeID.isEmpty)
+    let again = env.tools().call(name: "update_settings", arguments: args, access: .write)
+    #expect(obj(again)["status"] as? String == "no_change")
+    #expect(env.changeLog.undo(changeID) == .undone)
+    #expect(env.testDefaults.stringArray(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) == [])
+  }
+
+  // MARK: - Qwen3 voice validated against the model in the same batch (R220)
+
+  @Test("qwen3 voice is judged against the read_aloud.model set in the same batch")
+  func qwen3VoiceFollowsBatchModel() {
+    let env = MCPTestEnv()
+    guard let voice = env.settingsCatalog.first(where: { $0.id == "read_aloud.voice.qwen3" }) else {
+      Issue.record("missing read_aloud.voice.qwen3"); return
+    }
+    let speaker = Qwen3VoicePersona.customVoiceSpeakers[0].id
+    let persona = Qwen3VoicePersona.default.id
+    // Right pairs accepted.
+    #expect(voice.validateWithBatch(speaker, batch: ["read_aloud.model": TTSModel.qwen3CustomVoice.rawValue]) == nil)
+    #expect(voice.validateWithBatch(persona, batch: ["read_aloud.model": TTSModel.qwen3VoiceDesign.rawValue]) == nil)
+    // Wrong pairs rejected.
+    #expect(voice.validateWithBatch(persona, batch: ["read_aloud.model": TTSModel.qwen3CustomVoice.rawValue]) != nil)
+    #expect(voice.validateWithBatch(speaker, batch: ["read_aloud.model": TTSModel.qwen3VoiceDesign.rawValue]) != nil)
+  }
 }

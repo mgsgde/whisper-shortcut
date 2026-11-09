@@ -165,6 +165,19 @@ final class MCPProposalStore: ObservableObject {
           return .failure(MCPConfigError(message: String(localized: "This proposal has no settings.")))
         }
         guard let applier else { return .failure(MCPConfigError(message: String(localized: "Proposals are not available."))) }
+        // Same stale-accept rule as text proposals: every setting must still hold the value the
+        // AI app saw when it proposed the change, otherwise apply nothing.
+        for item in items {
+          guard let setting = settingsCatalog.first(where: { $0.id == item.id }),
+            let fromValue = MCPSettingsCatalog.decodeValue(item.fromJSON),
+            MCPSettingsCatalog.sameValue(setting.read(), fromValue)
+          else {
+            DebugLogger.log("MCP-CONFIG: proposal settings accept rejected (changed since) id=\(item.id)")
+            let name = MCPSettingsCatalog.reviewTitle(item.title)
+            return .failure(MCPConfigError(
+              message: String(localized: "\(name) changed since the AI app suggested it. Decline it and ask the AI app again.")))
+          }
+        }
         let result = applier.applySettingsBatch(
           catalog: settingsCatalog, items: items, rationale: proposal.rationale, viaProposal: true)
         if case .success = result {
