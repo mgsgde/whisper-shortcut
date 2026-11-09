@@ -189,6 +189,111 @@ enum ChatToolRegistry {
     }
   }
 
+  /// Pure planning half of `update_app_instructions`: validates the call and computes the
+  /// before/after text. Reads the store, never writes, so the approval card can show the exact
+  /// diff the executor will apply.
+  enum InstructionsEditPlan {
+    case read(sectionKey: String, current: String)
+    case edit(section: SystemPromptSection, sectionKey: String, action: String, current: String, updated: String)
+    case refused([String: Any])
+  }
+
+  static func planInstructionsEdit(args: [String: Any]) -> InstructionsEditPlan {
+    guard let sectionKey = args["section"] as? String,
+          let section = editableInstructionSections[sectionKey]
+    else {
+      return .refused([
+        "error":
+          "Unknown section. Editable sections: \(editableInstructionSectionNames.joined(separator: ", "))."
+      ])
+    }
+    guard let action = (args["action"] as? String)?.lowercased() else {
+      return .refused(["error": "Missing required argument: action"])
+    }
+    let isGlossary = section == .whisperGlossary
+    let stored = isGlossary
+      ? SystemPromptsStore.shared.loadWhisperGlossary()
+      : SystemPromptsStore.shared.loadSection(section) ?? ""
+    // An emptied prompt section runs on the built-in default; a rule appended to "" would
+    // silently replace that whole default with one line.
+    let current = !isGlossary && stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ? MCPProposalWindows.defaultText(for: section) : stored
+    let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+    // `read` is the documented first step: it hands the model the current rules so it can spot
+    // a contradiction instead of stacking a second, conflicting rule on top of an existing one.
+    if action == "read" {
+      return .read(sectionKey: sectionKey, current: current)
+    }
+
+    guard !text.isEmpty else {
+      return .refused(["error": "Action '\(action)' requires the 'text' argument."])
+    }
+
+    let updated: String
+    switch action {
+    case "append":
+      if isGlossary {
+        var lines: [String] = []
+        for raw in text.components(separatedBy: .newlines) where !raw.trimmingCharacters(in: .whitespaces).isEmpty {
+          let parsed = MCPConfigTools.glossaryLine(for: raw)
+          guard let line = parsed.line else { return .refused(["error": parsed.error ?? "Not a glossary term."]) }
+          lines.append(line)
+        }
+        updated = GlossaryLearning.mergeAdditively(current: current, suggestion: lines.joined(separator: "\n"))
+        if updated == current.trimmingCharacters(in: .whitespacesAndNewlines) {
+          return .refused(["ok": false, "status": "no_change", "note": "Already in the glossary."])
+        }
+      } else {
+        updated = current.isEmpty ? text : current + "\n" + text
+      }
+    case "replace":
+      if isGlossary {
+        let dropped = Self.glossaryEntriesDropped(from: current, by: text)
+        guard dropped.isEmpty else {
+          return .refused([
+            "error":
+              "Refused: this would delete glossary entries (\(dropped.prefix(10).joined(separator: ", "))). Glossary entries are the user's own corrections. Keep them, or, only if the user explicitly asked to remove one, use action='remove' with that entry.",
+          ])
+        }
+      }
+      updated = text
+    case "remove":
+      let needle = text.lowercased()
+      let kept = current.components(separatedBy: .newlines)
+        .filter { !$0.lowercased().contains(needle) }
+      let joined = kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+      if joined == current.trimmingCharacters(in: .whitespacesAndNewlines) {
+        return .refused([
+          "ok": false, "status": "not_found",
+          "note": "No line contained '\(text)'. Call action='read' and match an existing line.",
+        ])
+      }
+      updated = joined
+    default:
+      return .refused(["error": "Unknown action '\(action)'. Use read, append, replace, or remove."])
+    }
+
+    let limit = isGlossary ? SystemPromptsStore.glossaryCharBudget : instructionsSectionLimitChars
+    guard updated.count <= limit else {
+      return .refused([
+        "error": isGlossary
+          ? "That would grow the glossary to \(updated.count) characters (budget \(limit)). Add only the terms the user's recent dictations get wrong most often."
+          : "That would grow the \(sectionKey) instructions to \(updated.count) characters (limit \(limit)). Consolidate or remove an existing rule first — an overlong system prompt degrades every response in that mode."
+      ])
+    }
+    return .edit(section: section, sectionKey: sectionKey, action: action, current: current, updated: updated)
+  }
+
+  /// Before/after for the approval card; nil for everything that is not a concrete instructions edit.
+  static func approvalPreview(name: String, args: [String: Any]) -> ToolApprovalPreview? {
+    guard name == updateInstructionsToolName,
+          case .edit(let section, _, _, let current, let updated) = planInstructionsEdit(args: args)
+    else { return nil }
+    return ToolApprovalPreview(
+      title: MCPProposalWindows.displayName(section), before: current, after: updated)
+  }
+
   /// Base function declarations (always available).
   static let functionDeclarations: [[String: Any]] = [
     [
@@ -1483,100 +1588,23 @@ enum ChatToolRegistry {
         term, misheardAs: (misheardAs?.isEmpty ?? true) ? nil : misheardAs)
 
     case updateInstructionsToolName:
-      guard let sectionKey = args["section"] as? String,
-            let section = editableInstructionSections[sectionKey]
-      else {
-        return [
-          "error":
-            "Unknown section. Editable sections: \(editableInstructionSectionNames.joined(separator: ", "))."
-        ]
-      }
-      guard let action = (args["action"] as? String)?.lowercased() else {
-        return ["error": "Missing required argument: action"]
-      }
-      let isGlossary = section == .whisperGlossary
-      let stored = isGlossary
-        ? SystemPromptsStore.shared.loadWhisperGlossary()
-        : SystemPromptsStore.shared.loadSection(section) ?? ""
-      // An emptied prompt section runs on the built-in default; a rule appended to "" would
-      // silently replace that whole default with one line.
-      let current = !isGlossary && stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        ? MCPProposalWindows.defaultText(for: section) : stored
-      let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-      // `read` is the documented first step: it hands the model the current rules so it can spot
-      // a contradiction instead of stacking a second, conflicting rule on top of an existing one.
-      if action == "read" {
+      switch planInstructionsEdit(args: args) {
+      case .refused(let response):
+        return response
+      case .read(let sectionKey, let current):
         return ["ok": true, "section": sectionKey, "instructions": current]
-      }
-
-      guard !text.isEmpty else {
-        return ["error": "Action '\(action)' requires the 'text' argument."]
-      }
-
-      let updated: String
-      switch action {
-      case "append":
-        if isGlossary {
-          var lines: [String] = []
-          for raw in text.components(separatedBy: .newlines) where !raw.trimmingCharacters(in: .whitespaces).isEmpty {
-            let parsed = MCPConfigTools.glossaryLine(for: raw)
-            guard let line = parsed.line else { return ["error": parsed.error ?? "Not a glossary term."] }
-            lines.append(line)
-          }
-          updated = GlossaryLearning.mergeAdditively(current: current, suggestion: lines.joined(separator: "\n"))
-          if updated == current.trimmingCharacters(in: .whitespacesAndNewlines) {
-            return ["ok": false, "status": "no_change", "note": "Already in the glossary."]
-          }
-        } else {
-          updated = current.isEmpty ? text : current + "\n" + text
-        }
-      case "replace":
-        if isGlossary {
-          let dropped = Self.glossaryEntriesDropped(from: current, by: text)
-          guard dropped.isEmpty else {
-            return [
-              "error":
-                "Refused: this would delete glossary entries (\(dropped.prefix(10).joined(separator: ", "))). Glossary entries are the user's own corrections. Keep them, or, only if the user explicitly asked to remove one, use action='remove' with that entry.",
-            ]
-          }
-        }
-        updated = text
-      case "remove":
-        let needle = text.lowercased()
-        let kept = current.components(separatedBy: .newlines)
-          .filter { !$0.lowercased().contains(needle) }
-        let joined = kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        if joined == current.trimmingCharacters(in: .whitespacesAndNewlines) {
-          return [
-            "ok": false, "status": "not_found",
-            "note": "No line contained '\(text)'. Call action='read' and match an existing line.",
-          ]
-        }
-        updated = joined
-      default:
-        return ["error": "Unknown action '\(action)'. Use read, append, replace, or remove."]
-      }
-
-      let limit = isGlossary ? SystemPromptsStore.glossaryCharBudget : instructionsSectionLimitChars
-      guard updated.count <= limit else {
+      case .edit(let section, let sectionKey, let action, let current, let updated):
+        // The store appends the history row (source: chat), so a chat-made change is reviewable
+        // and reversible: without it the app's behavior could drift with no trace of who changed what.
+        SystemPromptsStore.shared.updateSection(section, content: updated, source: .chat)
+        DebugLogger.log(
+          "INSTRUCTIONS-EDIT: chat \(action) on \(sectionKey) (\(current.count) → \(updated.count) chars)")
         return [
-          "error": isGlossary
-            ? "That would grow the glossary to \(updated.count) characters (budget \(limit)). Add only the terms the user's recent dictations get wrong most often."
-            : "That would grow the \(sectionKey) instructions to \(updated.count) characters (limit \(limit)). Consolidate or remove an existing rule first — an overlong system prompt degrades every response in that mode."
+          "ok": true, "status": action, "section": sectionKey,
+          "instructions": updated,
+          "note": "Applied. Tell the user briefly what changed; it is editable in Settings and recorded in the prompt history.",
         ]
       }
-
-      // The store appends the history row (source: chat), so a chat-made change is reviewable
-      // and reversible: without it the app's behavior could drift with no trace of who changed what.
-      SystemPromptsStore.shared.updateSection(section, content: updated, source: .chat)
-      DebugLogger.log(
-        "INSTRUCTIONS-EDIT: chat \(action) on \(sectionKey) (\(current.count) → \(updated.count) chars)")
-      return [
-        "ok": true, "status": action, "section": sectionKey,
-        "instructions": updated,
-        "note": "Applied. Tell the user briefly what changed; it is editable in Settings and recorded in the prompt history.",
-      ]
 
     case readRecentInteractionsToolName:
       // Re-checked at call time: the declaration list was built when the turn started.

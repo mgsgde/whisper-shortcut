@@ -1184,9 +1184,9 @@ class ChatViewModel: ObservableObject {
               showsModelReadinessPopup: false)
           },
           toolContext: { self.makeToolContext(sessionId: sessionId) },
-          approve: { name, summary, stepId in
+          approve: { name, summary, preview, stepId in
             await self.confirmToolCall(
-              name: name, summary: summary, sessionId: sessionId, requestId: stepId)
+              name: name, summary: summary, preview: preview, sessionId: sessionId, requestId: stepId)
           },
           onDisplayText: { text, immediate in
             if immediate {
@@ -1336,7 +1336,7 @@ class ChatViewModel: ObservableObject {
   /// (task cancellation) and deleting the chat answer "deny", so the send task never leaks.
   /// "Allow for this chat" answers later calls of the same tool without asking.
   private func confirmToolCall(
-    name: String, summary: String, sessionId: UUID, requestId: UUID
+    name: String, summary: String, preview: ToolApprovalPreview?, sessionId: UUID, requestId: UUID
   ) async -> Bool {
     let stored = store.session(by: sessionId)
     if stored == nil || stored?.archived == true {
@@ -1359,6 +1359,7 @@ class ChatViewModel: ObservableObject {
           id: requestId,
           toolName: name,
           summary: summary,
+          preview: preview,
           offersAllowForChat: ChatToolRegistry.allowsChatWideApproval(name),
           continuation: continuation)
       }
@@ -3786,15 +3787,18 @@ struct ChatView: View {
     return ScrollViewReader { proxy in
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          LazyVStack(alignment: .leading, spacing: 20) {
-            Color.clear.frame(height: 1).id("listTop")
-            if viewModel.messages.isEmpty && !viewModel.isSending {
-              if viewModel.isCurrentSessionMeeting {
-                meetingEmptyState
-              } else {
-                emptyStateCommandHints
-              }
+          // Outside the LazyVStack on purpose: a lazy row is only built once it scrolls into view,
+          // and right after switching from a long chat the scroll view can still sit at the old
+          // offset, so the empty state never appeared and a new chat showed a blank pane.
+          Color.clear.frame(height: 1).id("listTop")
+          if viewModel.messages.isEmpty && !viewModel.isSending {
+            if viewModel.isCurrentSessionMeeting {
+              meetingEmptyState
+            } else {
+              emptyStateCommandHints
             }
+          }
+          LazyVStack(alignment: .leading, spacing: 20) {
             ForEach(meetingStreamItems) { item in
               switch item {
               case .note(let note):
@@ -4209,6 +4213,13 @@ struct ChatView: View {
       // anchor it happened to have: the anchor is only the layout starting point. Only when the
       // user turned on "Scroll along with new text" in Settings → Chat.
       if wasFollowing && followNewContentEnabled { scrollToBottom(proxy: proxy) }
+    } else if viewModel.messages.isEmpty {
+      // An empty chat starts at the top, instantly: an animated scroll to the bottom starts from
+      // the previous tab's offset and can leave the view parked below the shrunken content.
+      scrollPositionID = nil
+      followsBottom = true
+      viewModel.setFollowingBottom(true, for: sessionId)
+      proxy.scrollTo("listTop", anchor: .top)
     } else {
       scrollPositionID = nil
       followsBottom = true

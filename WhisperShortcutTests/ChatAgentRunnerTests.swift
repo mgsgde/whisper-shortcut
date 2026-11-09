@@ -52,7 +52,7 @@ struct ChatAgentRunnerTests {
     maxToolRounds: Int = 16,
     extraTools: [String] = [],
     handlers: [String: ChatToolContext.Handler] = [:],
-    approve: @escaping (String, String, UUID) async -> Bool = { _, _, _ in true }
+    approve: @escaping (String, String, ToolApprovalPreview?, UUID) async -> Bool = { _, _, _, _ in true }
   ) -> ChatAgentRunner {
     ChatAgentRunner(
       provider: provider, model: "test-model",
@@ -174,7 +174,7 @@ struct ChatAgentRunnerTests {
       provider,
       extraTools: ["remember_about_user"],
       handlers: ["remember_about_user": { _ in ran = true; return ChatToolOutcome(response: ["ok": true]) }],
-      approve: { _, _, _ in false })
+      approve: { _, _, _, _ in false })
     let result = try await runner.run(contents: [["role": "user", "parts": [["text": "remember"]]]])
 
     #expect(!ran)
@@ -239,7 +239,7 @@ struct ChatAgentRunnerTests {
           return ChatToolOutcome(response: ["id": "E8"])
         },
       ],
-      approve: { _, _, _ in
+      approve: { _, _, _, _ in
         withUnsafeCurrentTask { $0?.cancel() }
         return false
       })

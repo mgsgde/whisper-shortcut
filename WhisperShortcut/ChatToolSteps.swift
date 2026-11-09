@@ -85,11 +85,19 @@ enum ToolApprovalDecision: Equatable {
 
 /// A tool call waiting for the user's answer on the inline approval card. Exactly one per session
 /// at a time: calls run sequentially, and the turn awaits the answer.
+struct ToolApprovalPreview: Equatable {
+  /// Section name as the user sees it, e.g. "Dictate Prompt".
+  let title: String
+  let before: String
+  let after: String
+}
+
 struct ToolApprovalRequest: Identifiable {
   let id: UUID
   let toolName: String
   /// What will happen, human-readable ("Create calendar event: Dentist").
   let summary: String
+  let preview: ToolApprovalPreview?
   let offersAllowForChat: Bool
   let continuation: CheckedContinuation<ToolApprovalDecision, Never>
 }

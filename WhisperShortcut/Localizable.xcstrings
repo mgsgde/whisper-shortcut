@@ -3382,6 +3382,16 @@
         }
       }
     },
+    "Allow this change?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Änderung erlauben?"
+          }
+        }
+      }
+    },
     "Allowed in Offline Mode: the update check is the only request that leaves this Mac. It downloads the list of releases from github.com and sends only the app's name and version — no recordings, transcripts, settings or usage data. Turn the switch off to stop automatic checks." : {
       "localizations" : {
         "de" : {

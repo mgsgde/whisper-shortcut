@@ -95,6 +95,48 @@ func collapseUnchangedDiffLines(_ lines: [ProposalDiffLine], context: Int = 2) -
   return result
 }
 
+/// The red/green line diff, shared by the review window (MCP proposals, Writing Style) and the
+/// Chat's approval card, so a change to the app's own instructions looks the same wherever it is
+/// approved.
+struct ProposalDiffLinesView: View {
+  let lines: [ProposalDiffLine]
+  var font: Font = .system(.body, design: .monospaced)
+  var primary: Color = .primary
+  var secondary: Color = .secondary
+  var background: Color = Color(nsColor: .textBackgroundColor)
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(lines) { line in
+        HStack(alignment: .top, spacing: 6) {
+          Text(line.kind == .added ? "+" : line.kind == .removed ? "−" : " ")
+            .font(font)
+            .foregroundColor(line.kind == .added ? .green : line.kind == .removed ? .red : secondary)
+          Text(line.text.isEmpty ? " " : line.text)
+            .font(font)
+            .italic(line.kind == .skipped)
+            .foregroundColor(
+              line.kind == .added ? .green : line.kind == .removed ? .red
+                : line.kind == .skipped ? secondary : primary)
+            .strikethrough(line.kind == .removed)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 1)
+        .background(
+          line.kind == .added ? Color.green.opacity(0.10)
+            : line.kind == .removed ? Color.red.opacity(0.10) : Color.clear)
+      }
+    }
+    .padding(.vertical, 4)
+    .frame(maxWidth: .infinity, alignment: .topLeading)
+    .background(background)
+    .cornerRadius(6)
+  }
+}
+
 struct ProposalReviewView: View {
   let focusDisplayName: String
   let originalText: String
@@ -188,30 +230,7 @@ struct ProposalReviewView: View {
           .font(.subheadline)
           .fontWeight(.medium)
           .foregroundColor(.secondary)
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(diffLines) { line in
-              HStack(alignment: .top, spacing: 6) {
-                Text(line.kind == .added ? "+" : line.kind == .removed ? "−" : " ")
-                  .font(.system(.body, design: .monospaced))
-                  .foregroundColor(line.kind == .added ? .green : line.kind == .removed ? .red : .secondary)
-                Text(line.text.isEmpty ? " " : line.text)
-                  .font(.system(.body, design: .monospaced))
-                  .italic(line.kind == .skipped)
-                  .foregroundColor(
-                    line.kind == .added ? .green : line.kind == .removed ? .red
-                      : line.kind == .skipped ? .secondary : .primary)
-                  .strikethrough(line.kind == .removed)
-                  .frame(maxWidth: .infinity, alignment: .topLeading)
-                  .fixedSize(horizontal: false, vertical: true)
-              }
-              .padding(.horizontal, 8)
-              .padding(.vertical, 1)
-              .background(line.kind == .added ? Color.green.opacity(0.10) : line.kind == .removed ? Color.red.opacity(0.10) : Color.clear)
-            }
-          }
-          .frame(maxWidth: .infinity, alignment: .topLeading)
-          .background(Color(nsColor: .textBackgroundColor))
-          .cornerRadius(6)
+        ProposalDiffLinesView(lines: diffLines)
       }
       }
 

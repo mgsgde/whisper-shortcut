@@ -211,4 +211,46 @@ struct ChatToolHardeningTests {
     try Data(repeating: 0x61, count: 1234).write(to: url)
     #expect(WorkspaceWriteTools.existingFileSize(url) == 1234)
   }
+
+  // MARK: approval preview
+
+  /// What the executor treats as the section's current text (blank falls back to the default).
+  /// The append test uses `dictation`: its default fits the length limit with room for a rule,
+  /// while the dictate_prompt default alone is over it, so on fresh settings (CI) every append
+  /// there is refused and no preview exists.
+  private func currentDictationText() -> String {
+    let stored = SystemPromptsStore.shared.loadSection(.dictation) ?? ""
+    return stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ? MCPProposalWindows.defaultText(for: .dictation) : stored
+  }
+
+  @Test func approvalPreviewShowsBeforeAndAfterForAppend() {
+    let current = currentDictationText()
+    let rule = "Always answer in formal German."
+    let preview = ChatToolRegistry.approvalPreview(
+      name: ChatToolRegistry.updateInstructionsToolName,
+      args: ["section": "dictation", "action": "append", "text": rule])
+    #expect(preview != nil)
+    #expect(!(preview?.title.isEmpty ?? true))
+    #expect(preview?.before == current)
+    #expect(preview?.after == current + "\n" + rule)
+  }
+
+  @Test func approvalPreviewIsNilForReadUnknownSectionAndOtherTools() {
+    let name = ChatToolRegistry.updateInstructionsToolName
+    #expect(ChatToolRegistry.approvalPreview(
+      name: name, args: ["section": "dictate_prompt", "action": "read"]) == nil)
+    #expect(ChatToolRegistry.approvalPreview(
+      name: name, args: ["section": "nope", "action": "append", "text": "x"]) == nil)
+    #expect(ChatToolRegistry.approvalPreview(
+      name: "open_url", args: ["url": "https://example.com"]) == nil)
+  }
+
+  @Test func approvalPreviewIsNilWhenRemoveMatchesNoLine() {
+    let preview = ChatToolRegistry.approvalPreview(
+      name: ChatToolRegistry.updateInstructionsToolName,
+      args: ["section": "dictate_prompt", "action": "remove",
+             "text": "zzz-no-such-line-\(UUID().uuidString)"])
+    #expect(preview == nil)
+  }
 }
