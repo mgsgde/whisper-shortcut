@@ -18,7 +18,11 @@ final class MCPTestEnv: @unchecked Sendable {
   var interactions: [InteractionLogEntry] = []
   var signals: [SignalLogEntry] = []
   var settings: [String: String] = ["transcription_model": "whisper-base", "chat_model": "gemini-x"]
-  var history: [String] = []
+  /// "section|content|source" per history row the store appended, oldest first.
+  var history: [String] {
+    UserContextLog.decodeLines([systemPrompts.historyFileURL], as: UnifiedSystemPromptHistoryEntry.self)
+      .map { "\($0.section)|\($0.content)|\($0.source)" }
+  }
 
   // MARK: - Settings catalog fakes (never touch the real UserDefaults, Keychain or SMAppService)
   let testDefaults: UserDefaults
@@ -62,17 +66,11 @@ final class MCPTestEnv: @unchecked Sendable {
       // The live hook runs a real Gmail import and Gemini derive and shows the review panel.
       writingStyleToggled: { box.writingStyleToggles.append($0) })
     self.settingsCatalog = MCPSettingsCatalog.build(deps)
-    var recorder: ((String) -> Void)?
-    changeLog = MCPChangeLog(
-      directory: dir, targets: targets, settingsCatalog: settingsCatalog,
-      recordHistory: { section, _, new, _, source in
-        recorder?("\(section.rawValue)|\(new)|\(source)")
-      })
+    changeLog = MCPChangeLog(directory: dir, targets: targets, settingsCatalog: settingsCatalog)
     proposals = MCPProposalStore(
       directory: dir, applier: MCPConfigApplier(targets: targets, changeLog: changeLog),
       settingsCatalog: settingsCatalog)
     self.level = level
-    recorder = { self.history.append($0) }
   }
 
   func tools() -> MCPConfigTools {
@@ -269,7 +267,7 @@ struct MCPConfigToolsTests {
   @Test("add_glossary_terms is additive, keeps (not ...) lines, dedupes case-insensitively")
   func glossaryAdditive() {
     let env = MCPTestEnv()
-    env.systemPrompts.updateSection(.whisperGlossary, content: "Wianco (not \"Vianco\")\nSmikale")
+    env.systemPrompts.updateSection(.whisperGlossary, content: "Wianco (not \"Vianco\")\nSmikale", source: .settings)
     let t = env.tools()
     let r = t.call(name: "add_glossary_terms",
       arguments: ["terms": ["wianco", "SMIKALE", "Michelbach (not \"Mickelbach\", \"Michelbag\")", "sabaki.dance"], "rationale": "names"],
@@ -314,7 +312,7 @@ struct MCPConfigToolsTests {
     let env = MCPTestEnv()
     let filler = (0..<110).map { "Filler\($0)xyz" }.joined(separator: "\n")  // ~1,300 chars
     let base = String(filler.prefix(SystemPromptsStore.glossaryCharBudget - 10)).trimmingCharacters(in: .whitespacesAndNewlines)
-    env.systemPrompts.updateSection(.whisperGlossary, content: base)
+    env.systemPrompts.updateSection(.whisperGlossary, content: base, source: .settings)
     let t = env.tools()
     let r = t.call(name: "add_glossary_terms", arguments: ["terms": ["Newterm here"], "rationale": "r"], access: .write)
     #expect(r.isError)
@@ -480,7 +478,7 @@ struct MCPConfigToolsTests {
   @Test("get_configuration reports state, recipe and inline texts")
   func configuration() {
     let env = MCPTestEnv(level: .propose)
-    env.systemPrompts.updateSection(.promptMode, content: "Custom rule.")
+    env.systemPrompts.updateSection(.promptMode, content: "Custom rule.", source: .settings)
     _ = try? env.commands.save(name: "a-cmd", text: "Do it.", scope: .both)
     let r = env.tools().call(name: "get_configuration", arguments: ["include": ["system_prompts", "writing_style", "commands"]], access: .read)
     let o = obj(r)
@@ -614,7 +612,7 @@ struct MCPConfigToolsTests {
   @Test("resources/list and resources/read")
   func resources() throws {
     let env = MCPTestEnv()
-    env.systemPrompts.updateSection(.promptMode, content: "Be brief.")
+    env.systemPrompts.updateSection(.promptMode, content: "Be brief.", source: .settings)
     env.writingStyle.saveProfile("Direct.")
     _ = try env.commands.save(name: "daily", text: "Plan my day.", scope: .chat)
     let d = env.dispatcher()

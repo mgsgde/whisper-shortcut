@@ -53,12 +53,17 @@ struct InteractionLogEntry: Codable {
   /// default applied. Lets a reader tell whether a mistake came before or after a prompt change
   /// (`system-prompts-history.jsonl` holds the texts). See `InteractionContext.promptVersion`.
   let promptVersion: String?
+  /// Chat rows only: the tools the model called in this turn, in order — name and outcome, never
+  /// arguments or results (those can hold mail, files, calendar data). Nil when no tool ran and
+  /// on rows from before 2026-11. See `InteractionToolCall`.
+  let toolCalls: [InteractionToolCall]?
 
   init(
     ts: String, mode: String, model: String?, result: String?, selectedText: String?,
     userInstruction: String?, modelResponse: String?, text: String?, voice: String?,
     transcriptionModel: String?, hadScreenshot: Bool?, latencyMs: Int?,
     provider: String?, loadMs: Int?, template: String? = nil,
+    toolCalls: [InteractionToolCall]? = nil,
     context: InteractionContext = InteractionContext()
   ) {
     self.ts = ts
@@ -76,6 +81,7 @@ struct InteractionLogEntry: Codable {
     self.provider = provider
     self.loadMs = loadMs
     self.template = template
+    self.toolCalls = toolCalls?.isEmpty == false ? toolCalls : nil
     self.appBundleId = context.appBundleId
     self.appName = context.appName
     self.durationMs = context.durationMs
@@ -87,6 +93,45 @@ struct InteractionLogEntry: Codable {
   /// `mode` stays a `String` so that unknown spelling still decodes: a strict enum would
   /// drop the whole JSONL line.
   var interactionMode: InteractionMode? { InteractionMode(rawValue: mode) }
+}
+
+// MARK: - Chat tool calls
+
+/// One tool call a chat turn made, as the usage log keeps it: which tool, whether it worked, and
+/// on failure a short error. Never the arguments or the result: both can carry the user's mail,
+/// files or calendar. Lets a model tuning the app see that a turn failed because a tool did.
+struct InteractionToolCall: Codable, Equatable {
+  let name: String
+  let ok: Bool
+  /// Only on failure, at most `maxErrorCharacters`.
+  let error: String?
+
+  static let maxErrorCharacters = 200
+
+  init(name: String, ok: Bool, error: String? = nil) {
+    self.name = name
+    self.ok = ok
+    let trimmed = error?.trimmingCharacters(in: .whitespacesAndNewlines)
+    self.error = ok || trimmed?.isEmpty != false ? nil : String(trimmed!.prefix(Self.maxErrorCharacters))
+  }
+
+  /// Log form of a finished call. A call the user denied did not work either; the log says so
+  /// rather than leaving the model to guess why the turn changed course.
+  init(record: ChatToolCallRecord) {
+    switch record.status {
+    case .failed: self.init(name: record.name, ok: false, error: record.summary ?? "failed")
+    case .denied: self.init(name: record.name, ok: false, error: "denied by the user")
+    case .done: self.init(name: record.name, ok: true)
+    case nil:
+      // Written before the display fields: judge from the stored result, like the transcript does.
+      let response = (try? JSONSerialization.jsonObject(with: Data(record.resultJSON.utf8))) as? [String: Any] ?? [:]
+      if let error = ChatToolRegistry.resultError(response) {
+        self.init(name: record.name, ok: false, error: error)
+      } else {
+        self.init(name: record.name, ok: true)
+      }
+    }
+  }
 }
 
 // MARK: - Interaction Context
@@ -209,6 +254,9 @@ enum OutcomeSignal: String {
   /// A transcript lost an appended glossary list, or was discarded as a pure glossary echo.
   /// Text-free count: the signal carries no transcript text.
   case glossaryEchoRemoved
+  /// The user stopped Read Aloud (✕, Stop, the shortcut again) before it finished. Judges the
+  /// `readAloud` row it follows: the read was not wanted, or went wrong.
+  case readAloudStopped
 }
 
 /// Who asked for the transcription whose result came back empty (instrumentation gap #9 /
@@ -519,7 +567,9 @@ class ContextLogger {
   }
 
   /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.
-  func logChat(userMessage: String, modelResponse: String, model: String?) {
+  func logChat(
+    userMessage: String, modelResponse: String, model: String?, toolCalls: [InteractionToolCall]? = nil
+  ) {
     TelemetryService.shared.completed(.chat, modelKind: .chat, model: model)
     guard isLoggingEnabled else { return }
     // Generated-image responses embed the full base64 JPEG inline as a ⟦GEMINI_IMG:…⟧
@@ -542,10 +592,40 @@ class ContextLogger {
       latencyMs: nil,
       provider: nil,
       loadMs: nil,
+      toolCalls: toolCalls,
       // No target app (the user typed in WhisperShortcut's own window) and no recording.
       context: InteractionContext(
         promptVersion: InteractionContext.promptVersion(of: SystemPromptsStore.shared.loadSection(.chat)))
     )
+    writeEntry(entry)
+  }
+
+  /// Longest Read Aloud text kept in a row. Longer texts are cut with an ellipsis, the way the
+  /// other texts in the log are when they are read back.
+  static let readAloudTextCap = 2_000
+
+  /// Logs one Read Aloud request (not one per chunk) when "Save usage data" is enabled: the text
+  /// that was read, the voice model and voice, and the app that was frontmost. A later
+  /// `readAloudStopped` signal names this row through `refTs`.
+  func logReadAloud(text: String, model: String?, voice: String?, app: InteractionTargetApp?) {
+    guard isLoggingEnabled else { return }
+    let capped = text.count > Self.readAloudTextCap ? String(text.prefix(Self.readAloudTextCap)) + "…" : text
+    let entry = InteractionLogEntry(
+      ts: UserContextLog.nowString(),
+      mode: InteractionMode.readAloud.rawValue,
+      model: model,
+      result: nil,
+      selectedText: nil,
+      userInstruction: nil,
+      modelResponse: nil,
+      text: capped,
+      voice: voice,
+      transcriptionModel: nil,
+      hadScreenshot: nil,
+      latencyMs: nil,
+      provider: nil,
+      loadMs: nil,
+      context: InteractionContext(appBundleId: app?.bundleId, appName: app?.name))
     writeEntry(entry)
   }
 
@@ -779,34 +859,6 @@ class ContextLogger {
       DebugLogger.log("USER-CONTEXT: Trimmed \(url.lastPathComponent) to \(maxLines) lines (was \(lines.count))")
     } catch {
       DebugLogger.logError("USER-CONTEXT: Failed to trim \(url.lastPathComponent): \(error.logDescription)")
-    }
-  }
-
-  /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).
-  /// `source` distinguishes who made the change — "chat" for an `update_app_instructions` tool
-  /// call, "mcp" for an AI app, "voice-feedback" for spoken feedback ("auto" on older rows was
-  /// Smart Improvement). They write the same sections, so without it the history can't tell you
-  /// which writer caused a behavior change.
-  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil, source: String) {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let entry = UnifiedSystemPromptHistoryEntry(
-        ts: UserContextLog.nowString(),
-        section: section.rawValue,
-        source: source,
-        previousLength: previousLength,
-        newLength: newLength,
-        content: content,
-        model: model
-      )
-      let fileURL = self.contextDirectoryURL.appendingPathComponent("system-prompts-history.jsonl")
-      do {
-        let data = try JSONEncoder().encode(entry)
-        try UserContextLog.appendLine(data, to: fileURL)
-        DebugLogger.log("USER-CONTEXT: Appended system prompts history (\(section.rawValue))")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append system prompts history: \(error.logDescription)")
-      }
     }
   }
 

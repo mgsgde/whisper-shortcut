@@ -44,7 +44,7 @@ struct GlossaryAppendTests {
   func sentencesAreRefused() {
     let store = SystemPromptsStore.shared
     let sentence = "Die Patientin klagt über ziehende Schmerzen im unteren Rücken seit drei Wochen"
-    #expect(store.appendToWhisperGlossary(sentence) == .notATerm(sentence))
-    #expect(store.appendToWhisperGlossary("   ") == .notATerm(""))
+    #expect(store.appendToWhisperGlossary(sentence, source: .glossaryShortcut) == .notATerm(sentence))
+    #expect(store.appendToWhisperGlossary("   ", source: .glossaryShortcut) == .notATerm(""))
   }
 }

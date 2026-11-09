@@ -83,9 +83,9 @@ struct MCPProposalAndChangeLogTests {
   @Test("Accept refuses when the target changed since the proposal; proposal stays pending")
   func acceptStale() {
     let env = MCPTestEnv(level: .propose)
-    env.systemPrompts.updateSection(.dictation, content: "Original.")
+    env.systemPrompts.updateSection(.dictation, content: "Original.", source: .settings)
     let id = propose(env)
-    env.systemPrompts.updateSection(.dictation, content: "Edited by hand.")
+    env.systemPrompts.updateSection(.dictation, content: "Edited by hand.", source: .settings)
     guard case .failure(let error) = env.proposals.accept(id) else { Issue.record("stale accept must fail"); return }
     #expect(error.localizedDescription == "This changed since the AI app suggested it. Decline it and ask the AI app again.")
     #expect(env.systemPrompts.loadSection(.dictation) == "Edited by hand.")
@@ -96,7 +96,7 @@ struct MCPProposalAndChangeLogTests {
   @Test("Accept succeeds when the target is unchanged")
   func acceptUnchanged() {
     let env = MCPTestEnv(level: .propose)
-    env.systemPrompts.updateSection(.dictation, content: "Original.")
+    env.systemPrompts.updateSection(.dictation, content: "Original.", source: .settings)
     let id = propose(env)
     guard case .success = env.proposals.accept(id) else { Issue.record("accept failed"); return }
     #expect(env.systemPrompts.loadSection(.dictation) == "Proposed text")
@@ -149,7 +149,7 @@ struct MCPProposalAndChangeLogTests {
   @Test("Undo restores the previous content and logs mcp-undo")
   func undoRestores() {
     let env = MCPTestEnv(level: .apply)
-    env.systemPrompts.updateSection(.promptMode, content: "Old rule.")
+    env.systemPrompts.updateSection(.promptMode, content: "Old rule.", source: .settings)
     let r = env.tools().call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": "New rule.", "rationale": "r"], access: .write)
     #expect(obj(r)["status"] as? String == "pending_review")
@@ -167,14 +167,14 @@ struct MCPProposalAndChangeLogTests {
   @Test("Undo after a later manual edit is a conflict and writes nothing")
   func undoConflict() {
     let env = MCPTestEnv(level: .apply)
-    env.systemPrompts.updateSection(.promptMode, content: "Old rule.")
+    env.systemPrompts.updateSection(.promptMode, content: "Old rule.", source: .settings)
     let r = env.tools().call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": "New rule.", "rationale": "r"], access: .write)
     guard case .success(let id) = env.proposals.accept(obj(r)["id"] as? String ?? "") else {
       Issue.record("accept failed"); return
     }
     #expect(env.systemPrompts.loadSection(.promptMode) == "New rule.")
-    env.systemPrompts.updateSection(.promptMode, content: "Manual edit.")
+    env.systemPrompts.updateSection(.promptMode, content: "Manual edit.", source: .settings)
     #expect(env.changeLog.undo(id) == .conflict(current: "Manual edit."))
     #expect(env.systemPrompts.loadSection(.promptMode) == "Manual edit.")
     #expect(env.changeLog.changes.first?.undoneAt == nil)
@@ -183,7 +183,7 @@ struct MCPProposalAndChangeLogTests {
   @Test("Undo of a glossary add restores the glossary")
   func undoGlossary() {
     let env = MCPTestEnv()
-    env.systemPrompts.updateSection(.whisperGlossary, content: "Smikale")
+    env.systemPrompts.updateSection(.whisperGlossary, content: "Smikale", source: .settings)
     let r = env.tools().call(name: "add_glossary_terms", arguments: ["terms": ["Wianco"], "rationale": "r"], access: .write)
     #expect(env.changeLog.undo(obj(r)["change_id"] as? String ?? "") == .undone)
     #expect(env.systemPrompts.loadSection(.whisperGlossary) == "Smikale")
@@ -213,7 +213,7 @@ struct MCPProposalAndChangeLogTests {
     let t = env.tools()
     _ = t.call(name: "add_glossary_terms", arguments: ["terms": ["Alpha"], "rationale": "r"], access: .write)
     _ = t.call(name: "add_glossary_terms", arguments: ["terms": ["Beta"], "rationale": "r"], access: .write)
-    let reopened = MCPChangeLog(directory: env.dir, targets: env.changeLog.targets, recordHistory: { _, _, _, _, _ in })
+    let reopened = MCPChangeLog(directory: env.dir, targets: env.changeLog.targets)
     #expect(reopened.changes.count == 2)
     #expect(reopened.changes.first?.newContent?.contains("Beta") == true)
   }

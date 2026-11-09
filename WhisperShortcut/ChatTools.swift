@@ -371,7 +371,11 @@ enum ChatToolRegistry {
   private static let instructionsToolDescription: String =
         "Reads and edits WhisperShortcut's own instructions, so the user can tune how the app behaves by asking instead of editing Settings. Sections: 'dictation' (the Dictate prompt: how speech becomes text), 'whisper_glossary' (names and terms the recognizer should spell right, one per line, optionally Term (not \"wrong\", \"wrong2\")), 'dictate_prompt' (Dictate Prompt: rewriting selected text from a voice instruction), 'chat' (your own system prompt in this chat). Call it when the user states a lasting preference about how a mode should behave, or asks you to fix a recurring mistake. "
         + InteractionLogTool.tuningRules
-        + " To find the mistake, call read_recent_interactions (when available). ALWAYS call action='read' on the section first and check whether an existing rule already covers or contradicts the request: then 'replace' or 'remove' that rule rather than appending a second, conflicting one. Use 'append' for one genuinely new rule or glossary term. 'remove' on whisper_glossary only when the user asked to drop that entry. Every change is shown to the user for approval. For a single dictation term, remember_dictation_term also works; for facts about the user use remember_about_user."
+        + " To find the mistake, call read_recent_interactions (when available); before adding a term or rule, call read_config_history so a term the user removed on purpose is not re-added. ALWAYS call action='read' on the section first and check whether an existing rule already covers or contradicts the request: then 'replace' or 'remove' that rule rather than appending a second, conflicting one. Use 'append' for one genuinely new rule or glossary term. 'remove' on whisper_glossary only when the user asked to drop that entry. Every change is shown to the user for approval. For a single dictation term, remember_dictation_term also works; for facts about the user use remember_about_user."
+
+  /// Read-only history of changes to the instructions and glossary. Declared with the instructions
+  /// tool (it does not depend on "Save usage data": it is the app's own configuration, not usage).
+  static let readConfigHistoryToolName = "read_config_history"
 
   static let instructionsFunctionDeclarations: [[String: Any]] = [
     [
@@ -399,7 +403,12 @@ enum ChatToolRegistry {
         ] as [String: Any],
         "required": ["section", "action"],
       ],
-    ]
+    ],
+    [
+      "name": readConfigHistoryToolName,
+      "description": ConfigHistoryTool.description,
+      "parameters": ConfigHistoryTool.parameters,
+    ],
   ]
 
   /// Lets the chat read the usage log, so the user can ask "why did that dictation go wrong?" and
@@ -1558,12 +1567,9 @@ enum ChatToolRegistry {
         ]
       }
 
-      SystemPromptsStore.shared.updateSection(section, content: updated)
-      // Recorded so a chat-made change is reviewable and reversible: without this the app's
-      // behavior could drift with no trace of who changed what.
-      ContextLogger.shared.appendSystemPromptsHistory(
-        section: section, previousLength: current.count, newLength: updated.count,
-        content: updated, model: nil, source: PromptHistorySource.chat.rawValue)
+      // The store appends the history row (source: chat), so a chat-made change is reviewable
+      // and reversible: without it the app's behavior could drift with no trace of who changed what.
+      SystemPromptsStore.shared.updateSection(section, content: updated, source: .chat)
       DebugLogger.log(
         "INSTRUCTIONS-EDIT: chat \(action) on \(sectionKey) (\(current.count) → \(updated.count) chars)")
       return [
@@ -1581,10 +1587,18 @@ enum ChatToolRegistry {
       guard let query = parsed.query else { return ["error": parsed.error ?? "Invalid arguments."] }
       let rows = InteractionLogReader.load(query)
       let page = InteractionLogReader.page(entries: rows.entries, signals: rows.signals, query: query)
+      let errors = query.includeErrors ? ErrorLogReader.load(query) : []
       DebugLogger.log(
-        "USAGE-LOG-READ: chat read \(page.records.count) of \(page.totalAvailable) rows (mode=\(query.mode ?? "all") query=\(query.query == nil ? "no" : "yes"))")
+        "USAGE-LOG-READ: chat read \(page.records.count) of \(page.totalAvailable) rows (mode=\(query.mode ?? "all") query=\(query.query == nil ? "no" : "yes") errors=\(query.includeErrors ? errors.count : -1))")
       return InteractionLogReader.result(
-        page, query: query, fieldCap: usageLogFieldCap, budget: usageLogResultBudget)
+        page, query: query, fieldCap: usageLogFieldCap, budget: usageLogResultBudget, errors: errors)
+
+    case readConfigHistoryToolName:
+      let parsed = ConfigHistoryQuery.parse(args)
+      guard let query = parsed.query else { return ["error": parsed.error ?? "Invalid arguments."] }
+      let out = ConfigHistoryReader.result(rows: ConfigHistoryReader.load(), query: query)
+      DebugLogger.log("CONFIG-HISTORY-READ: chat read \((out["changes"] as? [Any])?.count ?? 0) rows")
+      return out
 
     case "google_calendar_list_events":
       guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }

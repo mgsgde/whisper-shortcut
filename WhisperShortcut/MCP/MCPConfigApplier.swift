@@ -110,7 +110,7 @@ struct MCPConfigApplier {
   func applyGlossary(merged: String, rationale: String) -> Result<String, Error> {
     MCPMain.run {
       let previous = targets.systemPrompts.loadWhisperGlossary()
-      guard targets.systemPrompts.updateSection(.whisperGlossary, content: merged) else {
+      guard targets.systemPrompts.updateSection(.whisperGlossary, content: merged, source: .mcp) else {
         return .failure(MCPConfigError(message: "Could not write the glossary."))
       }
       let change = changeLog.record(
@@ -125,7 +125,7 @@ struct MCPConfigApplier {
   ) -> Result<String, Error> {
     MCPMain.run {
       let previous = targets.systemPrompts.loadSection(section)
-      guard targets.systemPrompts.updateSection(section, content: content) else {
+      guard targets.systemPrompts.updateSection(section, content: content, source: .mcp) else {
         return .failure(MCPConfigError(message: "Could not write the \(section.rawValue) section."))
       }
       let change = changeLog.record(

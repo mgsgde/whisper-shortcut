@@ -51,22 +51,11 @@ final class MCPChangeLog: ObservableObject {
   var targets: MCPConfigTargets
   /// Replayed on Undo of a `.settings` batch. Empty in tests that don't exercise settings undo.
   var settingsCatalog: [MCPSetting]
-  /// Writes the system prompts history. Injected so tests never touch the real UserContext.
-  var recordHistory: (SystemPromptSection, Int, Int, String, String) -> Void
 
-  init(
-    directory: URL, targets: MCPConfigTargets, settingsCatalog: [MCPSetting] = [],
-    recordHistory: @escaping (SystemPromptSection, Int, Int, String, String) -> Void = {
-      section, previousLength, newLength, content, source in
-      ContextLogger.shared.appendSystemPromptsHistory(
-        section: section, previousLength: previousLength, newLength: newLength, content: content,
-        source: source)
-    }
-  ) {
+  init(directory: URL, targets: MCPConfigTargets, settingsCatalog: [MCPSetting] = []) {
     self.fileURL = directory.appendingPathComponent(Self.fileName)
     self.targets = targets
     self.settingsCatalog = settingsCatalog
-    self.recordHistory = recordHistory
     self.changes = Self.load(fileURL)
   }
 
@@ -112,9 +101,6 @@ final class MCPChangeLog: ObservableObject {
       changes.insert(change, at: 0)
       if changes.count > Self.maxChanges { changes.removeLast(changes.count - Self.maxChanges) }
       persist()
-      if let section = historySection(kind: kind, target: target), let new {
-        recordHistory(section, previous?.count ?? 0, new.count, new, "mcp")
-      }
       DebugLogger.log(
         "MCP-CONFIG: change \(kind.rawValue) \(target) recorded len=\(new?.count ?? 0) viaProposal=\(viaProposal)")
       return change
@@ -134,14 +120,6 @@ final class MCPChangeLog: ObservableObject {
       persist()
       DebugLogger.log("MCP-CONFIG: change settings recorded count=\(items.count) viaProposal=\(viaProposal)")
       return change
-    }
-  }
-
-  private func historySection(kind: MCPChange.Kind, target: String) -> SystemPromptSection? {
-    switch kind {
-    case .glossaryAdd: return .whisperGlossary
-    case .systemPrompt: return SystemPromptSection(rawValue: target)
-    default: return nil
     }
   }
 
@@ -168,10 +146,6 @@ final class MCPChangeLog: ObservableObject {
       }
       changes[index].undoneAt = Date()
       persist()
-      if let section = historySection(kind: change.kind, target: change.target) {
-        let restored = change.previousContent ?? ""
-        recordHistory(section, change.newContent?.count ?? 0, restored.count, restored, "mcp-undo")
-      }
       DebugLogger.log("MCP-CONFIG: undo \(change.kind.rawValue) \(change.target) applied")
       return .undone
     }
@@ -232,12 +206,12 @@ final class MCPChangeLog: ObservableObject {
       // Handled by `undoSettings` before `undo(_:)` reaches this generic path.
       break
     case .glossaryAdd:
-      guard targets.systemPrompts.updateSection(.whisperGlossary, content: change.previousContent ?? "") else {
+      guard targets.systemPrompts.updateSection(.whisperGlossary, content: change.previousContent ?? "", source: .mcpUndo) else {
         throw MCPConfigError(message: String(localized: "Could not write the glossary."))
       }
     case .systemPrompt:
       guard let section = SystemPromptSection(rawValue: change.target),
-        targets.systemPrompts.updateSection(section, content: change.previousContent ?? "")
+        targets.systemPrompts.updateSection(section, content: change.previousContent ?? "", source: .mcpUndo)
       else { throw MCPConfigError(message: String(localized: "Could not write the section.")) }
     case .writingStyle:
       if let previous = change.previousContent {

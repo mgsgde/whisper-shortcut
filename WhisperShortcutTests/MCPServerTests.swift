@@ -136,7 +136,7 @@ struct MCPServerTests {
     let list = try #require((r["result"] as? [String: Any])?["tools"] as? [[String: Any]])
     #expect(Set(list.compactMap { $0["name"] as? String }) == [
       "get_live_transcript", "list_meetings", "get_meeting", "search_meetings",
-      "get_configuration", "get_recent_interactions", "get_settings", "get_proposal_status",
+      "get_configuration", "get_recent_interactions", "get_config_history", "get_settings", "get_proposal_status",
     ])
   }
 

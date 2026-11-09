@@ -61,7 +61,7 @@ struct SystemPromptsStoreSafetyTests {
     let original = fileContent(sections: [.promptMode: customPrompt])
     try original.write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
 
-    #expect(store.updateSection(.promptMode, content: AppConstants.defaultPromptModeSystemPrompt))
+    #expect(store.updateSection(.promptMode, content: AppConstants.defaultPromptModeSystemPrompt, source: .settings))
     #expect(read(store.backupFileURL)?.contains(customPrompt) == true, "the custom prompt must survive in the backup")
     #expect(store.loadSection(.promptMode) == AppConstants.defaultPromptModeSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines))
   }
@@ -73,7 +73,7 @@ struct SystemPromptsStoreSafetyTests {
     let store = SystemPromptsStore(contextDirectoryURL: dir)
     _ = store.loadSection(.promptMode)  // creates the default file
 
-    #expect(store.updateSection(.promptMode, content: customPrompt))
+    #expect(store.updateSection(.promptMode, content: customPrompt, source: .settings))
     #expect(!FileManager.default.fileExists(atPath: store.backupFileURL.path))
     #expect(store.loadSection(.promptMode) == customPrompt)
   }
@@ -94,8 +94,8 @@ struct SystemPromptsStoreSafetyTests {
     #expect(store.loadSection(.promptMode) == nil)
     #expect(store.unreadableReason?.contains("EACCES") == true, "got \(store.unreadableReason ?? "nil")")
     #expect(store.loadDictatePromptSystemPrompt() == AppConstants.defaultPromptModeSystemPrompt, "runtime falls back for now")
-    #expect(!store.updateSection(.promptMode, content: "something else"), "writes are refused")
-    #expect(!store.saveFullContent("=== Dictate Prompt ===\n\nsomething else"))
+    #expect(!store.updateSection(.promptMode, content: "something else", source: .settings), "writes are refused")
+    #expect(!store.saveFullContent("=== Dictate Prompt ===\n\nsomething else", source: .settings))
 
     try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
     #expect(read(url) == original, "the file must be byte-for-byte unchanged")
@@ -143,8 +143,8 @@ struct SystemPromptsStoreSafetyTests {
     try fileContent(sections: [.promptMode: customPrompt])
       .write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
 
-    #expect(store.updateSection(.promptMode, content: "Half-typed replacement"))
-    #expect(store.updateSection(.promptMode, content: "Half-typed replacement, more"))
+    #expect(store.updateSection(.promptMode, content: "Half-typed replacement", source: .settings))
+    #expect(store.updateSection(.promptMode, content: "Half-typed replacement, more", source: .settings))
     #expect(read(store.backupFileURL)?.contains(customPrompt) == true, "the original must survive the second autosave")
   }
 }
