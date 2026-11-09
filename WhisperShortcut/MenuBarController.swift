@@ -460,10 +460,13 @@ class MenuBarController: NSObject {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     guard let statusItem = statusItem else { return }
 
-    // Initial setup
+    // Initial setup. `updateUI` just below replaces this; the guard keeps a missing-setup
+    // warning's tooltip from being overwritten in the meantime.
     if let button = statusItem.button {
       applyCurrentAppearance(to: button)
-      button.toolTip = appState.tooltip
+      if !missingSetupWarningActive {
+        button.toolTip = appState.tooltip
+      }
     }
 
     // Create menu. The delegate fires pending review/support prompts on open (menuWillOpen).
@@ -1145,7 +1148,7 @@ class MenuBarController: NSObject {
 
   @objc private func onboardingStatusDidChange() {
     if let menu = statusItem?.menu { refreshMenu(menu) }
-    applyMissingSetupWarningIfNeeded()
+    updateMenuBarIcon()
   }
 
   @objc private func chatReadAloudStopFromNotification() {
@@ -1212,13 +1215,14 @@ class MenuBarController: NSObject {
   private func updateUI() {
     updateMenuBarIcon()
     if let menu = statusItem?.menu { refreshMenu(menu) }
-    applyMissingSetupWarningIfNeeded()
     updateBlinking()
   }
 
   private func updateMenuBarIcon() {
     guard let button = statusItem?.button else { return }
     applyCurrentAppearance(to: button)
+    // The warning branch already set its own tooltip; the lines below would put the mic tooltip back.
+    if missingSetupWarningActive { return }
 
     // Show detailed chunk progress in tooltip during processing
     if case .processing(.processingChunks(let statuses, _)) = presentedState {
@@ -1232,9 +1236,34 @@ class MenuBarController: NSObject {
     }
   }
 
+  /// Idle, with nothing that can transcribe or call a model: no chat credential and the selected
+  /// transcription model has no usable credential. Checked against `hasRequiredCredential`, not
+  /// "is an offline model": a user whose only setup is OpenRouter or a self-hosted endpoint can
+  /// dictate, and used to be told to add an API key anyway.
+  private var missingSetupWarningActive: Bool {
+    guard case .idle = presentedState else { return false }
+    let model = TranscriptionModel.loadSelected()
+    return !ProviderCredentials.anyChatCredentialConfigured && !model.hasRequiredCredential
+  }
+
   /// Renders `presentedState` on the status item button: an SF Symbol template image
   /// when its `symbolName` is set (idle), otherwise the colored emoji from `icon`.
+  /// The missing-setup warning lives here so a later re-apply (blinking stops, onboarding
+  /// refresh) cannot put the mic symbol back over the ⚠️.
   private func applyCurrentAppearance(to button: NSStatusBarButton) {
+    if missingSetupWarningActive {
+      button.image = nil
+      button.title = "⚠️"
+      applyDevBadge(to: button)
+      let model = TranscriptionModel.loadSelected()
+      // "Needs a key" and "needs a download" are different states: a user who already picked an
+      // offline model must not be sent looking for an API key they do not need.
+      button.toolTip =
+        model.needsOfflineModelDownload
+        ? String(localized: "Download the selected offline model - click to configure")
+        : String(localized: "Add an API key or use an offline model - click to configure")
+      return
+    }
     let state = presentedState
     if let symbolName = state.symbolName {
       // mic.fill's stand made it clip against the menu bar bezel intermittently at 15pt.
@@ -1327,30 +1356,6 @@ class MenuBarController: NSObject {
       localized: Self.meetingRowTitle(
         isActive: isLiveMeetingActive,
         canResume: !LiveMeetingTranscriptStore.shared.chunks.isEmpty))
-  }
-
-  /// Swaps the menu-bar icon for ⚠️ when no API key (any provider) and no usable transcription is
-  /// configured.
-  private func applyMissingSetupWarningIfNeeded() {
-    let model = TranscriptionModel.loadSelected()
-    let canTranscribe = model.hasRequiredCredential
-    let hasAnyKey = ProviderCredentials.anyChatCredentialConfigured
-
-    // Handle special case when no API key (any provider) and no usable transcription is configured.
-    // Tested against `canTranscribe`, not just the offline model: a user whose only setup is
-    // OpenRouter or a self-hosted endpoint can dictate perfectly well, and used to be told to
-    // "add an API key" anyway.
-    if !hasAnyKey && !canTranscribe, let button = statusItem?.button {
-      button.image = nil
-      button.title = "⚠️"
-      applyDevBadge(to: button)
-      // "Needs a key" and "needs a download" are different states: a user who already picked an
-      // offline model must not be sent looking for an API key they do not need.
-      button.toolTip =
-        model.needsOfflineModelDownload
-        ? String(localized: "Download the selected offline model - click to configure")
-        : String(localized: "Add an API key or use an offline model - click to configure")
-    }
   }
 
   /// Rebuilds the "Recent Transcriptions" submenu and hides both history rows while there is
