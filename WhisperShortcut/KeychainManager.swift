@@ -123,6 +123,18 @@ class KeychainManager: KeychainManaging {
     return true
   }()
 
+  /// A test host is a different signed binary on every build, so a legacy item's ACL never trusts
+  /// it and any read would put up the login-keychain password dialog (titled with the host's display
+  /// name, "WhisperShortcut Dev"). Fail the lookup instead; tests get keys from the environment or
+  /// `.env` (scripts/run-tests.sh copies the main checkout's `.env` into a worktree).
+  private static let suppressAuthenticationUI: Bool = {
+    let env = ProcessInfo.processInfo.environment
+    return env["HERMETIC"] == "1"
+      || env["XCTestConfigurationFilePath"] != nil
+      || env["XCTestBundlePath"] != nil
+      || NSClassFromString("XCTestCase") != nil
+  }()
+
   private var usesDataProtection: Bool { dataProtectionOverride ?? Self.dataProtectionAvailable }
 
   // MARK: - Test/dev credential injection
@@ -146,6 +158,10 @@ class KeychainManager: KeychainManaging {
   // roundtrip tests are `.enabled(if: hasNonEmpty(...))`, so instead of failing they quietly
   // *skipped*, and only passed on a developer machine because the keys happened to be in that
   // machine's login Keychain. On CI or a fresh checkout the provider roundtrips covered nothing.
+  //
+  // Test hosts never show the keychain dialog: their lookups fail instead (see
+  // `suppressAuthenticationUI`), so a worktree needs `.env` for the live tests, which
+  // `run-tests.sh` copies in from the main checkout.
   //
   // Gated to DEBUG so the shipped Release build never reads either source; GUI launches don't
   // inherit a shell environment anyway, so this is inert in production.
@@ -543,9 +559,9 @@ class KeychainManager: KeychainManaging {
     if usesDataProtection && !legacy {
       query[kSecUseDataProtectionKeychain as String] = true
     }
-    // Hermetic tests read credential presence. A login-keychain ACL dialog would block the
-    // suite until someone clicks it; fail that lookup instead of asking.
-    if ProcessInfo.processInfo.environment["HERMETIC"] == "1" {
+    // Hermetic runs and every test host read credential presence only. A login-keychain ACL dialog
+    // would block the suite until someone clicks it; fail that lookup instead of asking.
+    if Self.suppressAuthenticationUI {
       query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
     }
     return query
