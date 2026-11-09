@@ -70,23 +70,30 @@ enum GlobeKeyUsage: Equatable {
   }
 
   #if !APP_STORE
-    /// Sets "Press 🌐 key to" to Do Nothing by writing `AppleFnUsageType = 0` into
-    /// `com.apple.HIToolbox` — the same value System Settings writes. Only ever called after the
-    /// user confirmed that exact change. Returns whether a fresh read shows Do Nothing; on false
-    /// the caller falls back to opening Keyboard settings.
+    /// Sets "Press 🌐 key to" to Do Nothing. Only ever called after the user confirmed that exact
+    /// change. Returns whether a fresh read shows Do Nothing; on false the caller falls back to
+    /// opening Keyboard settings.
     ///
-    /// TODO(verify locally): it is still unverified whether macOS applies the new value to the
-    /// running session without logging out and back in. System Settings may also notify
-    /// HIToolbox in a way this write does not. Test on a Mac set to "Show Emoji & Symbols": free
-    /// the key here, then press Fn in TextEdit — the emoji picker must not open. If it still
-    /// opens until re-login, say so in the card's copy.
+    /// It calls Apple's own setter `TISUpdateFnUsageType` (the one System Settings' Keyboard pane
+    /// uses), resolved at runtime because it is a private symbol. It writes `AppleFnUsageType`
+    /// and is what the system reacts to. Raw CFPreferences is only the fallback if the symbol
+    /// disappears in a future macOS. Live effect is still to be confirmed on a Mac set to
+    /// "Show Emoji & Symbols": press Fn in TextEdit after freeing; the emoji picker must not open.
     static func freeForFnDictation() -> Bool {
-      let domain = "com.apple.HIToolbox" as CFString
-      CFPreferencesSetAppValue("AppleFnUsageType" as CFString, NSNumber(value: 0), domain)
-      let synced = CFPreferencesAppSynchronize(domain)
+      var path = "CFPreferences"
+      // RTLD_DEFAULT is (void *)-2.
+      if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "TISUpdateFnUsageType") {
+        let setter = unsafeBitCast(sym, to: (@convention(c) (Int32) -> Void).self)
+        setter(0)
+        path = "TIS"
+      } else {
+        let domain = "com.apple.HIToolbox" as CFString
+        CFPreferencesSetAppValue("AppleFnUsageType" as CFString, NSNumber(value: 0), domain)
+        CFPreferencesAppSynchronize(domain)
+      }
       let after = current
-      DebugLogger.log("GLOBE-KEY: wrote AppleFnUsageType=0 (synchronize=\(synced)); re-read \(after)")
-      return synced && after == .doNothing
+      DebugLogger.log("GLOBE-KEY: set AppleFnUsageType=0 via \(path); re-read \(after)")
+      return after == .doNothing
     }
   #endif
 
