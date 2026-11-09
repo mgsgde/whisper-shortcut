@@ -45,4 +45,13 @@ struct MeetingSummaryMetaTests {
     let data = try JSONEncoder().encode(meta)
     #expect(try JSONDecoder().decode(MeetingListService.SummaryMeta.self, from: data) == meta)
   }
+
+  @Test("Meta from the chunks a summary was built from flags a transcript that grew meanwhile")
+  func metaFromSourceChunksFlagsLaterGrowth() {
+    let source = LiveMeetingTranscriptStore.parseTranscript(transcript)
+    let meta = MeetingListService.summaryMeta(forChunks: source)
+    #expect(meta == MeetingListService.summaryMeta(forTranscript: transcript))
+    let grown = transcript + "[02:00] Arrived during generation\n\n"
+    #expect(!MeetingListService.summaryMatches(meta: meta, transcript: grown))
+  }
 }

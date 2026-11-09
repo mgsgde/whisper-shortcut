@@ -856,7 +856,9 @@ final class LiveMeetingSession: NSObject {
       let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
       guard await isCurrent() else { return superseded() }
       if !trimmed.isEmpty {
-        MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
+        MeetingListService.shared.saveSummary(
+          trimmed, transcriptFileURL: transcriptURL,
+          meta: MeetingListService.summaryMeta(forChunks: sourceChunks))
         DebugLogger.log("LIVE-MEETING: Summary saved to .summary.md")
         // Push the fresh summary to the chat sidebar so it can derive a meeting title live
         // (ChatView subscribes to .chatMeetingSummaryReady; without this it relies on the

@@ -3039,6 +3039,7 @@ class ChatViewModel: ObservableObject {
     guard !transcript.isEmpty else {
       return ["error": "This meeting has no transcript to base a summary on."]
     }
+    let transcriptMeta = MeetingListService.summaryMeta(forTranscript: transcript)
     if transcript.count > MeetingListService.meetingContextMaxChars {
       transcript = String(transcript.suffix(MeetingListService.meetingContextMaxChars))
     }
@@ -3051,7 +3052,8 @@ class ChatViewModel: ObservableObject {
       guard !refined.isEmpty else {
         return ["error": "The model returned an empty summary. Try rephrasing the instruction."]
       }
-      MeetingListService.shared.saveSummary(refined, transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
+      MeetingListService.shared.saveSummary(
+        refined, transcriptFileURL: MeetingListService.transcriptURL(forStem: stem), meta: transcriptMeta)
       summaryRevision &+= 1
       DebugLogger.logSuccess("GEMINI-CHAT: Refined meeting summary for \(stem)")
       return ["ok": true,

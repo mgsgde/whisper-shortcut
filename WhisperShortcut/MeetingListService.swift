@@ -126,8 +126,11 @@ final class MeetingListService: ObservableObject {
   }
 
   static func summaryMeta(forTranscript text: String) -> SummaryMeta {
-    let chunks = LiveMeetingTranscriptStore.parseTranscript(text)
-    return SummaryMeta(chunkCount: chunks.count, lastChunkStart: chunks.map(\.startTime).max() ?? 0)
+    summaryMeta(forChunks: LiveMeetingTranscriptStore.parseTranscript(text))
+  }
+
+  static func summaryMeta(forChunks chunks: [LiveMeetingChunk]) -> SummaryMeta {
+    SummaryMeta(chunkCount: chunks.count, lastChunkStart: chunks.map(\.startTime).max() ?? 0)
   }
 
   /// True when the summary still covers the transcript. A summary without meta predates this check
@@ -152,8 +155,10 @@ final class MeetingListService: ObservableObject {
   }
 
   /// Saves summary to the .summary.md file next to the given transcript URL, with the sidecar that
-  /// records which transcript it was written for.
-  func saveSummary(_ text: String, transcriptFileURL: URL) {
+  /// records which transcript it was written for. `meta` describes the transcript the summary was
+  /// generated FROM; a chunk that arrived during generation then leaves it flagged stale. Without
+  /// it the sidecar reflects the file as it is at save time.
+  func saveSummary(_ text: String, transcriptFileURL: URL, meta: SummaryMeta? = nil) {
     let url = Self.summaryURL(transcriptFileURL: transcriptFileURL)
     do {
       try text.write(to: url, atomically: true, encoding: .utf8)
@@ -162,9 +167,9 @@ final class MeetingListService: ObservableObject {
       DebugLogger.logError("MEETING-LIBRARY: Save summary failed: \(error.logDescription)")
       return
     }
-    let transcript = (try? String(contentsOf: transcriptFileURL, encoding: .utf8)) ?? ""
-    let meta = Self.summaryMeta(forTranscript: transcript)
-    if let data = try? JSONEncoder().encode(meta) {
+    let sourceMeta = meta ?? Self.summaryMeta(
+      forTranscript: (try? String(contentsOf: transcriptFileURL, encoding: .utf8)) ?? "")
+    if let data = try? JSONEncoder().encode(sourceMeta) {
       try? data.write(to: Self.summaryMetaURL(transcriptFileURL: transcriptFileURL), options: .atomic)
     }
   }
@@ -232,7 +237,7 @@ final class MeetingListService: ObservableObject {
       let summaryText = try await Self.generateSummaryText(transcript: transcriptText, model: model)
       let trimmed = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
       if !trimmed.isEmpty {
-        saveSummary(trimmed, transcriptFileURL: meeting.url)
+        saveSummary(trimmed, transcriptFileURL: meeting.url, meta: Self.summaryMeta(forChunks: meetingChunks))
         return trimmed
       }
     } catch {
