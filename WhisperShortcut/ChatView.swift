@@ -4139,6 +4139,10 @@ struct ChatView: View {
   private func handleScrollGeometryChange(
     from old: ChatScrollSnapshot, to new: ChatScrollSnapshot, proxy: ScrollViewProxy
   ) {
+    // A tab switch swaps the list before the async restore runs. The offset change in that
+    // window is the old tab's geometry, and writing it would overwrite the new tab's saved
+    // following state. `suppressAnchorSave` stays true until `restoreSavedScroll` returns.
+    guard !suppressAnchorSave else { return }
     // The user's own movement wins over growth: if they scrolled up in the same frame that a
     // delta landed, they meant to leave the bottom and must not be pulled back.
     if abs(new.offsetY - old.offsetY) > 0.5 {
