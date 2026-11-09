@@ -1,17 +1,33 @@
-## Dictate Live
-- **Line breaks no longer send.** Line breaks are typed as Shift+Return, so a new line in Chrome, web forms or chat apps no longer submits or sends the message.
-- **No update window in the middle of dictation.** If an update is ready while you dictate, WhisperShortcut waits until you have finished before showing it.
-- **Pressing the shortcut again no longer loses text.** A second press while the last pieces are still being inserted is ignored instead of discarding them.
+## Privacy and data safety
+- **Meetings stay local without a meetings key.** If no key is set for meetings, meeting transcription no longer switches to a cloud model.
+- **Chat history is never overwritten.** If the chat store cannot be read, it is left alone instead of being replaced with an empty one.
 
-## Offline dictation with spoken punctuation
-- A spoken comma before "neue Zeile" or "neuer Absatz" is kept.
-- "Klammer auf" followed by an article becomes "(" when a "Klammer zu" follows.
-- "Punkt" after "ein", "zu", "in" or "einen" is written as a full stop, unless a number or noun follows.
-- After a salutation and a comma, the next line starts in lower case.
-- The glossary no longer replaces everyday words or the first part of a compound word.
-- Commas, question marks and exclamation marks are kept more reliably, and never more than one blank line appears between two pieces.
+## Meetings
+- Less audio is lost when you quit the app or the recorder fails during a meeting.
+- After you resume a meeting, notes and summary are updated again, and new chunks line up with the right time.
+- Notes from a resumed meeting are no longer deleted by a later edit.
+
+## Read Aloud
+- **Your own server.** Read Aloud can now speak through your own OpenAI-compatible server (Settings → Read Aloud → Own server).
+- The last syllable is no longer cut off.
+- Qwen3 voices no longer start with a long silence before text that opens with a web address or byline.
+- Stereo recordings imported as a reference voice no longer arrive almost silent.
+
+## Chat
+- Numbered and nested lists display correctly, and text containing a "|" is no longer shown as a table.
+- Undo (⌘Z) works in the message field after pasting a chip and after sending.
+- Fixes for Google Tasks (due dates, hidden and long lists), Google Calendar paging and searches containing "+" in Gmail and Trello.
+- Chat and AI apps connected over MCP can now tune WhisperShortcut from your usage log on request. The automatic Smart Improvement is removed; its settings moved to Privacy & Permissions and Dictate Prompt.
+
+## Dictation and setup
+- The Offline card in onboarding only continues once the offline model has finished downloading.
+- Spoken punctuation produces fewer false marks, and Qwen3 dictation uses your glossary.
+- Settings explains that your own server ignores the dictation prompt; Check now tests the same address that dictation uses.
+- Clipboard: Add to Glossary restores your clipboard, and Glossary and Read Aloud no longer pick up an old clipboard. A VS Code line copy with nothing selected counts as "nothing selected".
+- Fixes for the Fn cancel key, the missing-setup icon, the microphone after a cancelled permission prompt, OpenRouter transcription timeouts, the recording pill after display changes and system audio after device changes.
+- Connecting Claude Desktop from a copy that is not in Applications is refused with an explanation.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.86...v8.87
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.87...v8.88
