@@ -5,6 +5,8 @@ actor GoogleTasksAPIClient {
 
   private let baseURL = "https://www.googleapis.com/tasks/v1"
   private let maxResultsCap = 100
+  /// Google Tasks pages with `nextPageToken`. Stop even if a token keeps arriving.
+  private let maxListPages = 10
 
   // MARK: - List Task Lists
 
@@ -31,27 +33,39 @@ actor GoogleTasksAPIClient {
   func listTasks(taskListId: String = "@default", maxResults: Int = 20, showCompleted: Bool = false) async throws -> [[String: Any]] {
     let cappedMax = min(max(maxResults, 1), maxResultsCap)
     let encodedList = encodedPathComponent(taskListId)
+    // Tasks completed in Google's own apps are hidden. showHidden must match showCompleted
+    // or those tasks never come back.
+    let show = String(showCompleted)
 
-    var components = URLComponents(string: "\(baseURL)/lists/\(encodedList)/tasks")!
-    components.queryItems = [
-      URLQueryItem(name: "maxResults", value: String(cappedMax)),
-      URLQueryItem(name: "showCompleted", value: String(showCompleted)),
-      URLQueryItem(name: "showHidden", value: "false"),
-    ]
+    var collected: [[String: Any]] = []
+    var pageToken: String?
+    for _ in 0..<maxListPages {
+      if collected.count >= cappedMax { break }
+      var components = URLComponents(string: "\(baseURL)/lists/\(encodedList)/tasks")!
+      var query: [URLQueryItem] = [
+        URLQueryItem(name: "maxResults", value: String(cappedMax - collected.count)),
+        URLQueryItem(name: "showCompleted", value: show),
+        URLQueryItem(name: "showHidden", value: show),
+      ]
+      if let pageToken {
+        query.append(URLQueryItem(name: "pageToken", value: pageToken))
+      }
+      components.setQueryItemsStrictly(query)
 
-    guard let url = components.url else {
-      throw TasksAPIError.invalidURL
+      guard let url = components.url else {
+        throw TasksAPIError.invalidURL
+      }
+
+      let data = try await authorizedRequest(url: url, httpMethod: "GET")
+      guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        break
+      }
+      collected.append(contentsOf: json["items"] as? [[String: Any]] ?? [])
+      guard let next = json["nextPageToken"] as? String, !next.isEmpty else { break }
+      pageToken = next
     }
 
-    let data = try await authorizedRequest(url: url, httpMethod: "GET")
-
-    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let items = json["items"] as? [[String: Any]]
-    else {
-      return []
-    }
-
-    return items.map { item in
+    return collected.prefix(cappedMax).map { item in
       var task: [String: Any] = [:]
       if let id = item["id"] as? String { task["task_id"] = id }
       if let title = item["title"] as? String { task["title"] = title }
@@ -75,7 +89,7 @@ actor GoogleTasksAPIClient {
       // Google Tasks rejects a bare `yyyy-MM-dd` with 400 "invalid argument" even though it only
       // stores the date. Models (especially Grok) frequently emit exactly that, causing repeated
       // failed rounds — normalize to a full RFC 3339 timestamp before sending.
-      guard let normalizedDue = normalizedRFC3339Due(due) else {
+      guard let normalizedDue = Self.normalizedRFC3339Due(due) else {
         throw TasksAPIError.invalidDateFormat
       }
       body["due"] = normalizedDue
@@ -144,7 +158,7 @@ actor GoogleTasksAPIClient {
         body["due"] = NSNull()
       } else {
         // Same `yyyy-MM-dd` normalization as createTask — models emit bare dates constantly.
-        guard let normalizedDue = normalizedRFC3339Due(due) else {
+        guard let normalizedDue = Self.normalizedRFC3339Due(due) else {
           throw TasksAPIError.invalidDateFormat
         }
         body["due"] = normalizedDue
@@ -259,19 +273,38 @@ actor GoogleTasksAPIClient {
   // MARK: - Validation
 
   /// Normalizes the `due` value the model emits into the RFC 3339 date-time Google Tasks requires.
-  /// Full date-times (with or without fractional seconds) pass through unchanged; a bare
-  /// `yyyy-MM-dd` is promoted to midnight UTC (which is all Google stores anyway). Returns nil for
-  /// anything that isn't a recognizable ISO 8601 date, so the caller can reject it up front.
-  private func normalizedRFC3339Due(_ string: String) -> String? {
+  ///
+  /// A full internet date-time passes through. A bare `yyyy-MM-dd` becomes midnight UTC. A string
+  /// that starts with a date and then a time but is not a valid internet date-time (no offset, or
+  /// a space instead of `T`) keeps only the date: Tasks stores a date, and `.withFullDate` would
+  /// otherwise accept the time and produce `2026-11-10T09:00:00T00:00:00.000Z`. Anything else is
+  /// nil so the caller can reject it up front.
+  static func normalizedRFC3339Due(_ string: String) -> String? {
     let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil {
+      return trimmed + "T00:00:00.000Z"
+    }
+    if isInternetDateTime(trimmed) { return trimmed }
+    if let datePart = datePartBeforeTime(trimmed) {
+      return datePart + "T00:00:00.000Z"
+    }
+    return nil
+  }
+
+  private static func isInternetDateTime(_ string: String) -> Bool {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if formatter.date(from: trimmed) != nil { return trimmed }
+    if formatter.date(from: string) != nil { return true }
     formatter.formatOptions = [.withInternetDateTime]
-    if formatter.date(from: trimmed) != nil { return trimmed }
-    formatter.formatOptions = [.withFullDate]
-    if formatter.date(from: trimmed) != nil { return trimmed + "T00:00:00.000Z" }
-    return nil
+    return formatter.date(from: string) != nil
+  }
+
+  /// The `yyyy-MM-dd` prefix when the next character is `T` or a space. Nil otherwise.
+  private static func datePartBeforeTime(_ string: String) -> String? {
+    guard let range = string.range(of: #"^\d{4}-\d{2}-\d{2}[T ]"#, options: .regularExpression) else {
+      return nil
+    }
+    return String(string[range].dropLast())
   }
 
   // MARK: - Errors

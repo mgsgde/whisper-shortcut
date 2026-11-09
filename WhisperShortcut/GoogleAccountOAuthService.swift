@@ -140,7 +140,27 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
 
   // MARK: - Token Refresh
 
+  /// Refreshes the access token. Concurrent callers — including parallel 401 retries from
+  /// Tasks, Calendar, and Gmail — join one in-flight refresh instead of each posting a new one.
+  /// The check and the store of `activeRefreshTask` happen before the first await, so two
+  /// MainActor callers cannot both start a refresh.
   func refreshAccessToken() async throws -> String {
+    if let existing = activeRefreshTask {
+      return try await existing.value
+    }
+    let task = Task { try await performTokenRefresh() }
+    activeRefreshTask = task
+    do {
+      let token = try await task.value
+      activeRefreshTask = nil
+      return token
+    } catch {
+      activeRefreshTask = nil
+      throw error
+    }
+  }
+
+  private func performTokenRefresh() async throws -> String {
     guard let refreshToken = KeychainManager.shared.get(.googleCalendarRefreshToken) else {
       disconnect()
       throw OAuthError.notConnected
@@ -179,19 +199,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     if let token = accessToken, let expiry = accessTokenExpiry, Date() < expiry {
       return token
     }
-    if let existing = activeRefreshTask {
-      return try await existing.value
-    }
-    let task = Task { try await refreshAccessToken() }
-    activeRefreshTask = task
-    do {
-      let token = try await task.value
-      activeRefreshTask = nil
-      return token
-    } catch {
-      activeRefreshTask = nil
-      throw error
-    }
+    return try await refreshAccessToken()
   }
 
   // MARK: - Disconnect

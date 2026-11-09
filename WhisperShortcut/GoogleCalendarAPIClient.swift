@@ -5,6 +5,8 @@ actor GoogleCalendarAPIClient {
 
   private let baseURL = "https://www.googleapis.com/calendar/v3"
   private let maxResultsCap = 50
+  /// Calendar pages with `nextPageToken`. Stop even if a token keeps arriving.
+  private let maxListPages = 10
 
   /// Guards against accidental duplicate creates: maps a (summary|start|end)
   /// key to the event created for it and when. A repeated identical create
@@ -25,30 +27,39 @@ actor GoogleCalendarAPIClient {
     let timeMin = formatter.string(from: past)
     let timeMax = formatter.string(from: future)
 
-    guard var components = URLComponents(string: "\(baseURL)/calendars/primary/events") else {
-      throw CalendarAPIError.invalidResponse
+    var raw: [[String: Any]] = []
+    var pageToken: String?
+    for _ in 0..<maxListPages {
+      if raw.count >= cappedMax { break }
+      guard var components = URLComponents(string: "\(baseURL)/calendars/primary/events") else {
+        throw CalendarAPIError.invalidResponse
+      }
+      var query: [URLQueryItem] = [
+        URLQueryItem(name: "maxResults", value: String(cappedMax - raw.count)),
+        URLQueryItem(name: "timeMin", value: timeMin),
+        URLQueryItem(name: "timeMax", value: timeMax),
+        URLQueryItem(name: "singleEvents", value: "true"),
+        URLQueryItem(name: "orderBy", value: "startTime"),
+      ]
+      if let pageToken {
+        query.append(URLQueryItem(name: "pageToken", value: pageToken))
+      }
+      components.setQueryItemsStrictly(query)
+
+      guard let url = components.url else {
+        throw CalendarAPIError.invalidURL
+      }
+
+      let data = try await authorizedRequest(url: url, httpMethod: "GET")
+      guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        break
+      }
+      raw.append(contentsOf: json["items"] as? [[String: Any]] ?? [])
+      guard let next = json["nextPageToken"] as? String, !next.isEmpty else { break }
+      pageToken = next
     }
-    components.queryItems = [
-      URLQueryItem(name: "maxResults", value: String(cappedMax)),
-      URLQueryItem(name: "timeMin", value: timeMin),
-      URLQueryItem(name: "timeMax", value: timeMax),
-      URLQueryItem(name: "singleEvents", value: "true"),
-      URLQueryItem(name: "orderBy", value: "startTime"),
-    ]
 
-    guard let url = components.url else {
-      throw CalendarAPIError.invalidURL
-    }
-
-    let data = try await authorizedRequest(url: url, httpMethod: "GET")
-
-    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let items = json["items"] as? [[String: Any]]
-    else {
-      return []
-    }
-
-    let mapped = items.map { item in
+    let mapped = raw.prefix(cappedMax).map { item in
       var event: [String: Any] = [:]
       if let summary = item["summary"] as? String { event["summary"] = summary }
       if let htmlLink = item["htmlLink"] as? String { event["html_link"] = htmlLink }

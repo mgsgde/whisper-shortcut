@@ -16,7 +16,7 @@ actor GmailAPIClient {
     if !query.isEmpty {
       queryItems.append(URLQueryItem(name: "q", value: query))
     }
-    components.queryItems = queryItems
+    components.setQueryItemsStrictly(queryItems)
 
     guard let url = components.url else {
       throw GmailAPIError.invalidURL
@@ -67,7 +67,7 @@ actor GmailAPIClient {
         URLQueryItem(name: "maxResults", value: String(min(100, maxTotal - refs.count))),
       ]
       if let pageToken { items.append(URLQueryItem(name: "pageToken", value: pageToken)) }
-      components.queryItems = items
+      components.setQueryItemsStrictly(items)
       guard let url = components.url else { throw GmailAPIError.invalidURL }
 
       let data = try await authorizedRequest(url: url, httpMethod: "GET")

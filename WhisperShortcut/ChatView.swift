@@ -228,8 +228,11 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var summaryRevision: UInt = 0
   /// True while a missing meeting summary is being regenerated, so the Notes tab can show progress.
   @Published private(set) var isRecoveringMeetingSummary: Bool = false
-  /// Disk-read notes of the ended meeting currently being viewed. See `meetingNotesForDisplay`.
-  private var endedNotesCache: (stem: String, notes: [LiveMeetingNote])?
+  /// Disk-read notes of the ended meeting currently being viewed, keyed by stem and the notes
+  /// file's modification date. A resume writes the same `.notes.md`; without the date a later
+  /// hand edit would save the pre-resume list and drop the notes taken after it. See
+  /// `meetingNotesForDisplay`.
+  private var endedNotesCache: (stem: String, modified: Date?, notes: [LiveMeetingNote])?
   /// Invalidation tick — intentionally never read. A hand edit of an ended meeting's note rewrites
   /// the `.notes.md` file and bumps this so SwiftUI re-evaluates `meetingNotesForDisplay`, which
   /// then re-reads the file. Disk stays the source of truth.
@@ -497,12 +500,21 @@ class ChatViewModel: ObservableObject {
     isMeetingFinishing = LiveMeetingTranscriptStore.shared.isFinishing
     meetingFinishingCancellable = LiveMeetingTranscriptStore.shared.$isFinishing
       .receive(on: DispatchQueue.main)
-      .sink { [weak self] in self?.isMeetingFinishing = $0 }
+      .sink { [weak self] finishing in
+        guard let self else { return }
+        self.isMeetingFinishing = finishing
+        // Stopping still appends the last notes to the same file the ended view cached.
+        if finishing { self.invalidateEndedNotesCache() }
+      }
     meetingCancellable = LiveMeetingTranscriptStore.shared.$isSessionActive
       .receive(on: DispatchQueue.main)
       .sink { [weak self] active in
         guard let self else { return }
+        let wasActive = self.isMeetingActive
         self.isMeetingActive = active
+        // Start, resume, and end all write `.notes.md` for a stem the cache may already hold.
+        // The subscription replays the current value; only a real transition should drop the cache.
+        if wasActive != active { self.invalidateEndedNotesCache() }
         if active && self.meetingSessionId == nil {
           // Prefer reattaching to an existing ChatSession already associated with the
           // current meeting's stem (e.g. on resume), so we don't repurpose whichever
@@ -511,8 +523,10 @@ class ChatViewModel: ObservableObject {
           if let stem, let existing = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem }) {
             self.meetingSessionId = existing.id
             if self.session.id == existing.id {
+              let stemChanged = self.session.meetingStem != stem
               self.session.isMeeting = true
               self.session.meetingStem = stem
+              if stemChanged { self.invalidateEndedNotesCache() }
             }
             self.refreshRecentSessions()
           } else {
@@ -564,6 +578,7 @@ class ChatViewModel: ObservableObject {
     noteLeaving(session, reason: "newChat")
     let newSession = store.createNewSession()
     session = newSession
+    invalidateEndedNotesCache()
     currentSessionId = newSession.id
     messages = []
     errorMessage = nil
@@ -575,7 +590,11 @@ class ChatViewModel: ObservableObject {
   }
 
   private func switchToCurrentStoreSession() {
+    let previousStem = session.meetingStem
     session = store.load()
+    if session.id != currentSessionId || session.meetingStem != previousStem {
+      invalidateEndedNotesCache()
+    }
     currentSessionId = session.id
     messages = session.messages
     errorMessage = nil
@@ -2663,6 +2682,9 @@ class ChatViewModel: ObservableObject {
   /// Guarded: never runs while another meeting is recording (that would clobber its store).
   func requestResumeMeeting() {
     guard !isMeetingActive else { return }
+    // Resume keeps the same stem and appends to the same `.notes.md`. The ended-meeting cache
+    // must not survive, or the next hand edit rewrites the file without the new notes.
+    invalidateEndedNotesCache()
     if let stem = session.meetingStem {
       let transcript = loadMeetingTranscriptFromDisk() ?? ""
       let summary = loadMeetingSummaryFromDisk() ?? ""
@@ -2679,6 +2701,7 @@ class ChatViewModel: ObservableObject {
     let stem = LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem
     session.isMeeting = true
     session.meetingStem = stem
+    invalidateEndedNotesCache()
     store.markSessionAsMeeting(id: session.id, stem: stem)
     refreshRecentSessions()
   }
@@ -2754,11 +2777,30 @@ class ChatViewModel: ObservableObject {
     }
     guard let stem = session.meetingStem else { return [] }
     // The chat stream reads this on every layout pass, so an ended meeting's notes are read from
-    // disk once per stem instead of once per frame. They cannot change while the meeting is over.
-    if let cached = endedNotesCache, cached.stem == stem { return cached.notes }
+    // disk once per stem and file generation. A rewrite (resume, an outside save) changes the
+    // modification date and misses the cache.
+    let modified = endedNotesModificationDate(stem: stem)
+    if let cached = endedNotesCache, cached.stem == stem, cached.modified == modified {
+      return cached.notes
+    }
     let notes = MeetingListService.shared.loadNotes(forStem: stem)
-    endedNotesCache = (stem, notes)
+    endedNotesCache = (stem, modified, notes)
     return notes
+  }
+
+  /// Drops the ended-meeting notes cache and asks SwiftUI to re-read the file.
+  private func invalidateEndedNotesCache() {
+    endedNotesCache = nil
+    notesRevision &+= 1
+  }
+
+  /// Modification date of `<stem>.notes.md`, when MeetingListService can point at that file.
+  /// Missing file → nil, which still participates in the cache key.
+  private func endedNotesModificationDate(stem: String) -> Date? {
+    let url = MeetingListService.notesURL(
+      transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
+    let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+    return attributes?[.modificationDate] as? Date
   }
 
   /// Saves a hand edit of one note. Works for both cases the Notes tab shows: while the meeting
@@ -2779,13 +2821,13 @@ class ChatViewModel: ObservableObject {
       return
     }
     guard let stem = session.meetingStem else { return }
+    // Fresh disk read, never the display cache: the cache can still be the pre-resume list.
     let edited = LiveMeetingTranscriptStore.applyingEdit(
-      to: meetingNotesForDisplay,
+      to: MeetingListService.shared.loadNotes(forStem: stem),
       replacing: LiveMeetingNote(id: note.id, startTime: note.startTime, bullets: bullets))
     MeetingListService.shared.saveNotes(
       edited, transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
-    endedNotesCache = nil
-    notesRevision &+= 1
+    invalidateEndedNotesCache()
   }
 
   /// One line describing exactly what the model can see, shown above the composer.
@@ -4097,6 +4139,10 @@ struct ChatView: View {
   private func handleScrollGeometryChange(
     from old: ChatScrollSnapshot, to new: ChatScrollSnapshot, proxy: ScrollViewProxy
   ) {
+    // A tab switch swaps the list before the async restore runs. The offset change in that
+    // window is the old tab's geometry, and writing it would overwrite the new tab's saved
+    // following state. `suppressAnchorSave` stays true until `restoreSavedScroll` returns.
+    guard !suppressAnchorSave else { return }
     // The user's own movement wins over growth: if they scrolled up in the same frame that a
     // delta landed, they meant to leave the bottom and must not be pulled back.
     if abs(new.offsetY - old.offsetY) > 0.5 {
