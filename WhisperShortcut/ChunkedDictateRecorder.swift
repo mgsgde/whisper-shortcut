@@ -106,6 +106,11 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   private(set) var lastRecordingWasSilent: Bool = false
   private(set) var lastPeakPowerDb: Float = -160
 
+  /// Bumped on every start and on every stop or cleanup. A permission grant for a start the user
+  /// already cancelled (the system prompt was still up, so `stopRecording` found no session) must
+  /// not call `beginSession` — the mic would run with the menu bar sitting on idle.
+  private var startGeneration = 0
+
   var hasRecentlyBeenSilent: Bool {
     meterSampleCount >= 2
       && lastTwoMeterSamples.0 < Self.silenceThresholdDB
@@ -120,8 +125,13 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   // MARK: - Public
 
   func startRecording() {
+    startGeneration += 1
+    let generation = startGeneration
     requestMicrophonePermission { [weak self] granted in
-      guard let self else { return }
+      guard let self, self.startGeneration == generation else {
+        DebugLogger.logAudio("AUDIO: Ignoring microphone permission — the recording start was cancelled")
+        return
+      }
       if granted {
         self.beginSession()
       } else {
@@ -135,6 +145,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
 
   @discardableResult
   func stopRecording() -> Bool {
+    startGeneration += 1
     meteringTimer?.invalidate()
     meteringTimer = nil
 
@@ -160,6 +171,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   }
 
   func cleanup() {
+    startGeneration += 1
     meteringTimer?.invalidate()
     meteringTimer = nil
     isSessionActive = false
