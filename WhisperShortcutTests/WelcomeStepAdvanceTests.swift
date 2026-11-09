@@ -45,3 +45,23 @@ struct WelcomeStepAdvanceTests {
     #expect(WelcomeStep.dictationSetup.canAdvance(micStatus: .granted) == expected)
   }
 }
+
+@Suite("Onboarding dictation gate")
+struct OnboardingDictationGateTests {
+  @Test("Offline card needs an installed offline model, not a cloud key")
+  func offlineCardRequiresOfflineModel() {
+    // Cloud model with a saved key, user switched to the Offline card.
+    #expect(!OnboardingDictationGate.canAdvance(choice: .offline, selectedIsOffline: false, selectedCanRun: true))
+    // Offline model selected but not downloaded.
+    #expect(!OnboardingDictationGate.canAdvance(choice: .offline, selectedIsOffline: true, selectedCanRun: false))
+    #expect(OnboardingDictationGate.canAdvance(choice: .offline, selectedIsOffline: true, selectedCanRun: true))
+  }
+
+  @Test("Cloud card and no choice follow whether the selected model can run")
+  func cloudAndUnsetFollowSelectedModel() {
+    for choice: DictationChoice? in [.cloud, nil] {
+      #expect(OnboardingDictationGate.canAdvance(choice: choice, selectedIsOffline: false, selectedCanRun: true))
+      #expect(!OnboardingDictationGate.canAdvance(choice: choice, selectedIsOffline: false, selectedCanRun: false))
+    }
+  }
+}
