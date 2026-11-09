@@ -159,6 +159,46 @@ struct CustomEndpointAuthTests {
     #expect(Auth.endpointURL(appending: "chat/completions", to: base) == base + "/chat/completions")
   }
 
+  @Test("A localhost base without /v1 is probed and called exactly as typed")
+  func localhostWithoutV1IsNotRewritten() {
+    #expect(
+      Auth.endpointURL(appending: "audio/transcriptions", to: "http://localhost:8000")
+        == "http://localhost:8000/audio/transcriptions")
+    #expect(
+      LocalServerDiscovery.modelsURL(forBaseURL: "http://localhost:8000")?.absoluteString
+        == "http://localhost:8000/models")
+    #expect(Auth.baseAppendingV1("http://localhost:8000") == "http://localhost:8000/v1")
+    #expect(Auth.baseAppendingV1("http://localhost:8000/v1") == nil)
+  }
+
+  @Test("A pasted /audio/speech URL is a base, for the probe and for dictation")
+  func pastedAudioSpeechIsStripped() {
+    let pasted = "http://localhost:8000/v1/audio/speech"
+    #expect(
+      Auth.endpointURL(appending: "audio/transcriptions", to: pasted)
+        == "http://localhost:8000/v1/audio/transcriptions")
+    #expect(
+      Auth.endpointURL(appending: "chat/completions", to: pasted)
+        == "http://localhost:8000/v1/chat/completions")
+    #expect(
+      LocalServerDiscovery.modelsURL(forBaseURL: pasted)?.absoluteString
+        == "http://localhost:8000/v1/models")
+    #expect(Auth.baseAppendingV1(pasted) == nil)
+  }
+
+  @Test("A bare Azure host is /openai/v1 for the probe and for dictation")
+  func bareAzureProbeMatchesDictation() {
+    let bare = "https://my-resource.openai.azure.com"
+    #expect(
+      Auth.endpointURL(appending: "audio/transcriptions", to: bare)
+        == "https://my-resource.openai.azure.com/openai/v1/audio/transcriptions")
+    #expect(
+      LocalServerDiscovery.modelsURL(forBaseURL: bare)?.absoluteString
+        == "https://my-resource.openai.azure.com/openai/v1/models")
+    // Already on the v1 surface after normalisation, so Check must not offer another /v1.
+    #expect(Auth.baseAppendingV1(bare) == nil)
+  }
+
   @Test("An unusable base URL yields nil instead of a mangled string to POST at")
   func unusableBaseIsNil() {
     #expect(Auth.endpointURL(appending: "chat/completions", to: "") == nil)

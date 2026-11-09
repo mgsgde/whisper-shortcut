@@ -2220,13 +2220,17 @@ enum LocalLLMPreferences {
   /// Full chat-completions URL for the configured endpoint.
   static var chatCompletionsURL: String { chatCompletionsURL(forBase: endpointBaseURL) }
 
-  /// Normalizes a trailing slash and appends the path only when it isn't already there.
+  /// Normalizes a trailing slash and a pasted route, then appends `/chat/completions`.
   ///
-  /// Idempotent on purpose: Ollama's own docs print the full `/v1/chat/completions` URL, so users
-  /// paste that into the endpoint field as often as the bare base. Appending unconditionally
-  /// produced `.../chat/completions/chat/completions`, and that 404 was then reported to the user
-  /// as "model not pulled" — sending them to `ollama pull` for a URL problem.
+  /// The same normaliser as the own-server path (`CustomEndpointAuth.normalizedBase`): Ollama's
+  /// docs print the full `/v1/chat/completions` URL, and a pasted `/audio/speech` used to be left
+  /// in front of the new route. `/v1` is still not inserted — a server that answered without it
+  /// keeps that base. An unparseable string falls back to concatenation so the call still yields
+  /// a URL.
   static func chatCompletionsURL(forBase base: String) -> String {
+    if let url = CustomEndpointAuth.endpointURL(appending: "chat/completions", to: base) {
+      return url
+    }
     let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
     if trimmed.hasSuffix("/chat/completions") { return trimmed }
     return trimmed + "/chat/completions"

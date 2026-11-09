@@ -212,26 +212,14 @@ enum LocalServerDiscovery {
     return payload.data.map(\.id)
   }
 
-  /// `{base}/models`, with `/v1` added when the user typed only a host and port. The form's field
-  /// keeps exactly what was typed; this shapes the probe only.
-  ///
-  /// Strips a pasted endpoint suffix first, the same way `CustomEndpointAuth.endpointURL` does for
-  /// the real request: users paste the full `/v1/audio/transcriptions` URL as often as the bare
-  /// base, and probing `…/audio/transcriptions/v1/models` would report "no answer" for a server
-  /// that is running fine.
+  /// `{normalized base}/models`. The same base `CustomEndpointAuth.endpointURL` posts to, so Check
+  /// cannot report "Reachable" for an address dictation will 404. `/v1` is not inserted here;
+  /// Check writes that form into the field only when the plain base is silent and `/v1` answers.
   static func modelsURL(forBaseURL baseURL: String) -> URL? {
-    guard var components = URLComponents(string: baseURL), components.host != nil else { return nil }
+    guard var components = CustomEndpointAuth.normalizedBase(baseURL) else { return nil }
     var path = components.path
     while path.hasSuffix("/") { path.removeLast() }
-    for suffix in ["/chat/completions", "/audio/transcriptions", "/audio/speech", "/completions"]
-    where path.hasSuffix(suffix) {
-      path.removeLast(suffix.count)
-      while path.hasSuffix("/") { path.removeLast() }
-      break
-    }
-    if !path.hasSuffix("/v1") { path += "/v1" }
     components.path = path + "/models"
-    components.query = nil
     return components.url
   }
 

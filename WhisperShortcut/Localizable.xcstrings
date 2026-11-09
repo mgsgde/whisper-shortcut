@@ -26148,6 +26148,16 @@
         }
       }
     },
+    "The URL now ends in /v1, because that is the address this server answered on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die URL endet jetzt auf /v1, weil Ihr Server unter dieser Adresse geantwortet hat."
+          }
+        }
+      }
+    },
     "No answer" : {
       "localizations" : {
         "de" : {
