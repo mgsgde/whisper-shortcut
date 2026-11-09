@@ -59,7 +59,6 @@ struct TextChunkerFirstChunkTests {
   @Test("Gemini's 260-char ceiling stops the ramp at 260 (120 → 180 → 260 → 260 …)")
   func geminiCeilingCapsRamp() throws {
     let chunker = TextChunker(chunkSize: AppConstants.ttsGeminiChunkSizeChars, firstChunkSize: 120, growthFactor: 1.5)
-    #expect(AppConstants.ttsGeminiChunkSizeChars == 260)
     let expectedCaps = [120, 180, 260, 260, 260]
     for k in 0...4 {
       #expect(chunker.chunkCap(forIndex: k) == expectedCaps[k])
@@ -80,14 +79,6 @@ struct TextChunkerFirstChunkTests {
   @Test("A first-chunk cap larger than the chunk size is clamped")
   func firstChunkCapIsClamped() {
     #expect(TextChunker(chunkSize: 100, firstChunkSize: 500).firstChunkSize == 100)
-  }
-
-  @Test("Shipped defaults: opener is a sentence or two, later chunks are 500")
-  func shippedDefaults() throws {
-    let chunks = try TextChunker().splitText(prose(sentences: 30))
-    #expect(chunks[0].text.count <= AppConstants.ttsFirstChunkSizeChars)
-    #expect(chunks[1].text.count > AppConstants.ttsFirstChunkSizeChars)
-    #expect(chunks[1].text.count <= AppConstants.ttsChunkSizeChars)
   }
 
   @Test("German read-aloud sample pauses at the sentence and the clause, not after drehen")

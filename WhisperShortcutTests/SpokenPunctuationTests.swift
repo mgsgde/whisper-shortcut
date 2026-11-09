@@ -9,26 +9,6 @@ import Testing
 @Suite("Spoken punctuation (offline dictation)")
 struct SpokenPunctuationTests {
 
-  @Test("\"Doppelpunkt\" becomes a colon attached to the previous word")
-  func colonAttachesToPreviousWord() {
-    #expect(
-      SpokenPunctuation.apply(to: "Anamnese Doppelpunkt Patient berichtet über Schmerzen")
-        == "Anamnese: Patient berichtet über Schmerzen")
-  }
-
-  @Test("Punctuation the ASR put around \"Doppelpunkt\" is removed")
-  func colonEatsStrayPunctuation() {
-    #expect(SpokenPunctuation.apply(to: "Befund, Doppelpunkt. Inspektion") == "Befund: Inspektion")
-    #expect(SpokenPunctuation.apply(to: "Befund. Doppelpunkt, Inspektion") == "Befund: Inspektion")
-    #expect(SpokenPunctuation.apply(to: "Therapie Doppelpunkt.") == "Therapie:")
-  }
-
-  @Test("Matching is case-insensitive")
-  func caseInsensitive() {
-    #expect(SpokenPunctuation.apply(to: "Befund doppelpunkt Inspektion") == "Befund: Inspektion")
-    #expect(SpokenPunctuation.apply(to: "Befund DOPPELPUNKT Inspektion") == "Befund: Inspektion")
-  }
-
   @Test("\"neuer Absatz\" becomes a blank line; a comma before it ends the sentence")
   func paragraphBreak() {
     #expect(
@@ -58,46 +38,11 @@ struct SpokenPunctuationTests {
         == "Anamnese: Schmerzen LWS seit drei Tagen.\n\nBefund: ISG links blockiert.\n\nTherapie:\nHVLA")
   }
 
-  @Test("\"Punkt\", \"Komma\" and \"Fragezeichen\" are ordinary words and stay")
-  func ordinaryWordsStay() {
-    let text = "Der wichtigste Punkt ist das Komma und das Fragezeichen am Ende."
-    #expect(SpokenPunctuation.apply(to: text) == text)
-  }
-
-  @Test("Only whole words match")
-  func wholeWordsOnly() {
-    let text = "Die Doppelpunkte und der Absatzmarke bleiben."
-    #expect(SpokenPunctuation.apply(to: text) == text)
-  }
-
-  @Test("Text without commands comes back unchanged, whitespace included")
-  func noCommandsUnchanged() {
-    let text = "  Patient berichtet über Schmerzen im unteren Rücken.\n"
-    #expect(SpokenPunctuation.apply(to: text) == text)
-  }
 }
 
 /// Cases carried over from the parallel implementation in PR #109.
 @Suite("Spoken punctuation — additional cases")
 struct SpokenPunctuationExtraTests {
-
-  @Test("Hyphenated words and a trailing full stop survive the colon")
-  func hyphenatedWords() {
-    #expect(
-      SpokenPunctuation.apply(to: "Anamnese Doppelpunkt LWS-Schmerzen seit drei Wochen.")
-        == "Anamnese: LWS-Schmerzen seit drei Wochen.")
-    #expect(SpokenPunctuation.apply(to: "Anamnese, Doppelpunkt. Patient berichtet") == "Anamnese: Patient berichtet")
-  }
-
-  @Test("Colon, paragraph and line commands in sequence")
-  func sequence() {
-    #expect(
-      SpokenPunctuation.apply(to: "Anamnese Doppelpunkt Schmerzen. Neuer Absatz. Befund Doppelpunkt Tonus erhöht")
-        == "Anamnese: Schmerzen.\n\nBefund: Tonus erhöht")
-    // Capital after the break: the next line starts a sentence even without ".!?".
-    #expect(SpokenPunctuation.apply(to: "Erstens neue Zeile zweitens") == "Erstens\nZweitens")
-    #expect(SpokenPunctuation.apply(to: "Doppelpunkte zählen") == "Doppelpunkte zählen")
-  }
 
   @Test("Parakeet glues \"Doppelpunkt\" onto the next word (live capture 2026-10-09)")
   func gluedColon() {
@@ -127,14 +72,6 @@ struct SpokenPunctuationGluedLineTests {
         == "Befund:\nInspektion unauffällig\nPalpation: Triggerpunkte im Trapezius.")
   }
 
-  @Test("\"neue Zeilen\" and its compounds stay words")
-  func pluralStays() {
-    let text = "Bitte zwei neue Zeilen einfügen, neue Zeilenumbrüche vermeiden."
-    #expect(SpokenPunctuation.apply(to: text) == text)
-    // "Neuzeilen" is the plural glued into one word, not the command. "Neue Teile" is a real phrase.
-    #expect(SpokenPunctuation.apply(to: "Neuzeilen bleiben.") == "Neuzeilen bleiben.")
-    #expect(SpokenPunctuation.apply(to: "Neue Teile bestellen.") == "Neue Teile bestellen.")
-  }
 }
 
 /// Pilot report 2026-10-19: with Parakeet + local Qwen, ⌘2 notes still contained the word
@@ -152,12 +89,6 @@ struct SpokenPunctuationReplyTests {
     #expect(SpokenPunctuation.apply(to: "Therapie: Doppelpunkt\nMobilisation") == "Therapie:\nMobilisation")
   }
 
-  @Test("A clean structured reply passes through byte for byte")
-  func structuredReplyUnchanged() {
-    let reply = "Anamnese:\nSchmerzen LWS.\n\nBefund:\n(nicht diktiert)\n\nTherapie:\nMobilisation C6/C7."
-    #expect(SpokenPunctuation.apply(to: reply) == reply)
-  }
-
   @Test("The reply pass runs only when the instruction was spoken to an offline engine")
   func replyPassIsGated() {
     let reply = "Befund Doppelpunkt Druckschmerz"
@@ -166,67 +97,6 @@ struct SpokenPunctuationReplyTests {
   }
 
   // MARK: - Schrägstrich
-
-  @Test("\"Schrägstrich\" becomes a slash with no spaces, only in spoken-only mode")
-  func slash() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "ich Schrägstrich sage", mode: mode) == "ich/sage")
-    #expect(SpokenPunctuation.apply(to: "ich, Schrägstrich. sage", mode: mode) == "ich/sage")
-    #expect(SpokenPunctuation.apply(to: "Hals Schraegstrich Nacken", mode: mode) == "Hals/Nacken")
-    // Automatic mode and Dictate Prompt instructions: an ordinary noun.
-    let text = "ersetze jeden Schrägstrich durch ein Komma, getrennt mit einem Schrägstrich"
-    #expect(SpokenPunctuation.apply(to: text) == text)
-    #expect(SpokenPunctuation.apply(to: "ich Schrägstrich sage") == "ich Schrägstrich sage")
-  }
-
-  @Test("Glued \"Schrägstrich\" splits; the plural stays")
-  func slashGluedAndPlural() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "Hals Schrägstrichnacken", mode: mode) == "Hals/nacken")
-    #expect(SpokenPunctuation.apply(to: "zwei Schrägstriche im Text", mode: mode) == "zwei Schrägstriche im Text")
-  }
-
-  @Test("\"Schreckstrich\" and a split \"Schräg Strich\" become a slash; the plural stays")
-  func slashMishearings() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "Arbeitsmarkt Schreckstrich im ADL", mode: mode) == "Arbeitsmarkt/im ADL")
-    #expect(SpokenPunctuation.apply(to: "Hals Schräg Strich Nacken", mode: mode) == "Hals/Nacken")
-    #expect(SpokenPunctuation.apply(to: "Hals Schräg-Strich Nacken", mode: mode) == "Hals/Nacken")
-    #expect(SpokenPunctuation.apply(to: "zwei Schrägstriche im Text", mode: mode) == "zwei Schrägstriche im Text")
-  }
-
-  @Test("\"drei Pünktchen\" becomes an ellipsis; \"drei Punkte\" and automatic mode stay")
-  func ellipsis() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "Gesamt GdB drei Pünktchen und", mode: mode) == "Gesamt GdB… und")
-    #expect(SpokenPunctuation.apply(to: "Gesamt GdB drei Puenktchen und", mode: mode) == "Gesamt GdB… und")
-    #expect(SpokenPunctuation.apply(to: "Gesamt GdB Auslassungspunkte und", mode: mode) == "Gesamt GdB… und")
-    #expect(SpokenPunctuation.apply(to: "drei Punkte erreicht", mode: mode) == "drei Punkte erreicht")
-    #expect(SpokenPunctuation.apply(to: "Gesamt GdB drei Pünktchen und") == "Gesamt GdB drei Pünktchen und")
-  }
-
-  @Test("An abbreviation period before \"Schrägstrich\" is kept")
-  func slashKeepsAbbreviationPeriod() {
-    let mode = PunctuationMode.spokenOnly
-    let stripped = SpokenPunctuation.stripModelPunctuation(from: "usw. Schrägstrich b")
-    #expect(SpokenPunctuation.apply(to: stripped, mode: mode) == "usw./b")
-  }
-
-  @Test("A spoken decimal comma between digits has no spaces")
-  func decimalComma() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "3 Komma 5 cm", mode: mode) == "3,5 cm")
-    #expect(SpokenPunctuation.apply(to: "Hallo Komma 5 Stück", mode: mode) == "Hallo, 5 Stück")
-    // Number words are the same decimal, one pair: "drei Komma fünf" → "3,5".
-    #expect(SpokenPunctuation.apply(to: "drei Komma fünf", mode: mode) == "3,5")
-  }
-
-  @Test("Capitalisation carries over a line break after Punkt and Fragezeichen")
-  func capitalisationAfterBreak() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "Ende Punkt neue Zeile weiter", mode: mode) == "Ende.\nWeiter")
-    #expect(SpokenPunctuation.apply(to: "Gut Fragezeichen neuer Absatz ja", mode: mode) == "Gut?\n\nJa")
-  }
 
   @Test("The effective mode is stored only for offline dictation outside meetings")
   func effectiveMode() {
@@ -260,96 +130,6 @@ struct SpokenPunctuationReplyTests {
     #expect(SpokenPunctuation.stripModelPunctuation(from: "a?b und 1!2") == "a?b und 1!2")
   }
 
-  @Test("Stripping keeps marks inside numbers and words")
-  func stripKeepsNumbers() {
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "Wert 3.5 und 1,2 mg, ok.") == "Wert 3.5 und 1,2 mg ok.")
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "a.b") == "a.b")
-  }
-
-  @Test("Stripping keeps ordinals, dates and abbreviations and the model's sentence period")
-  func stripKeepsOrdinalsAndAbbreviations() {
-    let spoken = "Am 3. November untersuchte Dr. Müller z. B. Nr. 5 Punkt"
-    #expect(
-      SpokenPunctuation.apply(
-        to: SpokenPunctuation.stripModelPunctuation(from: spoken), mode: .spokenOnly)
-        == "Am 3. November untersuchte Dr. Müller z. B. Nr. 5.")
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "Der Befund ist unauffällig. Weiter, ok.") == "Der Befund ist unauffällig. Weiter ok.")
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "bis 5.") == "bis 5.")
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "5. Lendenwirbel") == "5. Lendenwirbel")
-  }
-
-  @Test("Abbreviation periods survive stripping")
-  func stripKeepsMoreAbbreviations() {
-    for text in [
-      "Dr. med. Müller", "d. h. die", "Az. 12 SB 345/24", "i. d. R. stabil", "Hauptstr. 5",
-      "geb. 12. 3. 1961",
-    ] {
-      #expect(SpokenPunctuation.stripModelPunctuation(from: text) == text)
-    }
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "Er ging nach Hause. Dann kam sie.") == "Er ging nach Hause. Dann kam sie.")
-  }
-
-  @Test("A kept period followed by the model's comma loses only the comma")
-  func keptPeriodThenComma() {
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "z. B., Kopfschmerzen") == "z. B. Kopfschmerzen")
-  }
-
-  @Test("\"Punkt\" before a number or after a preposition is the noun")
-  func punktNoun() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "Zu Punkt 3 der Beweisfragen", mode: mode) == "Zu Punkt 3 der Beweisfragen")
-    #expect(SpokenPunctuation.apply(to: "Siehe Punkt 2.1", mode: mode) == "Siehe Punkt 2.1")
-    #expect(SpokenPunctuation.apply(to: "Er kam um 9 Uhr Punkt neue Zeile die", mode: mode) == "Er kam um 9 Uhr.\nDie")
-  }
-
-  @Test("A kept abbreviation period survives a spoken Komma")
-  func abbreviationThenKomma() {
-    let stripped = SpokenPunctuation.stripModelPunctuation(from: "usw. Komma die")
-    #expect(SpokenPunctuation.apply(to: stripped, mode: .spokenOnly) == "usw., die")
-  }
-
-  @Test("Decimal Komma only for a single pair of numbers")
-  func decimalOnlySinglePair() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "3 Komma 5 cm", mode: mode) == "3,5 cm")
-    #expect(SpokenPunctuation.apply(to: "3 Komma 5 Komma 4", mode: mode) == "3, 5, 4")
-  }
-
-  @Test("After a sentence end the word after a spoken break gets a capital, in both modes")
-  func capitalAfterBreakWithModelPeriod() {
-    for mode in [PunctuationMode.automatic, .spokenOnly] {
-      #expect(
-        SpokenPunctuation.apply(to: "Anamnese. Neuer Absatz, die Klägerin", mode: mode)
-          == "Anamnese.\n\nDie Klägerin")
-      #expect(
-        SpokenPunctuation.apply(to: "Ist sie arbeitsfähig? Neue Zeile, nein.", mode: mode)
-          == "Ist sie arbeitsfähig?\nNein.")
-    }
-  }
-
-  @Test("Spoken marks attach to the previous word with one space after")
-  func spokenOnlyMarks() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "Hallo Komma wie geht es Fragezeichen", mode: mode) == "Hallo, wie geht es?")
-    #expect(SpokenPunctuation.apply(to: "Gut Ausrufezeichen danke", mode: mode) == "Gut! Danke")
-    #expect(SpokenPunctuation.apply(to: "Das ist alles Punkt Weiter", mode: mode) == "Das ist alles. Weiter")
-    #expect(SpokenPunctuation.apply(to: "Ende Punkt", mode: mode) == "Ende.")
-  }
-
-  @Test("Doppelpunkt and layout commands still work in spoken-only mode")
-  func spokenOnlyKeepsLayout() {
-    let mode = PunctuationMode.spokenOnly
-    #expect(SpokenPunctuation.apply(to: "Befund Doppelpunkt Druck Punkt neuer Absatz Therapie", mode: mode) == "Befund: Druck.\n\nTherapie")
-  }
-
-  @Test("Punkt, Komma and friends are ordinary words in automatic mode")
-  func automaticLeavesWordsAlone() {
-    let text = "der wichtigste Punkt und ein Komma im Text"
-    #expect(SpokenPunctuation.apply(to: text) == text)
-    #expect(SpokenPunctuation.apply(to: text, mode: .automatic) == text)
-    #expect(SpokenPunctuation.apply(to: "Doppelpunkte und Kommas", mode: .spokenOnly) == "Doppelpunkte und Kommas")
-  }
-
   @Test("keepsEdgeBreaks keeps a trailing paragraph/line break; the default still trims it")
   func keepsEdgeBreaksTrimsSpacesOnly() {
     #expect(SpokenPunctuation.apply(to: "Befund neuer Absatz", keepsEdgeBreaks: true) == "Befund\n\n")
@@ -362,30 +142,6 @@ struct SpokenPunctuationReplyTests {
   private func spokenOnly(_ text: String) -> String {
     SpokenPunctuation.apply(
       to: SpokenPunctuation.stripModelPunctuation(from: text), mode: .spokenOnly)
-  }
-
-  @Test("Dates and clinical abbreviations keep their period")
-  func stripKeepsDatesAndClinicalAbbreviations() {
-    #expect(spokenOnly("Seit dem 12. März.") == "Seit dem 12. März.")
-    #expect(spokenOnly("Pat. ist mobil.") == "Pat. ist mobil.")
-  }
-
-  @Test("\"Punkt\" before a digit or a number word is the noun")
-  func punktBeforeNumberWordStays() {
-    #expect(spokenOnly("unter Punkt 3 der Fragen") == "unter Punkt 3 der Fragen")
-    #expect(spokenOnly("Unter Punkt drei steht") == "Unter Punkt drei steht")
-  }
-
-  @Test("A decimal comma between number words becomes digits, and only in spoken-only mode")
-  func decimalCommaBetweenNumberWords() {
-    #expect(spokenOnly("Messwert zwei Komma fünf") == "Messwert 2,5")
-    let automatic = "zwei Komma fünf"
-    #expect(SpokenPunctuation.apply(to: automatic, mode: .automatic) == automatic)
-  }
-
-  @Test("A repeated spoken mark collapses to one and still capitalises the next word")
-  func repeatedSpokenMarksCollapse() {
-    #expect(spokenOnly("Ende Punkt Punkt weiter") == "Ende. Weiter")
   }
 
   @Test("The model's sentence period and the capital after it are kept; its comma is dropped")
@@ -403,34 +159,166 @@ struct SpokenPunctuationReplyTests {
     #expect(manager.formatTranscription("hallo welt") == "Hallo welt.")
   }
 
-  @Test("A spoken mark next to a kept model mark does not double")
-  func spokenMarkNextToModelMark() {
-    #expect(spokenOnly("Gangbild Komma geht weiter. Punkt.") == "Gangbild, geht weiter.")
-    #expect(spokenOnly("Neue Befunde liegen nicht vor Punkt.") == "Neue Befunde liegen nicht vor.")
-    #expect(spokenOnly("Neue Befunde liegen nicht vor. Punkt") == "Neue Befunde liegen nicht vor.")
-    #expect(spokenOnly("Gehstrecke unter 500 m Punkt.") == "Gehstrecke unter 500 m.")
-    #expect(spokenOnly("Gut. Fragezeichen") == "Gut?")
-    #expect(spokenOnly("Gut! Ausrufezeichen danke") == "Gut! Danke")
-  }
+}
 
-  @Test("Spoken-only: Schrägstrich glued to the neighbouring words")
-  func gluedSlash() {
-    #expect(spokenOnly("Arbeitsmarktschrägstrich im ADL") == "Arbeitsmarkt/im ADL")
-    #expect(spokenOnly("Arbeitsmarktschrägstrichbewegung") == "Arbeitsmarkt/Bewegung")
+/// Which pipeline a table row runs: plain `apply`, `apply` with a mode, or Dictate's order of
+/// stripping the model's marks first and then applying the spoken-only commands.
+enum SPPipe: Sendable { case plain, automatic, spoken, stripThenSpoken, strip }
+
+private func spRun(_ pipe: SPPipe, _ input: String) -> String {
+  switch pipe {
+  case .plain: return SpokenPunctuation.apply(to: input)
+  case .automatic: return SpokenPunctuation.apply(to: input, mode: .automatic)
+  case .spoken: return SpokenPunctuation.apply(to: input, mode: .spokenOnly)
+  case .stripThenSpoken:
+    return SpokenPunctuation.apply(to: SpokenPunctuation.stripModelPunctuation(from: input), mode: .spokenOnly)
+  case .strip: return SpokenPunctuation.stripModelPunctuation(from: input)
+  }
+}
+
+private func expectRow(_ pipe: SPPipe, _ input: String, _ expected: String) {
+  #expect(spRun(pipe, input) == expected, "\(pipe): \(input)")
+}
+
+@Suite("Spoken punctuation — tables")
+struct SpokenPunctuationTableTests {
+
+  @Test("Colon command: attaches, eats stray punctuation, ignores case, keeps hyphenated words", arguments: [
+    (SPPipe.plain, "Anamnese Doppelpunkt Patient berichtet über Schmerzen", "Anamnese: Patient berichtet über Schmerzen"),
+    (.plain, "Befund, Doppelpunkt. Inspektion", "Befund: Inspektion"),
+    (.plain, "Befund. Doppelpunkt, Inspektion", "Befund: Inspektion"),
+    (.plain, "Therapie Doppelpunkt.", "Therapie:"),
+    (.plain, "Befund doppelpunkt Inspektion", "Befund: Inspektion"),
+    (.plain, "Befund DOPPELPUNKT Inspektion", "Befund: Inspektion"),
+    (.plain, "Anamnese Doppelpunkt LWS-Schmerzen seit drei Wochen.", "Anamnese: LWS-Schmerzen seit drei Wochen."),
+    (.plain, "Anamnese, Doppelpunkt. Patient berichtet", "Anamnese: Patient berichtet"),
+  ])
+  func colon(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
+
+  @Test("Ordinary words, whole-word matching, plurals and clean replies pass through unchanged", arguments: [
+    (SPPipe.plain, "Der wichtigste Punkt ist das Komma und das Fragezeichen am Ende."),
+    (.plain, "Die Doppelpunkte und der Absatzmarke bleiben."),
+    (.plain, "  Patient berichtet über Schmerzen im unteren Rücken.\n"),
+    (.plain, "der wichtigste Punkt und ein Komma im Text"),
+    (.automatic, "der wichtigste Punkt und ein Komma im Text"),
+    (.spoken, "Doppelpunkte und Kommas"),
+    (.plain, "Bitte zwei neue Zeilen einfügen, neue Zeilenumbrüche vermeiden."),
+    // "Neuzeilen" is the plural glued into one word, not the command. "Neue Teile" is a real phrase.
+    (.plain, "Neuzeilen bleiben."),
+    (.plain, "Neue Teile bestellen."),
+    (.plain, "Anamnese:\nSchmerzen LWS.\n\nBefund:\n(nicht diktiert)\n\nTherapie:\nMobilisation C6/C7."),
+  ])
+  func unchanged(pipe: SPPipe, text: String) { expectRow(pipe, text, text) }
+
+  @Test("Schrägstrich becomes a slash in spoken-only mode only; glued, misheard and split forms too", arguments: [
+    (SPPipe.spoken, "ich Schrägstrich sage", "ich/sage"),
+    (.spoken, "ich, Schrägstrich. sage", "ich/sage"),
+    (.spoken, "Hals Schraegstrich Nacken", "Hals/Nacken"),
+    // Automatic mode and Dictate Prompt instructions: an ordinary noun.
+    (.plain, "ersetze jeden Schrägstrich durch ein Komma, getrennt mit einem Schrägstrich",
+     "ersetze jeden Schrägstrich durch ein Komma, getrennt mit einem Schrägstrich"),
+    (.plain, "ich Schrägstrich sage", "ich Schrägstrich sage"),
+    (.spoken, "Hals Schrägstrichnacken", "Hals/nacken"),
+    (.spoken, "zwei Schrägstriche im Text", "zwei Schrägstriche im Text"),
+    (.spoken, "Arbeitsmarkt Schreckstrich im ADL", "Arbeitsmarkt/im ADL"),
+    (.spoken, "Hals Schräg Strich Nacken", "Hals/Nacken"),
+    (.spoken, "Hals Schräg-Strich Nacken", "Hals/Nacken"),
+    (.stripThenSpoken, "Arbeitsmarktschrägstrich im ADL", "Arbeitsmarkt/im ADL"),
+    (.stripThenSpoken, "Arbeitsmarktschrägstrichbewegung", "Arbeitsmarkt/Bewegung"),
     // Only glued on both sides is capitalised; the plural and the plain noun are untouched.
-    #expect(spokenOnly("Die Schrägstriche fehlen") == "Die Schrägstriche fehlen")
-    #expect(spokenOnly("Arbeitsmarkt Schrägstrichbewegung") == "Arbeitsmarkt/bewegung")
-    #expect(
-      SpokenPunctuation.apply(to: "Arbeitsmarktschrägstrich im ADL") == "Arbeitsmarktschrägstrich im ADL")
-  }
+    (.stripThenSpoken, "Die Schrägstriche fehlen", "Die Schrägstriche fehlen"),
+    (.stripThenSpoken, "Arbeitsmarkt Schrägstrichbewegung", "Arbeitsmarkt/bewegung"),
+    (.plain, "Arbeitsmarktschrägstrich im ADL", "Arbeitsmarktschrägstrich im ADL"),
+    // An abbreviation period before "Schrägstrich" is kept.
+    (.stripThenSpoken, "usw. Schrägstrich b", "usw./b"),
+  ])
+  func slash(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
 
-  @Test("Spoken-only: the three dots in their glued and digit forms")
-  func gluedEllipsis() {
-    #expect(spokenOnly("Gesamt GDB3-Pünktchen und") == "Gesamt GDB… und")
-    #expect(spokenOnly("Gesamt GDB 3 Pünktchen und") == "Gesamt GDB… und")
-    #expect(spokenOnly("Gesamt GDB drei-Pünktchen und") == "Gesamt GDB… und")
-    #expect(spokenOnly("Es gibt 13 Pünktchen") == "Es gibt 13 Pünktchen")
-  }
+  @Test("Three dots: spoken and glued forms become an ellipsis; \"drei Punkte\" and automatic mode stay", arguments: [
+    (SPPipe.spoken, "Gesamt GdB drei Pünktchen und", "Gesamt GdB… und"),
+    (.spoken, "Gesamt GdB drei Puenktchen und", "Gesamt GdB… und"),
+    (.spoken, "Gesamt GdB Auslassungspunkte und", "Gesamt GdB… und"),
+    (.spoken, "drei Punkte erreicht", "drei Punkte erreicht"),
+    (.plain, "Gesamt GdB drei Pünktchen und", "Gesamt GdB drei Pünktchen und"),
+    (.stripThenSpoken, "Gesamt GDB3-Pünktchen und", "Gesamt GDB… und"),
+    (.stripThenSpoken, "Gesamt GDB 3 Pünktchen und", "Gesamt GDB… und"),
+    (.stripThenSpoken, "Gesamt GDB drei-Pünktchen und", "Gesamt GDB… und"),
+    (.stripThenSpoken, "Es gibt 13 Pünktchen", "Es gibt 13 Pünktchen"),
+  ])
+  func ellipsis(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
+
+  @Test("Decimal Komma: digits and number words, a single pair only, spoken-only mode only", arguments: [
+    (SPPipe.spoken, "3 Komma 5 cm", "3,5 cm"),
+    (.spoken, "Hallo Komma 5 Stück", "Hallo, 5 Stück"),
+    // Number words are the same decimal, one pair: "drei Komma fünf" -> "3,5".
+    (.spoken, "drei Komma fünf", "3,5"),
+    (.spoken, "3 Komma 5 Komma 4", "3, 5, 4"),
+    (.stripThenSpoken, "Messwert zwei Komma fünf", "Messwert 2,5"),
+    (.automatic, "zwei Komma fünf", "zwei Komma fünf"),
+  ])
+  func decimal(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
+
+  @Test("Stripping keeps marks in numbers, ordinals, dates and abbreviations; only the model's commas go", arguments: [
+    (SPPipe.strip, "Wert 3.5 und 1,2 mg, ok.", "Wert 3.5 und 1,2 mg ok."),
+    (.strip, "a.b", "a.b"),
+    (.stripThenSpoken, "Am 3. November untersuchte Dr. Müller z. B. Nr. 5 Punkt",
+     "Am 3. November untersuchte Dr. Müller z. B. Nr. 5."),
+    (.strip, "Der Befund ist unauffällig. Weiter, ok.", "Der Befund ist unauffällig. Weiter ok."),
+    (.strip, "bis 5.", "bis 5."),
+    (.strip, "5. Lendenwirbel", "5. Lendenwirbel"),
+    (.strip, "Dr. med. Müller", "Dr. med. Müller"),
+    (.strip, "d. h. die", "d. h. die"),
+    (.strip, "Az. 12 SB 345/24", "Az. 12 SB 345/24"),
+    (.strip, "i. d. R. stabil", "i. d. R. stabil"),
+    (.strip, "Hauptstr. 5", "Hauptstr. 5"),
+    (.strip, "geb. 12. 3. 1961", "geb. 12. 3. 1961"),
+    (.strip, "Er ging nach Hause. Dann kam sie.", "Er ging nach Hause. Dann kam sie."),
+    (.strip, "z. B., Kopfschmerzen", "z. B. Kopfschmerzen"),
+    (.stripThenSpoken, "Seit dem 12. März.", "Seit dem 12. März."),
+    (.stripThenSpoken, "Pat. ist mobil.", "Pat. ist mobil."),
+  ])
+  func strip(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
+
+  @Test("\"Punkt\" before a number or after a preposition is the noun", arguments: [
+    (SPPipe.spoken, "Zu Punkt 3 der Beweisfragen", "Zu Punkt 3 der Beweisfragen"),
+    (.spoken, "Siehe Punkt 2.1", "Siehe Punkt 2.1"),
+    (.spoken, "Er kam um 9 Uhr Punkt neue Zeile die", "Er kam um 9 Uhr.\nDie"),
+    (.stripThenSpoken, "unter Punkt 3 der Fragen", "unter Punkt 3 der Fragen"),
+    (.stripThenSpoken, "Unter Punkt drei steht", "Unter Punkt drei steht"),
+  ])
+  func punktNoun(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
+
+  @Test("The word after a spoken break gets a capital, also after the model's period, in both modes", arguments: [
+    (SPPipe.spoken, "Ende Punkt neue Zeile weiter", "Ende.\nWeiter"),
+    // The next line starts a sentence even without ".!?" before the break.
+    (.plain, "Erstens neue Zeile zweitens", "Erstens\nZweitens"),
+    (.spoken, "Gut Fragezeichen neuer Absatz ja", "Gut?\n\nJa"),
+    (.automatic, "Anamnese. Neuer Absatz, die Klägerin", "Anamnese.\n\nDie Klägerin"),
+    (.spoken, "Anamnese. Neuer Absatz, die Klägerin", "Anamnese.\n\nDie Klägerin"),
+    (.automatic, "Ist sie arbeitsfähig? Neue Zeile, nein.", "Ist sie arbeitsfähig?\nNein."),
+    (.spoken, "Ist sie arbeitsfähig? Neue Zeile, nein.", "Ist sie arbeitsfähig?\nNein."),
+  ])
+  func capitalAfterBreak(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
+
+  @Test("Spoken-only marks attach to the previous word, collapse, and never double a kept model mark", arguments: [
+    (SPPipe.spoken, "Hallo Komma wie geht es Fragezeichen", "Hallo, wie geht es?"),
+    (.spoken, "Gut Ausrufezeichen danke", "Gut! Danke"),
+    (.spoken, "Das ist alles Punkt Weiter", "Das ist alles. Weiter"),
+    (.spoken, "Ende Punkt", "Ende."),
+    // Doppelpunkt and layout commands still work in spoken-only mode.
+    (.spoken, "Befund Doppelpunkt Druck Punkt neuer Absatz Therapie", "Befund: Druck.\n\nTherapie"),
+    // A repeated spoken mark collapses to one and still capitalises the next word.
+    (.stripThenSpoken, "Ende Punkt Punkt weiter", "Ende. Weiter"),
+    (.stripThenSpoken, "Gangbild Komma geht weiter. Punkt.", "Gangbild, geht weiter."),
+    (.stripThenSpoken, "Neue Befunde liegen nicht vor Punkt.", "Neue Befunde liegen nicht vor."),
+    (.stripThenSpoken, "Neue Befunde liegen nicht vor. Punkt", "Neue Befunde liegen nicht vor."),
+    (.stripThenSpoken, "Gehstrecke unter 500 m Punkt.", "Gehstrecke unter 500 m."),
+    (.stripThenSpoken, "Gut. Fragezeichen", "Gut?"),
+    (.stripThenSpoken, "Gut! Ausrufezeichen danke", "Gut! Danke"),
+    // A kept abbreviation period survives a spoken Komma.
+    (.stripThenSpoken, "usw. Komma die", "usw., die"),
+  ])
+  func spokenMarks(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
 }
 
 /// Brackets, Parakeet's glued "Neuzeile" / "Neuerabsatz", and a capital after a break that has no

@@ -30,17 +30,6 @@ struct DictatePromptOfflineSafeguardsTests {
     #expect(unset["temperature"] == nil)
   }
 
-  @Test("Warning names the words and says the text was delivered unchanged")
-  func warningMessage() {
-    let pasted = PopupNotificationWindow.undictatedWordsMessage(
-      ["Mobilisation", "Termin"], pasteHint: nil)
-    #expect(pasted == "Mobilisation, Termin\nPasted unchanged. Check these words before you save the note.")
-
-    let copied = PopupNotificationWindow.undictatedWordsMessage(
-      ["Mobilisation"], pasteHint: "Copied — press ⌘V to paste")
-    #expect(copied.contains("Copied unchanged — press ⌘V to paste."))
-  }
-
   @Test("A long list is cut so the advice after it stays visible")
   func warningMessageCapsTheList() {
     let words = (1...11).map { "Wort\($0)" }

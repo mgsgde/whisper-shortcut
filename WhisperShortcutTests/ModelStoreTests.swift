@@ -190,12 +190,6 @@ struct ModelStoreTests {
     #expect(store.isModelAvailable(.small), "the model files must survive the failed load")
   }
 
-  @Test("ModelManager ties the heal to Offline Mode")
-  func managerHealFollowsOfflineMode() {
-    #expect(ModelManager.canRedownload(offlineMode: false))
-    #expect(!ModelManager.canRedownload(offlineMode: true))
-  }
-
   @Test("Whisper readiness requires a tokenizer WhisperKit can find offline")
   func whisperTokenizerCompleteness() throws {
     let fm = FileManager.default

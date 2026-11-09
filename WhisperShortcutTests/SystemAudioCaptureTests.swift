@@ -3,10 +3,6 @@ import AudioToolbox
 import CoreAudio
 import XCTest
 
-// Deviation from the spec text (reported in the handover): the spec says
-// `@testable import WhisperShortcut`, but this test target's host is WhisperShortcut-AppStore
-// and every existing test file in this target imports `WhisperShortcut_AppStore` — that is the
-// module that actually exists here.
 @testable import WhisperShortcut_AppStore
 
 /// Shared fixed instant so every test below reasons about the same wall clock without depending
@@ -132,11 +128,8 @@ final class SystemAudioBufferTests: XCTestCase {
     XCTAssertEqual(emptyBuffer.recentPowerDB(window: 0.1, now: fixedDate), -160, accuracy: 0.001)
   }
 
-  func testExtractInterpolates16kHzSineAt24kHz() {
+  func testExtractInterpolatesCallRateSinesAt24kHz() {
     assertUpsampledSine(inputRate: 16_000, maxAbsError: 0.05)
-  }
-
-  func testExtractInterpolates8kHzSineAt24kHz() {
     assertUpsampledSine(inputRate: 8_000, maxAbsError: 0.1)
   }
 
@@ -367,76 +360,45 @@ final class MeetingAudioRoutingTests: XCTestCase {
     OutputRoute(deviceName: name, transportType: transport, dataSource: dataSource)
   }
 
-  func testAutomaticBuiltInSpeakerIsMicrophoneOnly() {
-    let routing = MeetingAudioRouting.resolve(
-      preference: .automatic,
-      route: route(
-        "MacBook Pro Speakers", transport: kAudioDeviceTransportTypeBuiltIn,
-        dataSource: 0x6973_706b))
-    XCTAssertEqual(routing, .speakers)
-  }
-
-  func testAutomaticBuiltInHeadphonesMixSystemAudio() {
-    let routing = MeetingAudioRouting.resolve(
-      preference: .automatic,
-      route: route(
-        "External Headphones", transport: kAudioDeviceTransportTypeBuiltIn,
-        dataSource: 0x6864_706e))
-    XCTAssertEqual(routing, .headphones)
-  }
-
-  func testAutomaticBluetoothMixesSystemAudio() {
-    let routing = MeetingAudioRouting.resolve(
-      preference: .automatic,
-      route: route("AirPods", transport: kAudioDeviceTransportTypeBluetooth, dataSource: nil))
-    XCTAssertEqual(routing, .headphones)
-  }
-
-  func testAutomaticHDMIIsMicrophoneOnly() {
-    let routing = MeetingAudioRouting.resolve(
-      preference: .automatic,
-      route: route("HDMI", transport: kAudioDeviceTransportTypeHDMI, dataSource: nil))
-    XCTAssertEqual(routing, .speakers)
-  }
-
-  func testAutomaticNilRouteIsMicrophoneOnly() {
-    XCTAssertEqual(
-      MeetingAudioRouting.resolve(preference: .automatic, route: nil), .noOutputDevice)
-  }
-
-  func testAlwaysMixOnSpeakersStaysManualMix() {
-    let routing = MeetingAudioRouting.resolve(
-      preference: .alwaysMixSystemAudio,
-      route: route(
-        "MacBook Pro Speakers", transport: kAudioDeviceTransportTypeBuiltIn,
-        dataSource: 0x6973_706b))
-    XCTAssertEqual(routing, .manualMix)
-  }
-
-  func testMicrophoneOnlyOnHeadphonesStaysManual() {
-    let routing = MeetingAudioRouting.resolve(
-      preference: .microphoneOnly,
-      route: route(
-        "External Headphones", transport: kAudioDeviceTransportTypeBuiltIn,
-        dataSource: 0x6864_706e))
-    XCTAssertEqual(routing, .manualMicrophoneOnly)
-  }
-
-  func testMixesSystemAudioAndIsManualForEveryCase() {
-    XCTAssertTrue(MeetingAudioRouting.headphones.mixesSystemAudio)
-    XCTAssertFalse(MeetingAudioRouting.headphones.isManual)
-
-    XCTAssertFalse(MeetingAudioRouting.speakers.mixesSystemAudio)
-    XCTAssertFalse(MeetingAudioRouting.speakers.isManual)
-
-    XCTAssertFalse(MeetingAudioRouting.noOutputDevice.mixesSystemAudio)
-    XCTAssertFalse(MeetingAudioRouting.noOutputDevice.isManual)
-
-    XCTAssertTrue(MeetingAudioRouting.manualMix.mixesSystemAudio)
-    XCTAssertTrue(MeetingAudioRouting.manualMix.isManual)
-
-    XCTAssertFalse(MeetingAudioRouting.manualMicrophoneOnly.mixesSystemAudio)
-    XCTAssertTrue(MeetingAudioRouting.manualMicrophoneOnly.isManual)
+  func testResolve() {
+    let builtIn = kAudioDeviceTransportTypeBuiltIn
+    let cases: [(MeetingAudioPreference, OutputRoute?, MeetingAudioRouting, String)] = [
+      (
+        .automatic,
+        route("MacBook Pro Speakers", transport: builtIn, dataSource: 0x6973_706b),
+        .speakers, "automatic, built-in speaker"
+      ),
+      (
+        .automatic,
+        route("External Headphones", transport: builtIn, dataSource: 0x6864_706e),
+        .headphones, "automatic, built-in headphones"
+      ),
+      (
+        .automatic,
+        route("AirPods", transport: kAudioDeviceTransportTypeBluetooth, dataSource: nil),
+        .headphones, "automatic, bluetooth"
+      ),
+      (
+        .automatic,
+        route("HDMI", transport: kAudioDeviceTransportTypeHDMI, dataSource: nil),
+        .speakers, "automatic, HDMI"
+      ),
+      (.automatic, nil, .noOutputDevice, "automatic, nil route"),
+      (
+        .alwaysMixSystemAudio,
+        route("MacBook Pro Speakers", transport: builtIn, dataSource: 0x6973_706b),
+        .manualMix, "always mix on speakers stays manual mix"
+      ),
+      (
+        .microphoneOnly,
+        route("External Headphones", transport: builtIn, dataSource: 0x6864_706e),
+        .manualMicrophoneOnly, "microphone only on headphones stays manual"
+      ),
+    ]
+    for (preference, outputRoute, expected, label) in cases {
+      XCTAssertEqual(
+        MeetingAudioRouting.resolve(preference: preference, route: outputRoute), expected, label)
+    }
   }
 }
 
@@ -459,10 +421,6 @@ final class MeetingAudioPreferenceTests: XCTestCase {
   private func clearAudioPreferenceDefaults() {
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode)
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioPreference)
-  }
-
-  func testUnsetDefaultsToAutomatic() {
-    XCTAssertEqual(MeetingAudioPreference.current, .automatic)
   }
 
   func testUnknownStoredRawValueReadsAsAutomatic() {
@@ -525,20 +483,14 @@ final class MeetingAudioMigrationTests: XCTestCase {
     super.tearDown()
   }
 
-  func testInPersonMigratesToAutomaticAndRemovesLegacyKey() {
-    defaults.set("inPerson", forKey: UserDefaultsKeys.liveMeetingAudioMode)
-    MeetingAudioPreference.migrateLegacyAudioMode(defaults)
-    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioMode))
-    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioPreference))
-    XCTAssertEqual(MeetingAudioPreference.load(defaults), .automatic)
-  }
-
-  func testOnlineMigratesToAutomaticAndRemovesLegacyKey() {
-    defaults.set("online", forKey: UserDefaultsKeys.liveMeetingAudioMode)
-    MeetingAudioPreference.migrateLegacyAudioMode(defaults)
-    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioMode))
-    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioPreference))
-    XCTAssertEqual(MeetingAudioPreference.load(defaults), .automatic)
+  func testLegacyModesMigrateToAutomaticAndRemoveLegacyKey() {
+    for legacy in ["inPerson", "online"] {
+      defaults.set(legacy, forKey: UserDefaultsKeys.liveMeetingAudioMode)
+      MeetingAudioPreference.migrateLegacyAudioMode(defaults)
+      XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioMode), legacy)
+      XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioPreference), legacy)
+      XCTAssertEqual(MeetingAudioPreference.load(defaults), .automatic, legacy)
+    }
   }
 
   func testUnsetMigrationIsANoOp() {
@@ -640,28 +592,19 @@ final class MeetingSystemAudioMixTests: XCTestCase {
 // MARK: - Effective sample rate
 
 final class EffectiveSampleRateTests: XCTestCase {
-  func testActualRateWinsOverStreamFormat() {
-    XCTAssertEqual(
-      SystemAudioCapture.effectiveSampleRate(streamRate: 48000, actualRate: 16000, nominalRate: 16000), 16000)
-  }
-
-  func testNominalRateUsedWhenActualMissing() {
-    XCTAssertEqual(
-      SystemAudioCapture.effectiveSampleRate(streamRate: 48000, actualRate: nil, nominalRate: 16000), 16000)
-  }
-
-  func testStreamRateUsedWhenActualIsZeroAndNominalMissing() {
-    XCTAssertEqual(
-      SystemAudioCapture.effectiveSampleRate(streamRate: 48000, actualRate: 0, nominalRate: nil), 48000)
-  }
-
-  func testStreamRateUsedWhenNothingElseKnown() {
-    XCTAssertEqual(
-      SystemAudioCapture.effectiveSampleRate(streamRate: 48000, actualRate: nil, nominalRate: nil), 48000)
-  }
-
-  func testActualRateWinsOverNominal() {
-    XCTAssertEqual(
-      SystemAudioCapture.effectiveSampleRate(streamRate: 44100, actualRate: 44100, nominalRate: 48000), 44100)
+  func testEffectiveSampleRate() {
+    let cases: [(stream: Double, actual: Double?, nominal: Double?, expected: Double, label: String)] = [
+      (48000, 16000, 16000, 16000, "actual rate wins over stream format"),
+      (48000, nil, 16000, 16000, "nominal rate used when actual missing"),
+      (48000, 0, nil, 48000, "stream rate used when actual is zero and nominal missing"),
+      (48000, nil, nil, 48000, "stream rate used when nothing else known"),
+      (44100, 44100, 48000, 44100, "actual rate wins over nominal"),
+    ]
+    for c in cases {
+      XCTAssertEqual(
+        SystemAudioCapture.effectiveSampleRate(
+          streamRate: c.stream, actualRate: c.actual, nominalRate: c.nominal),
+        c.expected, c.label)
+    }
   }
 }

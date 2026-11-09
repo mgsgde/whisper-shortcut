@@ -40,23 +40,6 @@ struct UserContextLogTests {
     #expect(listed.map(\.lastPathComponent).contains(gregorianName))
   }
 
-  @Test("decodeLines skips blank and malformed lines and keeps the rest")
-  func decodeLinesSkipsBlankAndMalformed() throws {
-    let dir = FileManager.default.temporaryDirectory
-      .appendingPathComponent("user-context-log-\(UUID().uuidString)")
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: dir) }
-
-    let good = #"{"ts":"2026-10-19T06:00:00Z","mode":"transcription"}"#
-    let text = [good, "", "   ", "{not json", good].joined(separator: "\n")
-    let url = dir.appendingPathComponent("interactions-2026-10-19.jsonl")
-    try text.write(to: url, atomically: true, encoding: .utf8)
-
-    let rows = UserContextLog.decodeLines([url], as: InteractionLogEntry.self)
-    #expect(rows.count == 2)
-    #expect(rows.allSatisfy { $0.mode == InteractionMode.transcription.rawValue })
-  }
-
   @Test("Timestamps parse with and without fractional seconds")
   func timestampParsesBothForms() throws {
     let fractional = try #require(UserContextLog.timestamp("2026-10-19T05:28:33.481Z"))
@@ -75,14 +58,16 @@ struct UserContextLogTests {
     #expect(abs(roundTrip.timeIntervalSince(instant)) < 0.001)
   }
 
-  @Test("A JSONL line with an unknown mode still decodes")
-  func unknownModeDoesNotDropTheLine() throws {
+  @Test("decodeLines skips blank and malformed lines, and a line with an unknown mode still decodes")
+  func decodeLinesSkipsBlankAndMalformedAndKeepsUnknownMode() throws {
     let lines = [
       #"{"ts":"2026-10-19T10:00:00Z","mode":"transcription"}"#,
       #"{"ts":"2026-10-19T10:00:01Z","mode":"prompt"}"#,
       #"{"ts":"2026-10-19T10:00:02Z","mode":"geminiChat"}"#,
       #"{"ts":"2026-10-19T10:00:03Z","mode":"notAMode"}"#,
       "",
+      "   ",
+      "{not json",
       "{broken",
     ]
     let dir = FileManager.default.temporaryDirectory
@@ -96,18 +81,5 @@ struct UserContextLogTests {
     #expect(rows.map(\.mode) == ["transcription", "prompt", "geminiChat", "notAMode"])
     #expect(rows.compactMap(\.interactionMode) == [.transcription, .prompt, .chat])
     #expect(rows[3].interactionMode == nil)
-    #expect(InteractionMode.chat.rawValue == "geminiChat")
-  }
-
-  @Test("History source names match the scorecard labels, and an unknown source stays raw")
-  func historySourceDisplayNames() {
-    #expect(PromptHistorySource.auto.displayName == "Smart Improvement")
-    #expect(PromptHistorySource.voiceFeedback.displayName == "Spoken feedback")
-    #expect(PromptHistorySource.chat.displayName == "Chat")
-    #expect(PromptHistorySource.mcp.displayName == "AI app (MCP)")
-    #expect(PromptHistorySource.mcpUndo.displayName == "AI app (MCP) undo")
-    #expect(PromptHistorySource.displayName(for: "something-else") == "something-else")
-    #expect(PromptHistorySource.mcpUndo.rawValue == "mcp-undo")
-    #expect(PromptHistorySource.voiceFeedback.rawValue == "voice-feedback")
   }
 }

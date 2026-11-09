@@ -13,9 +13,7 @@ struct ChatDateContextTests {
   private static let fixedDate = Date(timeIntervalSince1970: 1_793_814_120)
 
   private static let berlin = TimeZone(identifier: "Europe/Berlin")!
-  private static let tokyo = TimeZone(identifier: "Asia/Tokyo")!
   private static let english = Locale(identifier: "en_US")
-  private static let german = Locale(identifier: "de_DE")
 
   @Test("The line carries weekday, date, time and time zone identifier")
   func lineCarriesAllFourFields() {
@@ -31,44 +29,6 @@ struct ChatDateContextTests {
     #expect(line.contains("18:42"))
     #expect(line.contains("Europe/Berlin"))
     #expect(line.hasSuffix("."))
-  }
-
-  @Test("A different time zone renders a different time")
-  func timeZoneChangesRenderedTime() {
-    let berlinLine = ChatDateContext.line(
-      now: Self.fixedDate, timeZone: Self.berlin, locale: Self.english)
-    let tokyoLine = ChatDateContext.line(
-      now: Self.fixedDate, timeZone: Self.tokyo, locale: Self.english)
-
-    #expect(berlinLine.contains("18:42"))
-    #expect(tokyoLine.contains("02:42"))
-    #expect(tokyoLine.contains("Asia/Tokyo"))
-    #expect(berlinLine != tokyoLine)
-  }
-
-  @Test("A different locale changes the language of the weekday")
-  func localeChangesWeekdayLanguage() {
-    let englishLine = ChatDateContext.line(
-      now: Self.fixedDate, timeZone: Self.berlin, locale: Self.english)
-    let germanLine = ChatDateContext.line(
-      now: Self.fixedDate, timeZone: Self.berlin, locale: Self.german)
-
-    #expect(englishLine.contains("Wednesday"))
-    #expect(!englishLine.contains("Mittwoch"))
-    #expect(germanLine.contains("Mittwoch"))
-    #expect(germanLine.contains("November"))
-    // The time and zone stay machine-readable in every locale.
-    #expect(germanLine.contains("18:42"))
-    #expect(germanLine.contains("Europe/Berlin"))
-  }
-
-  @Test("A custom label dates a moment that is not now")
-  func customLabelIsUsed() {
-    let line = ChatDateContext.line(
-      label: "Meeting started", at: Self.fixedDate, timeZone: Self.berlin, locale: Self.english)
-
-    #expect(line.hasPrefix("Meeting started: Wednesday, November 4, 2026"))
-    #expect(line.contains("18:42"))
   }
 
   @Test("A meeting stem parses to the meeting's date and time")

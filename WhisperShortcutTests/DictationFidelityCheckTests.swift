@@ -34,62 +34,43 @@ struct DictationFidelityCheckTests {
     }
   }
 
-  @Test("Inflected forms match")
-  func inflection() {
-    #expect(check("kraniosakraler Technik", ["kraniosakrale Technik"]).isEmpty)
-    #expect(check("Schmerz", ["Schmerzen"]).isEmpty)
+  private struct PassCase: Sendable {
+    let output: String, sources: [String], label: String
   }
 
-  @Test("Segment normalization passes")
-  func segments() {
-    #expect(check("L4/L5 und Th12/L1", ["L4 L5 und Th12 L1"]).isEmpty)
+  @Test("Inflection, segment normalization, markers, case, a second source and split compounds all pass", arguments: [
+    PassCase(output: "kraniosakraler Technik", sources: ["kraniosakrale Technik"], label: "inflection adjective"),
+    PassCase(output: "Schmerz", sources: ["Schmerzen"], label: "inflection noun"),
+    PassCase(output: "L4/L5 und Th12/L1", sources: ["L4 L5 und Th12 L1"], label: "segments"),
+    PassCase(output: "Psoas links [?] hyperton [Zuordnung prüfen]", sources: ["Psoas links hyperton"], label: "markers"),
+    PassCase(output: "Psoas", sources: ["psoas"], label: "case does not matter"),
+    PassCase(output: "Lumbago links", sources: ["links", "Lumbago"], label: "selected text as second source"),
+    PassCase(output: "Lendenwirbelsäule", sources: ["Lenden Wirbelsäule"], label: "dictated compound split in two words"),
+  ])
+  private func passes(_ c: PassCase) {
+    #expect(check(c.output, c.sources).isEmpty, "\(c.label)")
   }
 
-  @Test("Markers are not flagged")
-  func markers() {
-    #expect(check("Psoas links [?] hyperton [Zuordnung prüfen]", ["Psoas links hyperton"]).isEmpty)
+  private struct FlagCase: Sendable {
+    let output: String, sources: [String], flagged: [String], label: String
   }
 
-  @Test("Case does not matter")
-  func caseInsensitive() {
-    #expect(check("Psoas", ["psoas"]).isEmpty)
-  }
-
-  @Test("An added abbreviation is flagged")
-  func addedAbbreviation() {
-    #expect(check("M. psoas links hyperton", ["Psoas links hyperton"]) == ["M"])
-  }
-
-  @Test("An invented diagnosis is flagged although its heading line is skipped")
-  func inventedDiagnosis() {
-    let flagged = check("Diagnose:\nLumbago", ["Patient klagt über Schmerzen im Rücken"])
-    #expect(flagged == ["Lumbago"])
-  }
-
-  @Test("Words from the selected text count as supported")
-  func selectionAsSecondSource() {
-    #expect(check("Lumbago links", ["links", "Lumbago"]).isEmpty)
-  }
-
-  @Test("A dictated compound split in two words matches the joined word")
-  func compound() {
-    #expect(check("Lendenwirbelsäule", ["Lenden Wirbelsäule"]).isEmpty)
+  @Test("Added abbreviations, invented diagnoses, wrong numbers and field values are flagged", arguments: [
+    FlagCase(output: "M. psoas links hyperton", sources: ["Psoas links hyperton"], flagged: ["M"], label: "added abbreviation"),
+    // The heading line "Diagnose:" is skipped, the invented value is not.
+    FlagCase(output: "Diagnose:\nLumbago", sources: ["Patient klagt über Schmerzen im Rücken"], flagged: ["Lumbago"], label: "invented diagnosis"),
+    FlagCase(output: "Rotation 45 Grad", sources: ["Rotation sechzig Grad"], flagged: ["45"], label: "wrong number"),
+    // A field name with a value stays checked.
+    FlagCase(output: "Befund: Psoas rechts", sources: ["Psoas links"], flagged: ["rechts"], label: "heading word with content"),
+  ])
+  private func flagged(_ c: FlagCase) {
+    #expect(check(c.output, c.sources) == c.flagged, "\(c.label)")
   }
 
   @Test("Repeated invented words are reported once, in first-occurrence order")
   func dedupAndOrder() {
     let flagged = check("Zebra Apfel zebra Apfel Birne", ["links"])
     #expect(flagged == ["Zebra", "Apfel", "Birne"])
-  }
-
-  @Test("A wrong number is flagged")
-  func wrongNumber() {
-    #expect(check("Rotation 45 Grad", ["Rotation sechzig Grad"]) == ["45"])
-  }
-
-  @Test("A field name with a value stays checked")
-  func headingWordWithContent() {
-    #expect(check("Befund: Psoas rechts", ["Psoas links"]) == ["rechts"])
   }
 
   @Test("A template label is allowed; a drug named only in the template is flagged")

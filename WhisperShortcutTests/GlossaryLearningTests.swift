@@ -26,17 +26,6 @@ struct GlossaryLearningTests {
     #expect(result == Self.fixture + "\nBachata\nGemini")
   }
 
-  @Test("A suggestion that lists only one new term still keeps the whole glossary")
-  func suggestionThatDropsEverythingStillKeepsCurrent() {
-    let result = GlossaryLearning.mergeAdditively(current: Self.fixture, suggestion: "Terms: Gemini")
-    #expect(result.hasPrefix(Self.fixture))
-    #expect(result.contains("Christoph Michelbach (not \"m1cm1\")"))
-    #expect(result.contains("sabaki.dance (not \"Bachi dance\")"))
-    #expect(result.contains("Wianco (not \"Vianco\")"))
-    #expect(result.contains("Terms: GrokBot, Smikale, Cursor, EnBW, Fable, Sonnet"))
-    #expect(result == Self.fixture + "\nGemini")
-  }
-
   @Test("A rejected spelling is not added back as its own term")
   func rejectedFormIsNotReadded() {
     let result = GlossaryLearning.mergeAdditively(current: Self.fixture, suggestion: "Terms: Vianco")

@@ -20,24 +20,19 @@ struct JSONEditResponseTests {
 
     // MARK: - Shapes observed from the model
 
-    @Test("Unwraps a bare text field")
-    func bareTextField() {
-        #expect(Self.unwrap(#"{"text": "Komme morgen später."}"#) == "Komme morgen später.")
-    }
-
-    @Test("Unwraps a text field alongside metadata")
-    func textFieldWithMetadata() {
-        let reply = #"{"edit_type": "shorten", "text": "Ich schaffe es morgen leider nicht."}"#
-        #expect(Self.unwrap(reply) == "Ich schaffe es morgen leider nicht.")
-    }
-
-    @Test("Unwraps a key name the exact-match list would have missed")
-    func varyingKeyName() {
+    @Test("Unwraps a text field regardless of key name, metadata or surrounding whitespace", arguments: [
+        (#"{"text": "Komme morgen später."}"#, "Komme morgen später.", "bare text field"),
+        (#"{"edit_type": "shorten", "text": "Ich schaffe es morgen leider nicht."}"#,
+         "Ich schaffe es morgen leider nicht.", "text field with metadata"),
         // Observed live: the same model that returns {"text": …} also returns {"final_text": …}.
         // Matching on the shape of the key rather than a fixed list is what stops this from
         // needing a code change every time the model picks a new name.
-        #expect(Self.unwrap(#"{"final_text": "Passt so."}"#) == "Passt so.")
-        #expect(Self.unwrap(#"{"edited_message": "Passt so."}"#) == "Passt so.")
+        (#"{"final_text": "Passt so."}"#, "Passt so.", "final_text key"),
+        (#"{"edited_message": "Passt so."}"#, "Passt so.", "edited_message key"),
+        ("\n  {\"text\": \"Fertig.\"}  \n", "Fertig.", "surrounding whitespace"),
+    ])
+    func unwrapsTextField(reply: String, expected: String, label: String) {
+        #expect(Self.unwrap(reply) == expected, "\(label)")
     }
 
     @Test("A metadata label never wins over the actual text")
@@ -49,14 +44,6 @@ struct JSONEditResponseTests {
         // And with no content field at all, a lone metadata label is not treated as the answer.
         let labelOnly = #"{"edit_type": "shorten"}"#
         #expect(Self.unwrap(labelOnly) == labelOnly)
-    }
-
-    @Test("A one-field config object is not mistaken for a text wrapper")
-    func singleFieldConfigSurvives() {
-        // The generalised key matching must not degrade into "unwrap any single string field" —
-        // this is a plausible thing to dictate an edit for, and its value is not a transcript.
-        let text = #"{"host": "localhost"}"#
-        #expect(Self.unwrap(text) == text)
     }
 
     @Test("Applies a single find/replacement edit to the selection")
@@ -117,24 +104,20 @@ struct JSONEditResponseTests {
 
     // MARK: - Must not fire
 
-    @Test("Plain text is returned untouched")
-    func plainTextUntouched() {
-        let text = "Ich komme morgen etwas später, sag der Anna bitte Bescheid."
-        #expect(Self.unwrap(text) == text)
-    }
-
-    @Test("Prose containing braces is not treated as JSON")
-    func proseWithBraces() {
-        let text = "Setze { und } um den Block, dann kompiliert es."
-        #expect(Self.unwrap(text) == text)
-    }
-
-    @Test("A JSON snippet the user actually asked for survives when it is not an edit object")
-    func userRequestedJSON() {
+    @Test("Text that is not an edit response is returned untouched", arguments: [
+        ("Ich komme morgen etwas später, sag der Anna bitte Bescheid.", "plain text"),
+        ("Setze { und } um den Block, dann kompiliert es.", "prose with braces"),
         // A config the user dictated an edit for. It parses as an object but carries no key the
         // unwrapper understands, so it must come back verbatim rather than half-decoded.
-        let text = #"{"host": "localhost", "port": 8080}"#
-        #expect(Self.unwrap(text) == text)
+        (#"{"host": "localhost", "port": 8080}"#, "user-requested JSON"),
+        // The generalised key matching must not degrade into "unwrap any single string field" —
+        // this is a plausible thing to dictate an edit for, and its value is not a transcript.
+        (#"{"host": "localhost"}"#, "one-field config"),
+        (#"{"text": "unterminated"#, "malformed JSON"),
+        (#"[{"text": "one"}, {"text": "two"}]"#, "JSON array"),
+    ])
+    func leftUntouched(text: String, label: String) {
+        #expect(Self.unwrap(text) == text, "\(label)")
     }
 
     @Test("An edits array whose find string is absent from the selection aborts the rewrite")
@@ -152,28 +135,11 @@ struct JSONEditResponseTests {
         #expect(Self.unwrap(reply, selection: nil) == reply)
     }
 
-    @Test("Malformed JSON is returned untouched")
-    func malformedJSON() {
-        let text = #"{"text": "unterminated"#
-        #expect(Self.unwrap(text) == text)
-    }
-
     @Test("An empty text field is not treated as a successful unwrap")
     func emptyTextField() {
         // Returning "" here would look to the caller like "no speech detected" and silently
         // discard the user's edit.
         let reply = #"{"text": "   "}"#
         #expect(Self.unwrap(reply) == reply)
-    }
-
-    @Test("A JSON array is left alone")
-    func jsonArray() {
-        let text = #"[{"text": "one"}, {"text": "two"}]"#
-        #expect(Self.unwrap(text) == text)
-    }
-
-    @Test("Surrounding whitespace does not prevent unwrapping")
-    func whitespaceTolerant() {
-        #expect(Self.unwrap("\n  {\"text\": \"Fertig.\"}  \n") == "Fertig.")
     }
 }

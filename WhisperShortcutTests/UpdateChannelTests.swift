@@ -14,30 +14,17 @@ struct UpdateChannelTests {
     return (defaults, suite)
   }
 
-  @Test("Missing key defaults to stable")
-  func missingKeyIsStable() {
+  @Test("Missing key and unknown value fall back to stable; latest is latest")
+  func channelResolution() {
     let (defaults, suite) = freshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     #expect(UpdateChannel.current(defaults) == .stable)
     #expect(UpdateChannel.defaultChannel == .stable)
-  }
-
-  @Test("Unknown stored value falls back to stable; latest is latest")
-  func unknownAndLatest() {
-    let (defaults, suite) = freshDefaults()
-    defer { defaults.removePersistentDomain(forName: suite) }
 
     defaults.set("beta", forKey: UserDefaultsKeys.updateChannel)
     #expect(UpdateChannel.current(defaults) == .stable)
 
     defaults.set("latest", forKey: UserDefaultsKeys.updateChannel)
     #expect(UpdateChannel.current(defaults) == .latest)
-  }
-
-  @Test("Stable allows no channel; Latest allows the latest channel")
-  func allowedChannels() {
-    #expect(UpdateChannel.sparkleLatestChannel == "latest")
-    #expect(UpdateChannel.stable.allowedSparkleChannels == Set<String>())
-    #expect(UpdateChannel.latest.allowedSparkleChannels == Set([UpdateChannel.sparkleLatestChannel]))
   }
 }

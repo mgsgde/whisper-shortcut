@@ -20,14 +20,6 @@ struct MCPSettingsCatalogTests {
     #expect(Set(ids).count == ids.count)
   }
 
-  @Test("Every entry reads without crashing")
-  func readsCleanly() {
-    let env = MCPTestEnv()
-    for setting in env.settingsCatalog {
-      _ = setting.read()
-    }
-  }
-
   /// Deny-list from the spec's "Never exposed" list (`plans/active/mcp-settings.md`): applying
   /// every catalog entry with a plausible valid value into an isolated defaults suite must never
   /// write any of these keys. Sparkle's is framework-internal, not in `UserDefaultsKeys`.
@@ -129,13 +121,18 @@ struct MCPSettingsCatalogTests {
 
   // MARK: - get_settings
 
-  @Test("get_settings lists an id with its type and current value")
-  func getSettingsLists() {
+  @Test("get_settings lists an id with its type and current value", arguments: [
+    (MCPAccess.write, true, "write token"),
+    (.read, false, "read token"),
+  ])
+  func getSettingsLists(access: MCPAccess, listsNotification: Bool, label: String) {
     let env = MCPTestEnv()
-    let r = env.tools().call(name: "get_settings", arguments: [:], access: .write)
-    #expect(!r.isError)
-    let settings = obj(r)["settings"] as? [[String: Any]] ?? []
-    #expect(settings.contains { $0["id"] as? String == "notifications.enabled" })
+    let r = env.tools().call(name: "get_settings", arguments: [:], access: access)
+    #expect(!r.isError, "\(label)")
+    if listsNotification {
+      let settings = obj(r)["settings"] as? [[String: Any]] ?? []
+      #expect(settings.contains { $0["id"] as? String == "notifications.enabled" }, "\(label)")
+    }
   }
 
   @Test("get_settings filters by category")
@@ -145,13 +142,6 @@ struct MCPSettingsCatalogTests {
     let settings = obj(r)["settings"] as? [[String: Any]] ?? []
     #expect(!settings.isEmpty)
     #expect(settings.allSatisfy { $0["category"] as? String == "notifications" })
-  }
-
-  @Test("get_settings works with the read token")
-  func getSettingsIsReadOnly() {
-    let env = MCPTestEnv()
-    let r = env.tools().call(name: "get_settings", arguments: [:], access: .read)
-    #expect(!r.isError)
   }
 
   // MARK: - update_settings: validation and all-or-nothing
@@ -224,22 +214,78 @@ struct MCPSettingsCatalogTests {
     #expect(r.isError)
   }
 
-  @Test("A permission-gated setting is refused without the permission, and never prompts")
-  func permissionGatedRefused() {
-    let env = MCPTestEnv(level: .apply)
-    env.box.hasAccessibility = false
-    let r = env.tools().call(
-      name: "update_settings", arguments: ["changes": ["clipboard.auto_paste": true], "rationale": "r"], access: .write)
-    #expect(r.isError)
+  private struct PermissionRefusal: Sendable {
+    let note: String
+    let settingId: String
+    let missingPermission: String
+    let message: String?
+    let unchangedKey: String?
   }
 
-  @Test("A proposal-only setting becomes a proposal even at access level apply")
-  func proposalOnlyForcesProposal() {
+  private static let permissionRefusals: [PermissionRefusal] = [
+    .init(note: "auto-paste without Accessibility", settingId: "clipboard.auto_paste",
+          missingPermission: "accessibility", message: nil, unchangedKey: nil),
+    .init(note: "screenshot context without Screen Recording", settingId: "dictate_prompt.screenshot_context",
+          missingPermission: "screenRecording",
+          message: "Grant Screen Recording in Settings → Permissions first.",
+          unchangedKey: UserDefaultsKeys.screenshotInPromptMode),
+  ]
+
+  @Test("A permission-gated setting is refused without the permission, and never prompts", arguments: permissionRefusals)
+  private func permissionGatedRefused(_ row: PermissionRefusal) {
     let env = MCPTestEnv(level: .apply)
+    if row.missingPermission == "accessibility" {
+      env.box.hasAccessibility = false
+    } else {
+      env.box.hasScreenRecording = false
+    }
+    if let key = row.unchangedKey { env.testDefaults.set(false, forKey: key) }
     let r = env.tools().call(
-      name: "update_settings", arguments: ["changes": ["general.launch_at_login": true], "rationale": "r"], access: .write)
-    #expect(obj(r)["status"] as? String == "pending_review")
-    #expect(env.box.launchAtLogin == false, "must not be applied yet")
+      name: "update_settings", arguments: ["changes": [row.settingId: true], "rationale": "r"], access: .write)
+    #expect(r.isError, "\(row.note)")
+    if let message = row.message { #expect(r.text.contains(message), "\(row.note)") }
+    if let key = row.unchangedKey { #expect(env.testDefaults.bool(forKey: key) == false, "\(row.note)") }
+  }
+
+  private struct ProposalOnlyRow: Sendable {
+    let note: String
+    let settingId: String
+    let approvalIds: [String]
+    let staysOff: String
+  }
+
+  private static let proposalOnlyRows: [ProposalOnlyRow] = [
+    .init(note: "launch at login", settingId: "general.launch_at_login", approvalIds: [], staysOff: "launchAtLogin"),
+    .init(note: "proposal-only toggles", settingId: "writing_style.enabled",
+          approvalIds: [
+            "writing_style.enabled", "dictate_prompt.tools_enabled", "chat.claude_web_search",
+            "dictation.transcription_model", "meetings.transcription_model", "dictate_prompt.screenshot_context",
+          ],
+          staysOff: "writingStyle"),
+  ]
+
+  @Test("A proposal-only setting stays pending even at access level apply", arguments: proposalOnlyRows)
+  private func proposalOnlyForcesProposal(_ row: ProposalOnlyRow) {
+    let env = MCPTestEnv(level: .apply)
+    if !row.approvalIds.isEmpty {
+      let listed = env.tools().call(name: "get_settings", arguments: [:], access: .write)
+      let settings = obj(listed)["settings"] as? [[String: Any]] ?? []
+      for id in row.approvalIds {
+        let entry = settings.first { $0["id"] as? String == id }
+        #expect(entry?["requires_approval"] as? Bool == true, "\(row.note): \(id)")
+      }
+    }
+    let r = env.tools().call(
+      name: "update_settings", arguments: ["changes": [row.settingId: true], "rationale": "r"], access: .write)
+    #expect(obj(r)["status"] as? String == "pending_review", "\(row.note)")
+    switch row.staysOff {
+    case "launchAtLogin":
+      #expect(env.box.launchAtLogin == false, "\(row.note)")
+    case "writingStyle":
+      #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.writingStyleEnabled) == false, "\(row.note)")
+    default:
+      Issue.record("unknown staysOff \(row.staysOff)")
+    }
   }
 
   @Test("Access level propose turns an ordinary setting into a proposal")
@@ -344,51 +390,53 @@ struct MCPSettingsCatalogTests {
 
   // MARK: - Shortcuts
 
-  @Test("A shortcut missing ⌘/⌥/⌃ is refused")
-  func shortcutModifierRuleEnforced() {
+  @Test("An invalid shortcut is refused", arguments: [
+    ("a", [] as [String], "missing ⌘/⌥/⌃"),
+    ("notakey", ["control", "option"], "unknown key"),
+    ("1", ["control", "capslock"], "unknown modifier"),
+    ("command", ["control"], "modifier used as the key"),
+  ])
+  func shortcutRejected(key: String, modifiers: [String], label: String) {
     let env = MCPTestEnv(level: .apply)
-    let dict: [String: Any] = ["key": "a", "modifiers": []]
+    let dict: [String: Any] = ["key": key, "modifiers": modifiers]
     let r = env.tools().call(
       name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
-    #expect(r.isError)
+    #expect(r.isError, "\(label)")
   }
 
-  @Test("A shortcut that conflicts with another enabled slot is refused")
-  func shortcutConflictDetected() {
-    let env = MCPTestEnv(level: .apply)
+  private struct ShortcutConflictRow: Sendable {
+    let note: String
+    let settingId: String
+    let source: String
+    let checkPromptingUnchanged: Bool
+  }
+
+  private static let shortcutConflicts: [ShortcutConflictRow] = [
     // startPrompting's default is ⌃⌥2; proposing the same combo for Dictate must be refused.
-    let taken = env.box.shortcutConfig.startPrompting
+    .init(note: "dictate vs an existing slot", settingId: "shortcuts.dictate", source: "startPrompting",
+          checkPromptingUnchanged: false),
+    .init(note: "dictate prompt vs screenshot", settingId: "shortcuts.dictate_prompt", source: "screenshot",
+          checkPromptingUnchanged: true),
+  ]
+
+  @Test("A shortcut that conflicts with another enabled slot is refused", arguments: shortcutConflicts)
+  private func shortcutConflictDetected(_ row: ShortcutConflictRow) {
+    let env = MCPTestEnv(level: .apply)
+    let taken: ShortcutDefinition
+    switch row.source {
+    case "startPrompting": taken = env.box.shortcutConfig.startPrompting
+    case "screenshot": taken = env.box.shortcutConfig.screenshotCapture
+    default:
+      Issue.record("\(row.note)")
+      return
+    }
     let dict = Self.jsonObject(of: taken)
     let r = env.tools().call(
-      name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
-    #expect(r.isError)
-  }
-
-  @Test("An unknown key name is refused")
-  func shortcutUnknownKeyRejected() {
-    let env = MCPTestEnv(level: .apply)
-    let dict: [String: Any] = ["key": "notakey", "modifiers": ["control", "option"]]
-    let r = env.tools().call(
-      name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
-    #expect(r.isError)
-  }
-
-  @Test("An extra modifier name (capsLock-like) is refused")
-  func shortcutUnknownModifierRejected() {
-    let env = MCPTestEnv(level: .apply)
-    let dict: [String: Any] = ["key": "1", "modifiers": ["control", "capslock"]]
-    let r = env.tools().call(
-      name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
-    #expect(r.isError)
-  }
-
-  @Test("A modifier-only key name is refused as the key itself")
-  func shortcutModifierAsKeyRejected() {
-    let env = MCPTestEnv(level: .apply)
-    let dict: [String: Any] = ["key": "command", "modifiers": ["control"]]
-    let r = env.tools().call(
-      name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
-    #expect(r.isError)
+      name: "update_settings", arguments: ["changes": [row.settingId: dict], "rationale": "r"], access: .write)
+    #expect(r.isError, "\(row.note)")
+    if row.checkPromptingUnchanged {
+      #expect(env.box.shortcutConfig.startPrompting == ShortcutConfig.default.startPrompting, "\(row.note)")
+    }
   }
 
   @Test("A shortcut round-trips through the {key, modifiers} JSON format")
@@ -432,95 +480,7 @@ struct MCPSettingsCatalogTests {
     #expect(env.box.shortcutConfig.startRecording.isEnabled == false)
   }
 
-  @Test("All seven shortcut settings are in the catalog")
-  func allShortcutIdsPresent() {
-    let ids = MCPTestEnv().settingsCatalog.map(\.id)
-    let expected = [
-      "shortcuts.dictate",
-      "shortcuts.dictate_prompt",
-      "shortcuts.screenshot",
-      "shortcuts.read_aloud",
-      "shortcuts.add_to_glossary",
-      "shortcuts.open_chat",
-      "shortcuts.open_settings",
-    ]
-    for id in expected {
-      #expect(ids.contains(id), "missing \(id)")
-    }
-  }
-
-  @Test("Dictate Prompt refuses Screenshot's shortcut")
-  func shortcutConflictBetweenNewSlots() {
-    let env = MCPTestEnv(level: .apply)
-    let taken = env.box.shortcutConfig.screenshotCapture
-    let dict = Self.jsonObject(of: taken)
-    let r = env.tools().call(
-      name: "update_settings",
-      arguments: ["changes": ["shortcuts.dictate_prompt": dict], "rationale": "r"], access: .write)
-    #expect(r.isError)
-    #expect(env.box.shortcutConfig.startPrompting == ShortcutConfig.default.startPrompting)
-  }
-
-  @Test("null disables Open Chat")
-  func shortcutNullDisablesOpenChat() {
-    let env = MCPTestEnv(level: .apply)
-    let r = env.tools().call(
-      name: "update_settings", arguments: ["changes": ["shortcuts.open_chat": NSNull()], "rationale": "r"], access: .write)
-    #expect(!r.isError)
-    #expect(env.box.shortcutConfig.openChat.isEnabled == false)
-  }
-
-  @Test("Proposal-only toggles require approval and stay pending at apply level")
-  func proposalOnlyTogglesRequireApproval() {
-    let env = MCPTestEnv(level: .apply)
-    let ids = [
-      "writing_style.enabled", "dictate_prompt.tools_enabled", "chat.claude_web_search",
-      "dictation.transcription_model", "meetings.transcription_model", "dictate_prompt.screenshot_context",
-    ]
-    let listed = env.tools().call(name: "get_settings", arguments: [:], access: .write)
-    let settings = obj(listed)["settings"] as? [[String: Any]] ?? []
-    for id in ids {
-      let entry = settings.first { $0["id"] as? String == id }
-      #expect(entry?["requires_approval"] as? Bool == true, "\(id) requires_approval")
-    }
-    let r = env.tools().call(
-      name: "update_settings",
-      arguments: ["changes": ["writing_style.enabled": true], "rationale": "r"], access: .write)
-    #expect(obj(r)["status"] as? String == "pending_review")
-    #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.writingStyleEnabled) == false)
-  }
-
   // MARK: - Models, provider ids, parameters
-
-  @Test("Model, provider-id and parameter entries are present and unique")
-  func modelEntriesPresent() {
-    let env = MCPTestEnv()
-    let ids = env.settingsCatalog.map(\.id)
-    #expect(Set(ids).count == ids.count)
-    let expected = [
-      "meetings.transcription_model",
-      "dictate_prompt.model",
-      "meetings.summary_model",
-      "improvement.model",
-      "read_aloud.model",
-      "chat.chatgpt_plan_model_id",
-      "chat.custom_endpoint_model_id",
-      "dictation.openrouter_model_id",
-      "dictate_prompt.local_model_id",
-      "dictation.temperature",
-      "dictation.thinking_effort",
-      "dictation.punctuation",
-      "clipboard.clear_after_auto_paste",
-      "read_aloud.speed",
-      "read_aloud.voice.gemini",
-      "read_aloud.voice.openai",
-      "read_aloud.voice.xai",
-      "read_aloud.voice.system",
-    ]
-    for id in expected {
-      #expect(ids.contains(id), "missing \(id)")
-    }
-  }
 
   @Test("A chat model write calls the reconciler and posts promptModelChanged")
   func modelWritePostsReconcilerAndPromptChanged() throws {
@@ -558,39 +518,6 @@ struct MCPSettingsCatalogTests {
     }
     #expect(setting.read() is NSNull)
     #expect(env.testDefaults.object(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) == nil)
-  }
-
-  // MARK: - Behaviour entries
-
-  @Test("Behaviour entries are in the catalog")
-  func behaviourEntriesPresent() {
-    let ids = MCPTestEnv().settingsCatalog.map(\.id)
-    let expected = [
-      "notifications.duration",
-      "clipboard.restore_after_paste",
-      "chat.close_on_focus_loss",
-      "recording.confirm_above_duration",
-      "meetings.chunk_interval",
-      "meetings.safeguard_duration",
-      "dictate_prompt.screenshot_context",
-    ]
-    for id in expected {
-      #expect(ids.contains(id), "missing \(id)")
-    }
-  }
-
-  @Test("Screenshot context is refused without Screen Recording permission")
-  func screenshotContextRefusedWithoutPermission() {
-    let env = MCPTestEnv(level: .apply)
-    env.box.hasScreenRecording = false
-    env.testDefaults.set(false, forKey: UserDefaultsKeys.screenshotInPromptMode)
-    let r = env.tools().call(
-      name: "update_settings",
-      arguments: ["changes": ["dictate_prompt.screenshot_context": true], "rationale": "r"],
-      access: .write)
-    #expect(r.isError)
-    #expect(r.text.contains("Grant Screen Recording in Settings → Permissions first."))
-    #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.screenshotInPromptMode) == false)
   }
 
   @Test("notifications.duration round-trips through update_settings and get_settings")

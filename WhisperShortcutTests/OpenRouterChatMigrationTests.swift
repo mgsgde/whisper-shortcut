@@ -29,19 +29,19 @@ struct OpenRouterChatMigrationTests {
     #expect(plan?.modelID == "openai/gpt-4o")
   }
 
-  @Test("Other servers are not migrated")
-  func otherServersAreLeftAlone() {
-    for url in ["https://openinference.de/api/v1", "https://acme.openai.azure.com/openai/v1", "https://notopenrouter.ai/v1"] {
+  @Test("Other servers and an empty or missing URL are not migrated")
+  func notMigrated() {
+    let urls: [String?] = [
+      "https://openinference.de/api/v1", "https://acme.openai.azure.com/openai/v1",
+      "https://notopenrouter.ai/v1",
+      nil, "  ",  // empty or missing URL
+    ]
+    for url in urls {
       #expect(
         Prefs.customEndpointMigration(
-          customEndpointURL: url, customModelID: "x", proxyKey: "k", openRouterKey: nil) == nil)
+          customEndpointURL: url, customModelID: "x", proxyKey: "k", openRouterKey: nil) == nil,
+        "\(url ?? "nil")")
     }
-  }
-
-  @Test("Empty or missing URL is not migrated")
-  func emptyURL() {
-    #expect(Prefs.customEndpointMigration(customEndpointURL: nil, customModelID: "x", proxyKey: "k", openRouterKey: nil) == nil)
-    #expect(Prefs.customEndpointMigration(customEndpointURL: "  ", customModelID: "x", proxyKey: "k", openRouterKey: nil) == nil)
   }
 
   @Test("Subdomains and uppercase hosts migrate")

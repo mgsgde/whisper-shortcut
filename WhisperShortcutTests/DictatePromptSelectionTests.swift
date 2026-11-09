@@ -15,25 +15,22 @@ struct DictatePromptSelectionTests {
     #expect(!DictatePromptSelectionDecision.copyProducedSelection(changeCountBefore: 41, changeCountAfter: 41))
   }
 
-  @Test("App Store clipboard path: a copy the user just made is a selection")
-  func freshUserCopyIsSelection() {
-    #expect(DictatePromptSelectionDecision.clipboardIsFreshSelection(
-      currentChangeCount: 12, lastConsumedChangeCount: 10, lastOwnWriteChangeCount: 11))
-    #expect(DictatePromptSelectionDecision.clipboardIsFreshSelection(
-      currentChangeCount: 12, lastConsumedChangeCount: 10, lastOwnWriteChangeCount: nil))
+  private struct ClipboardCase: Sendable {
+    let current: Int, consumed: Int, ownWrite: Int?, expected: Bool, label: String
   }
 
-  @Test("App Store clipboard path: an unchanged clipboard is not a selection")
-  func unchangedClipboardIsNotSelection() {
+  @Test("App Store clipboard path: only a copy the user just made is a selection", arguments: [
+    ClipboardCase(current: 12, consumed: 10, ownWrite: 11, expected: true, label: "fresh user copy after own write"),
+    ClipboardCase(current: 12, consumed: 10, ownWrite: nil, expected: true, label: "fresh user copy, no own write"),
     // The last run (or app launch) already took its decision on this exact pasteboard state.
-    #expect(!DictatePromptSelectionDecision.clipboardIsFreshSelection(
-      currentChangeCount: 10, lastConsumedChangeCount: 10, lastOwnWriteChangeCount: nil))
-  }
-
-  @Test("App Store clipboard path: the app's own result copy is not a selection")
-  func ownWriteIsNotSelection() {
-    #expect(!DictatePromptSelectionDecision.clipboardIsFreshSelection(
-      currentChangeCount: 11, lastConsumedChangeCount: 10, lastOwnWriteChangeCount: 11))
+    ClipboardCase(current: 10, consumed: 10, ownWrite: nil, expected: false, label: "unchanged clipboard"),
+    ClipboardCase(current: 11, consumed: 10, ownWrite: 11, expected: false, label: "the app's own result copy"),
+  ])
+  private func clipboardIsFreshSelection(_ c: ClipboardCase) {
+    #expect(
+      DictatePromptSelectionDecision.clipboardIsFreshSelection(
+        currentChangeCount: c.current, lastConsumedChangeCount: c.consumed,
+        lastOwnWriteChangeCount: c.ownWrite) == c.expected, "\(c.label)")
   }
 
   @Test("A copy tick needs a changed count AND a readable string")
@@ -43,18 +40,20 @@ struct DictatePromptSelectionTests {
     #expect(!DictatePromptSelectionDecision.acceptsCopy(changeCountBefore: 1, changeCountAfter: 1, string: "x"))
   }
 
-  @Test("Selections reach the model as captured: digit runs, dashes and URL queries survive")
-  func selectionSurvivesUnchanged() {
-    for text in ["Vitamin D 20000 IE", "----", "https://x.de/a?b=1#c"] {
-      #expect(DictatePromptSelectionDecision.selectionText(from: "  \(text)\n") == text)
-    }
+  private struct SelectionTextCase: Sendable {
+    let input: String?, expected: String?, label: String
   }
 
-  @Test("Copied text is trimmed; whitespace-only counts as nothing")
-  func selectionTextNormalised() {
-    #expect(DictatePromptSelectionDecision.selectionText(from: "  Befund \n") == "Befund")
-    #expect(DictatePromptSelectionDecision.selectionText(from: " \n\t") == nil)
-    #expect(DictatePromptSelectionDecision.selectionText(from: nil) == nil)
+  @Test("Copied text is trimmed and otherwise reaches the model as captured; whitespace-only counts as nothing", arguments: [
+    SelectionTextCase(input: "  Vitamin D 20000 IE\n", expected: "Vitamin D 20000 IE", label: "digit run survives"),
+    SelectionTextCase(input: "  ----\n", expected: "----", label: "dashes survive"),
+    SelectionTextCase(input: "  https://x.de/a?b=1#c\n", expected: "https://x.de/a?b=1#c", label: "URL query survives"),
+    SelectionTextCase(input: "  Befund \n", expected: "Befund", label: "trimmed"),
+    SelectionTextCase(input: " \n\t", expected: nil, label: "whitespace only"),
+    SelectionTextCase(input: nil, expected: nil, label: "nil"),
+  ])
+  private func selectionTextNormalised(_ c: SelectionTextCase) {
+    #expect(DictatePromptSelectionDecision.selectionText(from: c.input) == c.expected, "\(c.label)")
   }
 
   @Test("A capture awaited before the copy finishes gets the copy's result")
@@ -148,31 +147,6 @@ struct DictatePromptSelectionTests {
     #expect(!refuses(SpeechService.voiceInstructionPlaceholder, editQuickAction: true))
   }
 
-  @Test("Prompt latency fields round-trip on an interaction log entry")
-  func promptLatencyFieldsRoundTrip() throws {
-    let entry = InteractionLogEntry(
-      ts: "2026-10-13T18:00:00Z",
-      mode: "prompt",
-      model: "local-mlx-qwen3-4b-instruct-2507",
-      result: nil,
-      selectedText: nil,
-      userInstruction: "Korrigiere",
-      modelResponse: "invented",
-      text: nil,
-      voice: nil,
-      transcriptionModel: nil,
-      hadScreenshot: false,
-      latencyMs: 842,
-      provider: "mlx",
-      loadMs: 1200
-    )
-    let data = try JSONEncoder().encode(entry)
-    let decoded = try JSONDecoder().decode(InteractionLogEntry.self, from: data)
-    #expect(decoded.latencyMs == 842)
-    #expect(decoded.provider == "mlx")
-    #expect(decoded.loadMs == 1200)
-  }
-
   @Test("The field slot resolves once and does not hang")
   func fieldSlot() async {
     let notes = FocusedFieldSnapshot(appName: "Notes", textBeforeCaret: "Hello", textAfterCaret: "")
@@ -201,18 +175,6 @@ struct DictatePromptSelectionTests {
     #expect(await hung.fieldAllowsWindowImage(timeout: .milliseconds(40)) == false)
     let elapsed = started.duration(to: .now)
     #expect(elapsed < .milliseconds(300))
-  }
-
-  @Test("The output rule tells the model what a compose turn means")
-  func outputRuleCoversCompose() {
-    #expect(AppConstants.promptModeOutputRule.contains("NO SELECTED TEXT"))
-    #expect(AppConstants.dictatePromptComposeMarker.hasPrefix("NO SELECTED TEXT"))
-    // Small local models echo the dictation unless the marker points them at the system prompt's
-    // structure; neither text may make "write what was dictated" the goal.
-    #expect(AppConstants.dictatePromptComposeMarker.contains("exactly as the system prompt specifies"))
-    #expect(!AppConstants.dictatePromptComposeMarker.contains("write the text the voice instruction dictates"))
-    #expect(!AppConstants.promptModeOutputRule.contains("write the text the user dictated"))
-    #expect(AppConstants.promptModeOutputRule.contains("carry out a spoken request instead of echoing it"))
   }
 
   @Test("Poll tick: an own-write restore or an editor line copy is not a selection")

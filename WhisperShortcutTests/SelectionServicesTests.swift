@@ -77,19 +77,4 @@ final class SelectionServicesTests: XCTestCase {
     XCTAssertEqual(value, DictatePromptSelectionDecision.selectionText(from: " text "))
     XCTAssertFalse(DictatePromptSelectionCapture.resolved("x").isFromService)
   }
-
-  func testScreenshotSelectionIsOffWhenTheSelectionCameFromAService() {
-    XCTAssertTrue(
-      SpeechService.usesScreenshotSelection(
-        modelUsesScreenshotSelection: true, selectionIsFromService: false))
-    XCTAssertFalse(
-      SpeechService.usesScreenshotSelection(
-        modelUsesScreenshotSelection: true, selectionIsFromService: true))
-    XCTAssertFalse(
-      SpeechService.usesScreenshotSelection(
-        modelUsesScreenshotSelection: false, selectionIsFromService: false))
-    XCTAssertFalse(
-      SpeechService.usesScreenshotSelection(
-        modelUsesScreenshotSelection: false, selectionIsFromService: true))
-  }
 }

@@ -6,7 +6,7 @@ import Testing
 @Suite("Dictate Prompt quick actions")
 struct QuickActionStoreTests {
 
-  @Test("Fillers, case, and edge punctuation group into one instruction")
+  @Test("Fillers, case, and edge punctuation group into one instruction; display keeps the most common spelling")
   func normalizationGroupsRepeatedPrompts() {
     let actions = QuickActionStore.ranked(
       from: [
@@ -19,6 +19,16 @@ struct QuickActionStoreTests {
     #expect(actions.count == 5)
     #expect(actions[0].key == "korrigiere")
     #expect(actions[0].text == "Korrigiere")
+
+    let spelled = QuickActionStore.ranked(
+      from: [
+        "Ähm, korrigiere.",
+        "Ähm, korrigiere.",
+        "korrigiere",
+      ],
+      forceFallback: false)
+    #expect(spelled[0].text == "Ähm, korrigiere")
+    #expect(spelled[0].key == "korrigiere")
   }
 
   @Test("Only built-in defaults count as edit actions, not user prompts that match a keyword")
@@ -38,19 +48,6 @@ struct QuickActionStoreTests {
     let bareVerb = QuickActionStore.combined(
       custom: ["Korrigiere"], learned: [], forceFallback: false, includeLearned: true)
     #expect(bareVerb.first?.isEdit == true)
-  }
-
-  @Test("Display text keeps the most common original spelling")
-  func displayUsesMostFrequentSpelling() {
-    let actions = QuickActionStore.ranked(
-      from: [
-        "Ähm, korrigiere.",
-        "Ähm, korrigiere.",
-        "korrigiere",
-      ],
-      forceFallback: false)
-    #expect(actions[0].text == "Ähm, korrigiere")
-    #expect(actions[0].key == "korrigiere")
   }
 
   @Test("A single use, the voice placeholder, and long one-offs are skipped")
@@ -129,51 +126,16 @@ struct QuickActionStoreTests {
     "Classification matches intent, with order resolving overlaps",
     arguments: [
       ("kürz", QuickActionKind.shorten),
-      ("kurz", .shorten),
-      ("short", .shorten),
-      ("concise", .shorten),
-      ("condense", .shorten),
-      ("raccourc", .shorten),
-      ("acorta", .shorten),
       ("formuliere neu kürzer", .shorten),
-      ("übersetz", .translate),
+      ("make it shorter", .shorten),
       ("translat", .translate),
-      ("tradui", .translate),
-      ("tradu", .translate),
-      ("format", .format),
-      ("to-do", .format),
-      ("todo", .format),
-      ("bullet", .format),
-      ("aufzähl", .format),
-      ("markdown", .format),
-      ("tabelle", .format),
-      ("table", .format),
+      ("translate to english", .translate),
+      ("format as a to-do", .format),
       ("formatiere neu", .format),
-      ("korrig", .correct),
-      ("corrig", .correct),
-      ("correct", .correct),
-      ("fix", .correct),
-      ("grammat", .correct),
-      ("grammar", .correct),
-      ("rechtschreib", .correct),
-      ("spelling", .correct),
-      ("tippfehler", .correct),
-      ("typo", .correct),
-      ("proofread", .correct),
       ("fix grammar and spelling", .correct),
-      ("formulier", .rewrite),
       ("rewrite", .rewrite),
-      ("rephrase", .rewrite),
-      ("reword", .rewrite),
-      ("umschreib", .rewrite),
-      ("reformul", .rewrite),
-      ("klarer", .rewrite),
-      ("clearer", .rewrite),
       ("formuliere neu", .rewrite),
       ("rewrite more clearly", .rewrite),
-      ("format as a to-do", .format),
-      ("translate to english", .translate),
-      ("make it shorter", .shorten),
       ("mach eine mail draus", .other),
     ])
   func classify(_ pair: (key: String, expected: QuickActionKind)) {

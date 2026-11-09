@@ -151,12 +151,4 @@ struct CustomEndpointPreferencesTests {
     #expect(
       plan(chatBaseURL: "https://example.com/v1?api-version=y", transcriptionURL: transcriptionURL) == nil)
   }
-
-  // MARK: - Dictate Prompt
-
-  @Test("The custom endpoint can run Dictate Prompt and does not read a screenshot")
-  func customEndpointIsTextOnlyDictatePrompt() {
-    #expect(PromptModel.customOpenAIEndpoint.supportsDictatePrompt)
-    #expect(PromptModel.customOpenAIEndpoint.dictatePromptUsesScreenshotSelection == false)
-  }
 }

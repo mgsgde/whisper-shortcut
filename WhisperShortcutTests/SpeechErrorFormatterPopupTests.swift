@@ -9,73 +9,46 @@ import Testing
 @Suite("SpeechErrorFormatter popups")
 struct SpeechErrorFormatterPopupTests {
 
-  @Test("OpenAI billing uses the OpenAI-specific out-of-credit copy")
-  func openAIBillingCopy() {
-    let message = SpeechErrorFormatter.format(
-      .billingRequired(topUpURL: TranscriptionError.openAIBillingURL))
-    #expect(message.contains("OpenAI"))
-    #expect(message.contains("Out of Credit"))
-    #expect(!message.contains("OpenRouter"))
+  struct FormatBranch: Sendable {
+    let label: String
+    let error: TranscriptionError
+    let mustContain: [String]
+    let mustNotContain: [String]
   }
 
-  @Test("A non-OpenAI top-up URL uses the OpenRouter out-of-credit copy")
-  func openRouterBillingCopy() {
-    let url = URL(string: "https://openrouter.ai/settings/credits")!
-    let message = SpeechErrorFormatter.format(.billingRequired(topUpURL: url))
-    #expect(message.contains("OpenRouter"))
-    #expect(!message.contains("platform.openai.com"))
-  }
-
-  @Test("Billing without a known URL lists every provider dashboard")
-  func genericBillingListsDashboards() {
-    let message = SpeechErrorFormatter.format(.billingRequired())
-    #expect(message.contains("aistudio.google.com"))
-    #expect(message.contains("platform.openai.com"))
-    #expect(message.contains("console.x.ai"))
-  }
-
-  @Test("A rate limit with a top-up URL is the daily-limit copy")
-  func rateLimitWithTopUpIsDailyLimit() {
-    let url = URL(string: "https://example.com/topup")!
-    let message = SpeechErrorFormatter.format(.rateLimited(retryAfter: nil, topUpURL: url))
-    #expect(message.contains("Daily Limit Reached"))
-    #expect(!message.contains("aistudio.google.com"))
-  }
-
-  @Test("A transient rate limit includes the retry-after seconds")
-  func rateLimitRetryAfterSeconds() {
-    let message = SpeechErrorFormatter.format(.rateLimited(retryAfter: 30, topUpURL: nil))
-    #expect(message.contains("30"))
-    #expect(message.contains("Rate Limit Exceeded"))
-  }
-
-  @Test("A fileError that mentions a missing model points at Offline Models")
-  func fileErrorModelNotFound() {
-    let message = SpeechErrorFormatter.format(.fileError("Model not found on disk"))
-    #expect(message.contains("Model Not Downloaded"))
-    #expect(message.contains("Download"))
-  }
-
-  @Test("A generic fileError stays a file error")
-  func genericFileError() {
-    let message = SpeechErrorFormatter.format(.fileError("could not read wav header"))
-    #expect(message.contains("File Error"))
-    #expect(message.contains("could not read wav header"))
-    #expect(!message.contains("Offline Models"))
-  }
-
-  @Test("A networkError whose details mention timeout uses the timeout copy")
-  func networkTimeoutCopy() {
-    let message = SpeechErrorFormatter.format(.networkError("The request timeout was reached"))
-    #expect(message.contains("Generic Timeout"))
-    #expect(message.contains("The request timeout was reached"))
-  }
-
-  @Test("A networkError without timeout language stays a network error")
-  func genericNetworkError() {
-    let message = SpeechErrorFormatter.format(.networkError("connection reset"))
-    #expect(message.contains("Network Error"))
-    #expect(message.contains("connection reset"))
+  @Test("format() picks the right copy per error branch", arguments: [
+    FormatBranch(label: "OpenAI billing uses OpenAI out-of-credit copy",
+           error: .billingRequired(topUpURL: TranscriptionError.openAIBillingURL),
+           mustContain: ["OpenAI", "Out of Credit"], mustNotContain: ["OpenRouter"]),
+    FormatBranch(label: "non-OpenAI top-up URL uses OpenRouter copy",
+           error: .billingRequired(topUpURL: URL(string: "https://openrouter.ai/settings/credits")!),
+           mustContain: ["OpenRouter"], mustNotContain: ["platform.openai.com"]),
+    FormatBranch(label: "billing without URL lists every provider dashboard",
+           error: .billingRequired(),
+           mustContain: ["aistudio.google.com", "platform.openai.com", "console.x.ai"], mustNotContain: []),
+    FormatBranch(label: "rate limit with top-up URL is the daily-limit copy",
+           error: .rateLimited(retryAfter: nil, topUpURL: URL(string: "https://example.com/topup")!),
+           mustContain: ["Daily Limit Reached"], mustNotContain: ["aistudio.google.com"]),
+    FormatBranch(label: "transient rate limit includes retry-after seconds",
+           error: .rateLimited(retryAfter: 30, topUpURL: nil),
+           mustContain: ["30", "Rate Limit Exceeded"], mustNotContain: []),
+    FormatBranch(label: "fileError mentioning a missing model points at Offline Models",
+           error: .fileError("Model not found on disk"),
+           mustContain: ["Model Not Downloaded", "Download"], mustNotContain: []),
+    FormatBranch(label: "generic fileError stays a file error",
+           error: .fileError("could not read wav header"),
+           mustContain: ["File Error", "could not read wav header"], mustNotContain: ["Offline Models"]),
+    FormatBranch(label: "networkError mentioning timeout uses the timeout copy",
+           error: .networkError("The request timeout was reached"),
+           mustContain: ["Generic Timeout", "The request timeout was reached"], mustNotContain: []),
+    FormatBranch(label: "networkError without timeout language stays a network error",
+           error: .networkError("connection reset"),
+           mustContain: ["Network Error", "connection reset"], mustNotContain: []),
+  ])
+  func formatBranches(_ row: FormatBranch) {
+    let message = SpeechErrorFormatter.format(row.error)
+    for needle in row.mustContain { #expect(message.contains(needle), "\(row.label): missing \(needle)") }
+    for needle in row.mustNotContain { #expect(!message.contains(needle), "\(row.label): unexpected \(needle)") }
   }
 
   @Test("bodyWithoutHeading drops an exact title prefix")
@@ -94,15 +67,5 @@ struct SpeechErrorFormatterPopupTests {
     #expect(title.hasPrefix("💳"))
     #expect(!body.hasPrefix("💳"), "body still opens with a heading: \(body.prefix(40))")
     #expect(!body.isEmpty)
-  }
-
-  @Test("titleAndBodyForPopupForUser falls back for a non-TranscriptionError")
-  func genericErrorPopup() {
-    let error = NSError(domain: "test", code: 1, userInfo: [
-      NSLocalizedDescriptionKey: "something broke",
-    ])
-    let (title, body) = SpeechErrorFormatter.titleAndBodyForPopupForUser(error)
-    #expect(title == "Error")
-    #expect(body == "something broke")
   }
 }

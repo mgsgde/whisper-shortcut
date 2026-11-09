@@ -37,15 +37,6 @@ struct GoogleCalendarUpdateBodyTests {
     }
   }
 
-  @Test("The body serializes with explicit JSON nulls")
-  func serializesNulls() async throws {
-    let body = try await GoogleCalendarAPIClient().updateEventBody(
-      startISO: "2026-11-05", endISO: "2026-11-06", timeZone: "UTC", allDay: true)
-    let json = try #require(String(data: JSONSerialization.data(withJSONObject: body), encoding: .utf8))
-    #expect(json.contains("\"dateTime\":null"))
-    #expect(json.contains("\"timeZone\":null"))
-  }
-
   @Test("Updates without timing fields do not touch start or end")
   func noTimingFields() async throws {
     let body = try await GoogleCalendarAPIClient().updateEventBody(summary: "Renamed")

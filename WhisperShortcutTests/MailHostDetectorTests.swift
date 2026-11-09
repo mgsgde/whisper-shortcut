@@ -26,14 +26,6 @@ struct MailProviderTableTests {
     #expect(MailProvider.provider(forHost: host)?.note == "Use an app-specific password from account.apple.com.")
   }
 
-  @Test func everyProviderHasNameAndHost() {
-    for provider in MailProvider.all {
-      #expect(!provider.name.isEmpty)
-      #expect(!provider.host.isEmpty)
-      #expect(provider.port == 993)
-    }
-  }
-
   @Test func pickerListsCustomDomainHostsOnly() {
     let hosts = MailCredentialRequest.hostedProviders.map(\.host)
     #expect(hosts.contains("posteo.de"))

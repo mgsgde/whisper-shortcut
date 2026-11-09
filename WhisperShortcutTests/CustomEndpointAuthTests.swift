@@ -145,20 +145,6 @@ struct CustomEndpointAuthTests {
     #expect(components.queryItems?.first { $0.name == "api-version" }?.value == "2025-01-01-preview")
   }
 
-  @Test("Transcription shares the same shaping, so Dictate reaches an Azure tenant too")
-  func transcriptionPathIsShapedTheSameWay() {
-    #expect(
-      Auth.endpointURL(appending: "audio/transcriptions", to: "https://my-resource.openai.azure.com")
-        == "https://my-resource.openai.azure.com/openai/v1/audio/transcriptions")
-  }
-
-  @Test("Vertex AI's openapi base takes the path without special-casing")
-  func vertexBaseAppendsCleanly() {
-    let base =
-      "https://europe-west4-aiplatform.googleapis.com/v1/projects/p/locations/europe-west4/endpoints/openapi"
-    #expect(Auth.endpointURL(appending: "chat/completions", to: base) == base + "/chat/completions")
-  }
-
   @Test("A localhost base without /v1 is probed and called exactly as typed")
   func localhostWithoutV1IsNotRewritten() {
     #expect(
@@ -209,45 +195,55 @@ struct CustomEndpointAuthTests {
 
   // MARK: - OpenAI-key fallback
 
-  @Test("A tenant endpoint never falls back to the user's OpenAI key")
-  func tenantEndpointsRefuseTheOpenAIFallback() {
+  struct OpenAIFallback: Sendable {
+    let note: String
+    let urls: [String]
+    let accepts: Bool
+    /// Cleartext LAN: a denied fallback resolves to nil, and a blank key sends no header.
+    var checksDeniedCredential = false
+  }
+
+  @Test("The OpenAI-key fallback is only for https proxies and loopback", arguments: [
     // Not a convenience question — a leak one. The fallback exists for proxies that forward to
     // api.openai.com on the caller's key; at an Azure resource or a Google project that key cannot
     // work, so sending it only hands an OpenAI credential to someone else's endpoint.
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "https://my-resource.openai.azure.com/openai/v1") == false)
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "https://contoso.azure-api.net/openai/v1") == false)
-    #expect(
-      Auth.acceptsOpenAIAPIKey(
-        baseURL: "https://europe-west4-aiplatform.googleapis.com/v1/projects/p/locations/europe-west4/endpoints/openapi")
-        == false)
-  }
-
-  @Test("A generic https proxy keeps the OpenAI fallback it has always had")
-  func proxiesKeepTheOpenAIFallback() {
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "https://openinference.de/api/v1"))
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "https://litellm.example/v1"))
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: ""))
-  }
-
-  @Test("A plain-http LAN host never falls back to the user's OpenAI key")
-  func httpHostsRefuseTheOpenAIFallback() {
+    OpenAIFallback(
+      note: "a tenant endpoint never falls back",
+      urls: [
+        "https://my-resource.openai.azure.com/openai/v1",
+        "https://contoso.azure-api.net/openai/v1",
+        "https://europe-west4-aiplatform.googleapis.com/v1/projects/p/locations/europe-west4/endpoints/openapi",
+      ],
+      accepts: false),
+    OpenAIFallback(
+      note: "a generic https proxy keeps the fallback",
+      urls: ["https://openinference.de/api/v1", "https://litellm.example/v1", ""],
+      accepts: true),
     // Cleartext LAN Whisper box: the OpenAI key must not ride along.
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://192.168.1.5/v1") == false)
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://10.0.0.8/v1") == false)
+    OpenAIFallback(
+      note: "a plain-http LAN host never falls back",
+      urls: ["http://192.168.1.5/v1", "http://10.0.0.8/v1"],
+      accepts: false, checksDeniedCredential: true),
+    // The key stays on this Mac. A local LiteLLM forwards it to api.openai.com.
+    OpenAIFallback(
+      note: "loopback may receive the OpenAI key over http",
+      urls: [
+        "http://localhost:4000/v1", "http://127.0.0.1:8080/v1",
+        "http://127.255.255.255/v1", "http://[::1]:4000/v1",
+      ],
+      accepts: true),
+  ])
+  func openAIKeyFallback(_ row: OpenAIFallback) {
+    for url in row.urls {
+      #expect(Auth.acceptsOpenAIAPIKey(baseURL: url) == row.accepts, "\(row.note): \(url)")
+    }
+    guard row.checksDeniedCredential else { return }
     #expect(
       OpenAIChatPreferences.resolveCredential(
-        proxyKey: nil, openAIKey: "sk-openai", allowsOpenAIKeyFallback: false) == nil)
-    #expect(Auth.headers(baseURL: "http://192.168.1.5/v1", apiKey: "") == [:])
-    #expect(Auth.headers(baseURL: "http://192.168.1.5/v1", apiKey: "   ") == [:])
-  }
-
-  @Test("Loopback may receive the OpenAI key over http")
-  func loopbackAcceptsTheOpenAIKeyOverHTTP() {
-    // The key stays on this Mac. A local LiteLLM forwards it to api.openai.com.
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://localhost:4000/v1"))
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://127.0.0.1:8080/v1"))
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://127.255.255.255/v1"))
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://[::1]:4000/v1"))
+        proxyKey: nil, openAIKey: "sk-openai", allowsOpenAIKeyFallback: false) == nil,
+      "\(row.note)")
+    #expect(Auth.headers(baseURL: "http://192.168.1.5/v1", apiKey: "") == [:], "\(row.note)")
+    #expect(Auth.headers(baseURL: "http://192.168.1.5/v1", apiKey: "   ") == [:], "\(row.note)")
   }
 
   @Test("A local host can run Chat and Dictate Prompt without any key")

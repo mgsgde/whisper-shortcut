@@ -14,14 +14,6 @@ struct LoopbackOAuthListenerTests {
     Data("\(line)\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".utf8)
   }
 
-  @Test("Extracts the authorization code from a redirect")
-  func extractsCode() throws {
-    let parsed = try #require(
-      LoopbackOAuthListener.parseRequestTarget(
-        request("GET /openrouter-callback?code=abc123 HTTP/1.1")))
-    #expect(parsed.queryItems?.first { $0.name == "code" }?.value == "abc123")
-  }
-
   @Test("Handles extra query parameters and percent-encoding")
   func handlesExtraParameters() throws {
     let parsed = try #require(

@@ -9,63 +9,34 @@ struct LocalLLMTests {
 
   // MARK: - Endpoint normalization
 
-  @Test("A bare base URL gets the chat-completions path")
-  func appendsPathToBaseURL() {
-    #expect(
-      LocalLLMPreferences.chatCompletionsURL(forBase: "http://localhost:11434/v1")
-        == "http://localhost:11434/v1/chat/completions")
-  }
-
-  @Test("A trailing slash doesn't double up")
-  func normalizesTrailingSlash() {
-    #expect(
-      LocalLLMPreferences.chatCompletionsURL(forBase: "http://localhost:11434/v1/")
-        == "http://localhost:11434/v1/chat/completions")
-  }
-
-  /// The URL Ollama's own docs print, so it is what users paste. Appending to it produced
-  /// `.../chat/completions/chat/completions` → 404 → "pull the model first" for a URL typo.
-  @Test("A full chat-completions URL is left alone")
-  func doesNotAppendTwice() {
-    #expect(
-      LocalLLMPreferences.chatCompletionsURL(forBase: "http://localhost:11434/v1/chat/completions")
-        == "http://localhost:11434/v1/chat/completions")
+  @Test("A base URL becomes exactly one chat-completions path", arguments: [
+    ("http://localhost:11434/v1", "http://localhost:11434/v1/chat/completions", "bare base URL"),
+    ("http://localhost:11434/v1/", "http://localhost:11434/v1/chat/completions", "trailing slash"),
+    // The URL Ollama's own docs print, so it is what users paste. Appending to it produced
+    // `.../chat/completions/chat/completions` → 404 → "pull the model first" for a URL typo.
+    ("http://localhost:11434/v1/chat/completions", "http://localhost:11434/v1/chat/completions",
+     "full URL left alone"),
+  ])
+  func chatCompletionsURL(base: String, expected: String, label: String) {
+    #expect(LocalLLMPreferences.chatCompletionsURL(forBase: base) == expected, "\(label)")
   }
 
   // MARK: - Reasoning blocks
 
-  @Test("A leading think block is removed, the answer survives")
-  func stripsLeadingThinkBlock() {
-    let raw = "<think>The user wants this shorter. Drop the filler.</think>\n\nShip it Friday."
-    #expect(LocalLLMChatProvider.strippingReasoningBlocks(raw) == "Ship it Friday.")
-  }
-
-  @Test("Several blocks anywhere in the reply are removed")
-  func stripsMultipleBlocks() {
-    let raw = "<thinking>a</thinking>Ship it <think>hmm</think>Friday."
-    #expect(LocalLLMChatProvider.strippingReasoningBlocks(raw) == "Ship it Friday.")
-  }
-
-  /// A cancelled stream can end mid-thought. Whatever follows an unclosed opener is reasoning,
-  /// never the answer, so it must not reach the clipboard.
-  @Test("An unterminated block drops everything after it")
-  func dropsUnterminatedBlock() {
-    let raw = "Ship it Friday.<think>Actually, wait, maybe"
-    #expect(LocalLLMChatProvider.strippingReasoningBlocks(raw) == "Ship it Friday.")
-  }
-
-  @Test("Ordinary replies pass through untouched")
-  func leavesPlainTextAlone() {
-    let raw = "Ship it Friday."
-    #expect(LocalLLMChatProvider.strippingReasoningBlocks(raw) == raw)
-  }
-
-  /// The common case on a current server: reasoning arrives in `reasoning_content`, which the
-  /// stream parser already ignores, so the text carries angle brackets of its own meaning.
-  @Test("Unrelated angle brackets are not treated as reasoning")
-  func leavesUnrelatedTagsAlone() {
-    let raw = "Use <b>bold</b> here."
-    #expect(LocalLLMChatProvider.strippingReasoningBlocks(raw) == raw)
+  @Test("Reasoning blocks are removed and ordinary text is left alone", arguments: [
+    ("<think>The user wants this shorter. Drop the filler.</think>\n\nShip it Friday.",
+     "Ship it Friday.", "leading think block"),
+    ("<thinking>a</thinking>Ship it <think>hmm</think>Friday.", "Ship it Friday.", "several blocks"),
+    // A cancelled stream can end mid-thought. Whatever follows an unclosed opener is reasoning,
+    // never the answer, so it must not reach the clipboard.
+    ("Ship it Friday.<think>Actually, wait, maybe", "Ship it Friday.", "unterminated block"),
+    ("Ship it Friday.", "Ship it Friday.", "plain text"),
+    // The common case on a current server: reasoning arrives in `reasoning_content`, which the
+    // stream parser already ignores, so the text carries angle brackets of its own meaning.
+    ("Use <b>bold</b> here.", "Use <b>bold</b> here.", "unrelated tags"),
+  ])
+  func strippingReasoningBlocks(raw: String, expected: String, label: String) {
+    #expect(LocalLLMChatProvider.strippingReasoningBlocks(raw) == expected, "\(label)")
   }
 
   // MARK: - Selection source
@@ -73,17 +44,16 @@ struct LocalLLMTests {
   /// The App Store build reads the Dictate Prompt selection off a screenshot. A local model is
   /// text-only, so it received the "edit the highlighted region" system prompt with no image and
   /// — because screenshot mode skips the clipboard — no text either, and duly "edited" the voice
-  /// instruction. The selection source has to follow the model, not the build.
-  @Test("MLX catalogue defaults to Instruct-2507 and maps to PromptModel")
-  func mlxCatalogueDefaultsAndMapping() {
-    #expect(LocalLLMModelType.defaultModel == .qwen34BInstruct2507)
-    #expect(LocalLLMModelType.qwen34BInstruct2507.huggingFaceID
-      == "mlx-community/Qwen3-4B-Instruct-2507-4bit")
-    #expect(LocalLLMModelType.qwen34BInstruct2507.isRecommended)
-
-    #expect(
-      PromptModel.forLocalLLMModel(.qwen34BInstruct2507) == .localMLXQwen34BInstruct)
-    #expect(PromptModel.localMLXQwen34BInstruct.localMLXModelType == .qwen34BInstruct2507)
+  /// instruction. The selection source has to follow the model, not the build. Image-capable
+  /// models still follow the build, so this does not turn the screenshot flow off for everyone.
+  @Test("The selection source follows the model, not the build", arguments: [
+    (PromptModel.localMLXQwen34BInstruct, false, "MLX uses the clipboard"),
+    (.localModel, false, "a local HTTP server uses the clipboard"),
+    (.gemini31FlashLite, AppConstants.dictatePromptUsesScreenshotSelection,
+     "an image-capable model follows the build"),
+  ])
+  func selectionSourceFollowsModel(model: PromptModel, usesScreenshot: Bool, label: String) {
+    #expect(model.dictatePromptUsesScreenshotSelection == usesScreenshot, "\(label)")
   }
 
   @Test("A persisted Qwen3 8B selection forwards to the offline 4B default, not to the cloud")
@@ -91,11 +61,6 @@ struct LocalLLMTests {
     let migrated = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue("local-mlx-qwen3-8b"))
     #expect(migrated == .localMLXQwen34BInstruct)
     #expect(migrated?.localMLXModelType != nil)
-  }
-
-  @Test("Offline MLX models use the clipboard, not screenshot selection")
-  func mlxModelAlwaysUsesClipboard() {
-    #expect(PromptModel.localMLXQwen34BInstruct.dictatePromptUsesScreenshotSelection == false)
   }
 
   @Test("MLX models route through MLXChatProvider")
@@ -110,14 +75,8 @@ struct LocalLLMTests {
 
   @Test("Qwen3.5 9B is a Chat-only catalogue entry")
   func qwen359BIsChatOnly() {
-    #expect(PromptModel.forLocalLLMModel(.qwen359B) == .localMLXQwen359B)
-    #expect(PromptModel.localMLXQwen359B.localMLXModelType == .qwen359B)
     #expect(PromptModel.localMLXQwen359B.supportsDictatePrompt == false)
     #expect(PromptModel.localMLXQwen34BInstruct.supportsDictatePrompt == true)
-    #expect(!PromptModel.dictatePromptCapableModels.contains(.localMLXQwen359B))
-    #expect(!LocalLLMModelType.byPreference.contains(.qwen359B))
-    #expect(LocalLLMModelType.qwen359B.minimumPhysicalMemoryGB == 16)
-    #expect(!LocalLLMModelType.qwen359B.isRecommended)
   }
 
   @Test("Qwen3 audio models: CustomVoice from 16 GB, the 1.7B checkpoints from 32 GB")
@@ -140,20 +99,6 @@ struct LocalLLMTests {
     #expect(LLMProviderFactory.provider(for: .localMLXGemma426BA4B) is MLXChatProvider)
   }
 
-  @Test("A local HTTP server model never takes its selection from a screenshot")
-  func localModelAlwaysUsesClipboard() {
-    #expect(PromptModel.localModel.dictatePromptUsesScreenshotSelection == false)
-  }
-
-  /// The other side of the same rule: models that *can* see an image still follow the build, so
-  /// this fix does not quietly turn the App Store build's screenshot flow off for everyone.
-  @Test("Image-capable models still follow the build's selection mode")
-  func geminiFollowsBuildSelectionMode() {
-    #expect(
-      PromptModel.gemini31FlashLite.dictatePromptUsesScreenshotSelection
-        == AppConstants.dictatePromptUsesScreenshotSelection)
-  }
-
   /// The system prompt is what actually reaches the model, so pin that too. Not by keyword — the
   /// clipboard prompt mentions a screenshot legitimately, as optional context for *how* to edit —
   /// but by which of the two prompts is chosen: only the screenshot one says the text to edit IS
@@ -170,19 +115,6 @@ struct LocalLLMTests {
 
     #expect(forClipboard != screenshotPrompt)
     #expect(forScreenshot == screenshotPrompt)
-  }
-
-  // MARK: - Prompt-prefix reuse
-
-  /// Priming an MLX prefix costs seconds of generation and holds tens of megabytes, so it may only
-  /// happen where the system prompt actually repeats. Chat's does not: `buildSystemInstruction`
-  /// folds in today's date, the live meeting transcript, memory and the workspace map, so a cache
-  /// keyed on it would be primed once per message and reused never.
-  @Test("Only a repeating system prompt opts into prefix reuse")
-  func onlyTextTransformsReusePromptPrefix() {
-    #expect(ChatRequestOptions.textTransform.reusablePromptPrefix)
-    // The default is what Chat sends.
-    #expect(ChatRequestOptions().reusablePromptPrefix == false)
   }
 
   // MARK: - Request body

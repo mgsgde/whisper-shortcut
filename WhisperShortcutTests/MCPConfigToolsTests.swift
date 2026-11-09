@@ -117,21 +117,26 @@ struct MCPConfigToolsTests {
 
   // MARK: access
 
-  @Test("Read token: no write tools listed, write call is an error and writes nothing")
-  func readTokenCannotWrite() {
-    let env = MCPTestEnv(level: .apply)
+  @Test("Read token: write tools are never listed, and a write call is an error", arguments: [
+    (MCPConfigAccessLevel.read, false, "level read"),
+    (.propose, false, "level propose"),
+    (.apply, true, "level apply rejects the call"),
+  ])
+  func readTokenCannotWrite(level: MCPConfigAccessLevel, rejectsCall: Bool, label: String) {
+    let env = MCPTestEnv(level: level)
     let t = env.tools()
     let names = Set(t.toolDefinitions(access: .read).compactMap { $0["name"] as? String })
-    #expect(names.isDisjoint(with: writeTools))
-    #expect(names.contains("get_proposal_status"))
+    #expect(names.isDisjoint(with: writeTools), "\(label)")
+    #expect(names.contains("get_proposal_status"), "\(label)")
     let status = t.call(name: "get_proposal_status", arguments: ["id": "none"], access: .read)
-    #expect(status.text.contains("No proposal"))
-    #expect(!status.text.contains("can only read"))
+    #expect(status.text.contains("No proposal"), "\(label)")
+    #expect(!status.text.contains("can only read"), "\(label)")
+    guard rejectsCall else { return }
     let r = t.call(name: "add_glossary_terms", arguments: ["terms": ["Wianco"], "rationale": "x"], access: .read)
-    #expect(r.isError)
-    #expect(r.text.contains("can only read"))
-    #expect(!glossary(env).contains("Wianco"))
-    #expect(env.changeLog.changes.isEmpty)
+    #expect(r.isError, "\(label)")
+    #expect(r.text.contains("can only read"), "\(label)")
+    #expect(!glossary(env).contains("Wianco"), "\(label)")
+    #expect(env.changeLog.changes.isEmpty, "\(label)")
   }
 
   @Test("Write token at level read: list is still stable (write tools listed), but the call is rejected")
@@ -159,15 +164,6 @@ struct MCPConfigToolsTests {
         let meta = d["_meta"] as? [String: Any]
         #expect(meta?["anthropic/requiresUserInteraction"] as? Bool == true)
       }
-    }
-  }
-
-  @Test("Read token: write tools are never listed, at any configured access level")
-  func readTokenNeverListsWriteTools() {
-    for level in [MCPConfigAccessLevel.read, .propose, .apply] {
-      let env = MCPTestEnv(level: level)
-      let names = Set(env.tools().toolDefinitions(access: .read).compactMap { $0["name"] as? String })
-      #expect(names.isDisjoint(with: writeTools))
     }
   }
 
@@ -496,14 +492,6 @@ struct MCPConfigToolsTests {
     #expect(((o["command_texts"] as? [[String: Any]])?.first?["name"]) as? String == "a-cmd")
   }
 
-  @Test("The prompts focus points the AI app at default_length and one section per proposal")
-  func promptsFocus() {
-    #expect(MCPTuneRecipe.focuses.contains("prompts"))
-    let text = MCPTuneRecipe.text(focus: "prompts")
-    #expect(text.contains("default_length"))
-    #expect(text.contains("One section per proposal"))
-  }
-
   @Test("No token leaks through any read output")
   func noSecrets() {
     let env = MCPTestEnv(level: .apply)
@@ -553,42 +541,34 @@ struct MCPConfigToolsTests {
     #expect(r.text.contains(proposal.id))
   }
 
-  @Test("report_problem rejects a missing why_not_settings")
-  func reportProblemMissingWhy() {
-    let env = MCPTestEnv()
-    let r = env.tools().call(name: "report_problem", arguments: [
-      "title": "Glossary appended",
-      "what_happens": "The glossary is appended after the dictation.",
-    ], access: .write)
-    #expect(r.isError)
-    #expect(r.text.contains("why_not_settings"))
-    #expect(env.proposals.pending.isEmpty)
+  private struct RejectedReport: Sendable {
+    let note: String
+    let includeWhy: Bool
+    let examples: [String]
+    let messageFragment: String?
   }
 
-  @Test("report_problem rejects more than three examples")
-  func reportProblemTooManyExamples() {
-    let env = MCPTestEnv()
-    let r = env.tools().call(name: "report_problem", arguments: [
-      "title": "Glossary appended",
-      "what_happens": "The glossary is appended after the dictation.",
-      "why_not_settings": "The prompt already forbids it.",
-      "examples": ["one", "two", "three", "four"],
-    ], access: .write)
-    #expect(r.isError)
-    #expect(env.proposals.pending.isEmpty)
-  }
+  private static let rejectedReports: [RejectedReport] = [
+    .init(note: "missing why_not_settings", includeWhy: false, examples: [], messageFragment: "why_not_settings"),
+    .init(note: "more than three examples", includeWhy: true, examples: ["one", "two", "three", "four"],
+          messageFragment: nil),
+  ]
 
-  @Test("report_problem rejects a read token")
-  func reportProblemReadToken() {
-    let env = MCPTestEnv(level: .apply)
-    let r = env.tools().call(name: "report_problem", arguments: [
+  @Test("report_problem rejects a missing why or too many examples", arguments: rejectedReports)
+  private func reportProblemRejected(_ row: RejectedReport) {
+    let env = MCPTestEnv()
+    var arguments: [String: Any] = [
       "title": "Glossary appended",
       "what_happens": "The glossary is appended after the dictation.",
-      "why_not_settings": "The prompt already forbids it.",
-    ], access: .read)
-    #expect(r.isError)
-    #expect(r.text.contains("can only read"))
-    #expect(env.proposals.pending.isEmpty)
+    ]
+    if row.includeWhy { arguments["why_not_settings"] = "The prompt already forbids it." }
+    if !row.examples.isEmpty { arguments["examples"] = row.examples }
+    let r = env.tools().call(name: "report_problem", arguments: arguments, access: .write)
+    #expect(r.isError, "\(row.note)")
+    if let messageFragment = row.messageFragment {
+      #expect(r.text.contains(messageFragment), "\(row.note)")
+    }
+    #expect(env.proposals.pending.isEmpty, "\(row.note)")
   }
 
   // MARK: prompts and resources

@@ -26,17 +26,30 @@ struct ChatGPTPlanIDTokenValidatorTests {
     try claimsCheck(F.idTokenClaims(), subject: "sub-123")
   }
 
-  @Test("Wrong issuer is refused")
-  func wrongIssuer() {
-    #expect(throws: V.ValidationError.issuerMismatch) {
-      try claimsCheck(F.idTokenClaims(iss: "https://evil.example"))
-    }
+  struct ClaimRefusal: Sendable {
+    let label: String
+    let expected: ChatGPTPlanIDTokenValidator.ValidationError
+    var iss = "https://auth.openai.com"
+    var aud = "oaiapp_saved"
+    var sub = "sub-123"
+    var nonce: String? = "nonce-1"
+    var subject: String? = nil
   }
 
-  @Test("Wrong audience is refused")
-  func wrongAudience() {
-    #expect(throws: V.ValidationError.audienceMismatch) {
-      try claimsCheck(F.idTokenClaims(aud: "oaiapp_someone_else"))
+  @Test("Mismatched issuer, audience, nonce or subject is refused", arguments: [
+    ClaimRefusal(label: "wrong issuer", expected: .issuerMismatch, iss: "https://evil.example"),
+    ClaimRefusal(label: "wrong audience", expected: .audienceMismatch, aud: "oaiapp_someone_else"),
+    ClaimRefusal(label: "wrong nonce", expected: .nonceMismatch, nonce: "replayed"),
+    ClaimRefusal(label: "missing nonce", expected: .nonceMismatch, nonce: nil),
+    ClaimRefusal(
+      label: "subject mismatch on reauthorization", expected: .subjectMismatch,
+      sub: "someone-else", subject: "sub-123"),
+  ])
+  func claimMismatches(_ row: ClaimRefusal) {
+    #expect(throws: row.expected) {
+      try claimsCheck(
+        F.idTokenClaims(iss: row.iss, aud: row.aud, sub: row.sub, nonce: row.nonce),
+        subject: row.subject)
     }
   }
 
@@ -46,23 +59,6 @@ struct ChatGPTPlanIDTokenValidatorTests {
       try claimsCheck(F.idTokenClaims(exp: F.now.addingTimeInterval(-3600)))
     }
     try claimsCheck(F.idTokenClaims(exp: F.now.addingTimeInterval(-30)))
-  }
-
-  @Test("Wrong or missing nonce is refused")
-  func nonce() {
-    #expect(throws: V.ValidationError.nonceMismatch) {
-      try claimsCheck(F.idTokenClaims(nonce: "replayed"))
-    }
-    #expect(throws: V.ValidationError.nonceMismatch) {
-      try claimsCheck(F.idTokenClaims(nonce: nil))
-    }
-  }
-
-  @Test("On reauthorization a different subject is refused")
-  func subjectMismatch() {
-    #expect(throws: V.ValidationError.subjectMismatch) {
-      try claimsCheck(F.idTokenClaims(sub: "someone-else"), subject: "sub-123")
-    }
   }
 
   @Test("A token that is not a JWT is malformed")

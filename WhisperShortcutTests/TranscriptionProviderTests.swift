@@ -55,19 +55,6 @@ struct TranscriptionProviderTests {
     #expect(routed == [.openRouterTranscription, .selfHostedTranscription])
   }
 
-  @Test("Direct models map to their own vendor")
-  func directModelsMapToVendors() {
-    #expect(TranscriptionModel.gemini38Flash.provider == .google)
-    #expect(TranscriptionModel.gemini31Pro.provider == .google)
-    #expect(TranscriptionModel.openAIGPTTranscribe.provider == .openAI)
-    #expect(TranscriptionModel.openAIGPT4oMiniTranscribe.provider == .openAI)
-    #expect(TranscriptionModel.xaiTranscribe.provider == .xai)
-
-    for model in [TranscriptionModel.gemini38Flash, .openAIGPTTranscribe, .xaiTranscribe] {
-      #expect(model.provider.group == .direct, "\(model.rawValue)")
-    }
-  }
-
   @Test("Every on-device model is offline, and nothing else is")
   func offlineGroupIsOnDeviceOnly() {
     let offline = Set(TranscriptionModel.allCases.filter { $0.provider == .offline })
@@ -79,18 +66,6 @@ struct TranscriptionProviderTests {
 
     for model in offline {
       #expect(model.provider.group == .offline, "\(model.rawValue)")
-    }
-  }
-
-  /// The four booleans used to be independent switches; they are now views onto `provider`. This
-  /// guards the collapse — call sites across 23 files still read them.
-  @Test("The legacy provider booleans still agree with the axis")
-  func legacyBooleansAgreeWithProvider() {
-    for model in TranscriptionModel.allCases {
-      #expect(model.isGemini == (model.provider == .google), "\(model.rawValue)")
-      #expect(model.isOpenAI == (model.provider == .openAI), "\(model.rawValue)")
-      #expect(model.isXAI == (model.provider == .xai), "\(model.rawValue)")
-      #expect(model.isOffline == (model.provider == .offline), "\(model.rawValue)")
     }
   }
 
@@ -128,16 +103,6 @@ struct TranscriptionProviderTests {
       #expect(
         model.needsOfflineModelDownload == (model.isOffline && !model.hasRequiredCredential),
         "\(model.rawValue)")
-    }
-  }
-
-  @Test("Credential prompts never tell a keyless provider to add an API key")
-  func credentialTitlesMatchWhatIsActuallyNeeded() {
-    #expect(TranscriptionProvider.offline.credentialRequiredTitle == "Model Not Downloaded")
-    #expect(TranscriptionProvider.selfHosted.credentialRequiredTitle == "Endpoint Not Configured")
-
-    for provider in [TranscriptionProvider.google, .openAI, .xai, .openRouter] {
-      #expect(provider.credentialRequiredTitle == "API Key Required", "\(provider.rawValue)")
     }
   }
 

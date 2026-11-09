@@ -5,15 +5,13 @@ import Foundation
 @Suite("Prompt reply cleanup")
 struct PromptReplyCleanupTests {
 
-  @Test("A bulleted reply ending in a prompt suffix is left intact")
-  func bulletSuffixSurvives() {
-    let reply = "- Cut adverbs\n- Remove filler words"
-    #expect(PromptReplyCleanup.normalize(reply) == reply)
-  }
-
-  @Test("A reply that starts like a transcript prefix is left intact")
-  func prefixPhraseSurvives() {
-    let reply = "Clean text with no typos is the goal."
+  @Test(
+    "A bulleted reply ending in a prompt suffix, or starting like a transcript prefix, is left intact",
+    arguments: [
+      "- Cut adverbs\n- Remove filler words",
+      "Clean text with no typos is the goal.",
+    ])
+  func replySurvives(_ reply: String) {
     #expect(PromptReplyCleanup.normalize(reply) == reply)
   }
 

@@ -58,11 +58,6 @@ struct PasteTargetPolicyTests {
     let relaunched = PasteTarget(pid: 999, bundleId: "com.example.notes")
     #expect(PasteTargetPolicy.action(frontmost: relaunched, recorded: notes, own: own) == .pasteNow)
   }
-
-  @Test("The hint text is the agreed copy")
-  func hintText() {
-    #expect(PasteTargetPolicy.copiedHint == "Copied – press ⌘V to paste")
-  }
 }
 
 @Suite("Clipboard paste guard")

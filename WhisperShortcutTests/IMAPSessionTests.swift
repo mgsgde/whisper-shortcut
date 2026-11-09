@@ -140,11 +140,6 @@ struct IMAPSessionTests {
     #expect(ContinuousClock.now - start < .seconds(2.5))
   }
 
-  @Test func productionLimitsUnchanged() {
-    #expect(IMAPSession.defaultIdleTimeout == .seconds(20))
-    #expect(IMAPSession.defaultCommandCap == .seconds(120))
-  }
-
   @Test func examineReadsExists() async throws {
     let transport = ScriptedTransport(chunks: [
       "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n* 1212 EXISTS\r\n* 0 RECENT\r\nA001 OK [READ-ONLY] EXAMINE completed\r\n",

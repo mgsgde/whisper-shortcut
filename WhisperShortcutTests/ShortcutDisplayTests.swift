@@ -55,39 +55,25 @@ struct ShortcutDisplayTests {
     }.value
   }
 
-  @Test("Bare function keys render as their name")
-  func bareFunctionKey() {
-    // F13–F20 are what programmable keyboards send for a dedicated key, and they are bindable
-    // without a modifier. Before they had `displayString` cases they rendered as "Key".
-    #expect(ShortcutDefinition(key: .f17, modifiers: []).displayString == "F17")
-    #expect(ShortcutDefinition(key: .f13, modifiers: []).displayString == "F13")
-    #expect(ShortcutDefinition(key: .f20, modifiers: []).displayString == "F20")
-    #expect(ShortcutDefinition(key: .f1, modifiers: []).displayString == "F1")
-  }
-
-  @Test("A function key's private-use character is not used as the label")
-  func functionKeyDisplayCharacterIsIgnored() {
-    // The recorder stores `charactersIgnoringModifiers`, which for F17 is AppKit's
-    // NSF17FunctionKey (U+F712) — rendering it shows an empty glyph box.
-    let recorded = ShortcutDefinition(
-      key: .f17, modifiers: [], isEnabled: true, displayCharacter: "\u{F712}")
-    #expect(recorded.displayString == "F17")
-  }
-
-  @Test("Space renders as its name, not as a blank")
-  func spaceIsNamed() {
-    let recorded = ShortcutDefinition(
-      key: .space, modifiers: [.option], isEnabled: true, displayCharacter: " ")
-    #expect(recorded.displayString == "⌥Space")
-  }
-
-  @Test("Printable characters still win over the layout-independent name")
-  func printableCharacterIsKept() {
+  @Test("Stored bindings render by name or printable character", arguments: [
+    // F13-F20 are what programmable keyboards send for a dedicated key; before they had
+    // `displayString` cases they rendered as "Key".
+    (ShortcutDefinition(key: .f17, modifiers: []), "F17", "bare F17"),
+    (ShortcutDefinition(key: .f13, modifiers: []), "F13", "bare F13"),
+    (ShortcutDefinition(key: .f20, modifiers: []), "F20", "bare F20"),
+    (ShortcutDefinition(key: .f1, modifiers: []), "F1", "bare F1"),
+    // The recorder stores AppKit's NSF17FunctionKey (U+F712) for F17 -- rendering it shows an empty glyph box.
+    (ShortcutDefinition(key: .f17, modifiers: [], isEnabled: true, displayCharacter: "\u{F712}"), "F17",
+     "function key private-use character ignored"),
+    (ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true, displayCharacter: " "), "⌥Space",
+     "space is named, not blank"),
     // German layout: the keycode that is "Y" on US-QWERTY prints "Z".
-    let recorded = ShortcutDefinition(
-      key: .y, modifiers: [.command], isEnabled: true, displayCharacter: "z")
-    #expect(recorded.displayString == "⌘Z")
-    #expect(ShortcutDefinition(key: .one, modifiers: [.command]).displayString == "⌘1")
+    (ShortcutDefinition(key: .y, modifiers: [.command], isEnabled: true, displayCharacter: "z"), "⌘Z",
+     "printable character wins over key name"),
+    (ShortcutDefinition(key: .one, modifiers: [.command]), "⌘1", "plain digit"),
+  ])
+  func displayString(definition: ShortcutDefinition, expected: String, label: String) {
+    #expect(definition.displayString == expected, "\(label)")
   }
 
   @Test("A disabled binding reads as Disabled regardless of key")

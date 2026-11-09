@@ -8,64 +8,46 @@ import Testing
 @Suite("Text processing whitespace and mojibake")
 struct TextProcessingWhitespaceTests {
 
-  @Test("Leading and trailing whitespace is trimmed")
-  func trimsOuterWhitespace() {
-    #expect(TextProcessingUtility.normalizingWhitespace("  hello world  ") == "hello world")
-    #expect(TextProcessingUtility.normalizingWhitespace("\n\nhello\n\n") == "hello")
+  private struct WhitespaceCase: Sendable {
+    let input: String
+    let expected: String
+    let label: String
   }
 
-  @Test("Three or more consecutive newlines collapse to two")
-  func collapsesExcessNewlines() {
-    #expect(
-      TextProcessingUtility.normalizingWhitespace("line1\n\n\n\nline2")
-        == "line1\n\nline2")
+  @Test(
+    "normalizingWhitespace trims, collapses excess, and keeps indentation and paragraph breaks",
+    arguments: [
+      WhitespaceCase(input: "  hello world  ", expected: "hello world", label: "trims outer spaces"),
+      WhitespaceCase(input: "\n\nhello\n\n", expected: "hello", label: "trims outer newlines"),
+      // Three or more consecutive newlines collapse to two.
+      WhitespaceCase(input: "line1\n\n\n\nline2", expected: "line1\n\nline2", label: "collapses excess newlines"),
+      WhitespaceCase(input: "para one\n\npara two", expected: "para one\n\npara two", label: "keeps paragraph break"),
+      // Outer trim drops leading whitespace on the *first* line (current contract).
+      // A later line's leading tab is preserved so nested bullets stay indented.
+      WhitespaceCase(
+        input: "- first   item\n\t- second\t\titem  ", expected: "- first item\n\t- second item",
+        label: "internal runs collapse, later indentation kept"),
+      WhitespaceCase(
+        input: "  - first item\n  - second item", expected: "- first item\n  - second item",
+        label: "first-line indent stripped by outer trim"),
+      WhitespaceCase(
+        input: "hello\n   \nworld", expected: "hello\n\nworld",
+        label: "whitespace-only line stays empty"),
+    ])
+  private func normalizesWhitespace(_ c: WhitespaceCase) {
+    #expect(TextProcessingUtility.normalizingWhitespace(c.input) == c.expected, "\(c.label)")
   }
 
-  @Test("Exactly two newlines are kept")
-  func keepsParagraphBreak() {
-    #expect(
-      TextProcessingUtility.normalizingWhitespace("para one\n\npara two")
-        == "para one\n\npara two")
-  }
-
-  @Test("Internal spaces and tabs collapse; later-line indentation is kept")
-  func preservesIndentationAndCollapsesRest() {
-    // Outer trim drops leading whitespace on the *first* line (current contract).
-    // A later line's leading tab is preserved so nested bullets stay indented.
-    let input = "- first   item\n\t- second\t\titem  "
-    let output = TextProcessingUtility.normalizingWhitespace(input)
-    #expect(output == "- first item\n\t- second item")
-  }
-
-  @Test("Leading spaces on the first line are stripped by the outer trim")
-  func firstLineIndentIsTrimmed() {
-    #expect(
-      TextProcessingUtility.normalizingWhitespace("  - first item\n  - second item")
-        == "- first item\n  - second item")
-  }
-
-  @Test("A line of only whitespace stays empty after trailing trim")
-  func whitespaceOnlyLine() {
-    #expect(TextProcessingUtility.normalizingWhitespace("hello\n   \nworld") == "hello\n\nworld")
-  }
-
-  @Test("Known UTF-8-as-Windows-1252 mojibake is repaired")
-  func repairsClassicMojibake() throws {
+  @Test("repairMojibakeIfNeeded repairs known mojibake and leaves everything else alone")
+  func repairsMojibake() throws {
     // UTF-8 bytes of "ä" / "—" read as Windows-1252 — the classic paste-from-terminal case.
     let aUmlaut = try #require(String(data: Data([0xC3, 0xA4]), encoding: .windowsCP1252))
     let emDash = try #require(String(data: Data([0xE2, 0x80, 0x94]), encoding: .windowsCP1252))
     #expect(TextProcessingUtility.repairMojibakeIfNeeded(aUmlaut) == "ä")
     #expect(TextProcessingUtility.repairMojibakeIfNeeded(emDash) == "—")
-  }
-
-  @Test("Correct UTF-8 without mojibake markers is left alone")
-  func leavesCleanTextAlone() {
+    // Correct UTF-8 without mojibake markers is left alone.
     #expect(TextProcessingUtility.repairMojibakeIfNeeded("Café — naïve") == "Café — naïve")
     #expect(TextProcessingUtility.repairMojibakeIfNeeded("plain ascii") == "plain ascii")
-  }
-
-  @Test("Markers that cannot be improved are left alone")
-  func unrepairableMarkersStay() {
     // Isolated "Ã" with no following Latin-1 pair that round-trips to fewer markers.
     let leftover = "Ã"
     #expect(TextProcessingUtility.repairMojibakeIfNeeded(leftover) == leftover)

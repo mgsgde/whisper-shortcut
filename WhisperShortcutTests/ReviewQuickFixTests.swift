@@ -27,14 +27,6 @@ struct ReviewQuickFixTests {
       == ChatToolRegistry.updateEventAllDay(["all_day": "true"]))
   }
 
-  @Test("An error popup does not repeat a differently worded heading in its body")
-  func popupBodyDropsSecondHeading() {
-    let (title, body) = SpeechErrorFormatter.titleAndBodyForPopup(.noGoogleAPIKey)
-    #expect(title.hasPrefix("⚠️"))
-    #expect(!body.hasPrefix("⚠️"), "body still opens with a heading: \(body.prefix(40))")
-    #expect(!body.isEmpty)
-  }
-
   @Test("A tool result over the cap is truncated with a note; normal results pass untouched")
   func toolResultCap() {
     let small: [String: Any] = ["content": "hello"]

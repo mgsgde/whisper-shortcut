@@ -42,35 +42,32 @@ struct WhisperGlossarySanitizerTests {
     #expect(!result.contains("Grogbot"))
   }
 
-  @Test("Stripping an entry's aside does not leave empty separators behind")
-  func noDanglingSeparators() {
-    let result = LocalSpeechService.sanitizeGlossaryForWhisper(
-      "Alpha (not \"Alfa\"), Beta, (stray), Gamma")
-    #expect(result == "Alpha, Beta, Gamma")
-    #expect(!result.contains(", ,"))
-    #expect(!result.hasSuffix(","))
+  private struct GlossaryCase: Sendable {
+    let input: String
+    let expected: String
+    let label: String
   }
 
-  @Test("A glossary with nothing to strip is passed through unchanged")
-  func plainGlossaryUntouched() {
-    #expect(
-      LocalSpeechService.sanitizeGlossaryForWhisper("Heidelberg, Ramipril, Sonographie")
-        == "Heidelberg, Ramipril, Sonographie")
-  }
-
-  @Test("Newline-separated glossaries are normalised to one line")
-  func newlineSeparated() {
-    #expect(
-      LocalSpeechService.sanitizeGlossaryForWhisper("Alpha\nBeta (not \"Bravo\")\nGamma")
-        == "Alpha, Beta, Gamma")
-  }
-
-  /// A glossary that is nothing but asides must produce no prompt at all rather than an empty
-  /// string that still gets encoded and conditioned on.
-  @Test("A glossary that sanitises to nothing yields an empty result")
-  func emptiesToNothing() {
-    #expect(LocalSpeechService.sanitizeGlossaryForWhisper("(only an aside)").isEmpty)
-    #expect(LocalSpeechService.sanitizeGlossaryForWhisper("Terms:").isEmpty)
-    #expect(LocalSpeechService.sanitizeGlossaryForWhisper("   ").isEmpty)
+  @Test(
+    "Asides, stray entries, separators and empty input are sanitised to a clean one-line glossary",
+    arguments: [
+      // Stripping an entry's aside does not leave empty separators (", ,") or a trailing comma behind.
+      GlossaryCase(
+        input: "Alpha (not \"Alfa\"), Beta, (stray), Gamma", expected: "Alpha, Beta, Gamma",
+        label: "no dangling separators"),
+      GlossaryCase(
+        input: "Heidelberg, Ramipril, Sonographie", expected: "Heidelberg, Ramipril, Sonographie",
+        label: "plain glossary untouched"),
+      GlossaryCase(
+        input: "Alpha\nBeta (not \"Bravo\")\nGamma", expected: "Alpha, Beta, Gamma",
+        label: "newline-separated normalised to one line"),
+      // A glossary that is nothing but asides must produce no prompt at all rather than an empty
+      // string that still gets encoded and conditioned on.
+      GlossaryCase(input: "(only an aside)", expected: "", label: "only an aside"),
+      GlossaryCase(input: "Terms:", expected: "", label: "only the Terms: label"),
+      GlossaryCase(input: "   ", expected: "", label: "whitespace only"),
+    ])
+  private func sanitises(_ c: GlossaryCase) {
+    #expect(LocalSpeechService.sanitizeGlossaryForWhisper(c.input) == c.expected, "\(c.label)")
   }
 }

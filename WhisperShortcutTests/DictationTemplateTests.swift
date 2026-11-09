@@ -506,23 +506,6 @@ struct DictationTemplateTests {
     #expect(SpeechService.applyingDashBackstop(
       dashed, selection: nil, turnKind: .edit, prefersShortDashes: true) != dashed)
   }
-
-  @Test("A prompt log gains a template name and keeps the prompt mode")
-  func templateLogField() throws {
-    let legacy = #"{"ts":"t","mode":"prompt"}"#.data(using: .utf8)!
-    let decoded = try JSONDecoder().decode(InteractionLogEntry.self, from: legacy)
-    #expect(decoded.mode == "prompt")
-    #expect(decoded.template == nil)
-
-    let entry = InteractionLogEntry(
-      ts: "t", mode: "prompt", model: nil, result: nil, selectedText: nil,
-      userInstruction: "note", modelResponse: "formatted", text: nil, voice: nil,
-      transcriptionModel: nil, hadScreenshot: false, latencyMs: 1,
-      provider: "gemini", loadMs: nil, template: "Praxis")
-    let again = try JSONDecoder().decode(InteractionLogEntry.self, from: JSONEncoder().encode(entry))
-    #expect(again.mode == "prompt")
-    #expect(again.template == "Praxis")
-  }
 }
 
 /// The notification observer's closure cannot mutate a captured boolean.

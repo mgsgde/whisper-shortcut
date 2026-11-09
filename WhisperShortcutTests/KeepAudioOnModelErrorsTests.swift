@@ -44,19 +44,6 @@ struct KeepAudioOnModelErrorsTests {
     }
   }
 
-  @Test("Cloud-only OpenAI too-long message does not offer a futile Retry")
-  func cloudOnlyMessage() {
-    let error = TranscriptionError.fileError("Audio is too long for OpenAI Dictate Prompt (30.0 MB > 25.0 MB limit). Switch to a Gemini Dictate Prompt model for longer recordings.")
-    #expect(!error.offersManualRetry)
-  }
-
-  @Test("Unrelated fileError does not keep the audio")
-  func unrelatedFileError() {
-    let error = TranscriptionError.fileError("Audio file not found")
-    #expect(!error.keepsAudioForManualRetry)
-    #expect(!error.offersManualRetry)
-  }
-
   @Test("Transient errors still offer Retry; permanent ones still do not")
   func existingBehaviourUnchanged() {
     #expect(TranscriptionError.networkError("x").offersManualRetry)

@@ -8,54 +8,39 @@ import Foundation
 @Suite("Live meeting recording marker")
 struct LiveMeetingRecordingMarkerTests {
 
-  private let now = Date(timeIntervalSince1970: 1_000_000)
-  private func payload(userQuit: Bool = false) -> LiveMeetingRecordingMarker.Payload {
+  private struct MarkerCase: @unchecked Sendable {
+    let note: String
+    let payload: LiveMeetingRecordingMarker.Payload?
+    let age: TimeInterval
+    let transcriptExists: Bool
+    let expected: LiveMeetingRecordingMarker.LaunchAction
+  }
+
+  private static let now = Date(timeIntervalSince1970: 1_000_000)
+
+  private static func payload(userQuit: Bool = false) -> LiveMeetingRecordingMarker.Payload {
     .init(stem: "Meeting-1", pid: 42, userQuit: userQuit)
   }
 
-  @Test("No marker means nothing to do")
-  func noPayload() {
-    let action = LiveMeetingRecordingMarker.launchAction(
-      payload: nil, lastAlive: now, now: now, transcriptExists: true)
-    #expect(action == .none)
-  }
+  private static let markerCases: [MarkerCase] = [
+    .init(note: "no marker", payload: nil, age: 0, transcriptExists: true, expected: .none),
+    .init(note: "deliberate quit", payload: payload(userQuit: true), age: 5, transcriptExists: true, expected: .none),
+    .init(note: "no transcript", payload: payload(), age: 5, transcriptExists: false, expected: .none),
+    .init(note: "recent interruption", payload: payload(), age: 30, transcriptExists: true,
+          expected: .resume(stem: "Meeting-1")),
+    .init(note: "old interruption", payload: payload(), age: 11 * 60, transcriptExists: true,
+          expected: .notifyInterrupted(stem: "Meeting-1")),
+    .init(note: "window boundary", payload: payload(),
+          age: LiveMeetingRecordingMarker.resumeWindow, transcriptExists: true,
+          expected: .resume(stem: "Meeting-1")),
+  ]
 
-  @Test("A deliberate quit is never resumed")
-  func userQuit() {
+  @Test("Launch action for a leftover recording marker", arguments: markerCases)
+  private func launchAction(_ row: MarkerCase) {
     let action = LiveMeetingRecordingMarker.launchAction(
-      payload: payload(userQuit: true), lastAlive: now.addingTimeInterval(-5), now: now,
-      transcriptExists: true)
-    #expect(action == .none)
-  }
-
-  @Test("Without a transcript there is nothing to resume")
-  func noTranscript() {
-    let action = LiveMeetingRecordingMarker.launchAction(
-      payload: payload(), lastAlive: now.addingTimeInterval(-5), now: now, transcriptExists: false)
-    #expect(action == .none)
-  }
-
-  @Test("A recent interruption is resumed")
-  func recent() {
-    let action = LiveMeetingRecordingMarker.launchAction(
-      payload: payload(), lastAlive: now.addingTimeInterval(-30), now: now, transcriptExists: true)
-    #expect(action == .resume(stem: "Meeting-1"))
-  }
-
-  @Test("An old interruption is only reported")
-  func old() {
-    let action = LiveMeetingRecordingMarker.launchAction(
-      payload: payload(), lastAlive: now.addingTimeInterval(-11 * 60), now: now,
-      transcriptExists: true)
-    #expect(action == .notifyInterrupted(stem: "Meeting-1"))
-  }
-
-  @Test("Exactly at the window boundary still resumes")
-  func boundary() {
-    let action = LiveMeetingRecordingMarker.launchAction(
-      payload: payload(), lastAlive: now.addingTimeInterval(-LiveMeetingRecordingMarker.resumeWindow),
-      now: now, transcriptExists: true)
-    #expect(action == .resume(stem: "Meeting-1"))
+      payload: row.payload, lastAlive: Self.now.addingTimeInterval(-row.age), now: Self.now,
+      transcriptExists: row.transcriptExists)
+    #expect(action == row.expected, "\(row.note)")
   }
 
   @Test("Owner liveness: other live pid counts, own pid and dead pid do not")

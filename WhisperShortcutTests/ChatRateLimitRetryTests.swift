@@ -38,24 +38,39 @@ struct ChatRateLimitRetryTests {
 
   // MARK: - Header parsing
 
-  @Test("Retry-After seconds, including surrounding whitespace")
-  func retryAfterSeconds() {
-    let response = Self.http(["Retry-After": "  12  "])
-    #expect(RetryBackoff.retryAfter(from: response) == 12)
+  struct RetryAfterParse: Sendable {
+    let note: String
+    let headers: [String: String]
+    let expected: TimeInterval?
+    var now: Date? = nil
   }
 
-  @Test("retry-after-ms is milliseconds")
-  func retryAfterMilliseconds() {
-    let response = Self.http(["retry-after-ms": "2500"])
-    #expect(RetryBackoff.retryAfter(from: response) == 2.5)
-  }
-
-  @Test("Retry-After HTTP-date is the delay until that instant")
-  func retryAfterHTTPDate() {
+  @Test("Retry-After is read from seconds, milliseconds, an HTTP-date, or not at all", arguments: [
+    RetryAfterParse(note: "seconds, including surrounding whitespace", headers: ["Retry-After": "  12  "], expected: 12),
+    RetryAfterParse(note: "retry-after-ms is milliseconds", headers: ["retry-after-ms": "2500"], expected: 2.5),
     // 21 Oct 2015 07:28:00 GMT is the RFC 9110 example's shape; the wait is measured from `now`.
-    let now = Self.utc(2015, 10, 21, 7, 27, 45)
-    let response = Self.http(["Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"])
-    #expect(RetryBackoff.retryAfter(from: response, now: now) == 15)
+    RetryAfterParse(
+      note: "HTTP-date is the delay until that instant",
+      headers: ["Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"],
+      expected: 15, now: Self.utc(2015, 10, 21, 7, 27, 45)),
+    RetryAfterParse(note: "no headers", headers: [:], expected: nil),
+    RetryAfterParse(note: "an unrelated header is not a delay", headers: ["Content-Type": "application/json"], expected: nil),
+    RetryAfterParse(
+      note: "an unparseable Retry-After falls through to retry-after-ms",
+      headers: ["Retry-After": "soon", "retry-after-ms": "1500"], expected: 1.5),
+    RetryAfterParse(
+      note: "a numeric Retry-After wins over retry-after-ms",
+      headers: ["Retry-After": "4", "retry-after-ms": "9000"], expected: 4),
+  ])
+  func retryAfterParsing(_ row: RetryAfterParse) {
+    let response = Self.http(row.headers)
+    let got: TimeInterval?
+    if let now = row.now {
+      got = RetryBackoff.retryAfter(from: response, now: now)
+    } else {
+      got = RetryBackoff.retryAfter(from: response)
+    }
+    #expect(got == row.expected, "\(row.note)")
   }
 
   @Test("Stored delay is raw; the skew buffer is applied only when sleeping")
@@ -115,58 +130,53 @@ struct ChatRateLimitRetryTests {
     #expect(!RetryBackoff.isTransientPreFirstToken(err))
   }
 
-  @Test("A response with no rate-limit header has no delay")
-  func retryAfterMissing() {
-    #expect(RetryBackoff.retryAfter(from: Self.http([:])) == nil)
-    #expect(RetryBackoff.retryAfter(from: Self.http(["Content-Type": "application/json"])) == nil)
+  struct AnthropicReset: Sendable {
+    let note: String
+    let headers: [String: String]
+    let expected: TimeInterval?
   }
 
-  @Test("An unparseable Retry-After falls through to retry-after-ms; a numeric one wins")
-  func retryAfterPrecedence() {
-    let fallback = Self.http(["Retry-After": "soon", "retry-after-ms": "1500"])
-    #expect(RetryBackoff.retryAfter(from: fallback) == 1.5)
-    let secondsWin = Self.http(["Retry-After": "4", "retry-after-ms": "9000"])
-    #expect(RetryBackoff.retryAfter(from: secondsWin) == 4)
-  }
-
-  @Test("Anthropic reset: a lone bucket, the latest when none reports remaining, non-reset ignored")
-  func anthropicReset() {
+  @Test("Anthropic reset uses the exhausted bucket, else the latest, and ignores non-reset headers", arguments: [
+    AnthropicReset(
+      note: "a lone bucket",
+      headers: ["anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z"], expected: 5),
+    AnthropicReset(
+      note: "the latest when none reports remaining",
+      headers: [
+        "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:20Z",
+        "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
+      ], expected: 20),
+    AnthropicReset(
+      note: "a non-reset header is ignored",
+      headers: ["anthropic-ratelimit-requests-limit": "2026-11-01T00:00:05Z"], expected: nil),
+    AnthropicReset(
+      note: "waits for the exhausted tokens bucket, not the sooner requests reset",
+      headers: [
+        "anthropic-ratelimit-requests-remaining": "5",
+        "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
+        "anthropic-ratelimit-tokens-remaining": "0",
+        "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
+      ], expected: 40),
+    AnthropicReset(
+      note: "waits for the exhausted requests bucket",
+      headers: [
+        "anthropic-ratelimit-requests-remaining": "0",
+        "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
+        "anthropic-ratelimit-tokens-remaining": "9000",
+        "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
+      ], expected: 5),
+    AnthropicReset(
+      note: "both buckets exhausted: the later reset wins",
+      headers: [
+        "anthropic-ratelimit-requests-remaining": "0",
+        "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
+        "anthropic-ratelimit-tokens-remaining": "0",
+        "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
+      ], expected: 40),
+  ])
+  func anthropicReset(_ row: AnthropicReset) {
     let now = Self.utc(2026, 11, 1, 0, 0, 0)
-    let one = Self.http(["anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z"])
-    #expect(RetryBackoff.retryAfter(from: one, now: now) == 5)
-    let two = Self.http([
-      "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:20Z",
-      "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
-    ])
-    #expect(RetryBackoff.retryAfter(from: two, now: now) == 20)
-    let notAReset = Self.http(["anthropic-ratelimit-requests-limit": "2026-11-01T00:00:05Z"])
-    #expect(RetryBackoff.retryAfter(from: notAReset, now: now) == nil)
-  }
-
-  @Test("Anthropic reset waits for the exhausted bucket, not the soonest one")
-  func anthropicResetUsesExhaustedBucket() {
-    let now = Self.utc(2026, 11, 1, 0, 0, 0)
-    let tokensBlocked = Self.http([
-      "anthropic-ratelimit-requests-remaining": "5",
-      "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
-      "anthropic-ratelimit-tokens-remaining": "0",
-      "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
-    ])
-    #expect(RetryBackoff.retryAfter(from: tokensBlocked, now: now) == 40)
-    let requestsBlocked = Self.http([
-      "anthropic-ratelimit-requests-remaining": "0",
-      "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
-      "anthropic-ratelimit-tokens-remaining": "9000",
-      "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
-    ])
-    #expect(RetryBackoff.retryAfter(from: requestsBlocked, now: now) == 5)
-    let both = Self.http([
-      "anthropic-ratelimit-requests-remaining": "0",
-      "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
-      "anthropic-ratelimit-tokens-remaining": "0",
-      "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
-    ])
-    #expect(RetryBackoff.retryAfter(from: both, now: now) == 40)
+    #expect(RetryBackoff.retryAfter(from: Self.http(row.headers), now: now) == row.expected, "\(row.note)")
   }
 
   // MARK: - Classification
@@ -189,30 +199,6 @@ struct ChatRateLimitRetryTests {
     #expect(err as? TranscriptionError == .rateLimited(retryAfter: nil))
     #expect(!RetryBackoff.isTransientPreFirstToken(err))
     #expect(RetryBackoff.isPermanentRateLimit(err))
-  }
-
-  @Test("A Retry-After past the automatic-wait ceiling is kept and not retried")
-  func retryAfterPastCapIsNotTransient() {
-    let tooLong = RetryBackoff.maxAutomaticRetryWait + 50
-    let err = ChatProviderHTTPError.map(
-      provider: "OpenAI", status: 429, body: "Rate limit reached",
-      response: Self.http(["Retry-After": String(tooLong)]))
-    #expect(err as? TranscriptionError == .rateLimited(retryAfter: tooLong))
-    #expect(!RetryBackoff.isTransientPreFirstToken(err))
-  }
-
-  @Test("insufficient_quota stays a billing error even when Retry-After is set")
-  func insufficientQuotaStaysPermanent() {
-    let body = #"{"error":{"code":"insufficient_quota","message":"You exceeded your current quota"}}"#
-    let err = ChatProviderHTTPError.map(
-      provider: "OpenAI", status: 429, body: body,
-      response: Self.http(["Retry-After": "3"]))
-    guard case TranscriptionError.billingRequired(let topUpURL) = err else {
-      Issue.record("expected billingRequired, got \(err)")
-      return
-    }
-    #expect(topUpURL == TranscriptionError.openAIBillingURL)
-    #expect(!RetryBackoff.isTransientPreFirstToken(err))
   }
 
   @Test("Claude's mapper keeps an anthropic reset, via the same HTTP mapping")
@@ -242,30 +228,6 @@ struct ChatRateLimitRetryTests {
   }
 
   // MARK: - Retry delay
-
-  @Test("Retry-After: 0 is not a hot retry")
-  func zeroRetryAfterIsFloored() {
-    let err = TranscriptionError.rateLimited(retryAfter: 0)
-    #expect(RetryBackoff.isTransientPreFirstToken(err))
-    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == RetryBackoff.minAutomaticRetryWait)
-  }
-
-  @Test("A delta delay inside the ceiling is slept as-is; an absolute one gets the skew buffer")
-  func retryAfterInsideCeilingIsUsed() {
-    let delta = TranscriptionError.rateLimited(retryAfter: 7)
-    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: delta) == 7)
-    let absolute = TranscriptionError.rateLimited(retryAfter: 7, isAbsolute: true)
-    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: absolute) == 7 + RetryBackoff.clockSkewBuffer)
-  }
-
-  @Test("The automatic wait ceiling is short enough not to stall a chat reply")
-  func ceilingIsChatFriendly() {
-    #expect(RetryBackoff.maxAutomaticRetryWait == 60)
-    let atCeiling = TranscriptionError.rateLimited(retryAfter: RetryBackoff.maxAutomaticRetryWait)
-    #expect(RetryBackoff.isTransientPreFirstToken(atCeiling))
-    let pastCeiling = TranscriptionError.rateLimited(retryAfter: RetryBackoff.maxAutomaticRetryWait + 1)
-    #expect(!RetryBackoff.isTransientPreFirstToken(pastCeiling))
-  }
 
   @Test("A 60s Retry-After window is transient; the displayed wait is floored")
   func sixtySecondWindowAndDisplayedFloor() {

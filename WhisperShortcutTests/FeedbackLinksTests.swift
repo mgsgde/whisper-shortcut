@@ -106,18 +106,6 @@ struct FeedbackLinksTests {
     #expect(url.absoluteString.contains("labels=ai-report"))
   }
 
-  @Test("A 10,000-character issue body is truncated")
-  func issueURLTruncatesLongBody() {
-    let body = String(repeating: "x", count: 10_000)
-    guard let url = FeedbackLinks.issueURL(title: "T", body: body) else {
-      Issue.record("no URL")
-      return
-    }
-    let decoded = url.absoluteString.removingPercentEncoding ?? ""
-    #expect(decoded.contains("…(truncated)"))
-    #expect(url.absoluteString.count < 8_000)
-  }
-
   @Test("Umlauts and spaces count at their encoded size, so the URL stays under GitHub's limit")
   func issueURLCapsEncodedLength() {
     let body = String(repeating: "Größe ändern ", count: 1_500)

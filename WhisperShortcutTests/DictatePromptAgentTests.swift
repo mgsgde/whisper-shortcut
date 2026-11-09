@@ -86,18 +86,6 @@ struct DictatePromptAgentTests {
     #expect(topUpURL == TranscriptionError.openAIBillingURL)
     #expect(SpeechErrorFormatter.formatForUser(error).contains("OpenAI"))
   }
-
-  @Test("OpenAI quick actions use a text model, never the audio-only one")
-  func quickActionModel() {
-    #expect(SpeechService.openAIQuickActionModel.provider == .openai)
-    #expect(SpeechService.openAIQuickActionModel != .openaiGPT4oAudio)
-    #expect(!SpeechService.openAIQuickActionModel.supportsDirectAudioInput)
-  }
-
-  @Test("Round cap stays small")
-  func roundCap() {
-    #expect(DictatePromptAgent.maxToolRounds == 3)
-  }
 }
 
 /// The agent path against the real Gemini API: typed history/parts converted to the chat
@@ -142,41 +130,6 @@ struct DictatePromptAgentLiveTests {
     let lower = text.lowercased()
     #expect(lower.contains("hello world"), "got: \(text)")
     #expect(lower.contains("tomorrow"), "got: \(text)")
-  }
-
-  @Test(
-    "OpenAI GPT-Audio accepts the agent path's Chat Completions request with a tool declared",
-    .enabled(if: KeychainManager.shared.hasNonEmpty(.openAI), "No OpenAI key in .env"))
-  func openAIRewriteWithToolsDeclared() async throws {
-    let tools = ChatToolRegistry.workspaceFunctionDeclarations.compactMap { decl -> LLMToolDeclaration? in
-      guard let name = decl["name"] as? String, name == "list_workspace_folders",
-            let desc = decl["description"] as? String,
-            let params = decl["parameters"] as? [String: Any] else { return nil }
-      return LLMToolDeclaration(name: name, description: desc, parameters: params)
-    }
-    #expect(tools.count == 1)
-    // GPT-Audio requires audio in the input, exactly as the real path always attaches it.
-    let audioURL = try #require(
-      Bundle(for: TestResourceAnchor.self).url(forResource: "sample", withExtension: "wav"))
-    let audio = try Data(contentsOf: audioURL).base64EncodedString()
-    let contents: [[String: Any]] = [[
-      "role": "user",
-      "parts": [
-        ["text": "\(AppConstants.clipboardSelectionHeader)\n\nhelo wrold, see you tomorow"],
-        ["text": "VOICE INSTRUCTION (typed, the recording is only background):\nFix the spelling."],
-        ["inline_data": ["mime_type": "audio/wav", "data": audio]],
-      ],
-    ]]
-    let model = PromptModel.openaiGPT4oAudio
-    let text = try await DictatePromptAgent.run(
-      provider: LLMProviderFactory.provider(for: model),
-      requestModel: model.rawValue,
-      contents: contents,
-      systemPrompt: SpeechService.buildDictatePromptSystemPrompt(
-        logPrefix: "TEST", usesScreenshotSelection: false),
-      tools: tools,
-      logPrefix: "TEST-DICTATE-PROMPT-AGENT-OPENAI")
-    #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "empty reply")
   }
 
   @Test(

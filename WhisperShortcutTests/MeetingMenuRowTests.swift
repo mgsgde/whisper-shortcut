@@ -7,28 +7,25 @@ import Foundation
 /// they can be checked without an `NSMenu`.
 @Suite("Status menu — meeting row")
 struct MeetingMenuRowTests {
-  @Test("A running meeting offers Stop")
-  func active() {
-    #expect(
-      MenuBarController.meetingRowTitle(isActive: true, canResume: false)
-        == "Stop Meeting Transcription")
-    // A running meeting wins over resumable chunks: stopping is what a click does.
-    #expect(
-      MenuBarController.meetingRowTitle(isActive: true, canResume: true)
-        == "Stop Meeting Transcription")
+  private struct Row: Sendable {
+    let isActive: Bool
+    let canResume: Bool
+    let title: LocalizedStringResource
+    let label: String
   }
 
-  @Test("A stopped meeting with transcript chunks offers Resume")
-  func resumable() {
+  @Test(
+    "The row title says what a click will do",
+    arguments: [
+      Row(isActive: true, canResume: false, title: "Stop Meeting Transcription", label: "running offers Stop"),
+      // A running meeting wins over resumable chunks: stopping is what a click does.
+      Row(isActive: true, canResume: true, title: "Stop Meeting Transcription", label: "running beats resumable"),
+      Row(isActive: false, canResume: true, title: "Resume Meeting Transcription", label: "stopped with chunks offers Resume"),
+      Row(isActive: false, canResume: false, title: "Start Meeting Transcription", label: "nothing to resume offers Start"),
+    ])
+  private func rowTitle(_ row: Row) {
     #expect(
-      MenuBarController.meetingRowTitle(isActive: false, canResume: true)
-        == "Resume Meeting Transcription")
-  }
-
-  @Test("Nothing running and nothing to resume offers Start")
-  func fresh() {
-    #expect(
-      MenuBarController.meetingRowTitle(isActive: false, canResume: false)
-        == "Start Meeting Transcription")
+      MenuBarController.meetingRowTitle(isActive: row.isActive, canResume: row.canResume) == row.title,
+      Comment(rawValue: row.label))
   }
 }

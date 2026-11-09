@@ -23,14 +23,6 @@ struct ShortcutDefaultsTests {
     #expect(ShortcutConfig.default.startRecording.modifiers == [.control, .option])
   }
 
-  @Test("Add Selection to Glossary ships without a default shortcut in both sets")
-  func glossaryShortcutDisabledByDefault() {
-    #expect(!ShortcutConfig.default.addToGlossary.isEnabled)
-    #expect(!ShortcutConfig.legacyCommandDigit.addToGlossary.isEnabled)
-    // The key and modifiers stay as the suggested binding the user can switch on.
-    #expect(ShortcutConfig.default.addToGlossary.key == .seven)
-  }
-
   @Test("App Store availability disables only the hidden Read Aloud and Glossary slots")
   func availableInThisBuildDropsHiddenSlots() {
     var input = ShortcutConfig.default

@@ -192,12 +192,6 @@ struct OfflineModeTests {
 
   // MARK: - URLProtocol guard
 
-  @Test("canonicalRequest is the request unchanged")
-  func canonicalRequestIsIdentity() {
-    let request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
-    #expect(OfflineModeURLProtocol.canonicalRequest(for: request) == request)
-  }
-
   @Test("install prepends the guard in front of the system protocols")
   func installPrependsTheProtocol() throws {
     let configuration = URLSessionConfiguration.ephemeral

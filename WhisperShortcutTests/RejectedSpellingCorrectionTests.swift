@@ -16,61 +16,25 @@ struct RejectedSpellingCorrectionTests {
     SpeechService.replacingRejectedSpelling("Cloud CLI", with: "Claude CLI", in: text)
   }
 
-  @Test("A rejected spelling after a lowercase word is corrected")
-  func correctsAfterLowercaseWord() {
-    #expect(corrected("Wie kann man am besten hier die Cloud CLI verwenden?")
-      == "Wie kann man am besten hier die Claude CLI verwenden?")
-  }
-
-  @Test("A rejected spelling at the start of the text is corrected")
-  func correctsAtStart() {
-    #expect(corrected("Cloud CLI ist installiert.") == "Claude CLI ist installiert.")
-  }
-
-  @Test("A rejected spelling right after punctuation is corrected")
-  func correctsAfterPunctuation() {
-    #expect(corrected("Erstens, Cloud CLI einrichten.") == "Erstens, Claude CLI einrichten.")
-  }
-
-  @Test("A capitalised predecessor protects a legitimate compound")
-  func keepsGoogleCloudCLI() {
-    let text = "Ich nutze die Google Cloud CLI dafür."
-    #expect(corrected(text) == text)
-  }
-
-  @Test("Several occurrences in one sentence are each judged on their own")
-  func correctsPerOccurrence() {
+  @Test("Rejected-spelling correction: fixes bare occurrences, protects legitimate compounds",
+        arguments: [
+    ("Wie kann man am besten hier die Cloud CLI verwenden?", "Wie kann man am besten hier die Claude CLI verwenden?", "after lowercase word"),
+    ("Cloud CLI ist installiert.", "Claude CLI ist installiert.", "at start"),
+    ("Erstens, Cloud CLI einrichten.", "Erstens, Claude CLI einrichten.", "after punctuation"),
+    ("Ich nutze die Google Cloud CLI dafür.", "Ich nutze die Google Cloud CLI dafür.", "capitalised predecessor protects compound"),
     // The user's own contrast dictation, which the model collapsed into one spelling.
-    #expect(corrected("Cloud CLI, nicht Cloud CLI.") == "Claude CLI, nicht Claude CLI.")
+    ("Cloud CLI, nicht Cloud CLI.", "Claude CLI, nicht Claude CLI.", "each occurrence judged on its own"),
     // Mixed: the bare one is corrected, the Google-qualified one is not.
-    #expect(corrected("Cloud CLI und Google Cloud CLI sind verschieden.")
-      == "Claude CLI und Google Cloud CLI sind verschieden.")
-  }
-
-  @Test("Word boundaries are respected")
-  func respectsWordBoundaries() {
-    let text = "Das Wort Cloud CLIs steht hier."
-    #expect(corrected(text) == text)
-  }
-
-  @Test("A bare rejected word is never rewritten by a multi-word pair")
-  func leavesBareCloudAlone() {
-    let text = "Meine Google Cloud Kosten und die Cloud allgemein."
-    #expect(corrected(text) == text)
-  }
-
-  @Test("Text without the rejected spelling is returned untouched")
-  func noopWithoutMatch() {
-    let text = "Kann ich bei Claude CLI in den Dangerous Mode switchen?"
-    #expect(corrected(text) == text)
-  }
-
-  @Test("Umlauts in the preceding word are read as letters, not boundaries")
-  func handlesUmlautPredecessor() {
-    // "Über" is capitalised → protected; "über" is not → corrected. The scan must treat "Ü"/"ü"
-    // as part of the word, or it would stop at the umlaut and misread the first letter.
-    #expect(corrected("Über Cloud CLI reden.") == "Über Cloud CLI reden.")
-    #expect(corrected("Reden wir über Cloud CLI.") == "Reden wir über Claude CLI.")
+    ("Cloud CLI und Google Cloud CLI sind verschieden.", "Claude CLI und Google Cloud CLI sind verschieden.", "mixed occurrences"),
+    ("Das Wort Cloud CLIs steht hier.", "Das Wort Cloud CLIs steht hier.", "word boundaries respected"),
+    ("Meine Google Cloud Kosten und die Cloud allgemein.", "Meine Google Cloud Kosten und die Cloud allgemein.", "bare Cloud never rewritten"),
+    ("Kann ich bei Claude CLI in den Dangerous Mode switchen?", "Kann ich bei Claude CLI in den Dangerous Mode switchen?", "no match is untouched"),
+    // "Über" is capitalised -> protected; "über" is not -> corrected. The scan must treat "Ü"/"ü" as letters.
+    ("Über Cloud CLI reden.", "Über Cloud CLI reden.", "umlaut predecessor, capitalised"),
+    ("Reden wir über Cloud CLI.", "Reden wir über Claude CLI.", "umlaut predecessor, lowercase"),
+  ])
+  func correction(input: String, expected: String, label: String) {
+    #expect(corrected(input) == expected, "\(label)")
   }
 }
 

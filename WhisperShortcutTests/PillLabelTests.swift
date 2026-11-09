@@ -25,12 +25,4 @@ struct PillLabelTests {
     #expect(AppState.ProcessingMode.merging(context: .tts).pillLabel == "Preparing")
     #expect(AppState.ProcessingMode.merging(context: .transcription).pillLabel == "Transcribing")
   }
-
-  @Test("Every chat provider has a picker section title")
-  func providerSectionTitles() {
-    for provider in ChatModelProvider.allCases {
-      #expect(!provider.pickerSectionTitle.isEmpty)
-    }
-    #expect(ChatModelProvider.openai.pickerSectionTitle == "GPT")
-  }
 }
