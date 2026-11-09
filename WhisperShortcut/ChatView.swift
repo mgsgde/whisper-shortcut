@@ -4118,6 +4118,10 @@ struct ChatView: View {
           }
         }
       }
+
+      if !viewModel.singleChatOnly {
+        ChatMCPTipView()
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.top, 24)

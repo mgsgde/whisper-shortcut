@@ -354,6 +354,8 @@ enum UserDefaultsKeys {
   static let mcpShareRecentInteractions = "mcpShareRecentInteractions"
   /// MCP clients that have connected to the local server, as JSON. See `MCPClientRegistry`.
   static let mcpConnectedClients = "mcpConnectedClients"
+  /// The user closed the "Use WhisperShortcut from Claude" tip in the empty chat. See `ChatMCPTipView`.
+  static let chatMCPTipDismissed = "chatMCPTipDismissed"
 
   // MARK: - Updates
   /// Sparkle channel for the direct build: "stable" (default) or "latest". See UpdateChannel.
