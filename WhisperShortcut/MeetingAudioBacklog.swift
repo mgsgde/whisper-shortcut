@@ -124,7 +124,7 @@ enum MeetingAudioBacklog {
     }
     // Stable on equal timestamps: a recovered chunk goes before an existing one that shares its
     // second, since the recovered audio started at or before it.
-    (fresh.map { (0, $0) } + existing.map { (1, $0) })
+    return (fresh.map { (0, $0) } + existing.map { (1, $0) })
       .enumerated()
       .sorted { a, b in
         if a.element.1.startTime != b.element.1.startTime {
