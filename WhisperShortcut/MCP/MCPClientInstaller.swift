@@ -158,10 +158,10 @@ enum MCPClientInstaller {
 
   /// The Codex config as text. Nil for a missing file; throws when the bytes are not UTF-8, so a
   /// file we cannot read is never replaced by only our table.
-  static func codexText(from data: Data?) throws -> String? {
+  static func codexText(from data: Data?, file: URL) throws -> String? {
     guard let data else { return nil }
     guard let text = String(data: data, encoding: .utf8) else {
-      throw MCPClientInstallerError.notUTF8(file: "The existing Codex config file")
+      throw MCPClientInstallerError.notUTF8(file: (file.path as NSString).abbreviatingWithTildeInPath)
     }
     return text
   }
@@ -367,7 +367,7 @@ enum MCPClientInstaller {
             existing: existingData, serverName: serverName, url: url, token: token,
             executablePath: try stableExecutablePath(Bundle.main.executablePath))
         case .codex:
-          let text = try codexText(from: existingData)
+          let text = try codexText(from: existingData, file: file)
           output = Data(mergeCodex(existing: text, serverName: serverName, url: url, token: token).utf8)
         }
         try writeConfigAtomically(output, to: file)

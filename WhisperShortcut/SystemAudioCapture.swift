@@ -386,12 +386,8 @@ struct SystemAudioPermissionHeuristic {
   }
 }
 
-// MARK: - SystemAudioCapture
+// MARK: - SystemAudioCaptureError
 
-/// Owns one Core Audio process tap + private aggregate device that captures everything the Mac
-/// plays out loud, except this app's own output. Main-thread only; the IO callback runs on its
-/// own dedicated queue and only touches pre-allocated scratch memory and the thread-safe
-/// `SystemAudioBuffer`.
 /// Why `SystemAudioCapture.onStartFailed` fired, when the cause is not the first start.
 enum SystemAudioCaptureError: Error {
   /// The tap was running and a device change (Bluetooth connect/drop) made the rebuild fail even
@@ -412,6 +408,12 @@ enum SystemAudioCaptureError: Error {
   }
 }
 
+// MARK: - SystemAudioCapture
+
+/// Owns one Core Audio process tap + private aggregate device that captures everything the Mac
+/// plays out loud, except this app's own output. Main-thread only; the IO callback runs on its
+/// own dedicated queue and only touches pre-allocated scratch memory and the thread-safe
+/// `SystemAudioBuffer`.
 final class SystemAudioCapture {
 
   let buffer = SystemAudioBuffer()

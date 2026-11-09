@@ -406,10 +406,17 @@ struct MCPClientInstallerTests {
 
   @Test("Codex: a config that is not UTF-8 is refused, not replaced")
   func codexNotUTF8() throws {
-    #expect(try MCPClientInstaller.codexText(from: nil) == nil)
-    #expect(try MCPClientInstaller.codexText(from: Data("a = 1".utf8)) == "a = 1")
+    let file = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/config.toml")
+    #expect(try MCPClientInstaller.codexText(from: nil, file: file) == nil)
+    #expect(try MCPClientInstaller.codexText(from: Data("a = 1".utf8), file: file) == "a = 1")
     #expect(throws: MCPClientInstallerError.self) {
-      try MCPClientInstaller.codexText(from: Data([0xFF, 0xFE, 0x00, 0xD8]))
+      try MCPClientInstaller.codexText(from: Data([0xFF, 0xFE, 0x00, 0xD8]), file: file)
+    }
+    do {
+      _ = try MCPClientInstaller.codexText(from: Data([0xFF, 0xFE, 0x00, 0xD8]), file: file)
+      Issue.record("expected notUTF8")
+    } catch {
+      #expect((error.localizedDescription).contains("~/.codex/config.toml"))
     }
   }
 }
