@@ -449,7 +449,7 @@ struct SpeechToTextSettingsTab: View {
         qwen3ASRRow
       }
 
-      ModelImportSection(onError: { viewModel.showError($0) })
+      ModelImportSection(group: .speechToText, onError: { viewModel.showError($0) })
     }
   }
 

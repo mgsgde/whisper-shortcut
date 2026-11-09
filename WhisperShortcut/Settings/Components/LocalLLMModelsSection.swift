@@ -28,7 +28,7 @@ struct LocalLLMModelsSection: View {
           .textSelection(.enabled)
       }
 
-      ModelImportSection(onError: { errorMessage = $0 })
+      ModelImportSection(group: .chat, onError: { errorMessage = $0 })
     }
   }
 

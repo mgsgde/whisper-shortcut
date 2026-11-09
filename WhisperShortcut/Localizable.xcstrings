@@ -27089,36 +27089,6 @@
         }
       }
     },
-    "%@ — copied from another disk" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ — von einer anderen Festplatte kopiert"
-          }
-        }
-      }
-    },
-    "%@ — no extra space on this disk" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ — kein zusätzlicher Platz auf dieser Festplatte"
-          }
-        }
-      }
-    },
-    "Already have these models in LM Studio or a Hugging Face cache? Import one instead of downloading it again. The files are copied once into the app's own folder; on the same disk that copy takes no extra space." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sie haben diese Modelle schon in LM Studio oder einem Hugging-Face-Cache? Importieren Sie eines, statt es erneut herunterzuladen. Die Dateien werden einmal in den Ordner der App kopiert; auf derselben Festplatte braucht diese Kopie keinen zusätzlichen Platz."
-          }
-        }
-      }
-    },
     "Choose the folder that holds your models — your LM Studio models folder or your Hugging Face cache." : {
       "localizations" : {
         "de" : {
@@ -27255,6 +27225,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Modell konnte nicht importiert werden: %@"
+          }
+        }
+      }
+    },
+    "%@ — copied into the app" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ — in die App kopiert"
+          }
+        }
+      }
+    },
+    "%@ was imported. WhisperShortcut needs internet once to finish setting up this model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde importiert. WhisperShortcut braucht einmal Internet, um die Einrichtung dieses Modells abzuschließen."
+          }
+        }
+      }
+    },
+    "Scanning…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird durchsucht…"
+          }
+        }
+      }
+    },
+    "Cancel Import" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import abbrechen"
+          }
+        }
+      }
+    },
+    "Already have these models in LM Studio or a Hugging Face cache? Import one instead of downloading it again. The files are copied once into the app's own folder." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haben Sie diese Modelle schon in LM Studio oder im Hugging-Face-Cache? Importieren Sie eines, statt es erneut herunterzuladen. Die Dateien werden einmal in den eigenen Ordner der App kopiert."
           }
         }
       }
