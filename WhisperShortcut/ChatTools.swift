@@ -11,6 +11,29 @@ enum ChatLinkPolicy {
   }
 }
 
+/// In-chat deep links into the app's own Settings, e.g. `whispershortcut://settings/accounts`.
+/// The model emits them as markdown links ("not connected yet — connect here"); only the exact
+/// tabs listed here resolve, everything else falls through to `ChatLinkPolicy`.
+enum ChatSettingsLink {
+  static func tab(for url: URL) -> SettingsTab? {
+    guard url.scheme?.lowercased() == "whispershortcut",
+      url.host?.lowercased() == "settings"
+    else { return nil }
+    switch url.path.lowercased() {
+    case "/accounts": return .accounts
+    default: return nil
+    }
+  }
+
+  /// Opens the matching settings tab. Returns true when `url` was a settings link.
+  @discardableResult
+  static func handle(_ url: URL) -> Bool {
+    guard let tab = tab(for: url) else { return false }
+    DispatchQueue.main.async { SettingsManager.shared.showSettings(tab: tab) }
+    return true
+  }
+}
+
 // MARK: - Gemini Chat Tools (Function Calling)
 //
 // Small registry of local "agent" tools that Gemini can invoke via function calls.
