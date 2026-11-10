@@ -419,4 +419,99 @@ struct MCPClientInstallerTests {
       #expect((error.localizedDescription).contains("~/.codex/config.toml"))
     }
   }
+
+  // MARK: - repairedConfig
+
+  private let readTok = "readTok"
+  private let writeTok = "writeTok"
+
+  private func repair(
+    _ client: MCPClient, _ data: Data, url customURL: String? = nil, kind: MCPTokenKind = .write,
+    exe: String = "/new/exe"
+  ) -> Data? {
+    MCPClientInstaller.repairedConfig(
+      client: client, existing: data, serverName: name, url: customURL ?? url,
+      readToken: readTok, writeToken: writeTok, tokenKind: kind, executablePath: exe)
+  }
+
+  private func codeConfig(token: String, url customURL: String? = nil, extra: Bool = true) throws -> Data {
+    var existing: Data? = nil
+    if extra { existing = Data(#"{"theme":"dark","mcpServers":{"other":{"url":"x"}}}"#.utf8) }
+    return try MCPClientInstaller.mergeClaudeCode(
+      existing: existing, serverName: name, url: customURL ?? url, token: token)
+  }
+
+  @Test("Repair: stale Claude Code token is rewritten with the write token, other keys kept")
+  func repairStaleClaudeCode() throws {
+    let out = try #require(repair(.claudeCode, try codeConfig(token: "old")))
+    let root = try object(out)
+    #expect(root["theme"] as? String == "dark")
+    let servers = try #require(root["mcpServers"] as? [String: Any])
+    #expect(servers["other"] != nil)
+    let entry = try #require(servers[name] as? [String: Any])
+    #expect((entry["headers"] as? [String: String])?["Authorization"] == "Bearer writeTok")
+  }
+
+  @Test("Repair: read kind writes the read token")
+  func repairReadKind() throws {
+    let out = try #require(repair(.claudeCode, try codeConfig(token: "old"), kind: .read))
+    #expect(String(decoding: out, as: UTF8.self).contains("Bearer readTok"))
+  }
+
+  @Test("Repair: a token equal to the read or write token is left alone")
+  func repairCurrentToken() throws {
+    #expect(repair(.claudeCode, try codeConfig(token: readTok)) == nil)
+    #expect(repair(.claudeCode, try codeConfig(token: writeTok)) == nil)
+  }
+
+  @Test("Repair: no entry for our server name means nothing to do")
+  func repairNoEntry() throws {
+    #expect(repair(.claudeCode, Data(#"{"mcpServers":{"other":{"url":"x"}}}"#.utf8)) == nil)
+    #expect(repair(.claudeCode, Data("{}".utf8)) == nil)
+    #expect(repair(.codex, Data("[mcp_servers.other]\nurl = \"x\"\n".utf8)) == nil)
+  }
+
+  @Test("Repair: an entry pointing at another url is left alone")
+  func repairForeignURL() throws {
+    #expect(repair(.claudeCode, try codeConfig(token: "old", url: "http://127.0.0.1:9999/mcp")) == nil)
+  }
+
+  @Test("Repair: invalid JSON is never touched")
+  func repairInvalidJSON() {
+    #expect(repair(.claudeCode, Data("{ not json".utf8)) == nil)
+    #expect(repair(.claudeDesktop, Data("{ not json".utf8)) == nil)
+  }
+
+  @Test("Repair: Claude Desktop keeps an existing command and falls back to the current executable")
+  func repairDesktopCommand() throws {
+    func config(command: String) throws -> Data {
+      try MCPClientInstaller.mergeClaudeDesktop(
+        existing: nil, serverName: name, url: url, token: "old", executablePath: command)
+    }
+    func command(_ data: Data) throws -> String? {
+      let servers = try #require(try object(data)["mcpServers"] as? [String: Any])
+      return (servers[name] as? [String: Any])?["command"] as? String
+    }
+    let kept = try #require(repair(.claudeDesktop, try config(command: "/bin/sh")))
+    #expect(try command(kept) == "/bin/sh")
+    #expect(String(decoding: kept, as: UTF8.self).contains("Bearer writeTok"))
+    let replaced = try #require(repair(.claudeDesktop, try config(command: "/does/not/exist")))
+    #expect(try command(replaced) == "/new/exe")
+    #expect(repair(.claudeDesktop, try MCPClientInstaller.mergeClaudeDesktop(
+      existing: nil, serverName: name, url: url, token: readTok, executablePath: "/bin/sh")) == nil)
+  }
+
+  @Test("Repair: stale Codex token is rewritten, foreign url and current token are not")
+  func repairCodex() throws {
+    let stale = MCPClientInstaller.mergeCodex(
+      existing: "model = \"x\"\n", serverName: name, url: url, token: "old")
+    let out = try #require(repair(.codex, Data(stale.utf8)))
+    let text = String(decoding: out, as: UTF8.self)
+    #expect(text.contains("model = \"x\""))
+    #expect(text.contains("Bearer writeTok"))
+    #expect(!text.contains("Bearer old"))
+    #expect(repair(.codex, Data(stale.utf8), url: "http://127.0.0.1:1/mcp") == nil)
+    let current = MCPClientInstaller.mergeCodex(existing: nil, serverName: name, url: url, token: readTok)
+    #expect(repair(.codex, Data(current.utf8)) == nil)
+  }
 }
