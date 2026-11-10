@@ -14,6 +14,7 @@ This path is used for:
 - `Meetings/`: saved live meetings. Each one is up to three files sharing a stem: `<meeting>.txt` (the transcript), `<meeting>.notes.md` (the live notes taken during the meeting), and `<meeting>.summary.md` (the summary written when it ended).
 - `MeetingAudio/<meeting>/`: audio of meeting parts that couldn't be transcribed yet (for example recorded offline), one `chunk-<start ms>.wav` per part. Deleted part by part once **Retry Meeting Transcription** gets it into the transcript, and with the meeting when it is discarded.
 - `WhisperKit/`: downloaded local Whisper models.
+- FluidAudio models live beside this folder, in `Application Support/FluidAudio/Models/` inside the same container: Parakeet, and the Silero VAD model (`silero-vad-coreml`, about 2 MB).
 - `telemetry-pending.json`: opt-in anonymous usage statistics not yet sent (counts only). Exists only while "Share anonymous usage statistics" is on; deleted when it is turned off. See `WhisperShortcut/Telemetry/TelemetryService.swift`.
 - Chat/session data and other app support files.
 

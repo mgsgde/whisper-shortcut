@@ -20,6 +20,9 @@ struct ShortcutActionTests {
     #expect(rows.map(\.definition) == actions.map { config[keyPath: $0.keyPath] })
     #expect(ShortcutAction.allCases.contains(.readAloud))
     #expect(!ShortcutAction.readAloud.isInThisBuild)
+    #expect(ShortcutAction.allCases.contains(.readAloudPrompt))
+    #expect(!ShortcutAction.readAloudPrompt.isInThisBuild)
+    #expect(ShortcutAction.readAloudPrompt.title == "Read Aloud Prompt")
     #expect(rows.map(\.action) == [
       "Dictate", "Dictate Prompt", "Screenshot", "Chat", "Settings",
     ])

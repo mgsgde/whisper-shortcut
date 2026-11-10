@@ -369,6 +369,7 @@ struct TemplatesSettingsTab: View {
       (String(localized: "Dictate Prompt"), .togglePrompting),
       (String(localized: "Screenshot"), .screenshotCapture),
       (String(localized: "Read Aloud"), .readAloudShortcut),
+      (String(localized: "Read Aloud Prompt"), .readAloudPromptShortcut),
       (String(localized: "Add to Glossary"), .addToGlossaryShortcut),
       (String(localized: "Dictate Live"), .liveDictateShortcut),
       (String(localized: "Chat"), .toggleChat),

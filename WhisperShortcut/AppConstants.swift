@@ -61,6 +61,11 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   static let promptModeOutputRule =
     "\n\nCRITICAL – Output format: Return ONLY the edited/transformed text (the result of applying the voice instruction to the selected text). Never return the original selected text with the user's spoken words appended; the voice is a command to edit, not dictation to add. Exception — when the request is marked NO SELECTED TEXT, there is nothing to edit: the voice instruction is the content. Dictated content comes back as the finished text, shaped by the instructions above (structure, sections, style); carry out a spoken request instead of echoing it (\"write a reply saying I can come on Friday\" → the reply itself, not a tidied copy of the request). Return ONLY that text. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
 
+  /// Read Aloud Prompt: the reply goes to text-to-speech, not into a text field. Appended last, so it
+  /// overrides the paste-oriented formatting of `promptModeOutputRule`.
+  static let readAloudPromptSpokenOutputRule =
+    "\n\nSPOKEN OUTPUT: This reply will be read aloud by text-to-speech, not pasted. Return only plain, natural spoken prose, ready to be heard: no markdown, no bullet points or dashes, no headings, no symbols, no code, no URLs read character by character. Follow the voice instruction exactly (for example a summary in two sentences means two sentences; a translation means only the translation). Unless the voice instruction names a language, answer in the language of the selected text, or in the language of the voice instruction when nothing is selected. No preamble such as \"Here is\"."
+
   /// Opens the user turn of a Dictate Prompt compose turn — nothing was selected for this recording,
   /// so there is no SELECTED TEXT block. `promptModeOutputRule` tells the model what to do with it.
   /// Worded around the system prompt's structure on purpose: an earlier "write the text the voice

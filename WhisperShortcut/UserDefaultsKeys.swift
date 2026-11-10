@@ -49,7 +49,10 @@ enum UserDefaultsKeys {
   /// ("Thank you.", "Thanks for watching!") is treated as no speech instead of being pasted.
   /// Default: enabled. See `TextProcessingUtility.knownWhisperHallucinations`.
   static let filterKnownWhisperHallucinations = "filterKnownWhisperHallucinations"
-  
+  /// Silero gate in front of cloud dictation. Unset means on. No Settings row;
+  /// set this to false to upload every chunk the way the app did before the gate.
+  static let speechActivityGateEnabled = "speechActivityGateEnabled"
+
   // MARK: - Notification Settings
   static let showPopupNotifications = "showPopupNotifications"
   static let notificationPosition = "notificationPosition"
@@ -301,6 +304,8 @@ enum UserDefaultsKeys {
   static let readAloudSmartRewriteEnabled = "readAloudSmartRewriteEnabled"
   /// Local playback rate for Read Aloud TTS. Stored as Double (e.g. 1.0, 1.25, 1.5).
   static let readAloudSpeed = "readAloudSpeed"
+  /// Kill switch: Qwen3 Read Aloud streams every sentence immediately instead of pre-buffering.
+  static let qwen3TTSPrebufferDisabled = "qwen3TTSPrebufferDisabled"
   /// Selected Read Aloud TTS model raw value (macOS / Gemini / OpenAI / xAI). See TTSModel.
   static let selectedReadAloudModel = "selectedReadAloudModel"
   /// Selected Read Aloud voice per provider. Stored separately so switching providers and back

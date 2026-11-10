@@ -250,6 +250,11 @@ struct ShortcutConfig: Codable, Equatable {
   /// A default value, so the memberwise init — and every existing call site — stays as it was.
   var liveDictate: ShortcutDefinition = ShortcutDefinition(
     key: .five, modifiers: [.control, .option], isEnabled: false)
+  /// Read Aloud Prompt: Dictate Prompt whose reply is spoken, not pasted. Direct download only
+  /// (the selection capture copies with ⌘C, which needs Accessibility). A default value, so the
+  /// memberwise init — and every existing call site — stays as it was.
+  var readAloudPrompt: ShortcutDefinition = ShortcutDefinition(
+    key: .four, modifiers: [.control, .option, .shift], isEnabled: true)
 
   /// Defaults for new installs: ⌃⌥ + digit. ⌘1/⌘2/⌘3 switch tabs in every browser, Slack, VS Code
   /// and Finder, so a new user's first ⌘1 often switched a tab instead of dictating
@@ -291,6 +296,7 @@ enum ShortcutAction: CaseIterable {
   case dictatePrompt
   case screenshot
   case readAloud
+  case readAloudPrompt
   case chat
   case settings
 
@@ -302,6 +308,7 @@ enum ShortcutAction: CaseIterable {
     case .dictatePrompt: return "Dictate Prompt"
     case .screenshot: return "Screenshot"
     case .readAloud: return "Read Aloud"
+    case .readAloudPrompt: return "Read Aloud Prompt"
     case .chat: return "Chat"
     case .settings: return "Settings"
     }
@@ -315,6 +322,7 @@ enum ShortcutAction: CaseIterable {
     case .dictatePrompt: return "Dictate Prompt"
     case .screenshot: return "Screenshot"
     case .readAloud: return "Read Aloud"
+    case .readAloudPrompt: return "Read Aloud Prompt"
     case .chat: return "Chat"
     case .settings: return "Settings"
     }
@@ -326,6 +334,7 @@ enum ShortcutAction: CaseIterable {
     case .dictatePrompt: return \.startPrompting
     case .screenshot: return \.screenshotCapture
     case .readAloud: return \.readAloud
+    case .readAloudPrompt: return \.readAloudPrompt
     case .chat: return \.openChat
     case .settings: return \.openSettings
     }
@@ -335,7 +344,7 @@ enum ShortcutAction: CaseIterable {
   /// has no menu item and no hotkey for it, so nothing in that build may advertise the shortcut.
   var isInThisBuild: Bool {
     switch self {
-    case .readAloud:
+    case .readAloud, .readAloudPrompt:
       #if APP_STORE
       return false
       #else
@@ -350,10 +359,10 @@ enum ShortcutAction: CaseIterable {
 extension ShortcutConfig {
   /// Read Aloud copies the selection with ⌘C, which needs Accessibility. The App Store build
   /// has no menu item and no hotkey for it, so nothing in that build may advertise the shortcut
-  /// (`ShortcutAction.readAloud.isInThisBuild`). Add to Glossary is hidden there the same way.
-  /// Conflict checks walk every enabled slot, so a stored binding would be reported as already
-  /// used for a combination the user cannot see or free. Those two come back disabled; the
-  /// stored bindings are left as saved.
+  /// (`ShortcutAction.readAloud.isInThisBuild`). Read Aloud Prompt and Add to Glossary are hidden
+  /// there the same way. Conflict checks walk every enabled slot, so a stored binding would be
+  /// reported as already used for a combination the user cannot see or free. Those come back
+  /// disabled; the stored bindings are left as saved.
   static func availableInThisBuild(_ config: ShortcutConfig, isAppStore: Bool) -> ShortcutConfig {
     guard isAppStore else { return config }
     func disabled(_ definition: ShortcutDefinition) -> ShortcutDefinition {
@@ -363,6 +372,7 @@ extension ShortcutConfig {
     }
     var available = config
     available.readAloud = disabled(config.readAloud)
+    available.readAloudPrompt = disabled(config.readAloudPrompt)
     available.addToGlossary = disabled(config.addToGlossary)
     available.liveDictate = disabled(config.liveDictate)
     return available
@@ -623,6 +633,7 @@ class ShortcutConfigManager {
     static let readAloudKey = "shortcut_read_aloud"
     static let addToGlossaryKey = "shortcut_add_to_glossary"
     static let liveDictateKey = "shortcut_live_dictate"
+    static let readAloudPromptKey = "shortcut_read_aloud_prompt"
   }
 
   private let userDefaults: UserDefaults
@@ -716,6 +727,8 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.addToGlossaryKey) ?? ShortcutConfig.default.addToGlossary
     let liveDictate =
       loadShortcut(for: Constants.liveDictateKey) ?? ShortcutConfig.default.liveDictate
+    let readAloudPrompt =
+      loadShortcut(for: Constants.readAloudPromptKey) ?? ShortcutConfig.default.readAloudPrompt
     let loaded = ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
@@ -724,7 +737,8 @@ class ShortcutConfigManager {
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
       addToGlossary: addToGlossary,
-      liveDictate: liveDictate
+      liveDictate: liveDictate,
+      readAloudPrompt: readAloudPrompt
     )
     // Filter the value callers read. Writing the disabled flags back would clear a binding
     // the direct download still uses — both builds share these defaults.
@@ -735,9 +749,9 @@ class ShortcutConfigManager {
     #endif
   }
 
-  /// Read Aloud and Add to Glossary are forced off in the App Store build. Writing that disabled
-  /// state back would clear a binding the direct download still uses — both builds share these
-  /// defaults — so `saveConfiguration` leaves those two keys alone there.
+  /// Read Aloud, Read Aloud Prompt and Add to Glossary are forced off in the App Store build.
+  /// Writing that disabled state back would clear a binding the direct download still uses — both
+  /// builds share these defaults — so `saveConfiguration` leaves those keys alone there.
   func saveConfiguration(_ config: ShortcutConfig, isAppStore: Bool = ShortcutConfigManager.isAppStoreBuild) {
     saveShortcut(config.startRecording, for: Constants.startRecordingKey)
     saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
@@ -747,6 +761,10 @@ class ShortcutConfigManager {
     if !isAppStore {
       saveShortcut(config.readAloud, for: Constants.readAloudKey)
       saveShortcut(config.addToGlossary, for: Constants.addToGlossaryKey)
+      // Same reason as Read Aloud: the App Store build forces this slot off, and writing that
+      // disabled flag back would clear a binding the direct download still uses. Unlike Dictate
+      // Live (saved below), this shortcut ships enabled.
+      saveShortcut(config.readAloudPrompt, for: Constants.readAloudPromptKey)
     }
     saveShortcut(config.liveDictate, for: Constants.liveDictateKey)
 
@@ -853,6 +871,9 @@ extension Notification.Name {
   static let chatReadAloudTextKey = "text"
   /// Posted when TTS synthesis or playback starts (so UI can show "Reading" / "Stop").
   static let ttsDidStart = Notification.Name("ttsDidStart")
+  /// Posted while Qwen3 Read Aloud is pre-buffering, before the held audio is released.
+  /// userInfo["fraction"] is a Double from 0 to 1 (characters synthesized / total).
+  static let readAloudSynthesisProgress = Notification.Name("readAloudSynthesisProgress")
   /// Posted when TTS stops (synthesis cancelled, playback stopped, or finished).
   static let ttsDidStop = Notification.Name("ttsDidStop")
 }

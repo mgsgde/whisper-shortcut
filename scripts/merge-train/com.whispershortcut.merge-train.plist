@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Merge train: every 20 minutes, merge open PRs labelled `merge-train` into main once CI is
-  green. See scripts/merge-train/README.md.
+  Merge train: every 20 minutes, merge open non-draft PRs into main once CI is green.
+  Opt-out: hold, needs-device-test, merge-train-failed, drafts, implementer/ branches and
+  other authors unless labelled merge-train. See scripts/merge-train/README.md.
 
   Install / remove (after this is on main — see the bootstrap note below):
       bash scripts/merge-train/install.sh

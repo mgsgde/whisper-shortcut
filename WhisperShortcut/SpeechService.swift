@@ -97,6 +97,9 @@ class SpeechService {
   /// the text, so that path stays off even when the model would otherwise use a screenshot.
   /// Set per turn in `performPrompt`, same as `promptIsEditQuickAction`.
   private var promptUsesScreenshotSelection = false
+  /// Read Aloud Prompt: this turn's reply is spoken, not pasted. Set at the start of every
+  /// `performPrompt`, so a later Dictate Prompt turn does not inherit it.
+  private var promptOutputIsSpoken = false
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -567,6 +570,41 @@ class SpeechService {
     }
   }
 
+  /// Cloud dictation and streaming chunks only. No speech throws `noSpeechDetected`.
+  /// A long quiet head or tail comes back as a temp WAV the caller deletes. Meetings,
+  /// live-meeting chunks and prompt history are unchanged. A gate that is off or not
+  /// loaded yet returns the original URL. A failed trim uploads the original.
+  private func cloudAudioApplyingSpeechGate(_ audioURL: URL) async throws -> URL {
+    guard Self.speechActivityGateApplies(to: NoSpeechContext.current?.origin) else {
+      return audioURL
+    }
+    // Dictation and streaming chunks are always WAV; other files keep the old behavior.
+    guard audioURL.pathExtension.lowercased() == "wav" else {
+      return audioURL
+    }
+    switch await SpeechActivityGate.shared.decide(for: audioURL) {
+    case .noSpeech:
+      DebugLogger.logSpeech("SPEECH-GATE: no speech, skipping cloud transcription")
+      throw TranscriptionError.noSpeechDetected
+    case .trim(let start, let end):
+      do { return try SpeechActivityGate.writeTrimmedCopy(of: audioURL, start: start, end: end) }
+      catch { DebugLogger.logWarning("SPEECH-GATE: trim failed, uploading the original: \(error.logDescription)"); return audioURL }
+    case .keep, nil:
+      return audioURL
+    }
+  }
+
+  /// nil origin is the unattributed shared helper used by dictation. Meeting and history
+  /// origins keep the previous upload behavior.
+  private static func speechActivityGateApplies(to origin: NoSpeechOrigin?) -> Bool {
+    switch origin {
+    case nil, .dictation, .streamingChunk:
+      return true
+    case .meetingSegment, .liveMeetingChunk, .promptHistory:
+      return false
+    }
+  }
+
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true, punctuationMode: PunctuationMode = .automatic) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
@@ -680,11 +718,21 @@ class SpeechService {
       return result
     }
 
+    // Cloud models only. The offline branches above returned already. `uploadURL` is the
+    // original file, or a trimmed copy when the speech gate cut a long quiet head or tail.
+    let uploadURL = try await cloudAudioApplyingSpeechGate(audioURL)
+    let trimmedCopy = uploadURL.path == audioURL.path ? nil : uploadURL
+    defer {
+      if let trimmedCopy {
+        try? FileManager.default.removeItem(at: trimmedCopy)
+      }
+    }
+
     // Check if using Gemini model
     if model.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
-      try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithGemini(audioURL: audioURL, model: model, promptOverride: promptOverride, reportsProgress: reportsProgress)
+      try validateAudioFileFormat(at: uploadURL)
+      let result = try await transcribeWithGemini(audioURL: uploadURL, model: model, promptOverride: promptOverride, reportsProgress: reportsProgress)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -692,14 +740,14 @@ class SpeechService {
 
     // OpenAI cloud transcription (gpt-transcribe / gpt-4o-transcribe / gpt-4o-mini-transcribe)
     if model.isOpenAI, let openAIModelID = model.openAIAPIModelID {
-      try validateAudioFileFormat(at: audioURL)
+      try validateAudioFileFormat(at: uploadURL)
       // gpt-4o-transcribe family accepts a full GPT-4o-style instruction via the `prompt`
       // multipart field — pass the user's dictation prompt so OpenAI behaves like Gemini.
       // `gpt-transcribe` ignores instructions and is fed keywords instead; the shared multipart
       // helper drops this hint for it.
       let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
       let result = try await transcribeWithOpenAI(
-        audioURL: audioURL,
+        audioURL: uploadURL,
         modelID: openAIModelID,
         dictationHint: dictationHint.isEmpty ? nil : dictationHint
       )
@@ -710,10 +758,10 @@ class SpeechService {
 
     // xAI Grok hosted transcription (/v1/stt)
     if model.isXAI {
-      try validateAudioFileFormat(at: audioURL)
+      try validateAudioFileFormat(at: uploadURL)
       let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
       let result = try await transcribeWithXAI(
-        audioURL: audioURL,
+        audioURL: uploadURL,
         dictationHint: dictationHint.isEmpty ? nil : dictationHint
       )
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
@@ -723,10 +771,10 @@ class SpeechService {
 
     // OpenRouter (audio as a chat-completion content part)
     if model == .openRouterTranscription {
-      try validateAudioFileFormat(at: audioURL)
-      let openRouterDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
+      try validateAudioFileFormat(at: uploadURL)
+      let openRouterDuration = try? await AudioDuration.avURLAssetSeconds(uploadURL)
       let result = try await transcribeWithOpenRouter(
-        audioURL: audioURL, promptOverride: promptOverride, audioDurationSeconds: openRouterDuration)
+        audioURL: uploadURL, promptOverride: promptOverride, audioDurationSeconds: openRouterDuration)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [OpenRouter] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -734,8 +782,8 @@ class SpeechService {
 
     // Self-hosted OpenAI-compatible endpoint
     if model == .selfHostedTranscription {
-      try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithSelfHostedEndpoint(audioURL: audioURL)
+      try validateAudioFileFormat(at: uploadURL)
+      let result = try await transcribeWithSelfHostedEndpoint(audioURL: uploadURL)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [Self-hosted Transcription] completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -758,7 +806,8 @@ class SpeechService {
     recordingWasSilent: Bool = false,
     selectionIsFromService: Bool = false,
     fieldContext: FocusedFieldSnapshot? = nil,
-    fieldAllowsWindowImage: Bool = true
+    fieldAllowsWindowImage: Bool = true,
+    outputIsSpoken: Bool = false
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
@@ -769,7 +818,8 @@ class SpeechService {
         recordingWasSilent: recordingWasSilent,
         selectionIsFromService: selectionIsFromService,
         fieldContext: fieldContext,
-        fieldAllowsWindowImage: fieldAllowsWindowImage)
+        fieldAllowsWindowImage: fieldAllowsWindowImage,
+        outputIsSpoken: outputIsSpoken)
     }
 
     currentPromptTask = task
@@ -861,6 +911,13 @@ class SpeechService {
     return .edit
   }
 
+  /// Appends the spoken-output rule when the reply will be read aloud. Pure, so the order
+  /// (rule last, and only when spoken) can be tested without a recording.
+  static func spokenOutputSystemPrompt(_ base: String, outputIsSpoken: Bool) -> String {
+    guard outputIsSpoken else { return base }
+    return base + AppConstants.readAloudPromptSpokenOutputRule
+  }
+
   /// Template system prompt: the template instructions and the output rule. No stored prompt,
   /// no writing-style block, no memory style block.
   static func templateTurnSystemPrompt(instructions: String) -> String {
@@ -909,8 +966,11 @@ class SpeechService {
 
   /// Whether this turn is appended to Dictate Prompt history. A template turn never is.
   /// Offline Mode still records nothing; a compose turn still records, as it does today.
-  static func recordsPromptHistory(turnKind: PromptTurnKind, offlineMode: Bool) -> Bool {
-    if turnKind.isTemplate { return false }
+  /// A spoken Read Aloud Prompt turn is not a paste, so it is not history for the next edit.
+  static func recordsPromptHistory(
+    turnKind: PromptTurnKind, offlineMode: Bool, outputIsSpoken: Bool = false
+  ) -> Bool {
+    if outputIsSpoken || turnKind.isTemplate { return false }
     return !offlineMode
   }
 
@@ -982,12 +1042,14 @@ class SpeechService {
     recordingWasSilent: Bool = false,
     selectionIsFromService: Bool = false,
     fieldContext: FocusedFieldSnapshot? = nil,
-    fieldAllowsWindowImage: Bool = true
+    fieldAllowsWindowImage: Bool = true,
+    outputIsSpoken: Bool = false
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
     lastPromptReplyTruncated = false
     promptTurnKind = .compose
+    promptOutputIsSpoken = outputIsSpoken
     promptRecordingWasSilent = recordingWasSilent
     promptIsEditQuickAction = false
     // Which model runs decides where the selection comes from, so it has to be known first: a
@@ -1369,13 +1431,21 @@ class SpeechService {
   private func systemPrompt(
     logPrefix: String, clipboardContext: String?, usesScreenshotSelection: Bool
   ) -> String {
+    let base: String
     if case .template(let turn) = promptTurnKind {
-      return Self.templateTurnSystemPrompt(instructions: turn.instructions)
+      base = Self.templateTurnSystemPrompt(instructions: turn.instructions)
+    } else {
+      // A spoken turn is not a writing sample and must not pull the paste-oriented style block
+      // in ahead of the spoken-output rule.
+      let styleBlock = promptOutputIsSpoken
+        ? ""
+        : writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock()
+      base = Self.buildDictatePromptSystemPrompt(
+        logPrefix: logPrefix, usesScreenshotSelection: usesScreenshotSelection,
+        styleBlock: styleBlock,
+        template: nil)
     }
-    return Self.buildDictatePromptSystemPrompt(
-      logPrefix: logPrefix, usesScreenshotSelection: usesScreenshotSelection,
-      styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock(),
-      template: nil)
+    return Self.spokenOutputSystemPrompt(base, outputIsSpoken: promptOutputIsSpoken)
   }
 
   /// Earlier Dictate Prompt turns to send with this one. None on a template turn. None on a
@@ -1631,7 +1701,9 @@ class SpeechService {
     // Offline Mode never replays earlier turns (see the history guard above), so recording them
     // would only keep a patient's selection and reply in memory for no purpose. A template turn
     // is not recorded either: its history would be another patient's note in the same format.
-    if Self.recordsPromptHistory(turnKind: promptTurnKind, offlineMode: OfflineMode.isEnabled) {
+    if Self.recordsPromptHistory(
+      turnKind: promptTurnKind, offlineMode: OfflineMode.isEnabled, outputIsSpoken: promptOutputIsSpoken)
+    {
       PromptConversationHistory.shared.append(
         mode: mode,
         selectedText: clipboardContext,

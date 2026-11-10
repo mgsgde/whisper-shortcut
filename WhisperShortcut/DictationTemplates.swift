@@ -297,8 +297,8 @@ enum TemplateShortcuts {
   }
 
   /// Enabled app shortcuts in this build, in the order Settings lists them. A slot the build
-  /// hides (Read Aloud and Add to Glossary in the App Store build) is turned off first, so a
-  /// combination the user cannot see or free never blocks a template.
+  /// hides (Read Aloud, Read Aloud Prompt and Add to Glossary in the App Store build) is turned
+  /// off first, so a combination the user cannot see or free never blocks a template.
   private static func appOwner(
     key: Key, modifiers: NSEvent.ModifierFlags, appConfig: ShortcutConfig
   ) -> TemplateShortcutOwner? {
@@ -313,6 +313,7 @@ enum TemplateShortcuts {
       (String(localized: "Dictate Prompt"), config.startPrompting),
       (String(localized: "Screenshot"), config.screenshotCapture),
       (String(localized: "Read Aloud"), config.readAloud),
+      (String(localized: "Read Aloud Prompt"), config.readAloudPrompt),
       (String(localized: "Add to Glossary"), config.addToGlossary),
       (String(localized: "Dictate Live"), config.liveDictate),
       (String(localized: "Chat"), config.openChat),

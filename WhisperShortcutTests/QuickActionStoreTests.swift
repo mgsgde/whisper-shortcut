@@ -196,22 +196,29 @@ struct QuickActionStoreTests {
       learned: learned,
       forceFallback: true,
       includeLearned: true)
-    #expect(actions.map(\.text) == ["Alpha one", "Write a haiku", "Beta two", "Gamma three"])
+    #expect(actions.map(\.text) == ["Alpha one", "Write a haiku", "Beta two"])
+    #expect(actions.count == QuickActionStore.cardEntries)
     #expect(QuickActionStore.fallbackTexts.allSatisfy { fallback in
       actions.contains { $0.text == fallback } == false
     })
   }
 
-  @Test("More than nine custom prompts are capped at nine")
+  @Test("More than nine custom prompts never reach the card, even the most used one")
   func capsCustomAtNine() {
     let texts = (1...12).map { "Prompt \($0)" }
+    let counts = [
+      QuickActionStore.normalizeKey("Prompt 12"): 100,
+      QuickActionStore.normalizeKey("Prompt 9"): 50,
+    ]
     let actions = QuickActionStore.combined(
       custom: texts,
       learned: [QuickAction(key: "extra learned", text: "Extra learned")],
       forceFallback: true,
-      includeLearned: true)
-    #expect(actions.count == 9)
-    #expect(actions.map(\.text) == Array(texts.prefix(9)))
+      includeLearned: true,
+      counts: counts)
+    #expect(actions.count == QuickActionStore.cardEntries)
+    #expect(actions.map(\.text) == ["Prompt 9", "Prompt 1", "Prompt 2"])
+    #expect(actions.contains { $0.text == "Prompt 12" } == false)
   }
 
   @Test("With no custom prompts, learning on matches the ranked list")
@@ -281,7 +288,7 @@ struct QuickActionStoreTests {
     let card = QuickActionStore.card(
       custom: custom, recent: ["kürzer", "Korrigiere, formuliere neu."], ranked: ranked,
       preselect: true)
-    #expect(card.actions.map(\.text) == custom)
+    #expect(card.actions.map(\.text) == Array(custom.prefix(QuickActionStore.cardEntries)))
     #expect(card.preselectIndex == 2)
   }
 
@@ -319,5 +326,86 @@ struct QuickActionStoreTests {
         == ["Kürzer", "Korrigiere", "Formuliere neu"])
     let long = String(repeating: "word ", count: 20)
     #expect(QuickActionStore.updatedRecent(recent, using: long) == recent)
+  }
+
+  @Test("The most-used own prompt leads the card")
+  func countsReorderOwnPrompts() {
+    let actions = QuickActionStore.combined(
+      custom: ["Alpha", "Beta", "Gamma"],
+      learned: [],
+      forceFallback: false,
+      includeLearned: true,
+      counts: ["gamma": 5])
+    #expect(actions.map(\.text) == ["Gamma", "Alpha", "Beta"])
+  }
+
+  @Test("A more-used learned prompt leads and the least-used own prompt drops off")
+  func learnedUsePushesUnusedOwnOffCard() {
+    let learnedText = "Übersetze ins Englische"
+    let learnedKey = QuickActionStore.normalizeKey(learnedText)
+    let actions = QuickActionStore.combined(
+      custom: ["A", "B", "C"],
+      learned: [QuickAction(key: learnedKey, text: learnedText)],
+      forceFallback: false,
+      includeLearned: true,
+      counts: [learnedKey: 4])
+    #expect(actions.map(\.text) == ["Übersetze ins Englische", "A", "B"])
+  }
+
+  @Test("A learned prompt whose kind matches an earlier entry is left off the card")
+  func learnedSameKindIsSkipped() {
+    let own = "Korrigiere, formuliere neu."
+    let redundant = "Korrigiere nur Rechtschreibung"
+    let other = "Übersetze ins Englische"
+    let actions = QuickActionStore.combined(
+      custom: [own],
+      learned: [
+        QuickAction(key: QuickActionStore.normalizeKey(redundant), text: redundant),
+        QuickAction(key: QuickActionStore.normalizeKey(other), text: other),
+      ],
+      forceFallback: false,
+      includeLearned: true,
+      counts: [
+        QuickActionStore.normalizeKey(own): 3,
+        QuickActionStore.normalizeKey(redundant): 2,
+        QuickActionStore.normalizeKey(other): 1,
+      ])
+    #expect(actions.map(\.text) == [own, other])
+  }
+
+  @Test("With own prompts the card never grows past three")
+  func combinedNeverExceedsCardEntries() {
+    let texts = (1...8).map { "Prompt \($0)" }
+    let learned = (1...5).map { QuickAction(key: "learned \($0)", text: "Learned \($0)") }
+    var counts: [String: Int] = [:]
+    for text in texts { counts[QuickActionStore.normalizeKey(text)] = 3 }
+    for action in learned { counts[action.key] = 9 }
+    let actions = QuickActionStore.combined(
+      custom: texts, learned: learned, forceFallback: false, includeLearned: true, counts: counts)
+    #expect(actions.count == QuickActionStore.cardEntries)
+    let ownOnly = QuickActionStore.combined(
+      custom: texts, learned: learned, forceFallback: false, includeLearned: false, counts: counts)
+    #expect(ownOnly.count == QuickActionStore.cardEntries)
+    #expect(ownOnly.map(\.text) == Array(texts.prefix(QuickActionStore.cardEntries)))
+  }
+
+  @Test("Usage counts group by normalized key and keep a single use")
+  func usageCountsGroupsNormalizedKeys() {
+    let placeholder = SpeechService.voiceInstructionPlaceholder
+    let long = String(repeating: "a", count: 61)
+    let counts = QuickActionStore.usageCounts(from: [
+      "Kürzer.",
+      "kürzer",
+      placeholder,
+      "only once",
+      long,
+      "",
+      "   ",
+    ])
+    #expect(counts["kürzer"] == 2)
+    #expect(counts["only once"] == 1)
+    #expect(counts[long] == 1)
+    #expect(counts[QuickActionStore.normalizeKey(placeholder)] == nil)
+    #expect(counts.count == 3)
   }
 }

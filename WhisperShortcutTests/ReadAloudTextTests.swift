@@ -113,6 +113,15 @@ private let longEchoGlossary = longEchoList.components(separatedBy: ", ")
 
 private let trailingEchoGlossary = ["Joschka", "SumUp", "lemniscus", "WhisperShortcut"]
 
+private let realGlossaryTerms = ["Claude", "Christoph", "Michelbach", "Cursor", "EnBW", "Grok",
+  "GrokBot", "Opus", "Sonnet", "Gemini", "Implementer Queue", "Karlsruhe", "Kizomba", "Salsa",
+  "AutoMagic", "Onepager", "Whisper Shortcut", "Schönstein", "BlockInfinity", "Claude Code", "MCP",
+  "Bachata", "sabaki.dance", "Wianco", "Datev", "Regulon", "Lemniskus", "Parakeet", "Vibe-Coding",
+  "KMU", "Odoo", "Johanna", "Pia", "Codex", "Wellensteyn", "Gödde", "Seiter", "Anthropic",
+  "Azure DevOps", "Läuffer", "cloud session", "Frau Dr. Läuffer", "Dr. Läuffer", "Frau Läuffer",
+  "Dependabot", "Joschka", "Ramin", "Baileys", "Vattenfall"]
+private let keywordOrderEcho = "Claude Code MCP Bachata sabaki.dance Wianco Datev Regulon Lemniskus Parakeet Vibe-Coding KMU Odoo Johanna Pia Codex Wellensteyn Gödde Läuffer Frau Dr. Läuffer Dr. Läuffer Frau Läuffer Dependabot Joschka Ramin Baileys Vattenfall Claude Christoph Michelbach Cursor EnBW Grok GrokBot Opus Sonnet Gemini Implementer Queue Karlsruhe Kizomba Salsa AutoMagic Onepager Whisper Shortcut Schönstein BlockInfinity Seiter Anthropic Azure DevOps cloud session"
+
 @Suite("Transcript plausibility gates")
 struct TranscriptPlausibilityTests {
 
@@ -135,6 +144,7 @@ struct TranscriptPlausibilityTests {
     // Audio is 5 s, not 25 s: at 25 s these ~25 chars sit under the 3 chars/s floor and the
     // pre-existing short-text rule would fire, so the ordered-list rule would go untested.
     ("Claude, Cursor, Grok, Opus", 5.0, longEchoGlossary, "four glossary terms in glossary order"),
+    (keywordOrderEcho + ".", 11.0, realGlossaryTerms, "pure echo in keywords order (one wrap-around)"),
   ])
   func discardsGlossaryEcho(text: String, duration: Double, glossary: [String], label: String) {
     #expect(
@@ -157,6 +167,7 @@ struct TranscriptPlausibilityTests {
     ("Claude Cursor Grok", 5.0, longEchoGlossary, "three ordered terms"),
     ("Wir haben Claude, Cursor, Grok, Opus und Sonnet heute verglichen und dann entschieden.", 25.0,
      longEchoGlossary, "real sentence with glossary names and other words"),
+    ("Claude, Grok, Cursor, Opus", 5.0, longEchoGlossary, "four terms with one order break stay"),
   ])
   func keepsRealSpeech(text: String, duration: Double, glossary: [String], label: String) {
     #expect(
@@ -213,6 +224,16 @@ struct TranscriptPlausibilityTests {
     ("sabaki.dance", ["Sabaki", "Dance"], "sabaki.dance", "a dot inside a token is not a boundary"),
     ("Hallo. Joschka SumUp", [String](), "Hallo. Joschka SumUp", "empty glossary disables the strip"),
     ("Erster Absatz.\nJoschka, SumUp", trailingEchoGlossary, "Erster Absatz.", "newline is a sentence boundary"),
+    ("Ah, was da natürlich noch cool wäre, wenn die aufgeladen ist. Das wäre vielleicht noch cool. "
+        + keywordOrderEcho + ".",
+     realGlossaryTerms,
+     "Ah, was da natürlich noch cool wäre, wenn die aufgeladen ist. Das wäre vielleicht noch cool.",
+     "2026-11-10: whole glossary in keywords order with Dr. dots inside"),
+    ("Wir haben heute verglichen. Opus Grok Sonnet Claude Gemini Cursor.", realGlossaryTerms,
+     "Wir haben heute verglichen. Opus Grok Sonnet Claude Gemini Cursor.",
+     "short shuffled list of terms after a sentence stays"),
+    ("Das war's. SumUp und lemniscus.", trailingEchoGlossary,
+     "Das war's. SumUp und lemniscus.", "connector inside a trailing pair stays"),
   ])
   func strippingTrailingEcho(text: String, glossary: [String], expected: String, label: String) {
     #expect(
