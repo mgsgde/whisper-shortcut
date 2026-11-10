@@ -1256,7 +1256,10 @@ final class RecordingIndicatorManager {
   /// Read Aloud transport: the pill takes keys only while it is the speaking pill, not the
   /// Dictate Prompt card (that path owns focus through `takeKeyFocusIfListed`).
   private func takeKeyFocusForSpeaking(_ panel: RecordingIndicatorPanel) {
-    guard model.phase == .speaking, !model.quickActionsVisible, !panel.acceptsKeyInput else { return }
+    guard model.phase == .speaking, !model.quickActionsVisible else { return }
+    // A click into another app takes key status without clearing acceptsKeyInput; a click on
+    // the pill then has to reclaim it.
+    guard !(panel.acceptsKeyInput && panel.isKeyWindow) else { return }
     claimKeyFocus(panel)
     DebugLogger.log("READ-ALOUD-KEYS: Pill took key focus")
   }
