@@ -18,6 +18,10 @@ struct Qwen3PrebufferGate {
   /// Never hold more than this much audio before starting; a very slow machine still hears
   /// something within a bounded time and falls back to the player's own buffering.
   static let maxHoldSeconds: Double = 60
+  /// Never make the user wait longer than this before the first sound. On a 16 GB M1 Pro the
+  /// 0.6B checkpoint runs at ~0.4× real time, so 60 s of held audio alone would mean ~2.5 min of
+  /// silence; past this wait, playback starts and the player's own buffering covers the rest.
+  static let maxWaitSeconds: Double = 45
 
   /// - bufferedAudio: seconds of audio produced and held so far (not yet released)
   /// - producedAudio: seconds of audio produced so far in this run (== bufferedAudio before release)
@@ -30,6 +34,7 @@ struct Qwen3PrebufferGate {
   ) -> Bool {
     if remainingChars == 0 { return true }
     if bufferedAudio >= maxHoldSeconds { return true }
+    if computeSeconds >= maxWaitSeconds { return true }
     // Nothing to estimate from: holding would wait forever, so stream.
     if producedChars == 0 || computeSeconds <= 0 || producedAudio <= 0 { return true }
 

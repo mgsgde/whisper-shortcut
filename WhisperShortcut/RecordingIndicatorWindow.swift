@@ -43,6 +43,9 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var isPaused = false
   /// `.speaking` only: the player ran out of audio and is waiting for the next synthesized chunk.
   @Published var isBuffering = false
+  /// `.processing` only: how far on-device Read Aloud synthesis is (0…1) while it holds audio
+  /// back to pre-buffer. nil shows the indeterminate spinner.
+  @Published var processingProgress: Double?
   /// `.speaking` only: the rate currently applied to playback.
   @Published var speed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
   /// `.speaking` only: playhead, total length and received audio, in seconds of source audio.
@@ -137,6 +140,28 @@ private struct SpinnerView: View {
       .rotationEffect(.degrees(isRotating ? 360 : 0))
       .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: isRotating)
       .onAppear { isRotating = true }
+  }
+}
+
+/// Determinate counterpart of `SpinnerView`, same footprint: a faint track and a filled arc.
+/// Shown while on-device Read Aloud pre-buffers, so a long wait reads as progress, not a hang.
+private struct ProgressRingView: View {
+  let fraction: Double
+  var size: CGFloat = 14
+
+  var body: some View {
+    ZStack {
+      Circle()
+        .stroke(Color.white.opacity(0.22), lineWidth: 2)
+      Circle()
+        .trim(from: 0, to: max(0.04, min(1, fraction)))
+        .stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+        .rotationEffect(.degrees(-90))
+        .animation(.easeOut(duration: 0.35), value: fraction)
+    }
+    .frame(width: size, height: size)
+    .accessibilityElement()
+    .accessibilityValue(Text("\(Int((fraction * 100).rounded())) %"))
   }
 }
 
@@ -859,7 +884,11 @@ struct RecordingIndicatorView: View {
         PillCircleButton(
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Cancel processing", action: onCancel)
-        SpinnerView()
+        if let progress = model.processingProgress {
+          ProgressRingView(fraction: progress)
+        } else {
+          SpinnerView()
+        }
         Text(model.statusLabel)
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
@@ -1057,6 +1086,8 @@ final class RecordingIndicatorManager {
   /// (e.g. file-based processing) don't suddenly grow a pill.
   func showProcessing(summonIfNeeded: Bool = false, label: String = String(localized: "Transcribing")) {
     model.statusLabel = label
+    // A fresh processing phase starts indeterminate; progress only comes from the run that set it.
+    if model.phase != .processing { model.processingProgress = nil }
     model.phase = .processing
     if isVisible, let panel {
       position(panel)
@@ -1090,6 +1121,12 @@ final class RecordingIndicatorManager {
     model.duration = duration
     model.received = received
     if model.scrubPosition == nil { model.position = position }
+  }
+
+  /// Read Aloud: on-device synthesis progress while audio is held back to pre-buffer.
+  func updateProcessingProgress(_ fraction: Double) {
+    guard model.phase == .processing else { return }
+    model.processingProgress = fraction
   }
 
   /// Read Aloud: the player's queue ran dry (or refilled) while the stream is still open.

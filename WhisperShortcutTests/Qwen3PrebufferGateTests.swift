@@ -52,6 +52,19 @@ struct Qwen3PrebufferGateTests {
       producedChars: producedChars, remainingChars: remainingChars, speed: speed))
   }
 
+  @Test("The wait cap releases after 45 s of generation even when the estimate wants more")
+  func maxWaitCapReleases() {
+    let args = (bufferedAudio: 18.0, producedChars: 300, remainingChars: 3_000, speed: 1.25)
+    #expect(!Qwen3PrebufferGate.shouldRelease(
+      bufferedAudio: args.bufferedAudio, producedAudio: args.bufferedAudio,
+      computeSeconds: Qwen3PrebufferGate.maxWaitSeconds - 0.1, producedChars: args.producedChars,
+      remainingChars: args.remainingChars, speed: args.speed))
+    #expect(Qwen3PrebufferGate.shouldRelease(
+      bufferedAudio: args.bufferedAudio, producedAudio: args.bufferedAudio,
+      computeSeconds: Qwen3PrebufferGate.maxWaitSeconds, producedChars: args.producedChars,
+      remainingChars: args.remainingChars, speed: args.speed))
+  }
+
   @Test("Nothing left to generate releases")
   func noRemainingCharactersReleases() {
     #expect(Qwen3PrebufferGate.shouldRelease(
@@ -63,7 +76,7 @@ struct Qwen3PrebufferGateTests {
   func maxHoldCapReleases() {
     // r = 0.1 against a huge tail, so the formula's threshold is far above 60 s.
     let slow = (
-      producedAudio: 60.0, computeSeconds: 600.0, producedChars: 100,
+      producedAudio: 3.0, computeSeconds: 30.0, producedChars: 100,
       remainingChars: 100_000, speed: 1.25)
     #expect(Qwen3PrebufferGate.shouldRelease(
       bufferedAudio: Qwen3PrebufferGate.maxHoldSeconds,
