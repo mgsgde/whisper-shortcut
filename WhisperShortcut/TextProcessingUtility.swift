@@ -182,14 +182,15 @@ enum TextProcessingUtility {
   /// survives. Only "long audio, almost no text, and that text is verbatim glossary" is dropped.
   /// Returns "" when discarded — callers already treat empty output as "no speech detected".
   ///
-  /// A second rule is independent of length: the transcript is the glossary read out in order.
+  /// A second rule is independent of length: the transcript is the glossary read back.
   /// Observed: near-silent ~25 s live-meeting chunks returned the whole 36-term glossary (344
-  /// chars), which the length floor cannot catch. Discarded when the words walk the glossary's
-  /// terms front to back, consuming every word, and cover at least `minOrderedEchoTerms` terms.
-  /// A real utterance made only of glossary names is short and rarely names four or more of
-  /// them in exactly the glossary's order; the echo copies the list in order. The walk matches
-  /// term by term (not word → first term) because a glossary can hold "Claude" and later
-  /// "Claude Code", and the second "Claude" word must still count for the later term.
+  /// chars), which the length floor cannot catch. Discarded when every word is a glossary term
+  /// (connector words may sit between them) and the matched terms are glossary-ordered for at
+  /// least `minOrderedEchoTerms` terms. A descent — the next term's glossary index lower than
+  /// the previous — is allowed up to pairs / 10, so a run of up to ten terms still has to be
+  /// strictly non-decreasing. A real utterance made only of glossary names is short and rarely
+  /// names four or more of them in that order. Matching is longest-term first, so a glossary
+  /// that holds both "Claude" and "Claude Code" counts the two-word term when both words follow.
   ///
   /// Live-meeting chunks prefix each line with a speaker label. Observed 2026-10-28 (Gemini 3.1
   /// Flash-Lite): an 11.4 s near-silent chunk came back as "Speaker A: Claude Code." (23
@@ -255,33 +256,16 @@ enum TextProcessingUtility {
     "und", "and", "mit", "with", "oder", "or", "sowie", "plus", "y", "et",
   ]
 
-  /// Number of glossary terms the text spells out front to back, or nil unless *every* word of
-  /// the text is consumed that way.
+  /// Number of glossary terms the text spells out, or nil unless every word is a connector or
+  /// part of a glossary term and those terms are glossary-ordered (`isGlossaryOrdered`).
+  /// Longest term wins at each word; connector words between terms are skipped.
   private static func orderedGlossaryEchoTermCount(_ text: String, glossaryTerms: [String]) -> Int? {
-    let words = text.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-      .map { foldForEchoCheck(String($0)) }
+    let words = foldedEchoWords(text)
     guard !words.isEmpty else { return nil }
-    var position = 0
-    var matched = 0
-    for term in glossaryTerms where position < words.count {
-      let termWords = term.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-        .map { foldForEchoCheck(String($0)) }
-      guard !termWords.isEmpty else { continue }
-      func matches(at start: Int) -> Bool {
-        start + termWords.count <= words.count
-          && Array(words[start..<start + termWords.count]) == termWords
-      }
-      // Match the term first; only then fall back to skipping connectors in front of it.
-      var start = position
-      if !matches(at: start) {
-        while start < words.count, echoConnectorWords.contains(words[start]) { start += 1 }
-      }
-      guard matches(at: start) else { continue }
-      position = start + termWords.count
-      matched += 1
-    }
-    while position < words.count, echoConnectorWords.contains(words[position]) { position += 1 }
-    return position == words.count ? matched : nil
+    guard let matches = glossaryEchoTermIndices(in: words, glossaryTerms: glossaryTerms, trailing: false),
+      isGlossaryOrdered(matches.map(\.index))
+    else { return nil }
+    return matches.count
   }
 
   /// One leading "Speaker A:" / "Sprecher A:" per line. The joined remainder is trimmed.
@@ -306,112 +290,229 @@ enum TextProcessingUtility {
   /// A: "…im System gesperrt werden. Joschka SumUp lemniscus"
   /// B: "…WhisperShortcut zugeschickt. Joschka, SumUp, lemniscus, WhisperShortcut."
   /// `discardingGlossaryEchoTranscript` only drops a transcript that is entirely glossary, so a
-  /// correct sentence with the list tacked on survives it. Only the tail is removed.
+  /// correct sentence with the list tacked on survives it. Only the trailing term run is removed.
   ///
-  /// Each condition is what keeps a false positive out. An empty glossary leaves the text
-  /// untouched. No sentence boundary — including a dot that is not followed by whitespace, as in
-  /// `sabaki.dance`, and a transcript with no boundary at all — returns the text unchanged,
-  /// because a transcript that is *only* glossary belongs to the other gate ("Joschka SumUp" can
-  /// be what the user actually said). The head before the boundary must contain a letter or
-  /// digit, so stray punctuation cannot swallow the line. The tail is removed only when every
-  /// word is a glossary word, the words' term indices are non-decreasing (an echo keeps glossary
-  /// order, so "WhisperShortcut Joschka" stays), and at least two distinct terms appear (a single
-  /// "SumUp." is ordinary speech; "Wir nutzen SumUp und lemniscus" has words that are not in the
-  /// glossary and stays).
+  /// The run walks backward from the last word and takes the longest glossary term ending there
+  /// (a multi-word term counts as one). Punctuation between those words is ignored, so
+  /// "Frau Dr. Läuffer" and sentence dots inside the echo stay in the run. Connector words are
+  /// not skipped and end the run ("Das war's. SumUp und lemniscus." stays). The run is removed
+  /// only when at least one word precedes it — a transcript that is only glossary belongs to the
+  /// other gate — and the last non-whitespace character before it is a newline or `. ! ? …`
+  /// followed by whitespace. The dot in `sabaki.dance` has a letter after it, so it is not a
+  /// boundary, and neither is a colon ("Teilnehmer: Joschka, SumUp", "Wir nutzen SumUp lemniscus").
   ///
-  /// A *single* term is stripped only when it is exactly one term (a multi-word term such as
-  /// "Claude Code" counts as one) and the head holds at least `minHeadWordsForSingleTermEcho`
-  /// words. Gemini Flash Lite also appends just one name ("… wie ein 14 Zoll Notebook. Joschka."),
-  /// which is the same echo the model was told not to produce. A short head ("Das war's. SumUp.")
-  /// or a sign-off ("Viele Grüße. Joschka.") is ordinary speech and stays, and so does the same
-  /// term repeated ("Joschka Joschka."), which is not one term occurrence.
+  /// Two or more distinct terms are stripped when the run is glossary-ordered: a descent (the
+  /// next term index lower than the previous) is allowed up to pairs / 10, so up to nine pairs
+  /// stay strictly non-decreasing and "WhisperShortcut Joschka" stays. Observed 2026-11-10
+  /// (gpt-transcribe, 11 s): real speech followed by all 49 glossary terms in keywords order
+  /// (corrections first), with "Dr." dots inside the echo — one wrap-around descent across 48
+  /// pairs, which a tail cut at the last sentence dot missed.
+  ///
+  /// A *single* term is stripped only when the tail is exactly that one occurrence (a multi-word
+  /// term such as "Claude Code" counts as one; "Joschka Joschka." does not) and the head holds at
+  /// least `minHeadWordsForSingleTermEcho` words ("… wie ein 14 Zoll Notebook. Joschka."). A short
+  /// head ("Das war's. SumUp.") or a sign-off ("Viele Grüße. Joschka.") stays. An empty glossary
+  /// leaves the text untouched.
   private static let minHeadWordsForSingleTermEcho = 5
 
   static func strippingTrailingGlossaryEcho(
     _ text: String, glossaryTerms: [String], mode: String
   ) -> String {
     guard !glossaryTerms.isEmpty else { return text }
+    let tokens = echoWordTokens(in: text)
+    guard let run = glossaryEchoTermIndices(
+      in: tokens.map(\.folded), glossaryTerms: glossaryTerms, trailing: true
+    ), !run.isEmpty else { return text }
 
+    let runWordCount = run.reduce(0) { $0 + $1.wordCount }
+    let runStartWord = tokens.count - runWordCount
+    // A transcript that is only the glossary belongs to the discard gate.
+    guard runStartWord > 0 else { return text }
+    let runStart = tokens[runStartWord].start
+    guard let boundary = glossaryEchoBoundary(before: runStart, in: text) else { return text }
+
+    let distinctTerms = Set(run.map(\.index))
+    let singleTermEcho: Bool = {
+      guard run.count == 1 else { return false }
+      let termWordCount = foldedEchoWords(glossaryTerms[run[0].index]).count
+      return runWordCount == termWordCount && runStartWord >= minHeadWordsForSingleTermEcho
+    }()
+    guard (distinctTerms.count >= 2 && isGlossaryOrdered(run.map(\.index))) || singleTermEcho
+    else { return text }
+
+    let headEnd = text.index(after: boundary)
     var bodyEnd = text.endIndex
-    while bodyEnd > text.startIndex {
+    while bodyEnd > headEnd {
       let previous = text.index(before: bodyEnd)
       if text[previous].isWhitespace { bodyEnd = previous } else { break }
     }
-
-    // Closing punctuation of the transcript itself, and a quote glued to it (`."`), is not the
-    // boundary between the real sentence and the echo.
-    let terminalPunctuation: Set<Character> = [".", "!", "?", "…", "\"", "'", "”", "’", "“", "»", "›"]
-    var searchEnd = bodyEnd
-    while searchEnd > text.startIndex {
-      let previous = text.index(before: searchEnd)
-      if terminalPunctuation.contains(text[previous]) { searchEnd = previous } else { break }
-    }
-
-    // A newline, or sentence punctuation that is immediately followed by whitespace. `sabaki.dance`
-    // has a dot with a letter after it, so it is not a boundary. A colon is deliberately not one:
-    // "Teilnehmer: Joschka, SumUp" is a dictated list, not an echo.
-    let boundaryPunctuation: Set<Character> = [".", "!", "?", "…"]
-    var boundary: String.Index?
-    var index = text.startIndex
-    while index < searchEnd {
-      let character = text[index]
-      if character.isNewline {
-        boundary = index
-      } else if boundaryPunctuation.contains(character) {
-        let next = text.index(after: index)
-        if next < text.endIndex, text[next].isWhitespace {
-          boundary = index
-        }
-      }
-      index = text.index(after: index)
-    }
-    guard let boundary else { return text }
-
-    let headEnd = text.index(after: boundary)
-    let head = text[..<headEnd]
-    guard head.contains(where: { $0.isLetter || $0.isNumber }) else { return text }
-
-    // First glossary entry that contains the word. Later duplicates do not reorder the echo.
-    var termIndexByWord: [String: Int] = [:]
-    for (termIndex, term) in glossaryTerms.enumerated() {
-      for word in term.split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
-        let folded = foldForEchoCheck(String(word))
-        if termIndexByWord[folded] == nil {
-          termIndexByWord[folded] = termIndex
-        }
-      }
-    }
-
     let tail = text[headEnd..<bodyEnd]
-    let tailWords = tail.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-      .map { foldForEchoCheck(String($0)) }
-
-    var distinctTerms = Set<Int>()
-    var lastTermIndex: Int?
-    for word in tailWords {
-      guard let termIndex = termIndexByWord[word] else { return text }
-      if let lastTermIndex, termIndex < lastTermIndex { return text }
-      lastTermIndex = termIndex
-      distinctTerms.insert(termIndex)
-    }
-    if distinctTerms.count < 2 {
-      guard let onlyTerm = distinctTerms.first else { return text }
-      let termWordCount = glossaryTerms[onlyTerm]
-        .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).count
-      let headWordCount = head.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).count
-      guard tailWords.count == termWordCount, headWordCount >= minHeadWordsForSingleTermEcho
-      else { return text }
-    }
 
     // Dictated content (patient data): log the size only, never the words.
     DebugLogger.logWarning(
-      "\(mode): Stripped trailing glossary echo (\(tailWords.count) word(s), \(tail.count) chars)")
+      "\(mode): Stripped trailing glossary echo (\(runWordCount) word(s), \(tail.count) chars)")
 
-    var kept = String(head)
+    var kept = String(text[..<headEnd])
     while let last = kept.last, last.isWhitespace {
       kept.removeLast()
     }
     return kept
+  }
+
+  /// One term of a glossary echo: its index in `glossaryTerms`, and how many words it consumed.
+  private struct GlossaryEchoMatch {
+    let index: Int
+    let wordCount: Int
+  }
+
+  /// A letter/digit word and where it starts. Punctuation between words is not a token, so
+  /// "Frau Dr. Läuffer" and "sabaki.dance" share the same word sequence as their glossary entries.
+  private struct EchoWordToken {
+    let folded: String
+    let start: String.Index
+  }
+
+  private static func echoWordTokens(in text: String) -> [EchoWordToken] {
+    var tokens: [EchoWordToken] = []
+    var index = text.startIndex
+    while index < text.endIndex {
+      if text[index].isLetter || text[index].isNumber {
+        let start = index
+        var end = text.index(after: index)
+        while end < text.endIndex, text[end].isLetter || text[end].isNumber {
+          end = text.index(after: end)
+        }
+        tokens.append(EchoWordToken(folded: foldForEchoCheck(String(text[start..<end])), start: start))
+        index = end
+      } else {
+        index = text.index(after: index)
+      }
+    }
+    return tokens
+  }
+
+  private static func foldedEchoWords(_ text: String) -> [String] {
+    text.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+      .map { foldForEchoCheck(String($0)) }
+  }
+
+  /// Folded term words → glossary index. The first entry wins when two terms fold alike.
+  private static func glossaryTermLookup(_ glossaryTerms: [String]) -> (byWords: [[String]: Int], maxWords: Int) {
+    var byWords: [[String]: Int] = [:]
+    var maxWords = 0
+    for (index, term) in glossaryTerms.enumerated() {
+      let words = foldedEchoWords(term)
+      guard !words.isEmpty, byWords[words] == nil else { continue }
+      byWords[words] = index
+      maxWords = max(maxWords, words.count)
+    }
+    return (byWords, maxWords)
+  }
+
+  /// Longest glossary term ending at `end` (inclusive), if any word sequence ending there is a term.
+  private static func longestGlossaryTerm(
+    endingAt end: Int, words: [String], lookup: [[String]: Int], maxWords: Int
+  ) -> GlossaryEchoMatch? {
+    guard end >= 0, maxWords > 0 else { return nil }
+    var best: GlossaryEchoMatch?
+    for count in 1...min(maxWords, end + 1) {
+      let key = Array(words[(end - count + 1)...end])
+      if let index = lookup[key] {
+        best = GlossaryEchoMatch(index: index, wordCount: count)
+      }
+    }
+    return best
+  }
+
+  /// Longest glossary term starting at `start`.
+  private static func longestGlossaryTerm(
+    startingAt start: Int, words: [String], lookup: [[String]: Int], maxWords: Int
+  ) -> GlossaryEchoMatch? {
+    guard start >= 0, start < words.count, maxWords > 0 else { return nil }
+    var best: GlossaryEchoMatch?
+    for count in 1...min(maxWords, words.count - start) {
+      let key = Array(words[start..<(start + count)])
+      if let index = lookup[key] {
+        best = GlossaryEchoMatch(index: index, wordCount: count)
+      }
+    }
+    return best
+  }
+
+  /// Glossary terms a word sequence spells. `trailing` keeps only the suffix of longest terms
+  /// ending at the last word and stops at the first word that ends no term — connectors are not
+  /// skipped, so "SumUp und lemniscus" does not become one run. The forward walk skips connector
+  /// words and returns nil unless every word is consumed. Indices are in text order; the first
+  /// glossary entry wins when two terms fold to the same words.
+  private static func glossaryEchoTermIndices(
+    in words: [String], glossaryTerms: [String], trailing: Bool
+  ) -> [GlossaryEchoMatch]? {
+    guard !words.isEmpty else { return trailing ? [] : nil }
+    let (lookup, maxWords) = glossaryTermLookup(glossaryTerms)
+    guard maxWords > 0 else { return trailing ? [] : nil }
+
+    if trailing {
+      var matches: [GlossaryEchoMatch] = []
+      var end = words.count - 1
+      while end >= 0 {
+        guard let match = longestGlossaryTerm(
+          endingAt: end, words: words, lookup: lookup, maxWords: maxWords
+        ) else { break }
+        matches.append(match)
+        end -= match.wordCount
+      }
+      matches.reverse()
+      return matches
+    }
+
+    var matches: [GlossaryEchoMatch] = []
+    var position = 0
+    while position < words.count {
+      while position < words.count, echoConnectorWords.contains(words[position]) {
+        position += 1
+      }
+      guard position < words.count else { break }
+      guard let match = longestGlossaryTerm(
+        startingAt: position, words: words, lookup: lookup, maxWords: maxWords
+      ) else { return nil }
+      matches.append(match)
+      position += match.wordCount
+    }
+    return matches.isEmpty ? nil : matches
+  }
+
+  /// A run is glossary-ordered when descents (the next index lower than the previous) are at
+  /// most one per ten adjacent pairs. Up to nine pairs stay strictly non-decreasing.
+  private static func isGlossaryOrdered(_ termIndices: [Int]) -> Bool {
+    let pairs = termIndices.count - 1
+    guard pairs > 0 else { return true }
+    var descents = 0
+    for offset in 1..<termIndices.count where termIndices[offset] < termIndices[offset - 1] {
+      descents += 1
+    }
+    return descents <= pairs / 10
+  }
+
+  /// Newline, or `. ! ? …` only when whitespace follows, immediately before the trailing run.
+  /// Spaces and tabs between that character and the run do not count; a newline does.
+  private static func glossaryEchoBoundary(before runStart: String.Index, in text: String) -> String.Index? {
+    let sentencePunctuation: Set<Character> = [".", "!", "?", "…"]
+    var index = runStart
+    while index > text.startIndex {
+      let previous = text.index(before: index)
+      let character = text[previous]
+      if character.isWhitespace && !character.isNewline {
+        index = previous
+        continue
+      }
+      if character.isNewline { return previous }
+      if sentencePunctuation.contains(character) {
+        let next = text.index(after: previous)
+        if next < text.endIndex, text[next].isWhitespace { return previous }
+      }
+      return nil
+    }
+    return nil
   }
 
   /// Case- and diacritic-insensitive comparison form. Same POSIX fold as the glossary
