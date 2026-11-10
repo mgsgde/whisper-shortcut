@@ -27559,6 +27559,46 @@
           }
         }
       }
+    },
+    "Send the text around the cursor?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text um den Cursor mitschicken?"
+          }
+        }
+      }
+    },
+    "Each time you use Dictate Prompt with nothing selected, it reads up to 4,000 characters around the cursor in the app you are writing in and sends them, with that app's name, to your Dictate Prompt model. With a cloud model, that text goes to its provider.\n\nPassword fields and password managers are never read. You can turn this off here at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, liest Dictate Prompt bei jeder Nutzung bis zu 4.000 Zeichen um den Cursor in der App, in der Sie schreiben, und schickt sie mit dem Namen der App an Ihr Dictate-Prompt-Modell. Bei einem Cloud-Modell geht der Text an dessen Anbieter.\n\nPasswortfelder und Passwort-Manager werden nie gelesen. Sie können das hier jederzeit wieder ausschalten."
+          }
+        }
+      }
+    },
+    "Send a picture of the front window?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild des vorderen Fensters mitschicken?"
+          }
+        }
+      }
+    },
+    "When nothing is selected, Dictate Prompt can send a picture of the window you are writing in, never the whole screen, to your Dictate Prompt model. Everything visible in that window goes with it. With a cloud model, the picture goes to its provider.\n\nNever for password fields or password managers. You can turn this off here at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, kann Dictate Prompt ein Bild des Fensters, in dem Sie schreiben, an Ihr Dictate-Prompt-Modell schicken, nie den ganzen Bildschirm. Alles, was in diesem Fenster sichtbar ist, geht mit. Bei einem Cloud-Modell geht das Bild an dessen Anbieter.\n\nNie bei Passwortfeldern oder Passwort-Managern. Sie können das hier jederzeit wieder ausschalten."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
