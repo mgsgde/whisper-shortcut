@@ -16,7 +16,7 @@
 # State (gitignored via build/): build/dev-daily/{installed-sha,staged-sha,bad-sha,staged.app,
 # previous.app,src,lock}. Log: build/logs/dev-daily.log.
 set -uo pipefail
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Main checkout. `git worktree list | head -1` is the bare git dir (.../.git/modules/...) in a
 # submodule, so ask the common git dir where its work tree is (core.worktree, relative to it);
