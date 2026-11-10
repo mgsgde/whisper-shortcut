@@ -111,6 +111,8 @@ enum UserDefaultsKeys {
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
+  /// Bool: Dictate Prompt sends the text around the cursor of the focused field to the model. Absent → off.
+  static let promptSendsFocusedFieldText = "promptSendsFocusedFieldText"
   /// When true, captured screenshots (the Screenshot shortcut and the in-chat button) are also written
   /// as PNG files into the user-selected folder, in addition to the clipboard.
   static let screenshotSaveEnabled = "screenshotSaveEnabled"
@@ -355,6 +357,12 @@ enum UserDefaultsKeys {
   static let mcpServerEnabled = "mcpServerEnabled"
   /// Optional override of the MCP server's loopback port. Unset/0 → MCPServer.defaultPort.
   static let mcpServerPort = "mcpServerPort"
+  /// Kill switch for MCPClientInstaller.repairStaleTokens. Unset → on; only an explicit false disables it.
+  static let mcpAutoRepairClientTokens = "mcpAutoRepairClientTokens"
+  /// Prefix + `MCPClient.rawValue`: app-scoped security bookmark of the client's config folder.
+  static let mcpClientFolderBookmarkPrefix = "mcpClientFolderBookmark."
+  /// Prefix + `MCPClient.rawValue`: which token ("read" | "write") Connect wrote into that client.
+  static let mcpClientTokenKindPrefix = "mcpClientTokenKind."
   /// How far AI apps connected with the write token may change the configuration:
   /// "read" (default) | "propose" | "apply". See MCPConfigAccessLevel.
   static let mcpConfigAccessLevel = "mcpConfigAccessLevel"

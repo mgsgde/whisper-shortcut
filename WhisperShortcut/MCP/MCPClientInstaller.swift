@@ -85,7 +85,140 @@ enum MCPClientInstallerError: LocalizedError {
   }
 }
 
+/// Which bearer token Connect wrote into a client's config.
+enum MCPTokenKind: String {
+  case read
+  case write
+}
+
 enum MCPClientInstaller {
+
+  // MARK: - Stale token repair (pure)
+
+  /// New config bytes when `existing` holds our entry for `url` with a token that is neither
+  /// `readToken` nor `writeToken`; nil when nothing should change (no entry, foreign url, current
+  /// token, unparseable file).
+  static func repairedConfig(
+    client: MCPClient, existing: Data, serverName: String, url: String,
+    readToken: String, writeToken: String, tokenKind: MCPTokenKind, executablePath: String
+  ) -> Data? {
+    let wanted = tokenKind == .read ? readToken : writeToken
+    let valid = ["Bearer \(readToken)", "Bearer \(writeToken)"]
+    switch client {
+    case .claudeCode, .claudeDesktop:
+      guard let root = try? JSONSerialization.jsonObject(with: existing) as? [String: Any],
+        let servers = root["mcpServers"] as? [String: Any],
+        let entry = servers[serverName] as? [String: Any]
+      else { return nil }
+      if client == .claudeCode {
+        guard entry["url"] as? String == url else { return nil }
+        let header = (entry["headers"] as? [String: Any])?["Authorization"] as? String
+        if let header, valid.contains(header) { return nil }
+        return try? mergeClaudeCode(existing: existing, serverName: serverName, url: url, token: wanted)
+      }
+      let env = entry["env"] as? [String: Any]
+      guard env?[MCPStdioBridge.urlEnv] as? String == url else { return nil }
+      if let auth = env?[MCPStdioBridge.authEnv] as? String, valid.contains(auth) { return nil }
+      var command = executablePath
+      if let existingCommand = entry["command"] as? String, FileManager.default.fileExists(atPath: existingCommand) {
+        command = existingCommand
+      }
+      return try? mergeClaudeDesktop(
+        existing: existing, serverName: serverName, url: url, token: wanted, executablePath: command)
+    case .codex:
+      guard let text = String(data: existing, encoding: .utf8),
+        let table = codexTableBody(text, serverName: serverName)
+      else { return nil }
+      var tableURL: String?
+      for line in table.split(whereSeparator: \.isNewline) {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("url"), let q1 = t.firstIndex(of: "\""), let q2 = t.lastIndex(of: "\""), q1 < q2 {
+          tableURL = String(t[t.index(after: q1)..<q2])
+        }
+      }
+      guard tableURL == url else { return nil }
+      if valid.contains(where: { table.contains($0) }) { return nil }
+      return Data(mergeCodex(existing: text, serverName: serverName, url: url, token: wanted).utf8)
+    }
+  }
+
+  /// Lines of the `[mcp_servers.<name>]` table (plain or quoted name), without sub-tables. Nil when absent.
+  private static func codexTableBody(_ text: String, serverName: String) -> String? {
+    let headers = ["[mcp_servers.\(serverName)]", "[mcp_servers.\"\(serverName)\"]"]
+    var inTable = false
+    var found = false
+    var body: [Substring] = []
+    for line in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false) {
+      let t = line.trimmingCharacters(in: .whitespaces)
+      if t.hasPrefix("[") {
+        inTable = headers.contains(t)
+        if inTable { found = true }
+        continue
+      }
+      if inTable { body.append(line) }
+    }
+    return found ? body.joined(separator: "\n") : nil
+  }
+
+  // MARK: - Stale token repair (impure)
+
+  private static func bookmarkKey(_ client: MCPClient) -> String {
+    UserDefaultsKeys.mcpClientFolderBookmarkPrefix + client.rawValue
+  }
+
+  private static func tokenKindKey(_ client: MCPClient) -> String {
+    UserDefaultsKeys.mcpClientTokenKindPrefix + client.rawValue
+  }
+
+  private static func saveBookmark(for folder: URL, client: MCPClient, tokenKind: MCPTokenKind) {
+    do {
+      let data = try folder.bookmarkData(
+        options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+      UserDefaults.standard.set(data, forKey: bookmarkKey(client))
+      UserDefaults.standard.set(tokenKind.rawValue, forKey: tokenKindKey(client))
+    } catch {
+      DebugLogger.logError("MCP-INSTALL: could not save folder bookmark for \(client.displayName): \(error.localizedDescription)")
+    }
+  }
+
+  private static func clearBookmark(for client: MCPClient) {
+    UserDefaults.standard.removeObject(forKey: bookmarkKey(client))
+    UserDefaults.standard.removeObject(forKey: tokenKindKey(client))
+  }
+
+  /// Rewrites stale tokens in configs of clients connected earlier (a stored folder bookmark).
+  /// Silent: never shows UI, never adds an entry, errors are logged and skipped.
+  @MainActor
+  static func repairStaleTokens(url: String, readToken: String, writeToken: String, serverName: String) {
+    let defaults = UserDefaults.standard
+    guard (defaults.object(forKey: UserDefaultsKeys.mcpAutoRepairClientTokens) as? Bool ?? true) else { return }
+    for client in MCPClient.allCases {
+      guard let bookmark = defaults.data(forKey: bookmarkKey(client)) else { continue }
+      do {
+        var stale = false
+        let folder = try URL(
+          resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil,
+          bookmarkDataIsStale: &stale)
+        let scoped = folder.startAccessingSecurityScopedResource()
+        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+        let kind = MCPTokenKind(rawValue: defaults.string(forKey: tokenKindKey(client)) ?? "") ?? .read
+        if stale { saveBookmark(for: folder, client: client, tokenKind: kind) }
+        // The bookmark may be an ancestor of the config folder (a client that had not run yet).
+        let file = client.configFolder.appendingPathComponent(client.configFileName)
+        guard FileManager.default.fileExists(atPath: file.path) else { continue }
+        let existing = try Data(contentsOf: file)
+        guard let output = repairedConfig(
+          client: client, existing: existing, serverName: serverName, url: url,
+          readToken: readToken, writeToken: writeToken, tokenKind: kind,
+          executablePath: (try? stableExecutablePath(Bundle.main.executablePath)) ?? "")
+        else { continue }
+        try writeConfigAtomically(output, to: file)
+        DebugLogger.logSuccess("MCP-INSTALL: repaired stale token for \(client.displayName)")
+      } catch {
+        DebugLogger.logError("MCP-INSTALL: token repair for \(client.displayName) failed: \(error.localizedDescription)")
+      }
+    }
+  }
 
   // MARK: - Pure merge functions
 
@@ -340,7 +473,7 @@ enum MCPClientInstaller {
   /// Returns the written file's URL. `MCPClientInstallerError.cancelled` means the user dismissed the panel.
   @MainActor
   static func connect(
-    _ client: MCPClient, url: String, token: String, serverName: String
+    _ client: MCPClient, url: String, token: String, serverName: String, tokenKind: MCPTokenKind
   ) async -> Result<URL, Error> {
     let configFolder = client.configFolder
     // A client that never ran has no config folder yet (`~/.codex`), and a hidden folder that does
@@ -371,6 +504,8 @@ enum MCPClientInstaller {
           output = Data(mergeCodex(existing: text, serverName: serverName, url: url, token: token).utf8)
         }
         try writeConfigAtomically(output, to: file)
+        // Still inside the security scope: remember the folder so a later token change can be repaired.
+        saveBookmark(for: expected, client: client, tokenKind: tokenKind)
         return file
       }
       DebugLogger.logSuccess("MCP-INSTALL: connected \(client.displayName) at \(file.path)")
@@ -415,6 +550,7 @@ enum MCPClientInstaller {
         DebugLogger.logSuccess("MCP-INSTALL: disconnected \(client.displayName) at \(file.path)")
         return true
       }
+      clearBookmark(for: client)
       return .success(removed)
     } catch {
       logInstallFailure(error, client: client)

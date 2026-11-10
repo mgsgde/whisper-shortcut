@@ -1785,6 +1785,13 @@ enum DictationPreferences {
       forKey: UserDefaultsKeys.dictateFieldHintEnabled,
       default: SettingsDefaults.dictateFieldHintEnabled)
   }
+
+  /// Whether Dictate Prompt sends the text around the cursor of the focused field to the model.
+  static var promptSendsFocusedFieldTextEnabled: Bool {
+    UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.promptSendsFocusedFieldText,
+      default: SettingsDefaults.promptSendsFocusedFieldText)
+  }
 }
 
 // MARK: - Read Aloud Preferences (UserDefaults Accessors)
@@ -2459,9 +2466,13 @@ struct SettingsDefaults {
   static let dictateMode: DictateMode = .dictate
 
   // MARK: - Screenshot Settings
-  /// Front window as fallback: when the focused field is empty, short or unreadable, Dictate Prompt
-  /// attaches a picture of that window, never the whole screen. The key is unchanged.
-  static let screenshotInPromptMode = true
+  /// Explicit opt-in: nothing from the screen except the user's own selection may leave the Mac
+  /// without consent. When on and the focused field is empty, short or unreadable, Dictate Prompt
+  /// attaches a picture of the front window, never the whole screen. The key is unchanged.
+  static let screenshotInPromptMode = false
+  /// Explicit opt-in (same reason): Dictate Prompt sends the text around the cursor of the focused
+  /// field (up to 3000 characters before, 1000 after) to the model.
+  static let promptSendsFocusedFieldText = false
   static let screenshotSaveEnabled = false
 
   // MARK: - Live Meeting Settings
@@ -2668,6 +2679,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode
+  var promptSendsFocusedFieldText: Bool = SettingsDefaults.promptSendsFocusedFieldText
   var screenshotSaveEnabled: Bool = SettingsDefaults.screenshotSaveEnabled
   /// Display-only; the security-scoped bookmark itself is owned by ScreenshotSaveLocation.
   var screenshotSaveFolderDisplayPath: String = ""

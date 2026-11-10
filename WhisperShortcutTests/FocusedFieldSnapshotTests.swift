@@ -86,19 +86,45 @@ struct FocusedFieldSnapshotTests {
   @Test("The field block is compose-only and marks the caret")
   func fieldBlockText() {
     let notes = FocusedFieldSnapshot(appName: "Notes", textBeforeCaret: "Hello ", textAfterCaret: "world")
-    #expect(PromptScreenContextDecision.fieldBlock(notes, isComposeTurn: true, isTemplate: false) ==
+    #expect(PromptScreenContextDecision.fieldBlock(notes, isComposeTurn: true, isTemplate: false, fieldTextEnabled: true) ==
       "TEXT FIELD THE RESULT WILL BE INSERTED INTO (app: Notes). Context only: match its language, tone and names, and continue or answer it. Do not repeat it. [CURSOR] marks where the result goes:\nHello [CURSOR]world")
     let unnamed = FocusedFieldSnapshot(appName: nil, textBeforeCaret: "Hi", textAfterCaret: "")
-    #expect(PromptScreenContextDecision.fieldBlock(unnamed, isComposeTurn: true, isTemplate: false)?.contains("(app: unknown)") == true)
-    #expect(PromptScreenContextDecision.fieldBlock(notes, isComposeTurn: false, isTemplate: false) == nil)
-    #expect(PromptScreenContextDecision.fieldBlock(nil, isComposeTurn: true, isTemplate: false) == nil)
+    #expect(PromptScreenContextDecision.fieldBlock(unnamed, isComposeTurn: true, isTemplate: false, fieldTextEnabled: true)?.contains("(app: unknown)") == true)
+    #expect(PromptScreenContextDecision.fieldBlock(notes, isComposeTurn: false, isTemplate: false, fieldTextEnabled: true) == nil)
+    #expect(PromptScreenContextDecision.fieldBlock(nil, isComposeTurn: true, isTemplate: false, fieldTextEnabled: true) == nil)
     let empty = FocusedFieldSnapshot(appName: "Notes", textBeforeCaret: "", textAfterCaret: "")
-    #expect(PromptScreenContextDecision.fieldBlock(empty, isComposeTurn: true, isTemplate: false) == nil)
+    #expect(PromptScreenContextDecision.fieldBlock(empty, isComposeTurn: true, isTemplate: false, fieldTextEnabled: true) == nil)
   }
 
   @Test("A template turn with a long field gets no field block")
   func fieldBlockTemplate() {
-    #expect(PromptScreenContextDecision.fieldBlock(field(500), isComposeTurn: true, isTemplate: true) == nil)
+    #expect(PromptScreenContextDecision.fieldBlock(field(500), isComposeTurn: true, isTemplate: true, fieldTextEnabled: true) == nil)
+  }
+
+  @Test("Field text is opt-in")
+  func fieldTextOptIn() {
+    let f = field(500)
+    #expect(PromptScreenContextDecision.fieldBlock(f, isComposeTurn: true, isTemplate: false, fieldTextEnabled: false) == nil)
+    let on = PromptScreenContextDecision.fieldBlock(f, isComposeTurn: true, isTemplate: false, fieldTextEnabled: true)
+    #expect(on?.contains(f.textBeforeCaret) == true)
+    #expect(on?.contains("[CURSOR]") == true)
+    #expect(PromptScreenContextDecision.effectiveField(f, fieldTextEnabled: false) == nil)
+    #expect(PromptScreenContextDecision.effectiveField(f, fieldTextEnabled: true)?.totalCount == f.totalCount)
+  }
+
+  @Test("With field text off, a long field does not suppress the window image")
+  func longFieldIgnoredForImage() {
+    let long = PromptScreenContextDecision.effectiveField(field(300), fieldTextEnabled: false)
+    #expect(PromptScreenContextDecision.wantsWindowImage(
+      isComposeTurn: true, field: long, settingEnabled: true, modelAcceptsImages: true, isTemplate: false))
+    #expect(!PromptScreenContextDecision.wantsWindowImage(
+      isComposeTurn: true, field: long, settingEnabled: false, modelAcceptsImages: true, isTemplate: false))
+  }
+
+  @Test("Screen context settings default to off")
+  func screenContextDefaultsOff() {
+    #expect(SettingsDefaults.promptSendsFocusedFieldText == false)
+    #expect(SettingsDefaults.screenshotInPromptMode == false)
   }
 
   private func field(_ count: Int) -> FocusedFieldSnapshot {
