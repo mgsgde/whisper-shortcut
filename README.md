@@ -33,6 +33,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 - **Dictate Prompt**: select text and say "make this shorter" or "translate to English". With nothing selected, it writes what you ask for, in your own writing style if you turn that on.
 - **Templates**: dictate into a fixed format you set up once, such as a clinical note with Anamnese, Befund and Therapie.
 - **Read Aloud**: select any text and hear it, with cloud voices or on-device ones, from a small player with pause, skip and speed.
+- **Read Aloud Prompt**: select text and say what you want to hear, such as "summarize this in two sentences" or "read it in English". The answer is read aloud instead of pasted. With nothing selected, it reads out the answer to your question.
 
 **Chat and meetings**
 - **Chat**: a chat window (⌥Space) with every supported model, screenshots, files, web search and YouTube videos. It works with Google Calendar, Tasks and Gmail, Trello, IMAP mailboxes and folders you share, including your `AGENTS.md` / `CLAUDE.md` context files.
@@ -54,6 +55,7 @@ Every feature, setting and model is described in the **[User Guide](docs/guide.m
 | Template | not set (Settings → Templates) |
 | Screenshot | ⌃⌥3 |
 | Read Aloud | ⌃⌥4 |
+| Read Aloud Prompt | ⌃⌥⇧4 |
 | Chat | ⌥Space |
 | Settings | ⌃⌥0 |
 
