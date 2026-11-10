@@ -25,7 +25,7 @@ struct AIAppsSettingsTab: View {
   /// Changes listed under "Changed by AI apps"; the full record stays in `mcp-changes.jsonl`.
   private static let visibleChanges = 5
 
-  private static let serverName = "whisper-shortcut"
+  static let serverName = "whisper-shortcut"
 
   @State private var copiedItem: String?
   @State private var showRegenerateConfirm = false
@@ -496,7 +496,8 @@ struct AIAppsSettingsTab: View {
     connecting = client
     Task { @MainActor in
       let result = await MCPClientInstaller.connect(
-        client, url: server.endpointURL, token: setupToken, serverName: Self.serverName)
+        client, url: server.endpointURL, token: setupToken, serverName: Self.serverName,
+        tokenKind: accessLevel == .read ? .read : .write)
       connecting = nil
       switch result {
       case .success:
