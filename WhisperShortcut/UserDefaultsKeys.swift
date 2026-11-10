@@ -304,6 +304,8 @@ enum UserDefaultsKeys {
   static let readAloudSmartRewriteEnabled = "readAloudSmartRewriteEnabled"
   /// Local playback rate for Read Aloud TTS. Stored as Double (e.g. 1.0, 1.25, 1.5).
   static let readAloudSpeed = "readAloudSpeed"
+  /// Kill switch: Qwen3 Read Aloud streams every sentence immediately instead of pre-buffering.
+  static let qwen3TTSPrebufferDisabled = "qwen3TTSPrebufferDisabled"
   /// Selected Read Aloud TTS model raw value (macOS / Gemini / OpenAI / xAI). See TTSModel.
   static let selectedReadAloudModel = "selectedReadAloudModel"
   /// Selected Read Aloud voice per provider. Stored separately so switching providers and back

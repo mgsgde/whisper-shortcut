@@ -1040,6 +1040,18 @@ class MenuBarController: NSObject {
   }
 
   private func setupNotifications() {
+    // On-device Read Aloud holds audio back until it can play without running dry; the pill's
+    // spinner becomes a progress ring for that wait. Posted on the main actor.
+    NotificationCenter.default.addObserver(
+      forName: .readAloudSynthesisProgress, object: nil, queue: .main
+    ) { [weak self] note in
+      guard let fraction = note.userInfo?["fraction"] as? Double else { return }
+      MainActor.assumeIsolated {
+        guard let self, self.isTTSRunning else { return }
+        RecordingIndicatorManager.shared.updateProcessingProgress(fraction)
+      }
+    }
+
     // Listen for API key updates and shortcut changes
     NotificationCenter.default.addObserver(
       self,
