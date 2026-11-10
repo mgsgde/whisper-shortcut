@@ -4332,10 +4332,16 @@ extension MenuBarController: AudioRecorderDelegate {
       // The cost warning only makes sense when the run costs money: an offline / on-device model
       // has no API bill, and a modal on a long local dictation is just a hurdle.
       let runCostsMoney = Self.recordingUsesCloudAPI(recordingMode)
+      // Dictate with a streaming session has already sent its chunks while the user spoke: the cost
+      // is spent and the transcript is nearly done, so asking now only offers to throw it away.
+      // Prompt mode still asks (its LLM call is still ahead), as does single-shot transcription.
+      let alreadyTranscribedWhileRecording =
+        recordingMode == .transcription && self.dictateStreamingSession != nil
 
       if quickActionInstruction == nil,
          threshold != .never,
          runCostsMoney,
+         !alreadyTranscribedWhileRecording,
          let duration = self.speechService.getAudioDuration(url: audioURL),
          duration > threshold.rawValue
       {
