@@ -157,6 +157,8 @@ class MenuBarController: NSObject {
     /// Tab switches the bound template off for this recording. The instructions are sent only
     /// while this stays true.
     var templateEnabled = true
+    /// Read Aloud Prompt: the Dictate Prompt result is spoken, not copied or pasted.
+    var speakResult = false
 
     var pendingMode: AppState.RecordingMode? {
       if case .mode(let mode) = target, !captureStarted { return mode }
@@ -248,6 +250,8 @@ class MenuBarController: NSObject {
     /// Silence flag of this recording. The recorder's flag belongs to the latest recording, so a
     /// retry after a newer one must not read it.
     var recordingWasSilent = false
+    /// Read Aloud Prompt: a retry speaks the result again instead of pasting it.
+    var speakResult = false
   }
   private var finishedPromptInputs: [URL: FinishedPromptInputs] = [:]
   /// App Store build + local model only (no synthetic ⌘C there): the pasteboard `changeCount` the
@@ -1548,7 +1552,8 @@ class MenuBarController: NSObject {
     promptSelection: DictatePromptSelectionCapture? = nil,
     template: DictationTemplate? = nil,
     templateChoices: [DictationTemplate] = [],
-    rotation: ChunkedDictateRecorder.RotationPolicy = .standard
+    rotation: ChunkedDictateRecorder.RotationPolicy = .standard,
+    speakResult: Bool = false
   ) {
     // Set on every start, so a live recording whose start failed (mic permission denied) cannot
     // leave its short-pause cutting behind for the next normal Dictate.
@@ -1566,6 +1571,7 @@ class MenuBarController: NSObject {
     clipboardOnlyForNextResult = false
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     recording?.promptSelection = promptSelection
+    recording?.speakResult = speakResult
     if mode == .prompt, meetingSegment == nil, let template {
       recording?.boundTemplate = template
       recording?.templateChoices = templateChoices
@@ -2521,7 +2527,8 @@ class MenuBarController: NSObject {
                 templateInstruction: inputs?.templateInstruction,
                 templateName: inputs?.templateName,
                 recordingWasSilent: inputs?.recordingWasSilent ?? false,
-                selection: inputs?.selection)
+                selection: inputs?.selection,
+                speakResult: inputs?.speakResult ?? false)
             }
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
@@ -2567,6 +2574,9 @@ class MenuBarController: NSObject {
     let copyResult: (String) -> Void
     /// Shows the result popup. `title` is nil when auto-paste already delivered the text.
     let presentResult: (_ text: String, _ modelInfo: String, _ title: String?) -> Void
+    /// When set, the result is handed here instead of being copied, pasted or shown. Read Aloud
+    /// Prompt speaks it. Nil for Dictate and Dictate Prompt.
+    var deliverInsteadOfPaste: ((String) async -> Void)? = nil
     /// Success-pill wording, selected by whether auto-paste ran.
     let successMessage: (_ didAutoPaste: Bool) -> String
     /// True when the result carries a warning the popup has to show even though the pill already
@@ -2634,6 +2644,35 @@ class MenuBarController: NSObject {
         return false
       }
       if wasCancelled { return }
+
+      if let deliver = spec.deliverInsteadOfPaste {
+        // Spoken result: nothing is copied, pasted or popped up. The selection ⌘C already
+        // overwrote the clipboard; put the user's previous contents back (no-op without a snapshot).
+        await MainActor.run { [weak self] in
+          self?.reviewPrompter.recordSuccessfulOperation()
+        }
+        PopupNotificationWindow.dismissProcessing()
+        chunkStatuses = []
+        if let job, currentJob === job {
+          currentJob = nil
+        }
+        processedAudioURLs.remove(audioURL)
+        if clipboardManager.restorePendingSnapshot(afterForeignWriteAt: NSPasteboard.general.changeCount) {
+          DebugLogger.log("READ-ALOUD-PROMPT: Restored the clipboard contents from before the selection copy")
+        }
+        // `transitionToIdleAndCleanup` posts `ttsDidStop` when leaving a TTS state and drops the
+        // clipboard snapshot. The snapshot is already restored, and this job is a prompt, not
+        // Read Aloud, so idle is the same `finish()` that helper uses. A TTS state takes the
+        // success path instead, which does not post `ttsDidStop`.
+        if isTTSRunning {
+          appState = appState.showSuccess(String(localized: "Audio playback completed"))
+        } else {
+          appState = appState.finish()
+        }
+        cleanupAudioFile(at: audioURL)
+        await deliver(result)
+        return
+      }
 
       // Last chance to remember the user's clipboard before the result overwrites it. Dictate
       // Prompt already captured it before its synthetic ⌘C; this covers plain dictation.
@@ -3235,7 +3274,8 @@ class MenuBarController: NSObject {
     templateInstruction: String? = nil,
     templateName: String? = nil,
     recordingWasSilent: Bool = false,
-    selection: DictatePromptSelectionCapture?
+    selection: DictatePromptSelectionCapture?,
+    speakResult: Bool = false
   ) async {
     // Words of the on-device reply the dictation does not contain (Offline Mode only). They
     // replace the result popup with a warning; the pasted text is never touched.
@@ -3256,7 +3296,12 @@ class MenuBarController: NSObject {
         }
       },
       successMessage: { $0 ? String(localized: "AI response copied to clipboard") : PasteTargetPolicy.copiedHint })
-    spec.resultNeedsPopup = { !undictatedWords.isEmpty }
+    spec.resultNeedsPopup = { !speakResult && !undictatedWords.isEmpty }
+    if speakResult {
+      spec.deliverInsteadOfPaste = { text in
+        await MainActor.run { self.readAloud(text) }
+      }
+    }
 
     await runAudioJob(
       spec,
@@ -3288,15 +3333,20 @@ class MenuBarController: NSObject {
           recordingWasSilent: recordingWasSilent,
           selectionIsFromService: selection?.isFromService ?? false,
           fieldContext: fieldContext,
-          fieldAllowsWindowImage: fieldAllowsWindowImage)
-        undictatedWords = self.speechService.lastPromptUnsupportedWords
-        if self.speechService.lastPromptReplyTruncated {
-          // The text is still pasted; the user just has to know its end may be missing.
-          await MainActor.run { PopupNotificationWindow.showReplyTruncated() }
+          fieldAllowsWindowImage: fieldAllowsWindowImage,
+          outputIsSpoken: speakResult)
+        if !speakResult {
+          undictatedWords = self.speechService.lastPromptUnsupportedWords
+          if self.speechService.lastPromptReplyTruncated {
+            // The text is still pasted; the user just has to know its end may be missing.
+            await MainActor.run { PopupNotificationWindow.showReplyTruncated() }
+          }
         }
         return result
       },
       afterCopy: { _ in
+        // A spoken result is not a writing sample and is not kept as a template recording.
+        guard !speakResult else { return }
         // Keep the audio when this run was a template turn. A meeting segment has no job.
         guard templateInstruction != nil, job != nil, self.speechService.lastPromptAppliedTemplate else {
           return
@@ -4275,7 +4325,8 @@ extension MenuBarController: AudioRecorderDelegate {
             await self.performPrompting(
               audioURL: audioURL, job: nil,
               recordingWasSilent: self.audioRecorder.lastRecordingWasSilent,
-              selection: intent?.promptSelection)
+              selection: intent?.promptSelection,
+              speakResult: intent?.speakResult ?? false)
           }
         }
         return
@@ -4324,8 +4375,10 @@ extension MenuBarController: AudioRecorderDelegate {
         promptInputs.selection = selection
       }
       promptInputs.recordingWasSilent = self.audioRecorder.lastRecordingWasSilent
+      promptInputs.speakResult = intent?.speakResult ?? false
       if promptInputs.quickActionInstruction != nil || promptInputs.selection != nil
           || promptInputs.templateInstruction != nil
+          || promptInputs.speakResult
           || (recordingMode == .prompt && promptInputs.recordingWasSilent) {
         self.finishedPromptInputs[audioURL] = promptInputs
       }
@@ -4527,7 +4580,8 @@ extension MenuBarController: AudioRecorderDelegate {
           isEditQuickAction: promptInputs.isEditQuickAction,
           templateInstruction: promptInputs.templateInstruction,
           templateName: promptInputs.templateName,
-          recordingWasSilent: promptInputs.recordingWasSilent, selection: promptInputs.selection)
+          recordingWasSilent: promptInputs.recordingWasSilent, selection: promptInputs.selection,
+          speakResult: promptInputs.speakResult)
       }
     case .liveMeeting:
       DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
@@ -4882,7 +4936,45 @@ extension MenuBarController: ShortcutDelegate {
   /// HotKey path.
   @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
 
-  func toggleReadAloudPrompting() {}
+  func toggleReadAloudPrompting() {
+    switch availability(.dictatePrompt) {
+    case .stop, .cancelPendingStart, .cancelProcessing:
+      togglePrompting(template: nil)
+      return
+    default:
+      break
+    }
+    if attemptReadAloudToggleOff() { return }
+    if isLiveMeetingActive {
+      DebugLogger.log("READ-ALOUD-PROMPT: ignoring during live meeting")
+      return
+    }
+    // Same gates as Dictate Prompt's `.start` (non-meeting): a missing key or a busy run must
+    // not begin a recording whose result cannot be spoken.
+    switch availability(.dictatePrompt) {
+    case .blocked(.busy):
+      DebugLogger.log("PROMPT-MODE: Shortcut ignored — a run is still in progress (\(appState))")
+      presentBlocked(.busy)
+      return
+    case .blocked(let reason):
+      presentBlocked(reason)
+      return
+    case .ignored:
+      return
+    case .start:
+      break
+    default:
+      return
+    }
+    let promptModel = Self.selectedPromptModel()
+    let preparation = prepareDictatePromptSelection(logPrefix: "READ-ALOUD-PROMPT", model: promptModel)
+    guard preparation.ready else { return }
+    ConnectionPrewarmer.prewarm(for: promptModel)
+    discardStreamingSession()
+    beginAudioCapture(
+      mode: .prompt, promptSelection: preparation.selection, speakResult: true)
+    DebugLogger.log("READ-ALOUD-PROMPT: started")
+  }
 
   @objc func readAloudPromptFromMenu() { toggleReadAloudPrompting() }
 
