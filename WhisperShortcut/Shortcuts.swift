@@ -13,6 +13,8 @@ protocol ShortcutDelegate: AnyObject {
   func takeScreenshot()
   #if !APP_STORE
   func readAloud()
+  /// Dictate Prompt whose reply is spoken instead of pasted. Same build gate as Read Aloud.
+  func toggleReadAloudPrompting()
   /// Appends the current selection to the Glossary. Selection-based like Read Aloud, so it shares
   /// its build gate: the synthetic ⌘C needs Accessibility, which the App Store build cannot ask for.
   func addSelectionToGlossary()
@@ -37,6 +39,7 @@ class Shortcuts {
   private var screenshotCaptureKey: HotKey?
   private var readAloudKey: HotKey?
   #if !APP_STORE
+  private var readAloudPromptKey: HotKey?
   private var addToGlossaryKey: HotKey?
   private var liveDictateKey: HotKey?
   #endif
@@ -202,6 +205,13 @@ class Shortcuts {
         self?.delegate?.readAloud()
       }
     }
+    if config.readAloudPrompt.isEnabled {
+      readAloudPromptKey = HotKey(
+        key: config.readAloudPrompt.key, modifiers: config.readAloudPrompt.modifiers)
+      readAloudPromptKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.toggleReadAloudPrompting()
+      }
+    }
     #endif
 
     registerTemplateShortcuts(config)
@@ -265,6 +275,7 @@ class Shortcuts {
     screenshotCaptureKey = nil
     readAloudKey = nil
     #if !APP_STORE
+    readAloudPromptKey = nil
     addToGlossaryKey = nil
     liveDictateKey = nil
     #endif

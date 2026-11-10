@@ -2347,6 +2347,7 @@ struct SettingsDefaults {
   static let openChat: ShortcutDefinition? = nil
   static let screenshotCapture: ShortcutDefinition? = nil
   static let readAloud: ShortcutDefinition? = nil
+  static let readAloudPrompt: ShortcutDefinition? = nil
   static let addToGlossary: ShortcutDefinition? = nil
   static let liveDictate: ShortcutDefinition? = nil
 
@@ -2570,6 +2571,7 @@ struct SettingsData: Equatable {
   var openChat: ShortcutDefinition? = SettingsDefaults.openChat
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
+  var readAloudPrompt: ShortcutDefinition? = SettingsDefaults.readAloudPrompt
   var addToGlossary: ShortcutDefinition? = SettingsDefaults.addToGlossary
   var liveDictate: ShortcutDefinition? = SettingsDefaults.liveDictate
 
@@ -2681,6 +2683,7 @@ enum SettingsFocusField: Hashable {
   case toggleChat
   case screenshotCapture
   case readAloudShortcut
+  case readAloudPromptShortcut
   case addToGlossaryShortcut
   case liveDictateShortcut
   /// A dictation template's own shortcut (Settings → Dictate Prompt → Templates).

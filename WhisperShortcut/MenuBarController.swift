@@ -29,6 +29,7 @@ class MenuBarController: NSObject {
     case stopSeparator = 112
     case screenshot = 113
     case readAloud = 114
+    case readAloudPrompt = 134
     case rate = 115
     case copyLastTranscription = 117
     case recentTranscriptions = 118
@@ -684,6 +685,11 @@ class MenuBarController: NSObject {
         tag: .readAloud, title: ShortcutAction.readAloud.localizedTitle, stopTitle: "Stop Read Aloud",
         action: #selector(readAloudFromMenu), shortcut: ShortcutAction.readAloud.keyPath,
         mode: .readAloudSelection))
+    rows.append(
+      ModeRow(
+        tag: .readAloudPrompt, title: ShortcutAction.readAloudPrompt.localizedTitle, stopTitle: nil,
+        action: #selector(readAloudPromptFromMenu), shortcut: ShortcutAction.readAloudPrompt.keyPath,
+        mode: nil))
     #endif
     // Not a `ShortcutAction`: the assistant list never named Glossary. The menu title is
     // "Add Selection to Glossary", not "Add to Glossary".
@@ -4875,6 +4881,10 @@ extension MenuBarController: ShortcutDelegate {
   /// Menu-item entry point: AppKit requires `@objc` for menu selectors. Same behavior as the
   /// HotKey path.
   @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
+
+  func toggleReadAloudPrompting() {}
+
+  @objc func readAloudPromptFromMenu() { toggleReadAloudPrompting() }
 
   private func triggerReadSelectedTextAloud() {
     if attemptReadAloudToggleOff() { return }

@@ -117,6 +117,7 @@ class SettingsViewModel: ObservableObject {
       target.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
       target.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
       target.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
+      target.readAloudPrompt = currentConfig.readAloudPrompt.isEnabled ? currentConfig.readAloudPrompt : nil
       target.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
       target.liveDictate = currentConfig.liveDictate.isEnabled ? currentConfig.liveDictate : nil
     }
@@ -302,6 +303,7 @@ class SettingsViewModel: ObservableObject {
     data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
+    data.readAloudPrompt = currentConfig.readAloudPrompt.isEnabled ? currentConfig.readAloudPrompt : nil
     data.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
     data.liveDictate = currentConfig.liveDictate.isEnabled ? currentConfig.liveDictate : nil
 
@@ -430,6 +432,10 @@ class SettingsViewModel: ObservableObject {
       read: { $0.readAloud }, write: { $0.readAloud = $1 },
       applyToConfig: { $0.readAloud = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.readAloud) }),
     ConfigurableShortcutSlot(
+      field: .readAloudPromptShortcut, label: String(localized: "Read Aloud Prompt"),
+      read: { $0.readAloudPrompt }, write: { $0.readAloudPrompt = $1 },
+      applyToConfig: { $0.readAloudPrompt = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.readAloudPrompt) }),
+    ConfigurableShortcutSlot(
       field: .addToGlossaryShortcut, label: String(localized: "Add Selection to Glossary"),
       read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 },
       applyToConfig: { $0.addToGlossary = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.addToGlossary) }),
@@ -457,6 +463,7 @@ class SettingsViewModel: ObservableObject {
     let openChat = data.openChat ?? disable(factory.openChat)
     let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
     let readAloud = data.readAloud ?? disable(factory.readAloud)
+    let readAloudPrompt = data.readAloudPrompt ?? disable(factory.readAloudPrompt)
     let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
     let liveDictate = data.liveDictate ?? disable(factory.liveDictate)
     let newConfig = ShortcutConfig(
@@ -467,7 +474,8 @@ class SettingsViewModel: ObservableObject {
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
       addToGlossary: addToGlossary,
-      liveDictate: liveDictate
+      liveDictate: liveDictate,
+      readAloudPrompt: readAloudPrompt
     )
     return newConfig
   }
