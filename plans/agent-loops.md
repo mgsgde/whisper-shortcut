@@ -205,8 +205,10 @@ does anything: `IMPLEMENTER_ENABLED` (master) and `IMPLEMENTER_TICK_ENABLED` (sc
 Tick log: `build/logs/implementer/tick-<date>.log`.
 
 **Merge train (separate, not an agent):** `scripts/merge-train/train.sh`, every 20 min under launchd,
-merges PRs labelled `merge-train` (Dependabot adds it; `train.sh --add <pr>` for others) once CI
-is green, one per tick. It never tags, releases or touches the submodule pointer. See
+merges every open, non-draft PR by the repo owner or Dependabot once CI is green, one per tick
+(opt-out since 2026-11-10: labels `hold` / `needs-device-test` keep a PR out; external and
+`implementer/` PRs need an explicit `merge-train` label). `stale-prs.sh` mails a list of PRs open
+longer than 3 days every Monday and closes those open 14 days, branch kept. It never tags, releases or touches the submodule pointer. See
 `scripts/merge-train/README.md`.
 
 **The rules that keep it honest** — all mirrored from Sabaki, all enforced in the script:

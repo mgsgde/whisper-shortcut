@@ -54,6 +54,11 @@ swept and at which commit. It is long-lived: unlike the plans described in `plan
 **not** deleted when a piece of work finishes, because its value is precisely the accumulated
 history. Individual entries get their status updated instead.
 
+**`applied` means merged into `main`, with the merge commit.** While the change sits in an open PR the
+status is `in PR #<n>`. R71 stayed `applied` for two weeks while its PR (#229) never merged, so
+nobody looked again until it was 360 commits behind main (2026-11-09). Before you write `applied`,
+check `gh pr view <n> --json state` says `MERGED`.
+
 Two rules make repeated runs additive rather than repetitive:
 
 - **Read it before you measure anything** (Step 0a) — it changes what you triage.
