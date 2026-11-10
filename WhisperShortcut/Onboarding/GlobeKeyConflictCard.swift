@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 
 /// Shown wherever Fn dictation is on (onboarding permissions step, Settings → Keyboard
-/// Shortcuts). While macOS still reacts to the 🌐 key itself it is an orange warning that says
-/// what happens, why Fn dictation cannot work yet and what to do; once the key is Do Nothing it
-/// turns into a green confirmation. Renders nothing when there never was a conflict.
+/// Shortcuts). While macOS still reacts to the 🌐 key itself it is a one-line `SettingsCallout`
+/// naming what Fn does instead, with the one-click fix on its trailing edge (the button's tooltip
+/// spells out the exact system setting it changes); once the key is Do Nothing it shrinks to a
+/// green check line. Renders nothing when there never was a conflict.
 ///
 /// It replaces a one-line grey caption that a pilot user overlooked on 2026-11-02: she pressed
 /// Fn, the emoji picker opened, and nothing told her why dictation did not start.
@@ -18,7 +19,6 @@ struct GlobeKeyConflictCard: View {
   /// Set once this card has shown a conflict, so the green confirmation appears only for a
   /// conflict the user just resolved — not for everyone whose key was free all along.
   @State private var sawConflict = false
-  @State private var confirmingFree = false
   /// The write did not stick (sandbox refused, or macOS ignored it); Keyboard settings were opened.
   @State private var freeFailed = false
 
@@ -46,42 +46,33 @@ struct GlobeKeyConflictCard: View {
   // MARK: - Conflict
 
   private func conflictCard(systemAction: String) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
-        Image(systemName: "exclamationmark.triangle.fill")
-          .foregroundStyle(.orange)
-        Text("Fn dictation won’t work yet")
-          .font(.callout)
-          .fontWeight(.semibold)
-      }
-
-      Text("When you press 🌐 Fn, macOS currently does “\(systemAction)” instead, so your dictation does not start. To fix this, set “Press 🌐 key to” to “Do Nothing” — once, and Fn dictates from then on.")
-        .font(.callout)
-        .fixedSize(horizontal: false, vertical: true)
-
-      if freeFailed {
-        Text("macOS did not accept the change. Keyboard settings are open: choose “Do Nothing” next to “Press 🌐 key to”, then come back here.")
-          .font(.caption)
-          .foregroundStyle(.orange)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-
-      HStack(spacing: 8) {
+    VStack(alignment: .leading, spacing: 6) {
+      SettingsCallout(
+        symbol: "globe",
+        title: "Fn still opens “\(systemAction)”",
+        detail: conflictDetail
+      ) {
         #if !APP_STORE
+          Button("Free Key", action: freeKey)
+            .buttonStyle(.borderedProminent)
+            .help("Sets System Settings → Keyboard → “Press 🌐 key to” to “Do Nothing”. You can change it back there at any time.")
+            .pointerCursorOnHover()
           Button {
-            confirmingFree = true
+            GlobeKeyUsage.openKeyboardSettings()
           } label: {
-            Text("Free the 🌐 key for WhisperShortcut")
+            Image(systemName: "gearshape")
+          }
+          .buttonStyle(.borderless)
+          .foregroundStyle(.secondary)
+          .help("Open Keyboard Settings")
+          .pointerCursorOnHover()
+        #else
+          Button("Open Keyboard Settings") {
+            GlobeKeyUsage.openKeyboardSettings()
           }
           .buttonStyle(.borderedProminent)
-          .tint(.orange)
           .pointerCursorOnHover()
         #endif
-        Button("Open Keyboard Settings") {
-          GlobeKeyUsage.openKeyboardSettings()
-        }
-        .buttonStyle(.bordered)
-        .pointerCursorOnHover()
       }
 
       if let onTurnOffFn {
@@ -90,19 +81,20 @@ struct GlobeKeyConflictCard: View {
         }
         .buttonStyle(.link)
         .font(.caption)
+        .padding(.leading, 46)
         .pointerCursorOnHover()
       }
     }
-    .padding(12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .cardChrome(fill: Color.orange.opacity(0.12), stroke: Color.orange.opacity(0.6))
-    #if !APP_STORE
-      .alert("Free the 🌐 key?", isPresented: $confirmingFree) {
-        Button("Free the Key", action: freeKey)
-        Button("Cancel", role: .cancel) {}
-      } message: {
-        Text("WhisperShortcut will change one macOS setting: System Settings → Keyboard → “Press 🌐 key to” becomes “Do Nothing”. Pressing 🌐 Fn then only starts and stops your dictation. You can change it back there at any time.")
-      }
+  }
+
+  private var conflictDetail: LocalizedStringKey {
+    if freeFailed {
+      return "macOS didn’t accept it. Choose “Do Nothing” next to “Press 🌐 key to” in Keyboard settings."
+    }
+    #if APP_STORE
+      return "In Keyboard settings, set “Press 🌐 key to” to “Do Nothing”."
+    #else
+      return "Free the 🌐 key once, then Fn dictates."
     #endif
   }
 
@@ -131,16 +123,6 @@ struct GlobeKeyConflictCard: View {
   // MARK: - Resolved
 
   private var resolvedCard: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: "checkmark.circle.fill")
-        .foregroundStyle(.green)
-      Text("The 🌐 key is free. Press Fn once to start dictating, again to stop.")
-        .font(.callout)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 0)
-    }
-    .padding(12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .cardChrome(fill: Color.green.opacity(0.12), stroke: Color.green.opacity(0.6))
+    SettingsConfirmation(text: "The 🌐 key is free. Fn starts and stops dictation.")
   }
 }

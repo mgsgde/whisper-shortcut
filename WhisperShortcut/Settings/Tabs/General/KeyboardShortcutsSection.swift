@@ -107,20 +107,16 @@ struct KeyboardShortcutsSection: View {
 
       if viewModel.data.fnKeyDictation {
         if !hasAccessibility {
-          HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-              .foregroundStyle(.orange)
-              .font(.caption)
-            Text("Fn does nothing until WhisperShortcut is allowed under Accessibility.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            Button("Allow Accessibility") {
+          SettingsCallout(
+            symbol: "hand.raised.fill",
+            title: "Fn needs Accessibility",
+            detail: "Allow WhisperShortcut so it can notice the Fn key."
+          ) {
+            Button("Allow") {
               AccessibilityPermissionManager.requestAccessibilityAtOptIn(for: .fnKey)
               refreshFnStatus()
             }
-            .controlSize(.small)
+            .buttonStyle(.borderedProminent)
             .pointerCursorOnHover()
           }
         }
