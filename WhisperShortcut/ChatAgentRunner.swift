@@ -73,6 +73,12 @@ final class ChatAgentRunner {
     (isFinalRound && !provider.requiresToolsOnFinalRound) ? [] : tools
   }
 
+  /// True when `text` still has a `start_thought` with no `end_thought` after it.
+  private static func hasUnclosedLeakedThought(_ text: String) -> Bool {
+    guard let start = text.range(of: "start_thought", options: .backwards) else { return false }
+    return text.range(of: "end_thought", range: start.upperBound..<text.endIndex) == nil
+  }
+
   init(
     provider: LLMChatProvider,
     model: String,
@@ -99,11 +105,12 @@ final class ChatAgentRunner {
 
   func run(contents initialContents: [[String: Any]]) async throws -> Result {
     var currentContents = initialContents
-    // Gemini 3.x can leak `start_thought`/`end_thought` into the visible answer, but only ever
-    // in its opening region (see `stripLeakedThoughtTokens`). Once the reply has grown past that
-    // zone we stop re-scanning the whole accumulated string on every token — that scan was O(N)
-    // per token (O(N²) over the reply) on the MainActor. Reset when `streamed` restarts after an
-    // image-marker fold, since fresh narration begins there.
+    // Gemini 3.x can leak a `start_thought`…`end_thought` block into the visible answer (see
+    // `stripLeakedThoughtTokens`). A block can be longer than 512 bytes, so keep re-scanning
+    // until the text has no unclosed `start_thought` and has grown past that size — the scan is
+    // O(N) per token on the MainActor. An open block stays in `streamed` so a later `end_thought`
+    // can still close it; the bubble shows the stripped text. Reset when `streamed` restarts
+    // after an image-marker fold, since fresh narration begins there.
     var thoughtStripSettled = false
     // Consecutive in-place-status ignores (same trailing sentence, not appended).
     // Three of these must stop the stream even though `streamed` stayed at one copy.
@@ -172,14 +179,20 @@ final class ChatAgentRunner {
           } else if merge.kind != .ignored {
             duplicateStatusStreak = 0
           }
-          // Only strip while still in the marker zone. Once stripped, `streamed` never
-          // re-acquires a start-anchored marker (deltas append at the end), so re-scanning
-          // the whole string every subsequent token is pure waste.
+          // Settle only once there is no `start_thought` still waiting for `end_thought` and the
+          // stripped reply is past 512 bytes. Stripping an open block out of `streamed` would
+          // drop the opener, and the rest of a long thought would then append as the answer.
           if !thoughtStripSettled {
-            streamed = ChatViewModel.stripLeakedThoughtTokens(streamed)
-            if streamed.utf8.count > 512 { thoughtStripSettled = true }
+            let unclosed = Self.hasUnclosedLeakedThought(streamed)
+            let stripped = ChatViewModel.stripLeakedThoughtTokens(streamed)
+            if !unclosed {
+              streamed = stripped
+              if streamed.utf8.count > 512 { thoughtStripSettled = true }
+            }
+            onDisplayText(markerPrefix + stripped, false)
+          } else {
+            onDisplayText(markerPrefix + streamed, false)
           }
-          onDisplayText(markerPrefix + streamed, false)
           loopDeltaIndex += 1
           // Gemini can repeat the same status sentence for minutes. Stop only this stream so the
           // good prefix is kept. Breaking `toolLoop` releases the AsyncThrowingStream iterator;
@@ -190,6 +203,9 @@ final class ChatAgentRunner {
           ) {
             DebugLogger.logWarning(
               "CHAT: stream loop detected — stopping this reply without dropping the queue (chars=\(streamed.count))")
+            // Strip before the notice: an open thought is still in `streamed`, and the final
+            // strip would otherwise drop the notice along with the unclosed tail.
+            streamed = ChatViewModel.stripLeakedThoughtTokens(streamed)
             streamed = ChatStreamLoopGuard.appendStopNotice(to: streamed)
             onDisplayText(markerPrefix + streamed, true)
             lastRoundText = roundText
