@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# xcodebuild shim: puts the machine-wide build lock (scripts/lib/build-lock.sh) in front of the
+# real xcodebuild, for callers no hook can see: cursor-agent runs, launchd jobs, builds typed by
+# hand. Activate by symlinking this file to a directory that precedes /usr/bin in PATH, e.g.
+#   ln -s "<repo>/scripts/shim/xcodebuild" ~/.local/bin/xcodebuild
+#
+# Why: this Mac (10 cores, 16 GB) holds exactly one Xcode run. On 2026-11-03 seven ran at once
+# (load average 162, swap full, nothing finished), and on 2026-11-10 three did again. Agents that
+# call xcodebuild directly instead of scripts/run-tests.sh walk straight past the lock.
+#
+# Knobs (environment):
+#   XCODEBUILD_SHIM_DISABLE   non-empty = pass straight through to the real xcodebuild.
+#   XCODEBUILD_SHIM_WAIT      seconds to wait for a held lock; default 0 = refuse at once with 75.
+#
+# Fails open everywhere except the one case it exists for (lock held by a live other run): a broken
+# shim must never be the reason a build cannot start.
+set -uo pipefail
+
+REAL=/usr/bin/xcodebuild
+
+# Resolve our own path through the symlink chain (macOS has no readlink -f) so the library can be
+# found relative to the repo file, not relative to ~/.local/bin.
+src="${BASH_SOURCE[0]}"
+while [[ -L "$src" ]]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  [[ "$src" == /* ]] || src="$dir/$src"
+done
+SELF="$(cd -P "$(dirname "$src")" && pwd)/$(basename "$src")"
+SELF_DIR="$(dirname "$SELF")"
+
+# Without Xcode's own binary, hand over to the next xcodebuild in PATH, but never to ourselves
+# (that would loop forever).
+if [[ ! -x "$REAL" ]]; then
+  REAL=""
+  IFS=: read -ra path_dirs <<< "$PATH"
+  for d in "${path_dirs[@]}"; do
+    cand="$d/xcodebuild"
+    [[ -x "$cand" && ! -d "$cand" ]] || continue
+    cand_src="$cand"
+    while [[ -L "$cand_src" ]]; do
+      cd_dir="$(cd -P "$(dirname "$cand_src")" && pwd)"
+      cand_src="$(readlink "$cand_src")"
+      [[ "$cand_src" == /* ]] || cand_src="$cd_dir/$cand_src"
+    done
+    cand_real="$(cd -P "$(dirname "$cand_src")" && pwd)/$(basename "$cand_src")"
+    [[ "$cand_real" == "$SELF" ]] && continue
+    REAL="$cand"
+    break
+  done
+  if [[ -z "$REAL" ]]; then
+    echo "xcodebuild shim: no real xcodebuild found (/usr/bin/xcodebuild missing, none in PATH)." >&2
+    exit 127
+  fi
+fi
+
+[[ -n "${XCODEBUILD_SHIM_DISABLE:-}" ]] && exec "$REAL" "$@"
+
+# Queries cost nothing and agents use them to diagnose; locking them would hide the very state
+# that explains a refusal. Anything that does not name a build action is a query as well.
+is_query=1
+if (( $# > 0 )); then
+  has_action=0
+  for arg in "$@"; do
+    case "$arg" in
+      -version|-showsdks|-showBuildSettings|-list|-usage|-help|-find*|-checkFirstLaunchStatus|\
+-exportLocalizations|-importLocalizations)
+        has_action=0; is_query=1; break ;;
+      build|test|archive|clean|build-for-testing|test-without-building|install|analyze)
+        has_action=1 ;;
+    esac
+  done
+  (( has_action )) && is_query=0
+fi
+(( is_query )) && exec "$REAL" "$@"
+
+BUILD_LOCK_LIB="$SELF_DIR/../lib/build-lock.sh"
+if [[ ! -r "$BUILD_LOCK_LIB" ]]; then
+  echo "xcodebuild shim: $BUILD_LOCK_LIB not found; running without the build lock." >&2
+  exec "$REAL" "$@"
+fi
+
+# Re-entrance: run-tests.sh takes the lock and then calls xcodebuild. If the holder is one of our
+# ancestors we are already inside the locked run; taking the lock again would block it on itself.
+lock_pid="$(cat /tmp/whispershortcut-build.lock/pid 2>/dev/null || true)"
+if [[ "$lock_pid" =~ ^[0-9]+$ ]]; then
+  p=$$
+  for _ in $(seq 1 40); do
+    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"
+    [[ "$p" =~ ^[0-9]+$ ]] || break
+    (( p > 1 )) || break
+    [[ "$p" == "$lock_pid" ]] && exec "$REAL" "$@"
+  done
+fi
+
+# shellcheck source=../lib/build-lock.sh
+if ! source "$BUILD_LOCK_LIB" 2>/dev/null; then
+  echo "xcodebuild shim: could not source $BUILD_LOCK_LIB; running without the build lock." >&2
+  exec "$REAL" "$@"
+fi
+
+BUILD_LOCK_WAIT_SECONDS="${XCODEBUILD_SHIM_WAIT:-0}" acquire_build_lock
+rc=$?
+if (( rc != 0 )); then
+  cat >&2 <<'MSG'
+xcodebuild shim: refused, the machine has room for one Xcode run. Use scripts/run-tests.sh (it
+takes the lock itself and queues), set XCODEBUILD_SHIM_WAIT=600 to make this call wait, or
+XCODEBUILD_SHIM_DISABLE=1 to bypass the shim.
+MSG
+  exit "$rc"
+fi
+
+# No exec: the trap must run to release the lock when xcodebuild ends.
+trap release_build_lock EXIT
+"$REAL" "$@"
