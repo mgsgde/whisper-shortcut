@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Empirical transcription benchmark: latency, glossary adherence, silence hallucination.
+"""Empirical transcription benchmark: latency, glossary adherence, silence hallucination, glossary echo.
 
 `test-*-models.sh` answers "does this model ID still serve?". This answers the question that
 actually decides which model we default to: "which one is fastest, spells the user's vocabulary
@@ -7,9 +7,18 @@ right, and doesn't invent a transcript when the audio is silent?"
 
 Run it from the repo root (reads OPENAI_API_KEY / GEMINI_API_KEY / XAI_API_KEY from .env):
 
-    python3 scripts/benchmark-transcription.py                # all three suites
+    python3 scripts/benchmark-transcription.py                # all four suites
     python3 scripts/benchmark-transcription.py --suite latency --rounds 10
     python3 scripts/benchmark-transcription.py --models gemini-3.1-flash-lite,gpt-transcribe
+    python3 scripts/benchmark-transcription.py --suite echo
+    python3 scripts/benchmark-transcription.py --suite echo --noise-dir DIR
+
+The echo suite measures glossary echo on noise and on speech followed by a pause or a
+noise tail, scored on the raw model output (no app gates). gpt-transcribe is compared as
+three keyword arms: the app's list (gpt-transcribe), corrections only
+(gpt-transcribe+corrections), and no keywords (gpt-transcribe+none). All three call the
+gpt-transcribe API. --noise-dir DIR adds real *.wav recordings as extra fixtures with an
+empty reference; those files are never committed. Default echo rounds: 5.
 
 Method notes that matter for comparability across runs:
   - Latency rounds are *interleaved and shuffled*: one call per model per round, order randomised
@@ -53,11 +62,24 @@ MODELS = {
     # (`generation_config.transcription_config.custom_vocabulary`). Probed 2026-09-29.
     "gemini-3.5-transcribe": "gemini-transcribe",
     "gemini-3.5-transcribe+vocab": "gemini-transcribe-vocab",
+    # Keyword arms for one API model. The id sent to OpenAI is always gpt-transcribe;
+    # KEYWORD_SET chooses the vocabulary (the app's list, corrections only, or none).
     "gpt-transcribe": "openai-keywords",
+    "gpt-transcribe+corrections": "openai-keywords",
+    "gpt-transcribe+none": "openai-keywords",
     "gpt-4o-transcribe": "openai-prompt",
     "gpt-4o-mini-transcribe": "openai-prompt",
     "grok-stt": "xai",
 }
+
+# Which vocabulary an openai-keywords arm sends. Resolved in transcribe() from
+# RESOLVED_KEYWORDS, which main() fills after the glossary is loaded.
+KEYWORD_SET = {
+    "gpt-transcribe": "app",
+    "gpt-transcribe+corrections": "corrections",
+    "gpt-transcribe+none": "none",
+}
+RESOLVED_KEYWORDS = {"app": [], "corrections": [], "none": []}
 
 # Fixtures: (id, seconds-ish, spoken text, terms that must appear verbatim).
 # The sentences deliberately load the vocabulary that is hard for ASR — product names that are
@@ -85,6 +107,9 @@ CASES = [
 
 SILENCE_DURATIONS = (1, 3, 8)
 
+# Spoken once, then given an 8 s silence or noise tail. Reference text for those two fixtures.
+ECHO_SPEECH = "Das wäre vielleicht noch cool, wenn der Akku geladen ist."
+
 
 # --------------------------------------------------------------------------- prompts
 
@@ -99,9 +124,16 @@ def load_env():
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-CONTAINER_PROMPTS = os.path.expanduser(
-    "~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/"
-    "WhisperShortcut/UserContext/system-prompts.md")
+# Dev container first: that is the glossary the running dev build conditions with.
+# Fall back to the release container, then the snapshot (see user_prompts).
+CONTAINER_PROMPTS = (
+    os.path.expanduser(
+        "~/Library/Containers/com.magnusgoedde.whispershortcut.dev/Data/Library/Application Support/"
+        "WhisperShortcut/UserContext/system-prompts.md"),
+    os.path.expanduser(
+        "~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/"
+        "WhisperShortcut/UserContext/system-prompts.md"),
+)
 SNAPSHOT = os.path.join(FIXTURES, "system-prompts-snapshot.md")
 
 
@@ -136,17 +168,24 @@ def user_prompts():
     So: read the container when allowed and keep a snapshot in build/ for when it is not. A
     missing or stale vocabulary degrades the benchmark's realism — it must never abort it, and
     the caller prints which source was used so a report can never silently claim otherwise.
+    Prefer the dev container, then the release container, then the snapshot.
     """
     source = None
     text = None
-    try:
-        with open(CONTAINER_PROMPTS, encoding="utf-8") as f:
-            text = f.read()
-        source = "app container (live)"
-        os.makedirs(FIXTURES, exist_ok=True)                 # refresh the snapshot while we can
-        with open(SNAPSHOT, "w", encoding="utf-8") as f:
-            f.write(text)
-    except (PermissionError, OSError):
+    for path in CONTAINER_PROMPTS:
+        try:
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+            source = ("dev app container (live)" if ".whispershortcut.dev/" in path
+                      else "release app container (live)")
+            os.makedirs(FIXTURES, exist_ok=True)             # refresh the snapshot while we can
+            with open(SNAPSHOT, "w", encoding="utf-8") as f:
+                f.write(text)
+            break
+        except (PermissionError, OSError):
+            text = None
+            source = None
+    if text is None:
         try:
             with open(SNAPSHOT, encoding="utf-8") as f:
                 text = f.read()
@@ -175,6 +214,52 @@ def glossary_terms(glossary):
             if t and len(t.split()) <= 3 and fold(t) not in rejected:
                 terms.append(t)
     return [t for t in terms if fold(t) not in rejected]
+
+
+def _rejected_folds(glossary):
+    rejected = set()
+    for line in glossary.splitlines():
+        for m in re.findall(r"\((?:not|nicht)\s+([^)]*)\)", line, re.I):
+            for form in m.split(","):
+                folded = fold(form.strip(" \"'"))
+                if folded:
+                    rejected.add(folded)
+    return rejected
+
+
+def glossary_corrections(glossary):
+    """Correct half of SpeechService.glossaryKeywords: one form per annotated line.
+
+    The correct form is the line with the `(not "...")` / `(nicht "...")` annotation removed
+    (and a leading `Terms:` label, matching glossary_terms). Kept, in line order, only when
+    it is at most three words and its fold is not itself a rejected spelling.
+    """
+    rejected = _rejected_folds(glossary)
+    corrections = []
+    for line in glossary.splitlines():
+        if not re.search(r"\((?:not|nicht)\s+[^)]*\)", line, re.I):
+            continue
+        clean = re.sub(r"\s*\((?:not|nicht)\s+[^)]*\)", "", line, flags=re.I)
+        clean = re.sub(r"^\s*Terms:\s*", "", clean, flags=re.I).strip()
+        if clean and len(clean.split()) <= 3 and fold(clean) not in rejected:
+            corrections.append(clean)
+    return corrections
+
+
+def app_keywords(glossary):
+    """The list and order SpeechService.glossaryKeywords sends.
+
+    Corrections first, so an annotated spelling wins the fold dedupe, then glossary_terms.
+    First occurrence of a fold wins.
+    """
+    seen, keywords = set(), []
+    for term in glossary_corrections(glossary) + glossary_terms(glossary):
+        folded = fold(term)
+        if not folded or folded in seen:
+            continue
+        seen.add(folded)
+        keywords.append(term)
+    return keywords
 
 
 def fold(w):
@@ -222,6 +307,81 @@ def silence_wav(seconds):
 def duration(wav):
     with wave.open(wav) as w:
         return w.getnframes() / w.getframerate()
+
+
+def _ffmpeg(args, dest):
+    proc = subprocess.run(["ffmpeg", "-y", *args, dest], capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed for {os.path.basename(dest)}: {proc.stderr[-400:]}")
+    return dest
+
+
+def lavfi_wav(name, color, amplitude, seconds):
+    """16 kHz mono s16 noise, generated once. anoisesrc args match the echo-suite spec."""
+    os.makedirs(FIXTURES, exist_ok=True)
+    wav = os.path.join(FIXTURES, f"{name}.wav")
+    if not os.path.exists(wav):
+        _ffmpeg(["-f", "lavfi",
+                 "-i", f"anoisesrc=color={color}:amplitude={amplitude}:duration={seconds}",
+                 "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"], wav)
+    return wav
+
+
+def concat_wav(name, *parts):
+    """Concatenate already-built WAVs into one 16 kHz mono s16 file. Generated once."""
+    os.makedirs(FIXTURES, exist_ok=True)
+    wav = os.path.join(FIXTURES, f"{name}.wav")
+    if not os.path.exists(wav):
+        inputs = []
+        for part in parts:
+            inputs += ["-i", part]
+        n = len(parts)
+        filter_ = "".join(f"[{i}:a]" for i in range(n)) + f"concat=n={n}:v=0:a=1[out]"
+        _ffmpeg([*inputs, "-filter_complex", filter_, "-map", "[out]",
+                 "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"], wav)
+    return wav
+
+
+def echo_fixtures(noise_dir=None):
+    """Echo-suite fixtures: pink noise, brown noise, speech+silence, speech+noise.
+
+    Plus every *.wav in noise_dir (real recordings, never written here). Reference text
+    is empty for noise and for those files, and the spoken sentence for the two speech tails.
+    """
+    speech = synth("echo_speech", ECHO_SPEECH)
+    fixtures = [
+        ("noise_pink_11s", lavfi_wav("noise_pink_11s", "pink", "0.03", 11), ""),
+        ("noise_brown_11s", lavfi_wav("noise_brown_11s", "brown", "0.05", 11), ""),
+        ("speech_pause_tail", concat_wav("speech_pause_tail", speech, silence_wav(8)), ECHO_SPEECH),
+        ("speech_noise_tail",
+         concat_wav("speech_noise_tail", speech, lavfi_wav("echo_pink_8s", "pink", "0.03", 8)),
+         ECHO_SPEECH),
+    ]
+    if noise_dir:
+        if not os.path.isdir(noise_dir):
+            sys.exit(f"--noise-dir is not a directory: {noise_dir}")
+        for name in sorted(os.listdir(noise_dir)):
+            path = os.path.join(noise_dir, name)
+            if name.lower().endswith(".wav") and os.path.isfile(path):
+                fixtures.append((name, path, ""))
+    return fixtures
+
+
+def keywords_echoed(output, reference, keywords):
+    """App keywords that occur in the output but not in the reference.
+
+    Case-insensitive word-boundary match on the folded term.
+    """
+    folded_out, folded_ref = fold(output), fold(reference)
+    echoed = []
+    for term in keywords:
+        folded = fold(term)
+        if not folded:
+            continue
+        pattern = r"(?<!\w)" + re.escape(folded) + r"(?!\w)"
+        if re.search(pattern, folded_out) and not re.search(pattern, folded_ref):
+            echoed.append(term)
+    return echoed
 
 
 # --------------------------------------------------------------------------- requests
@@ -302,11 +462,14 @@ def transcribe(model, wav, prompt, terms):
     elif kind == "openai-keywords":
         # gpt-transcribe takes vocabulary via repeated `keywords` parts and ignores instructions
         # in `prompt` — see sendOpenAICompatibleTranscriptionRequest.
+        # The three arms share this shape. `terms` is the prompt glossary; the arm's own
+        # list comes from RESOLVED_KEYWORDS. The API model id is always gpt-transcribe.
+        keywords = RESOLVED_KEYWORDS[KEYWORD_SET[model]]
         cmd = ["curl", "-sS", "-m", "90", "-X", "POST",
                "https://api.openai.com/v1/audio/transcriptions",
                "-H", f"Authorization: Bearer {os.environ['OPENAI_API_KEY']}",
-               "-F", f"file=@{wav};type=audio/wav", "-F", f"model={model}"]
-        for t in terms:
+               "-F", f"file=@{wav};type=audio/wav", "-F", "model=gpt-transcribe"]
+        for t in keywords:
             cmd += ["-F", f"keywords={t}"]
     else:
         cmd = ["curl", "-sS", "-m", "90", "-X", "POST",
@@ -415,16 +578,53 @@ def suite_silence(models, prompt, terms, rounds):
         print(f"  {m:<24} {leaks[m]}/{n} invented transcripts reached the clipboard")
 
 
+def suite_echo(models, prompt, terms, rounds, noise_dir):
+    """Glossary echo on noise and on speech with a pause or noise tail.
+
+    Scored on the raw model output: no length gate and no glossary-echo gate. A call is
+    an echo when at least two app keywords occur in the output but not in the reference.
+    """
+    print(f"\n## Glossary echo — {rounds} runs per fixture, raw output "
+          f"(echo = 2 or more app keywords absent from the reference)\n")
+    keywords = RESOLVED_KEYWORDS["app"]
+    echo_calls, echoed_terms = collections.Counter(), collections.Counter()
+    nonempty, calls = collections.Counter(), collections.Counter()
+    for fid, wav, reference in echo_fixtures(noise_dir):
+        no_speech = reference == ""
+        for m in models:
+            for _ in range(rounds):
+                try:
+                    out = transcribe(m, wav, prompt, terms).strip()
+                except Exception as e:
+                    print(f"  (drop: {m} — {str(e)[:60]})")
+                    continue
+                calls[m] += 1
+                echoed = keywords_echoed(out, reference, keywords)
+                echoed_terms[m] += len(echoed)
+                if no_speech and out:
+                    nonempty[m] += 1
+                if len(echoed) >= 2:
+                    echo_calls[m] += 1
+                    print(f"  ECHO {m:<28} {fid}: {len(echoed)} terms → {out[:80]!r}")
+    print()
+    for m in models:
+        print(f"  {m:<28} {echo_calls[m]}/{calls[m]} echo calls, "
+              f"{echoed_terms[m]} echoed terms, "
+              f"{nonempty[m]}/{calls[m]} non-empty on no-speech fixtures")
+
+
 # --------------------------------------------------------------------------- main
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--suite", choices=["latency", "glossary", "silence", "all"], default="all")
+    ap.add_argument("--suite", choices=["latency", "glossary", "silence", "echo", "all"], default="all")
     ap.add_argument("--rounds", type=int, default=None,
-                    help="runs per model (default: 10 latency, 3 glossary/silence)")
+                    help="runs per model (default: 10 latency, 3 glossary/silence, 5 echo)")
     ap.add_argument("--models", help="comma-separated subset of the model IDs")
+    ap.add_argument("--noise-dir",
+                    help="extra *.wav fixtures for the echo suite (empty reference, never committed)")
     ap.add_argument("--seed", type=int, default=0, help="RNG seed for the shuffled round order")
     args = ap.parse_args()
 
@@ -443,10 +643,15 @@ def main():
 
     dictation, glossary, prompt_source = user_prompts()
     terms = glossary_terms(glossary)
+    RESOLVED_KEYWORDS["app"] = app_keywords(glossary)
+    RESOLVED_KEYWORDS["corrections"] = glossary_corrections(glossary)
+    RESOLVED_KEYWORDS["none"] = []
     prompt = build_prompt(dictation, terms)
     print(f"# Transcription benchmark\n\nmodels: {', '.join(models)}\n"
           f"prompt/glossary source: {prompt_source}\n"
-          f"glossary: {len(terms)} terms")
+          f"glossary: {len(terms)} terms\n"
+          f"app keywords: {len(RESOLVED_KEYWORDS['app'])}\n"
+          f"corrections: {len(RESOLVED_KEYWORDS['corrections'])}")
     if not terms:
         print("\nWARNING: no glossary terms — the adherence and silence suites are measuring "
               "against a generic prompt and will understate both problems.")
@@ -457,6 +662,8 @@ def main():
         suite_glossary(models, prompt, terms, args.rounds or 3)
     if args.suite in ("silence", "all"):
         suite_silence(models, prompt, terms, args.rounds or 3)
+    if args.suite in ("echo", "all"):
+        suite_echo(models, prompt, terms, args.rounds or 5, args.noise_dir)
 
 
 if __name__ == "__main__":
