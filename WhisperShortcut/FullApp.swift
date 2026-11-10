@@ -93,22 +93,28 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Setup Edit menu for text editing commands
     setupEditMenu()
 
-    // Lift stale model defaults first, so the reconciler below sees the current selections.
-    migrateGeminiModelDefaults()
-    migrateGeminiModelDefaultsToFlashLite()
-    migrateTranscriptionDefaultTo31FlashLite()
-    migrateImprovementDefaultTo37Flash()
-    migrateChatDefaultTo37Flash()
-    migrateChatAndImprovementDefaultsTo38Flash()
+    // The test host shares the Dev app's defaults domain and cannot read the keychain, so running
+    // these would move the user's real model selections to the offline model.
+    if TestHost.isActive {
+      DebugLogger.log("LAUNCH: test host — skipping model migrations and reconcile")
+    } else {
+      // Lift stale model defaults first, so the reconciler below sees the current selections.
+      migrateGeminiModelDefaults()
+      migrateGeminiModelDefaultsToFlashLite()
+      migrateTranscriptionDefaultTo31FlashLite()
+      migrateImprovementDefaultTo37Flash()
+      migrateChatDefaultTo37Flash()
+      migrateChatAndImprovementDefaultsTo38Flash()
 
-    // Once per launch, never from the reconciler: the custom-endpoint field triggers reconcileAll on
-    // every keystroke, which would migrate an openrouter.ai URL mid-edit.
-    OpenRouterChatPreferences.migrateCustomEndpointIfNeeded()
-    CustomEndpointPreferences.migrateLegacyTranscriptionEndpointIfNeeded()
+      // Once per launch, never from the reconciler: the custom-endpoint field triggers reconcileAll on
+      // every keystroke, which would migrate an openrouter.ai URL mid-edit.
+      OpenRouterChatPreferences.migrateCustomEndpointIfNeeded()
+      CustomEndpointPreferences.migrateLegacyTranscriptionEndpointIfNeeded()
 
-    // Adapt per-feature model selections to the API keys actually present, so a user with a single
-    // provider's key gets that provider's models by default across every feature.
-    ModelSelectionReconciler.reconcileAll()
+      // Adapt per-feature model selections to the API keys actually present, so a user with a single
+      // provider's key gets that provider's models by default across every feature.
+      ModelSelectionReconciler.reconcileAll()
+    }
 
     migrateNotificationPositionDefault()
     migrateSettingsCloseOnFocusLossToOff()
