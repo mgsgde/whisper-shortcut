@@ -1066,27 +1066,7 @@ class ChatViewModel: ObservableObject {
   /// An `end_thought` with no opener drops the prefix; an unclosed `start_thought` drops the tail
   /// (still streaming, or truncated). Leading spaces and newlines are trimmed.
   static func stripLeakedThoughtTokens(_ text: String) -> String {
-    var cleaned = text
-    let startMarker = "start_thought"
-    let endMarker = "end_thought"
-    while true {
-      if let start = cleaned.range(of: startMarker) {
-        if let end = cleaned.range(of: endMarker, range: start.upperBound..<cleaned.endIndex) {
-          cleaned.removeSubrange(start.lowerBound..<end.upperBound)
-        } else {
-          cleaned.removeSubrange(start.lowerBound..<cleaned.endIndex)
-          break
-        }
-      } else if let end = cleaned.range(of: endMarker) {
-        cleaned.removeSubrange(cleaned.startIndex..<end.upperBound)
-      } else {
-        break
-      }
-    }
-    // The markers normally sit at the very start; drop the whitespace they leave behind there.
-    // Leading whitespace is never meaningful in a chat answer, so this is safe.
-    while let first = cleaned.first, first == " " || first == "\n" { cleaned.removeFirst() }
-    return cleaned
+    LeakedThoughtStrip.strip(text)
   }
 
   /// Core send: appends the user message, calls the API, and drains the next queued message on completion.
