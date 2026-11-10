@@ -23,6 +23,10 @@
 //  memory before anything can be played. Chunks are sequential, not parallel — one model instance
 //  cannot run two generations at once, and the weights must not be loaded twice.
 //
+//  Those sentences are not handed to playback the moment they finish. On a 16 GB machine Qwen3
+//  generates slower than real time, so streaming each sentence leaves a gap while the next one
+//  is still being made. `Qwen3PrebufferGate` holds them until the buffer can cover that gap.
+//
 
 import AVFoundation
 import Foundation
@@ -174,8 +178,11 @@ struct Qwen3TTSService {
 
   /// Synthesizes `text` with `persona` to s16le 24 kHz mono PCM.
   ///
-  /// `onChunkReady` receives each chunk's PCM as soon as it is done, in playback order, so
-  /// playback can start while the rest is still being generated.
+  /// `onChunkReady` receives each chunk's PCM in playback order. While generation is slower
+  /// than playback, finished sentences are held until `Qwen3PrebufferGate` says the buffer can
+  /// play to the end without running dry; then the held sentences are delivered together and
+  /// every later sentence passes through as soon as it is done. `qwen3TTSPrebufferDisabled`
+  /// turns the hold off.
   ///
   /// **One generation per sentence.** Not per paragraph: a sentence is the unit the model's
   /// prosody is trained on, the first audio arrives after one sentence instead of after a whole
@@ -209,6 +216,25 @@ struct Qwen3TTSService {
     DebugLogger.log(
       "QWEN3-TTS: \(persona.id) via \(modelType.rawValue), \(trimmed.count) chars in "
         + "\(sentences.count) sentence(s)")
+
+    let prebufferDisabled = UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.qwen3TTSPrebufferDisabled)
+    let playbackSpeed: Double = {
+      guard UserDefaults.standard.object(forKey: UserDefaultsKeys.readAloudSpeed) != nil else {
+        return SettingsDefaults.readAloudSpeed.rawValue
+      }
+      return ReadAloudSpeed(
+        rawValue: UserDefaults.standard.double(forKey: UserDefaultsKeys.readAloudSpeed)
+      )?.rawValue ?? SettingsDefaults.readAloudSpeed.rawValue
+    }()
+    // From the start, including while the voice reference is calibrated. One sentence has
+    // nothing to hold, and the kill switch keeps today's immediate streaming.
+    if sentences.count > 1, !prebufferDisabled {
+      await MainActor.run {
+        NotificationCenter.default.post(
+          name: .readAloudSynthesisProgress, object: nil, userInfo: ["fraction": 0.0])
+      }
+    }
 
     var merged = Data()
     // The speaker reference for every sentence: the persona's frozen clip when one exists,
@@ -271,6 +297,40 @@ struct Qwen3TTSService {
       }
     }
 
+    // Audio held back until the gate says playback can reach the end without running dry.
+    // After `released`, every later sentence is delivered as soon as it is done.
+    var pending: [(Data, Int)] = []
+    var released = false
+    var didLogHold = false
+    var producedAudio = 0.0
+    var computeSeconds = 0.0
+    var producedChars = 0
+
+    /// Hands every held sentence to playback, in order, and lets the rest of the run stream.
+    func releaseHeld(remainingChars: Int) async {
+      guard !released, !pending.isEmpty else { return }
+      released = true
+      if didLogHold {
+        let remainingAudio = producedChars > 0
+          ? Double(remainingChars) * producedAudio / Double(producedChars) : 0
+        DebugLogger.log(
+          "QWEN3-TTS: prebuffer released \(pending.count) sentence(s), "
+            + "\(String(format: "%.1f", producedAudio))s buffered, "
+            + "\(String(format: "%.1f", producedAudio))s of "
+            + "\(String(format: "%.1f", producedAudio + remainingAudio))s estimated")
+      }
+      let batch = pending
+      pending.removeAll()
+      if let onChunkReady {
+        let total = sentences.count
+        await MainActor.run {
+          for (pcm, index) in batch {
+            onChunkReady(pcm, index, total)
+          }
+        }
+      }
+    }
+
     for (index, sentence) in sentences.enumerated() {
       try Task.checkCancellation()
       let start = Date()
@@ -292,9 +352,18 @@ struct Qwen3TTSService {
       let trimmedSamples = Self.trimmingSilence(samples, sampleRate: model.sampleRate)
       // A sentence that is entirely silence (a bare domain the model cannot vocalize at all)
       // must not enqueue an empty chunk: playback would schedule zero bytes and stall.
+      // Its characters still count as produced: the gate estimates the tail from the character
+      // ratio, and ignoring a silent sentence would overstate the audio still to come.
       guard !trimmedSamples.isEmpty else {
         DebugLogger.log(
           "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) was silent after trimming; skipping")
+        if !prebufferDisabled, !released {
+          producedChars += sentence.count
+          computeSeconds += Date().timeIntervalSince(start)
+          if index == sentences.count - 1 {
+            await releaseHeld(remainingChars: 0)
+          }
+        }
         continue
       }
       // Without a frozen clip the first sentence is still the one that defines the voice (the
@@ -317,8 +386,42 @@ struct Qwen3TTSService {
           + "in \(String(format: "%.1f", elapsed))s (\(role))"
           + (trimmedSamples.count != samples.count
             ? " (trimmed \(samples.count - trimmedSamples.count) silent samples)" : ""))
-      if let onChunkReady {
-        await MainActor.run { onChunkReady(pcm, index, sentences.count) }
+      if prebufferDisabled || released {
+        if let onChunkReady {
+          await MainActor.run { onChunkReady(pcm, index, sentences.count) }
+        }
+      } else {
+        producedChars += sentence.count
+        computeSeconds += elapsed
+        producedAudio += seconds
+        let remainingChars = sentences.dropFirst(index + 1).reduce(0) { $0 + $1.count }
+        pending.append((pcm, index))
+        let gateRelease = Qwen3PrebufferGate.shouldRelease(
+          bufferedAudio: producedAudio,
+          producedAudio: producedAudio,
+          computeSeconds: computeSeconds,
+          producedChars: producedChars,
+          remainingChars: remainingChars,
+          speed: playbackSpeed)
+        if index == sentences.count - 1 || gateRelease {
+          await releaseHeld(remainingChars: remainingChars)
+        } else {
+          if !didLogHold {
+            didLogHold = true
+            let rate = producedAudio / computeSeconds
+            let remainingAudio = Double(remainingChars) * producedAudio / Double(producedChars)
+            let need = remainingAudio * (playbackSpeed * Qwen3PrebufferGate.safetyFactor / rate - 1)
+            DebugLogger.log(
+              "QWEN3-TTS: prebuffer holding — rate \(String(format: "%.2f", rate))× vs speed "
+                + "\(String(format: "%.2f", playbackSpeed))×, need \(String(format: "%.1f", need))s buffered")
+          }
+          let fraction = Qwen3PrebufferGate.progress(
+            producedChars: producedChars, remainingChars: remainingChars)
+          await MainActor.run {
+            NotificationCenter.default.post(
+              name: .readAloudSynthesisProgress, object: nil, userInfo: ["fraction": fraction])
+          }
+        }
       }
     }
 

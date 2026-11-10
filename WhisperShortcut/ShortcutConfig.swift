@@ -855,6 +855,9 @@ extension Notification.Name {
   static let chatReadAloudTextKey = "text"
   /// Posted when TTS synthesis or playback starts (so UI can show "Reading" / "Stop").
   static let ttsDidStart = Notification.Name("ttsDidStart")
+  /// Posted while Qwen3 Read Aloud is pre-buffering, before the held audio is released.
+  /// userInfo["fraction"] is a Double from 0 to 1 (characters synthesized / total).
+  static let readAloudSynthesisProgress = Notification.Name("readAloudSynthesisProgress")
   /// Posted when TTS stops (synthesis cancelled, playback stopped, or finished).
   static let ttsDidStop = Notification.Name("ttsDidStop")
 }
