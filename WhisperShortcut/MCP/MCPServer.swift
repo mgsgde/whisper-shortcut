@@ -76,6 +76,7 @@ final class MCPServer: ObservableObject {
     stateLock.unlock()
     DebugLogger.log("MCP-SERVER: Token regenerated")
     objectWillChange.send()
+    repairClientTokens()
   }
 
   /// Grants read and write. Created on first use, cached like the read token. nil when the
@@ -101,6 +102,20 @@ final class MCPServer: ObservableObject {
     stateLock.unlock()
     DebugLogger.log("MCP-SERVER: Write token regenerated")
     objectWillChange.send()
+    repairClientTokens()
+  }
+
+  /// Rewrites stale tokens in client configs that already hold our entry, once the server is
+  /// running. Silent: no UI, never adds an entry to a client that has none.
+  private func repairClientTokens() {
+    Task { @MainActor [weak self] in
+      guard let self, case .running = self.status,
+        let read = self.token(), let write = self.writeToken()
+      else { return }
+      MCPClientInstaller.repairStaleTokens(
+        url: self.endpointURL, readToken: read, writeToken: write,
+        serverName: AIAppsSettingsTab.serverName)
+    }
   }
 
   /// Caller holds `stateLock`. Returns a token only when it is already in the Keychain or was just
@@ -193,6 +208,7 @@ final class MCPServer: ObservableObject {
         server = s
         status = .running(port: s.port)
         DebugLogger.log("MCP-SERVER: Listening on 127.0.0.1:\(s.port)")
+        repairClientTokens()
       } catch {
         let message: String
         if let e = error as? LoopbackHTTPServer.ServerError, e.errno == EADDRINUSE {
