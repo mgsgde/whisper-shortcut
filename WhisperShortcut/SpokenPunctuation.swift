@@ -21,7 +21,7 @@ enum SpokenPunctuation {
   /// Mirrors the spoken words in `rules` and `spokenOnlyRules`; `ParakeetVocabularyGuard` never
   /// lets a glossary boost rewrite one of them. Keep in sync when a rule gains a word.
   static let commandWords: Set<String> = [
-    "doppelpunkt", "komma", "punkt", "fragezeichen", "ausrufezeichen", "schragstrich",
+    "doppelpunkt", "doppelgun", "komma", "punkt", "fragezeichen", "ausrufezeichen", "schragstrich",
     "schraegstrich", "schreckstrich", "semikolon", "strichpunkt", "punktchen", "puenktchen",
     "auslassungspunkte", "absatz", "zeile", "klammer", "klammerauf", "klammerzu",
     "neuzeile", "neuezeile",
@@ -75,11 +75,11 @@ enum SpokenPunctuation {
     // The colon is already there — a model reply that kept the spoken word after its own heading
     // ("Befund: Doppelpunkt Druckschmerz", "Anamnese:\nDoppelpunkt Patientin"). Drop the word only.
     // "Doppel Punkt" and "Doppel-Punkt" are the same command split or hyphenated by Parakeet.
-    rule(#"(:[ \t]*\n?[ \t]*)\bdoppel[ \t-]?punkt\b[ \t,.;:]*"#, "$1"),
+    rule(#"(:[ \t]*\n?[ \t]*)\bdoppel[ \t-]?(?:punkt|gun)\b[ \t,.;:]*"#, "$1"),
     // "Anamnese Doppelpunkt Patient" / "Befund, Doppelpunkt. Inspektion" → "Befund: Inspektion".
     // Eats the punctuation the ASR put around the words on both sides. Inflections
     // ("Doppelpunkte") stay: the word boundary after "punkt" fails.
-    rule(#"[ \t,.;]*\bdoppel[ \t-]?punkt\b[ \t,.;:]*"#, ": "),
+    rule(#"[ \t,.;]*\bdoppel[ \t-]?(?:punkt|gun)\b[ \t,.;:]*"#, ": "),
     // Parakeet sometimes glues the command onto the next word ("Befund Doppelpunktdruckschmerz").
     // The following word's first letter is upper-cased afterwards (`capitalizeAfterGluedColon`).
     // Inflections of the noun itself ("Doppelpunkte", "-en", "-es", "-s") are left alone.

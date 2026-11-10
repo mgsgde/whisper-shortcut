@@ -99,6 +99,8 @@ enum LiveDictation {
   /// one comma, period or semicolon glued on, and the spaces around them. "Um", "ah", "aha",
   /// "achso" and "oh" stay — they are real German words. A piece of only fillers comes back "".
   private static func removingFillers(_ text: String) -> String {
+    let text = leadingOhRegex.stringByReplacingMatches(
+      in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
     let range = NSRange(text.startIndex..., in: text)
     guard fillerRegex.firstMatch(in: text, range: range) != nil else { return text }
     let replaced = fillerRegex.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
@@ -106,6 +108,14 @@ enum LiveDictation {
       in: replaced, range: NSRange(replaced.startIndex..., in: replaced), withTemplate: " ")
     return collapsed.trimmingCharacters(in: .whitespaces)
   }
+
+  // Parakeet hears the breath before a lone spoken command as "Oh," ("Oh, Doppelpunkt." for a piece
+  // that is only "Doppelpunkt"), which turned the colon into "Oh:". "Oh" stays a real word
+  // everywhere else; it goes only at the start of a piece, right before a spoken colon.
+  // swiftlint:disable:next force_try
+  private static let leadingOhRegex = try! NSRegularExpression(
+    pattern: #"^[ \t]*oh[,.]?[ \t]+(?=doppel[ \t-]?(?:punkt|gun)\b)"#,
+    options: [.caseInsensitive])
 
   // "hmm" is two or more m's; "hm" is the single one. Longer forms come first so a word boundary
   // still decides, and "ähm" is not eaten as "äh".
