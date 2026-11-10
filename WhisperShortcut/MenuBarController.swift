@@ -3239,11 +3239,34 @@ class MenuBarController: NSObject {
         } else {
           // Single-shot: non-Gemini model, no rotation happened, or a chunk failed —
           // transcribe the merged WAV exactly as before streaming existed.
+          // Names already written in the focused field, GPT Transcribe only (spelling hint).
+          // Terms only, never logged; nil in the App Store build and for meetings.
+          var fieldTerms: [String]?
+          #if !APP_STORE
+          if !duringMeeting, transcriptionModelForCapture == .openAIGPTTranscribe,
+            DictationPreferences.dictateFieldHintEnabled
+          {
+            let result = await Task.detached(priority: .userInitiated) {
+              FocusedFieldSnapshot.readResult()
+            }.value
+            if let snapshot = result.snapshot {
+              let terms = DictationFieldHint.terms(fromTextBeforeCaret: snapshot.textBeforeCaret)
+              DebugLogger.log(
+                "DICTATE-FIELD-HINT: \(terms.count) term(s) from field (app=\(result.bundleID ?? "unknown"))")
+              fieldTerms = terms.isEmpty ? nil : terms
+            } else {
+              DebugLogger.log("DICTATE-FIELD-HINT: no readable field (\(result.reason))")
+            }
+          }
+          #endif
+          let hintTerms = fieldTerms
           transcript = try await NoSpeechContext.run(
             duringMeeting ? .meetingSegment : .dictation, audioURL: audioURL, peakDb: recordingPeakDb
           ) {
-            try await self.speechService.transcribe(
-              audioURL: audioURL, cancellable: !duringMeeting, punctuationMode: punctuationMode)
+            try await DictationFieldHint.$current.withValue(hintTerms) {
+              try await self.speechService.transcribe(
+                audioURL: audioURL, cancellable: !duringMeeting, punctuationMode: punctuationMode)
+            }
           }
         }
         // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the

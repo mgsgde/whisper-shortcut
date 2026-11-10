@@ -86,11 +86,13 @@ struct SpeechToTextSettingsTab: View {
       // filler — so the switch is hidden unless a WhisperKit model is selected.
       if viewModel.data.selectedTranscriptionModel.isGemini
         || viewModel.data.selectedTranscriptionModel == .openRouterTranscription
-        || viewModel.data.selectedTranscriptionModel.offlineModelType?.engine == .whisperKit {
+        || viewModel.data.selectedTranscriptionModel.offlineModelType?.engine == .whisperKit
+        || showsFieldHintSection {
         SpacedSectionDivider()
         AdvancedSettingsGroup {
           tuningSection
           hallucinationFilterSection
+          fieldHintSection
         }
       }
     }
@@ -429,6 +431,49 @@ struct SpeechToTextSettingsTab: View {
         }
       }
     }
+  }
+
+  // MARK: - Field Hint Section
+
+  /// Direct build with GPT Transcribe only: the App Store build cannot read other apps' fields.
+  private var showsFieldHintSection: Bool {
+    #if APP_STORE
+    return false
+    #else
+    return viewModel.data.selectedTranscriptionModel == .openAIGPTTranscribe
+    #endif
+  }
+
+  /// Names from the focused field as `keywords` for GPT Transcribe. See
+  /// `plans/active/dictate-field-hint.md`.
+  @ViewBuilder
+  private var fieldHintSection: some View {
+    #if !APP_STORE
+    if viewModel.data.selectedTranscriptionModel == .openAIGPTTranscribe {
+      VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+        SectionHeader(
+          title: "Names from the Text Field",
+          systemImage: "text.cursor",
+          subtitle: "GPT Transcribe only. Off by default."
+        )
+
+        Toggle(isOn: $viewModel.data.dictateFieldHintEnabled) {
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Use names from the field as spelling hints")
+              .font(.callout)
+            Text("When you dictate into a field that already has text, names written there (a colleague or product in a chat thread, for example) are sent to OpenAI as spelling hints, so they come back spelled the same way. Only capitalised words are sent, never the whole text, and nothing from password fields. The transcript itself stays word for word.")
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+        .toggleStyle(.switch)
+        .onChange(of: viewModel.data.dictateFieldHintEnabled) { _ in
+          Task { await viewModel.saveSettings() }
+        }
+      }
+    }
+    #endif
   }
 
   // MARK: - Offline Models Section

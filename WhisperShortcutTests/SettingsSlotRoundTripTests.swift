@@ -29,6 +29,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.transcriptionThinkingEffort,
     UserDefaultsKeys.openRouterTranscriptionModelID,
     UserDefaultsKeys.filterKnownWhisperHallucinations,
+    UserDefaultsKeys.dictateFieldHintEnabled,
     UserDefaultsKeys.showPopupNotifications,
     UserDefaultsKeys.notificationPosition,
     UserDefaultsKeys.notificationDuration,
@@ -96,6 +97,7 @@ struct SettingsSlotRoundTripTests {
     data.transcriptionThinkingEffort = .high
     data.openRouterTranscriptionModelID = "probe/openrouter-model"
     data.filterKnownWhisperHallucinations = !SettingsDefaults.filterKnownWhisperHallucinations
+    data.dictateFieldHintEnabled = !SettingsDefaults.dictateFieldHintEnabled
     data.showPopupNotifications = !SettingsDefaults.showPopupNotifications
     data.notificationPosition = .leftTop
     data.notificationDuration = .sevenSeconds

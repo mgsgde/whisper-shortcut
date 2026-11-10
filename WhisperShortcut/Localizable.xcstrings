@@ -27489,6 +27489,46 @@
           }
         }
       }
+    },
+    "Names from the Text Field" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen aus dem Textfeld"
+          }
+        }
+      }
+    },
+    "GPT Transcribe only. Off by default." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur GPT Transcribe. Standardmäßig aus."
+          }
+        }
+      }
+    },
+    "Use names from the field as spelling hints" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen aus dem Feld als Schreibhinweise verwenden"
+          }
+        }
+      }
+    },
+    "When you dictate into a field that already has text, names written there (a colleague or product in a chat thread, for example) are sent to OpenAI as spelling hints, so they come back spelled the same way. Only capitalised words are sent, never the whole text, and nothing from password fields. The transcript itself stays word for word." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn Sie in ein Feld diktieren, in dem schon Text steht, werden die Namen darin (etwa ein Kollege oder ein Produkt in einem Chatverlauf) als Schreibhinweise an OpenAI gesendet, damit sie genauso geschrieben zurückkommen. Es werden nur großgeschriebene Wörter gesendet, nie der ganze Text, und nichts aus Passwortfeldern. Das Transkript selbst bleibt Wort für Wort."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

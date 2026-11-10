@@ -49,6 +49,9 @@ enum UserDefaultsKeys {
   /// ("Thank you.", "Thanks for watching!") is treated as no speech instead of being pasted.
   /// Default: enabled. See `TextProcessingUtility.knownWhisperHallucinations`.
   static let filterKnownWhisperHallucinations = "filterKnownWhisperHallucinations"
+  /// GPT Transcribe only: names from the focused text field go along as `keywords`.
+  /// Off by default. See `plans/active/dictate-field-hint.md`.
+  static let dictateFieldHintEnabled = "dictateFieldHintEnabled"
   /// Silero gate in front of cloud dictation. Unset means on. No Settings row;
   /// set this to false to upload every chunk the way the app did before the gate.
   static let speechActivityGateEnabled = "speechActivityGateEnabled"

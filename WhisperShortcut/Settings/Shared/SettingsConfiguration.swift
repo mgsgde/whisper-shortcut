@@ -1778,6 +1778,13 @@ enum DictationPreferences {
       forKey: UserDefaultsKeys.filterKnownWhisperHallucinations,
       default: SettingsDefaults.filterKnownWhisperHallucinations)
   }
+
+  /// Whether plain Dictate sends names from the focused field to GPT Transcribe as keywords.
+  static var dictateFieldHintEnabled: Bool {
+    UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.dictateFieldHintEnabled,
+      default: SettingsDefaults.dictateFieldHintEnabled)
+  }
 }
 
 // MARK: - Read Aloud Preferences (UserDefaults Accessors)
@@ -2405,6 +2412,8 @@ struct SettingsDefaults {
   /// On by default: the filter only ever drops a transcript that is *nothing but* a known
   /// hallucination, so leaving it off costs the user a pasted "Thank you." and buys nothing.
   static let filterKnownWhisperHallucinations = true
+  /// Off by default: the field text leaves the Mac (as capitalised terms only), so it is opt-in.
+  static let dictateFieldHintEnabled = false
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
@@ -2582,6 +2591,8 @@ struct SettingsData: Equatable {
   /// Drop a transcript that is entirely a known Whisper silence hallucination. See
   /// `TextProcessingUtility.knownWhisperHallucinations`.
   var filterKnownWhisperHallucinations: Bool = SettingsDefaults.filterKnownWhisperHallucinations
+  /// Send names from the focused field to GPT Transcribe as spelling hints.
+  var dictateFieldHintEnabled: Bool = SettingsDefaults.dictateFieldHintEnabled
 
   // MARK: - Read Aloud
   var readAloudSmartRewriteEnabled: Bool = SettingsDefaults.readAloudSmartRewriteEnabled
