@@ -570,9 +570,13 @@ class SpeechService {
   /// Cloud dictation and streaming chunks only. No speech throws `noSpeechDetected`.
   /// A long quiet head or tail comes back as a temp WAV the caller deletes. Meetings,
   /// live-meeting chunks and prompt history are unchanged. A gate that is off or not
-  /// loaded yet returns the original URL.
+  /// loaded yet returns the original URL. A failed trim uploads the original.
   private func cloudAudioApplyingSpeechGate(_ audioURL: URL) async throws -> URL {
     guard Self.speechActivityGateApplies(to: NoSpeechContext.current?.origin) else {
+      return audioURL
+    }
+    // Dictation and streaming chunks are always WAV; other files keep the old behavior.
+    guard audioURL.pathExtension.lowercased() == "wav" else {
       return audioURL
     }
     switch await SpeechActivityGate.shared.decide(for: audioURL) {
@@ -580,7 +584,8 @@ class SpeechService {
       DebugLogger.logSpeech("SPEECH-GATE: no speech, skipping cloud transcription")
       throw TranscriptionError.noSpeechDetected
     case .trim(let start, let end):
-      return try SpeechActivityGate.writeTrimmedCopy(of: audioURL, start: start, end: end)
+      do { return try SpeechActivityGate.writeTrimmedCopy(of: audioURL, start: start, end: end) }
+      catch { DebugLogger.logWarning("SPEECH-GATE: trim failed, uploading the original: \(error.logDescription)"); return audioURL }
     case .keep, nil:
       return audioURL
     }
