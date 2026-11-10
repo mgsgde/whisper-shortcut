@@ -40,6 +40,27 @@ struct SpokenPunctuationTests {
 
 }
 
+@Suite("Spoken colon, Parakeet Ultra mishearings (live capture 2026-11-10)")
+struct SpokenColonMishearingTests {
+  @Test("\"Doppelgun\" is the colon command, commas around it as Parakeet wrote them")
+  func doppelgun() {
+    let piece = LiveDictation.finishPiece("Symptome, Doppelgun, Kopfschmerzen.", mode: .spokenOnly)
+    #expect(piece == "Symptome: Kopfschmerzen.")
+  }
+
+  @Test("A lone spoken colon with Parakeet's leading \"Oh,\" is just the colon")
+  func leadingOh() {
+    #expect(LiveDictation.finishPiece("Oh, Doppelpunkt.", mode: .spokenOnly).trimmingCharacters(in: .whitespaces) == ":")
+  }
+
+  @Test("Real words stay: \"Oh\" elsewhere, Doppelgänger, Doppelpunkte")
+  func realWordsStay() {
+    #expect(LiveDictation.finishPiece("Oh, das ist gut.", mode: .spokenOnly) == "Oh das ist gut.")
+    #expect(SpokenPunctuation.apply(to: "Der Doppelgänger kam") == "Der Doppelgänger kam")
+    #expect(SpokenPunctuation.apply(to: "Die Doppelpunkte fehlen") == "Die Doppelpunkte fehlen")
+  }
+}
+
 /// Cases carried over from the parallel implementation in PR #109.
 @Suite("Spoken punctuation — additional cases")
 struct SpokenPunctuationExtraTests {
