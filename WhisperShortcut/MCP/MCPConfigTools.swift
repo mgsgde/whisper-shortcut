@@ -26,6 +26,13 @@ struct MCPConfigEnvironment {
   var errorLog: (_ query: InteractionLogQuery) -> [ErrorLogLine] = { ErrorLogReader.load($0) }
   /// Rows of `system-prompts-history.jsonl`, oldest first, for `get_config_history`.
   var configHistory: () -> [UnifiedSystemPromptHistoryEntry] = { ConfigHistoryReader.load() }
+  /// Features an AI app should mention when they are off or blocked by a missing permission.
+  /// Defaults to everything working so tests that build an environment stay unaffected.
+  var featureState: () -> MCPFeatureState = {
+    MCPFeatureState(
+      autoPaste: true, accessibility: true, frontWindowFallback: true, screenRecording: true,
+      interactionsShared: true)
+  }
 
   var applier: MCPConfigApplier { MCPConfigApplier(targets: targets, changeLog: changeLog) }
 
@@ -55,7 +62,19 @@ struct MCPConfigEnvironment {
       },
       writingStyleEnabled: { defaults.bool(forKey: UserDefaultsKeys.writingStyleEnabled) },
       appVersion: AppConstants.appVersion,
-      settingsCatalog: MCPSettingsCatalog.build(.live))
+      settingsCatalog: MCPSettingsCatalog.build(.live),
+      featureState: {
+        MCPFeatureState(
+          autoPaste: AutoPasteDefault.currentValue,
+          accessibility: AccessibilityPermissionManager.hasAccessibilityPermission(),
+          frontWindowFallback: defaults.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
+            ? defaults.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
+            : SettingsDefaults.screenshotInPromptMode,
+          // Read-only, same check as MCPSettingsCatalog.Dependencies. Never call SCShareableContent.
+          screenRecording: PermissionStatusChecker.status(for: .screenRecording) == .granted,
+          interactionsShared: defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
+            && defaults.bool(forKey: UserDefaultsKeys.mcpShareRecentInteractions))
+      })
   }
 }
 
@@ -375,6 +394,7 @@ struct MCPConfigTools {
         "pending_proposals": MCPMain.run { env.proposals.pending.count },
       ] as [String: Any],
       "tune_recipe": MCPTuneRecipe.text(focus: nil),
+      "not_yet_enabled": MCPFeatureHints.build(env.featureState()),
     ]
     if include.contains("system_prompts") {
       var texts: [String: String] = [:]
