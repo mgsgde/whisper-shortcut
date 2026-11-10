@@ -8,7 +8,7 @@ import SwiftUI
 struct SpeechToPromptSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  /// Live Screen Recording status for the caption under Front window as fallback.
+  /// Live Screen Recording status for the caption under Front window picture.
   @State private var screenRecordingStatus = PermissionStatusChecker.status(for: .screenRecording)
 
   var body: some View {
@@ -167,11 +167,38 @@ struct SpeechToPromptSettingsTab: View {
       SectionHeader(
         title: "Screen Context",
         systemImage: "menubar.dock.rectangle",
-        subtitle: "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there."
+        subtitle: "Your voice and any text you select are always sent to the model. Nothing else from your screen is, unless you switch it on here."
       )
 
+      // Opt-in, off by default: text read through Accessibility leaves the Mac only with consent.
       HStack(alignment: .center, spacing: 16) {
-        Text("Front window as fallback:")
+        Text("Text around cursor:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Toggle("", isOn: Binding(
+          get: { viewModel.data.promptSendsFocusedFieldText },
+          set: { newValue in
+            viewModel.data.promptSendsFocusedFieldText = newValue
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
+        ))
+          .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Send text around the cursor")
+
+        Spacer()
+      }
+
+      Text("When nothing is selected, sends the text of the field you are writing in, up to 3,000 characters before the cursor and 1,000 after, so the result fits what is already there. Never from password fields or password managers.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Front window picture:")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
@@ -201,16 +228,18 @@ struct SpeechToPromptSettingsTab: View {
           }
         ))
           .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Front window as fallback")
+          .accessibilityLabel("Send picture of front window")
 
         Spacer()
       }
 
-      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers.")
+      Text("When nothing is selected, sends a picture of the front window, never the whole screen, unless the text around the cursor already gives enough to go on. Never for password fields or password managers.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
-      screenRecordingStatusRow
+      if viewModel.data.screenshotInPromptMode {
+        screenRecordingStatusRow
+      }
       #endif
     }
     .onAppear(perform: refreshScreenRecordingStatus)

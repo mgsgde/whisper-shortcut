@@ -41,6 +41,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.fnKeyDictation,
     UserDefaultsKeys.dictateMode,
     UserDefaultsKeys.screenshotInPromptMode,
+    UserDefaultsKeys.promptSendsFocusedFieldText,
     UserDefaultsKeys.screenshotSaveEnabled,
     UserDefaultsKeys.readAloudSmartRewriteEnabled,
     UserDefaultsKeys.readAloudSpeed,
@@ -109,6 +110,7 @@ struct SettingsSlotRoundTripTests {
     data.fnKeyDictation = !SettingsDefaults.fnKeyDictation
     data.dictateMode = .live
     data.screenshotInPromptMode = !SettingsDefaults.screenshotInPromptMode
+    data.promptSendsFocusedFieldText = !SettingsDefaults.promptSendsFocusedFieldText
     data.screenshotSaveEnabled = !SettingsDefaults.screenshotSaveEnabled
     data.readAloudSmartRewriteEnabled = !SettingsDefaults.readAloudSmartRewriteEnabled
     data.readAloudSpeed = .x150

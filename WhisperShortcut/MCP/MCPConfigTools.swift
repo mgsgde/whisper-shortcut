@@ -30,7 +30,7 @@ struct MCPConfigEnvironment {
   /// Defaults to everything working so tests that build an environment stay unaffected.
   var featureState: () -> MCPFeatureState = {
     MCPFeatureState(
-      autoPaste: true, accessibility: true, frontWindowFallback: true, screenRecording: true,
+      autoPaste: true, accessibility: true, frontWindowFallback: true, fieldTextContext: true, screenRecording: true,
       interactionsShared: true)
   }
 
@@ -70,6 +70,7 @@ struct MCPConfigEnvironment {
           frontWindowFallback: defaults.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
             ? defaults.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
             : SettingsDefaults.screenshotInPromptMode,
+          fieldTextContext: DictationPreferences.promptSendsFocusedFieldTextEnabled,
           // Read-only, same check as MCPSettingsCatalog.Dependencies. Never call SCShareableContent.
           screenRecording: PermissionStatusChecker.status(for: .screenRecording) == .granted,
           interactionsShared: defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
