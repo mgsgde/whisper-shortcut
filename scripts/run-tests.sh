@@ -6,6 +6,7 @@
 # Usage:
 #   bash scripts/run-tests.sh              # full plan (live tests skip without .env)
 #   bash scripts/run-tests.sh --hermetic   # offline subset; no .env, no live network
+#   bash scripts/run-tests.sh --only WhisperShortcutTests/SomeTests[/method]   # filter; repeatable
 
 set -e
 
@@ -17,15 +18,28 @@ source "$SCRIPT_DIR/lib/daily-app.sh"
 source "$SCRIPT_DIR/lib/build-lock.sh"
 
 HERMETIC_RUN=false
-for arg in "$@"; do
-  case "$arg" in
+# One test is a legitimate thing to run. Without this option agents call xcodebuild directly for
+# it and walk past the build lock, which is how two runs got around it on 2026-11-10. A --only run
+# is a normal run with a filter, so it takes the lock like any other.
+ONLY_TESTING=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --hermetic) HERMETIC_RUN=true ;;
+    --only)
+      if [[ $# -lt 2 || "$2" == -* ]]; then
+        echo "--only needs a test identifier (Target, Target/Class or Target/Class/method)" >&2
+        exit 1
+      fi
+      ONLY_TESTING+=("-only-testing:$2")
+      shift
+      ;;
     *)
-      echo "Unknown argument: $arg" >&2
-      echo "Usage: bash scripts/run-tests.sh [--hermetic]" >&2
+      echo "Unknown argument: $1" >&2
+      echo "Usage: bash scripts/run-tests.sh [--hermetic] [--only <Target[/Class[/method]]>]..." >&2
       exit 1
       ;;
   esac
+  shift
 done
 
 # Provider API keys come from the gitignored .env at repo root (same file the
@@ -230,6 +244,10 @@ if [[ "$HERMETIC_RUN" == true ]]; then
     CODE_SIGNING_REQUIRED=NO
     DEVELOPMENT_TEAM=
   )
+fi
+
+if (( ${#ONLY_TESTING[@]} > 0 )); then
+  XCODEBUILD_ARGS+=("${ONLY_TESTING[@]}")
 fi
 
 xcodebuild "${XCODEBUILD_ARGS[@]}"
