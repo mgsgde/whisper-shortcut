@@ -3824,7 +3824,7 @@ class SpeechService {
     DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
 
     // Check audio duration for chunking decision
-    let audioDuration = try await getAudioDuration(audioURL)
+    let audioDuration = try await AudioDuration.avURLAssetSeconds(audioURL)
     DebugLogger.log("GEMINI-TRANSCRIPTION: Audio duration: \(String(format: "%.1f", audioDuration))s")
 
     let result: String
@@ -3860,11 +3860,6 @@ class SpeechService {
     )
   }
 
-  // MARK: - Audio Duration Helper
-  private func getAudioDuration(_ url: URL) async throws -> TimeInterval {
-    try await AudioDuration.avURLAssetSeconds(url)
-  }
-  
   /// - Parameter suppressGlossary: set by the internal retry below. Callers leave it false.
   private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval, suppressGlossary: Bool = false) async throws -> String {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()

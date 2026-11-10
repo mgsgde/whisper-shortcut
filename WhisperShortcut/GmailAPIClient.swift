@@ -43,7 +43,7 @@ actor GmailAPIClient {
   // MARK: - Read Message
 
   func readMessage(messageId: String) async throws -> [String: Any] {
-    let url = URL(string: "\(baseURL)/messages/\(Self.encodedPathComponent(messageId))?format=full")!
+    let url = URL(string: "\(baseURL)/messages/\(messageId.encodedPathSegment)?format=full")!
     let data = try await authorizedRequest(url: url, httpMethod: "GET")
 
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -86,7 +86,7 @@ actor GmailAPIClient {
 
   /// Every message of a thread with bodies, oldest first — one request instead of one per message.
   func readThread(threadId: String) async throws -> [[String: Any]] {
-    let url = URL(string: "\(baseURL)/threads/\(Self.encodedPathComponent(threadId))?format=full")!
+    let url = URL(string: "\(baseURL)/threads/\(threadId.encodedPathSegment)?format=full")!
     let data = try await authorizedRequest(url: url, httpMethod: "GET")
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       throw GmailAPIError.invalidResponse
@@ -103,7 +103,7 @@ actor GmailAPIClient {
   // MARK: - Private Helpers
 
   private func getMessageSummary(messageId: String) async throws -> [String: Any] {
-    let url = URL(string: "\(baseURL)/messages/\(Self.encodedPathComponent(messageId))?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date")!
+    let url = URL(string: "\(baseURL)/messages/\(messageId.encodedPathSegment)?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date")!
     let data = try await authorizedRequest(url: url, httpMethod: "GET")
 
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -265,14 +265,6 @@ actor GmailAPIClient {
     }
 
     return data
-  }
-
-  /// Percent-encodes a Gmail id used as one path segment. A raw `/` or `?` would
-  /// change which resource the request hits.
-  static func encodedPathComponent(_ value: String) -> String {
-    var allowed = CharacterSet.urlPathAllowed
-    allowed.remove(charactersIn: "/?#[]@!$&'()*+,;=")
-    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
   }
 
   // MARK: - Errors

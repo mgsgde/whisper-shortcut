@@ -827,8 +827,6 @@ extension Notification.Name {
   static let chatFontDesignChanged = Notification.Name("chatFontDesignChanged")
   /// Posted when the chat window is shown so the chat view can focus the message input field.
   static let chatFocusInput = Notification.Name("chatFocusInput")
-  /// Posted to switch the chat window to Meeting view (e.g. when a live meeting starts).
-  static let chatSwitchToMeeting = Notification.Name("chatSwitchToMeeting")
   /// Posted to switch the chat window to Chat view and resize to one third of the screen.
   static let chatSwitchToChat = Notification.Name("chatSwitchToChat")
   /// Posted to start a fresh live meeting. Clears any prior meeting state first.
