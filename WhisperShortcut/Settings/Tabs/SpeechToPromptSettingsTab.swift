@@ -200,6 +200,10 @@ struct SpeechToPromptSettingsTab: View {
       .alert("Send the text around the cursor?", isPresented: $showFieldTextConsent) {
         Button("Cancel", role: .cancel) {}
         Button("Allow") {
+          // Written to disk before anything else: when the alert closes, the Settings window
+          // becomes key again and `reloadFromDisk()` runs before the save Task does, so a value
+          // only held in `data` is reverted and the switch never turns on.
+          UserDefaults.standard.set(true, forKey: UserDefaultsKeys.promptSendsFocusedFieldText)
           viewModel.data.promptSendsFocusedFieldText = true
           Task { await viewModel.saveSettings() }
         }
@@ -240,6 +244,8 @@ struct SpeechToPromptSettingsTab: View {
       .alert("Send a picture of the front window?", isPresented: $showWindowPictureConsent) {
         Button("Cancel", role: .cancel) {}
         Button("Allow") {
+          // Persisted at once for the same reason as the field-text Allow above.
+          UserDefaults.standard.set(true, forKey: UserDefaultsKeys.screenshotInPromptMode)
           Task {
             do {
               _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
