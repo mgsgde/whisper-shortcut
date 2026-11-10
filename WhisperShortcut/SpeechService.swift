@@ -346,6 +346,19 @@ class SpeechService {
     return keywords
   }
 
+  /// Glossary keywords first, then names from the focused field; deduped with the glossary's
+  /// fold, so the glossary spelling wins. See `DictationFieldHint`.
+  nonisolated static func mergedKeywords(glossary: [String], fieldTerms: [String]?) -> [String] {
+    var seen = Set<String>()
+    var merged: [String] = []
+    for term in glossary + (fieldTerms ?? []) {
+      let folded = GlossaryDocument.fold(term)
+      guard !folded.isEmpty, seen.insert(folded).inserted else { continue }
+      merged.append(term)
+    }
+    return merged
+  }
+
   // MARK: - Rejected-Spelling Correction
 
   /// Rewrites a transcript that came back carrying a spelling the user explicitly rejected in the
@@ -3615,7 +3628,13 @@ class SpeechService {
     // with the keywords themselves — 2026-10-28 it wrote whole fake lines like "Claude Code, MCP
     // und Bachata." — so meetings send none. Dictation keeps them.
     let keywordsOff = !Self.shouldSendGlossaryKeywords(origin: NoSpeechContext.current?.origin)
-    let contextKeywords = (isContextFieldStyle && !keywordsOff) ? glossaryKeywords() : []
+    let fieldTerms: [String]? =
+      (isContextFieldStyle && !keywordsOff && NoSpeechContext.current?.origin == .dictation)
+      ? DictationFieldHint.current : nil
+    let contextKeywords =
+      (isContextFieldStyle && !keywordsOff)
+      ? Self.mergedKeywords(glossary: glossaryKeywords(), fieldTerms: fieldTerms) : []
+    let fieldTermCount = fieldTerms?.count ?? 0
     let combinedPrompt: String? = {
       if isContextFieldStyle { return nil }
       if isWhisperStyle {
@@ -3634,7 +3653,7 @@ class SpeechService {
     let languageCode = savedLanguage.languageCode
 
     let promptLogValue = isContextFieldStyle
-      ? "n/a (context fields: \(contextKeywords.count) keyword(s)\(keywordsOff ? ", live meeting: keywords off" : ""))"
+      ? "n/a (context fields: \(contextKeywords.count) keyword(s)\(fieldTermCount > 0 ? ", \(fieldTermCount) from field" : "")\(keywordsOff ? ", live meeting: keywords off" : ""))"
       : (combinedPrompt == nil
         ? "none"
         : "\(combinedPrompt!.count) chars\(trimmedDictationHint.isEmpty ? "" : " (dictation+glossary)")")

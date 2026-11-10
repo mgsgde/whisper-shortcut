@@ -183,6 +183,9 @@ class SettingsViewModel: ObservableObject {
     .bool(\.filterKnownWhisperHallucinations,
           key: UserDefaultsKeys.filterKnownWhisperHallucinations,
           default: SettingsDefaults.filterKnownWhisperHallucinations),
+    .bool(\.dictateFieldHintEnabled,
+          key: UserDefaultsKeys.dictateFieldHintEnabled,
+          default: SettingsDefaults.dictateFieldHintEnabled),
 
     // Notifications
     .bool(\.showPopupNotifications, key: UserDefaultsKeys.showPopupNotifications,
