@@ -1246,6 +1246,15 @@ enum MCPSettingsCatalog {
           : "Grant Screen Recording in Settings → Permissions first."
       }))
 
+    // MARK: dictate_prompt.field_context — consent comes from the user in Settings, never from MCP.
+    // MCP can read it and switch it off; every attempt to switch it on is refused.
+    settings.append(boolSetting(
+      id: "dictate_prompt.field_context", title: "Read the text field", category: "dictate_prompt",
+      key: UserDefaultsKeys.promptFieldContextEnabled, defaultValue: SettingsDefaults.promptFieldContextEnabled,
+      enablingRefused: {
+        "Reading the text field needs the user's explicit consent. They turn it on themselves in WhisperShortcut Settings → Dictate Prompt."
+      }))
+
     // MARK: dictate_prompt.quick_prompts — read live on every ⌘2 by QuickActionStore.current().
     let quickPromptsTitle = "Quick prompts"
     let quickPromptsMaxItems = QuickActionStore.maxCustomEntries

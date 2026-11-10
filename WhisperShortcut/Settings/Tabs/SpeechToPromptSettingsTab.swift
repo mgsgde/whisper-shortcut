@@ -170,6 +170,31 @@ struct SpeechToPromptSettingsTab: View {
         subtitle: "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there."
       )
 
+      // Placeholder row (plumbing); the final copy and consent dialog replace it.
+      HStack(alignment: .center, spacing: 16) {
+        Text("Read the text field:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Toggle("", isOn: Binding(
+          get: { viewModel.data.promptFieldContextEnabled },
+          set: { newValue in
+            viewModel.data.promptFieldContextEnabled = newValue
+            Task { await viewModel.saveSettings() }
+          }
+        ))
+          .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Read the text field")
+
+        Spacer()
+      }
+
+      Text("Off by default. When on, Dictate Prompt reads the text around the cursor in the app you are writing in and sends it to the model.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
       HStack(alignment: .center, spacing: 16) {
         Text("Front window as fallback:")
           .font(.body)

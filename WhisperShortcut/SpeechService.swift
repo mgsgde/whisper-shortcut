@@ -1302,10 +1302,14 @@ class SpeechService {
     modelAcceptsImages: Bool,
     supportsScreenshot: Bool,
     usesScreenshotSelection: Bool,
-    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldContext requestedFieldContext: FocusedFieldSnapshot? = nil,
     fieldAllowsWindowImage: Bool = true,
     logPrefix: String
   ) async throws -> DictatePromptEnvelope {
+    // Defence in depth: whatever a caller captured, no field text or app name goes into a request
+    // without the user's consent.
+    let fieldContext = PromptScreenContextDecision.shouldReadField(
+      settingEnabled: PromptScreenContextDecision.fieldContextEnabled) ? requestedFieldContext : nil
     // A template turn never captures or sends a screenshot, and never uses the screenshot-selection
     // system prompt.
     let screenshotSelectionMode = usesScreenshotSelection && !promptTurnKind.isTemplate

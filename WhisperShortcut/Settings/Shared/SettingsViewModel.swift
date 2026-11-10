@@ -223,6 +223,8 @@ class SettingsViewModel: ObservableObject {
     // when the user picks a folder, so only the toggle round-trips here.
     .bool(\.screenshotInPromptMode, key: UserDefaultsKeys.screenshotInPromptMode,
           default: SettingsDefaults.screenshotInPromptMode),
+    .bool(\.promptFieldContextEnabled, key: UserDefaultsKeys.promptFieldContextEnabled,
+          default: SettingsDefaults.promptFieldContextEnabled),
     .custom(\.screenshotSaveEnabled,
             load: { ScreenshotSaveLocation.isEnabled },
             save: { UserDefaults.standard.set($0, forKey: UserDefaultsKeys.screenshotSaveEnabled) }),

@@ -111,6 +111,10 @@ enum UserDefaultsKeys {
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
+  /// Bool: Dictate Prompt may read the text field you are writing in (up to 3000 characters before
+  /// and 1000 after the caret, plus the app name) and send it to the model. Explicit consent only:
+  /// absent → off, and only the Settings toggle may turn it on, never MCP or a migration.
+  static let promptFieldContextEnabled = "promptFieldContextEnabled"
   /// When true, captured screenshots (the Screenshot shortcut and the in-chat button) are also written
   /// as PNG files into the user-selected folder, in addition to the clipboard.
   static let screenshotSaveEnabled = "screenshotSaveEnabled"

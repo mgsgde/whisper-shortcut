@@ -288,6 +288,21 @@ struct MCPSettingsCatalogTests {
     }
   }
 
+  @Test("MCP can never turn the field-context consent on, only off")
+  func fieldContextNeverEnabledByMCP() {
+    let env = MCPTestEnv(level: .apply)
+    env.testDefaults.removeObject(forKey: UserDefaultsKeys.promptFieldContextEnabled)
+    let on = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["dictate_prompt.field_context": true], "rationale": "r"], access: .write)
+    #expect(on.isError)
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.promptFieldContextEnabled) == nil)
+    env.testDefaults.set(true, forKey: UserDefaultsKeys.promptFieldContextEnabled)
+    let off = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["dictate_prompt.field_context": false], "rationale": "r"], access: .write)
+    #expect(!off.isError)
+    #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.promptFieldContextEnabled) == false)
+  }
+
   @Test("Access level propose turns an ordinary setting into a proposal")
   func proposeLevelProposes() {
     let env = MCPTestEnv(level: .propose)

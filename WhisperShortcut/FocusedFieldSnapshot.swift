@@ -152,6 +152,23 @@ struct FocusedFieldSnapshot: Equatable, Sendable {
 enum PromptScreenContextDecision {
   static let minimumFieldChars = 200
 
+  /// Whether Dictate Prompt may read the focused field at all. The read itself is skipped when
+  /// this is false, not only its result: consent is for the Accessibility read, not for sending.
+  static func shouldReadField(settingEnabled: Bool) -> Bool { settingEnabled }
+
+  /// The user's consent, read live. Absent key → off.
+  static var fieldContextEnabled: Bool {
+    UserDefaults.standard.object(forKey: UserDefaultsKeys.promptFieldContextEnabled) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.promptFieldContextEnabled)
+      : SettingsDefaults.promptFieldContextEnabled
+  }
+
+  /// With the field read off nothing can say whether the focused field is a password field, so a
+  /// window image stays allowed only when the app is no password manager and secure input is off.
+  static func windowImageAllowedWithoutRead(frontmostExcluded: Bool, secureInputActive: Bool) -> Bool {
+    !frontmostExcluded && !secureInputActive
+  }
+
   /// True only for a compose turn that is not a template, with the setting on, a model that
   /// accepts images, and a field that is missing or shorter than `minimumFieldChars`.
   static func wantsWindowImage(

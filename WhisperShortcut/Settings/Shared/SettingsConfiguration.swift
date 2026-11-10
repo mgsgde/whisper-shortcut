@@ -2462,6 +2462,8 @@ struct SettingsDefaults {
   /// Front window as fallback: when the focused field is empty, short or unreadable, Dictate Prompt
   /// attaches a picture of that window, never the whole screen. The key is unchanged.
   static let screenshotInPromptMode = true
+  /// Off for everyone until the user explicitly agrees in Settings. No migration turns it on.
+  static let promptFieldContextEnabled = false
   static let screenshotSaveEnabled = false
 
   // MARK: - Live Meeting Settings
@@ -2668,6 +2670,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode
+  var promptFieldContextEnabled: Bool = SettingsDefaults.promptFieldContextEnabled
   var screenshotSaveEnabled: Bool = SettingsDefaults.screenshotSaveEnabled
   /// Display-only; the security-scoped bookmark itself is owned by ScreenshotSaveLocation.
   var screenshotSaveFolderDisplayPath: String = ""

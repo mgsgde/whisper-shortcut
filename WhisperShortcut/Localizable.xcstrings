@@ -11,6 +11,36 @@
         }
       }
     },
+    "Read the text field:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Textfeld lesen:"
+          }
+        }
+      }
+    },
+    "Read the text field" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Textfeld lesen"
+          }
+        }
+      }
+    },
+    "Off by default. When on, Dictate Prompt reads the text around the cursor in the app you are writing in and sends it to the model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standardmäßig aus. Wenn an, liest Dictate Prompt den Text rund um den Cursor in der App, in der Sie schreiben, und sendet ihn an das Modell."
+          }
+        }
+      }
+    },
     "Removed from %@'s settings. %@" : {
       "localizations" : {
         "de" : {

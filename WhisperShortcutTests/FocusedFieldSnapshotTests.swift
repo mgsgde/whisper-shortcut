@@ -101,6 +101,21 @@ struct FocusedFieldSnapshotTests {
     #expect(PromptScreenContextDecision.fieldBlock(field(500), isComposeTurn: true, isTemplate: true) == nil)
   }
 
+  @Test("Field read is gated by consent; the default is off")
+  func fieldReadGate() {
+    #expect(PromptScreenContextDecision.shouldReadField(settingEnabled: true))
+    #expect(!PromptScreenContextDecision.shouldReadField(settingEnabled: false))
+    #expect(SettingsDefaults.promptFieldContextEnabled == false)
+    #expect(SettingsData().promptFieldContextEnabled == false)
+  }
+
+  @Test("Without a read, a window image needs no password manager and no secure input")
+  func windowImageWithoutRead() {
+    #expect(PromptScreenContextDecision.windowImageAllowedWithoutRead(frontmostExcluded: false, secureInputActive: false))
+    #expect(!PromptScreenContextDecision.windowImageAllowedWithoutRead(frontmostExcluded: true, secureInputActive: false))
+    #expect(!PromptScreenContextDecision.windowImageAllowedWithoutRead(frontmostExcluded: false, secureInputActive: true))
+  }
+
   private func field(_ count: Int) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(appName: "Notes", textBeforeCaret: String(repeating: "a", count: count), textAfterCaret: "")
   }

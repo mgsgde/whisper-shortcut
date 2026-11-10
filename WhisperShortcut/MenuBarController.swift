@@ -3791,6 +3791,7 @@ class MenuBarController: NSObject {
     #if !APP_STORE
     // The field as it is at shortcut press, before ⌘C moves the selection. Counts and the
     // bundle id only — the text itself is never logged.
+    if PromptScreenContextDecision.shouldReadField(settingEnabled: PromptScreenContextDecision.fieldContextEnabled) {
     Task.detached(priority: .userInitiated) {
       let result = FocusedFieldSnapshot.readResult()
       if let field = result.snapshot {
@@ -3801,6 +3802,16 @@ class MenuBarController: NSObject {
         DebugLogger.log("PROMPT-CONTEXT: no readable field (\(result.reason))")
         selection.resolveField(nil, allowsWindowImage: result.allowsWindowImage)
       }
+    }
+    } else {
+      // Consent is missing: no Accessibility read at all. Only the app's bundle id and the
+      // secure-input flag decide whether a window image may still be attached.
+      DebugLogger.log("PROMPT-CONTEXT: field read skipped (setting off)")
+      selection.resolveField(
+        nil,
+        allowsWindowImage: PromptScreenContextDecision.windowImageAllowedWithoutRead(
+          frontmostExcluded: FocusedFieldSnapshot.frontmostIsExcluded,
+          secureInputActive: IsSecureEventInputEnabled()))
     }
     #endif
     // The capture is held strongly by this task, so it always resolves within the deadline
