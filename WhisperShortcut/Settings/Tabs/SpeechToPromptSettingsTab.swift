@@ -8,8 +8,12 @@ import SwiftUI
 struct SpeechToPromptSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  /// Live Screen Recording status for the caption under Front window as fallback.
+  /// Live Screen Recording status for the caption under Front window picture.
   @State private var screenRecordingStatus = PermissionStatusChecker.status(for: .screenRecording)
+  /// Consent dialogs for the two Screen Context opt-ins. Turning one on only asks; the setting
+  /// changes on Allow. Turning one off takes effect at once.
+  @State private var showFieldTextConsent = false
+  @State private var showWindowPictureConsent = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -167,50 +171,99 @@ struct SpeechToPromptSettingsTab: View {
       SectionHeader(
         title: "Screen Context",
         systemImage: "menubar.dock.rectangle",
-        subtitle: "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there."
+        subtitle: "Your voice and any text you select are always sent to the model. Nothing else from your screen is, unless you switch it on here."
       )
 
+      // Opt-in, off by default: text read through Accessibility leaves the Mac only with consent.
       HStack(alignment: .center, spacing: 16) {
-        Text("Front window as fallback:")
+        Text("Text around cursor:")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
-        // The permission prompt lives in the binding's setter, not `onChange`: `onChange` also
-        // fires when `data` is reloaded programmatically, which must never trigger a system
-        // prompt. The setter only runs when the user flips this toggle.
         Toggle("", isOn: Binding(
-          get: { viewModel.data.screenshotInPromptMode },
+          get: { viewModel.data.promptSendsFocusedFieldText },
           set: { newValue in
             if newValue {
-              Task {
-                do {
-                  _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-                  UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
-                } catch {
-                  // The call itself is the request, including when macOS refuses it.
-                  UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
-                  DebugLogger.logWarning("SCREENSHOT SETTINGS: Screen recording permission not granted")
-                }
-              }
-            }
-            viewModel.data.screenshotInPromptMode = newValue
-            Task {
-              await viewModel.saveSettings()
+              showFieldTextConsent = true
+            } else {
+              viewModel.data.promptSendsFocusedFieldText = false
+              Task { await viewModel.saveSettings() }
             }
           }
         ))
           .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Front window as fallback")
+          .accessibilityLabel("Send text around the cursor")
 
         Spacer()
       }
+      .alert("Send the text around the cursor?", isPresented: $showFieldTextConsent) {
+        Button("Cancel", role: .cancel) {}
+        Button("Allow") {
+          viewModel.data.promptSendsFocusedFieldText = true
+          Task { await viewModel.saveSettings() }
+        }
+      } message: {
+        Text("Each time you use Dictate Prompt with nothing selected, it reads up to 4,000 characters around the cursor in the app you are writing in and sends them, with that app's name, to your Dictate Prompt model. With a cloud model, that text goes to its provider.\n\nPassword fields and password managers are never read. You can turn this off here at any time.")
+      }
 
-      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers.")
+      Text("When nothing is selected, sends the text of the field you are writing in, up to 3,000 characters before the cursor and 1,000 after, so the result fits what is already there. Never from password fields or password managers.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
-      screenRecordingStatusRow
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Front window picture:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        // The permission prompt lives behind the user's Allow, not `onChange`: `onChange` also
+        // fires when `data` is reloaded programmatically, which must never trigger a system
+        // prompt. Only flipping this toggle on and agreeing in the alert gets there.
+        Toggle("", isOn: Binding(
+          get: { viewModel.data.screenshotInPromptMode },
+          set: { newValue in
+            if newValue {
+              showWindowPictureConsent = true
+            } else {
+              viewModel.data.screenshotInPromptMode = false
+              Task { await viewModel.saveSettings() }
+            }
+          }
+        ))
+          .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Send picture of front window")
+
+        Spacer()
+      }
+      .alert("Send a picture of the front window?", isPresented: $showWindowPictureConsent) {
+        Button("Cancel", role: .cancel) {}
+        Button("Allow") {
+          Task {
+            do {
+              _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+              UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
+            } catch {
+              // The call itself is the request, including when macOS refuses it.
+              UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
+              DebugLogger.logWarning("SCREENSHOT SETTINGS: Screen recording permission not granted")
+            }
+          }
+          viewModel.data.screenshotInPromptMode = true
+          Task { await viewModel.saveSettings() }
+        }
+      } message: {
+        Text("When nothing is selected, Dictate Prompt can send a picture of the window you are writing in, never the whole screen, to your Dictate Prompt model. Everything visible in that window goes with it. With a cloud model, the picture goes to its provider.\n\nNever for password fields or password managers. You can turn this off here at any time.")
+      }
+
+      Text("When nothing is selected, sends a picture of the front window, never the whole screen, unless the text around the cursor already gives enough to go on. Never for password fields or password managers.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      if viewModel.data.screenshotInPromptMode {
+        screenRecordingStatusRow
+      }
       #endif
     }
     .onAppear(perform: refreshScreenRecordingStatus)

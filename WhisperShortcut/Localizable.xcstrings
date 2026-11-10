@@ -25111,26 +25111,6 @@
         }
       }
     },
-    "Front window as fallback" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorderes Fenster als Rückfall"
-          }
-        }
-      }
-    },
-    "Front window as fallback:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorderes Fenster als Rückfall:"
-          }
-        }
-      }
-    },
     "Gemma 4 26B A4B (Offline)" : {
       "localizations" : {
         "de" : {
@@ -25228,16 +25208,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen."
-          }
-        }
-      }
-    },
-    "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ist nichts markiert, liest Dictate Prompt das Textfeld, in dem Sie schreiben, damit das Ergebnis zum vorhandenen Text passt."
           }
         }
       }
@@ -26265,16 +26235,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Offline-Modus ist an, deshalb darf nichts diesen Mac verlassen. Die Anfrage an %@ wurde blockiert. Nutzen Sie ein Modell auf dem Gerät oder schalten Sie den Offline-Modus unter Einstellungen → Berechtigungen & Datenschutz aus."
-          }
-        }
-      }
-    },
-    "Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schickt ein Bild des vorderen Fensters mit, nie den ganzen Bildschirm, und nur wenn das Textfeld leer, kurz oder nicht lesbar ist. Nie in Passwortfeldern oder Passwort-Managern."
           }
         }
       }
@@ -27526,6 +27486,116 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn Sie in ein Feld diktieren, in dem schon Text steht, werden die Namen darin (etwa ein Kollege oder ein Produkt in einem Chatverlauf) als Schreibhinweise an OpenAI gesendet, damit sie genauso geschrieben zurückkommen. Es werden nur großgeschriebene Wörter gesendet, nie der ganze Text, und nichts aus Passwortfeldern. Das Transkript selbst bleibt Wort für Wort."
+          }
+        }
+      }
+    },
+    "Front window picture:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fensterbild:"
+          }
+        }
+      }
+    },
+    "Send picture of front window" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild des vorderen Fensters senden"
+          }
+        }
+      }
+    },
+    "Send text around the cursor" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text um den Cursor senden"
+          }
+        }
+      }
+    },
+    "Text around cursor:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text um den Cursor:"
+          }
+        }
+      }
+    },
+    "When nothing is selected, sends a picture of the front window, never the whole screen, unless the text around the cursor already gives enough to go on. Never for password fields or password managers." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, wird ein Bild des vorderen Fensters gesendet, nie der ganze Bildschirm, außer der Text um den Cursor reicht bereits aus. Nie bei Passwortfeldern oder Passwort-Managern."
+          }
+        }
+      }
+    },
+    "When nothing is selected, sends the text of the field you are writing in, up to 3,000 characters before the cursor and 1,000 after, so the result fits what is already there. Never from password fields or password managers." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, wird der Text des Felds gesendet, in dem Sie schreiben: bis zu 3.000 Zeichen vor dem Cursor und 1.000 danach, damit das Ergebnis zum vorhandenen Text passt. Nie aus Passwortfeldern oder Passwort-Managern."
+          }
+        }
+      }
+    },
+    "Your voice and any text you select are always sent to the model. Nothing else from your screen is, unless you switch it on here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Stimme und markierter Text gehen immer an das Modell. Sonst nichts von Ihrem Bildschirm, außer Sie schalten es hier ein."
+          }
+        }
+      }
+    },
+    "Send the text around the cursor?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text um den Cursor mitschicken?"
+          }
+        }
+      }
+    },
+    "Each time you use Dictate Prompt with nothing selected, it reads up to 4,000 characters around the cursor in the app you are writing in and sends them, with that app's name, to your Dictate Prompt model. With a cloud model, that text goes to its provider.\n\nPassword fields and password managers are never read. You can turn this off here at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, liest Dictate Prompt bei jeder Nutzung bis zu 4.000 Zeichen um den Cursor in der App, in der Sie schreiben, und schickt sie mit dem Namen der App an Ihr Dictate-Prompt-Modell. Bei einem Cloud-Modell geht der Text an dessen Anbieter.\n\nPasswortfelder und Passwort-Manager werden nie gelesen. Sie können das hier jederzeit wieder ausschalten."
+          }
+        }
+      }
+    },
+    "Send a picture of the front window?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild des vorderen Fensters mitschicken?"
+          }
+        }
+      }
+    },
+    "When nothing is selected, Dictate Prompt can send a picture of the window you are writing in, never the whole screen, to your Dictate Prompt model. Everything visible in that window goes with it. With a cloud model, the picture goes to its provider.\n\nNever for password fields or password managers. You can turn this off here at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, kann Dictate Prompt ein Bild des Fensters, in dem Sie schreiben, an Ihr Dictate-Prompt-Modell schicken, nie den ganzen Bildschirm. Alles, was in diesem Fenster sichtbar ist, geht mit. Bei einem Cloud-Modell geht das Bild an dessen Anbieter.\n\nNie bei Passwortfeldern oder Passwort-Managern. Sie können das hier jederzeit wieder ausschalten."
           }
         }
       }

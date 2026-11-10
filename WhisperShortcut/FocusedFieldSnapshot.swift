@@ -166,11 +166,19 @@ enum PromptScreenContextDecision {
     return true
   }
 
+  /// The field as the payload may see it: nil unless the user opted in to sending field text.
+  static func effectiveField(_ field: FocusedFieldSnapshot?, fieldTextEnabled: Bool) -> FocusedFieldSnapshot? {
+    fieldTextEnabled ? field : nil
+  }
+
   /// Context block for a compose turn whose field has text. Nil on a template turn (a template
   /// writes a fixed format from what was spoken; the field must not leak into it), an edit turn,
   /// with no field, or when the field is empty.
-  static func fieldBlock(_ field: FocusedFieldSnapshot?, isComposeTurn: Bool, isTemplate: Bool) -> String? {
-    guard !isTemplate, isComposeTurn, let field, field.totalCount > 0 else { return nil }
+  /// Also nil when the user has not opted in to sending field text (`fieldTextEnabled`).
+  static func fieldBlock(
+    _ field: FocusedFieldSnapshot?, isComposeTurn: Bool, isTemplate: Bool, fieldTextEnabled: Bool
+  ) -> String? {
+    guard fieldTextEnabled, !isTemplate, isComposeTurn, let field, field.totalCount > 0 else { return nil }
     let trimmed = field.appName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     let app = trimmed.isEmpty ? "unknown" : trimmed
     return "TEXT FIELD THE RESULT WILL BE INSERTED INTO (app: \(app)). Context only: match its language, tone and names, and continue or answer it. Do not repeat it. [CURSOR] marks where the result goes:\n\(field.textBeforeCaret)[CURSOR]\(field.textAfterCaret)"

@@ -8,12 +8,13 @@ final class MCPFeatureHintsTests: XCTestCase {
     autoPaste: Bool = true,
     accessibility: Bool = true,
     frontWindowFallback: Bool = true,
+    fieldTextContext: Bool = true,
     screenRecording: Bool = true,
     interactionsShared: Bool = true
   ) -> MCPFeatureState {
     MCPFeatureState(
       autoPaste: autoPaste, accessibility: accessibility, frontWindowFallback: frontWindowFallback,
-      screenRecording: screenRecording, interactionsShared: interactionsShared)
+      fieldTextContext: fieldTextContext, screenRecording: screenRecording, interactionsShared: interactionsShared)
   }
 
   private func assertOnly(
@@ -66,7 +67,7 @@ final class MCPFeatureHintsTests: XCTestCase {
       MCPFeatureHints.build(state(frontWindowFallback: false, screenRecording: false)),
       id: "dictate_prompt.screenshot_context", state: "off_permission_missing",
       howToEnable:
-        "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window as fallback in the Dictate Prompt settings.")
+        "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in the Dictate Prompt settings.")
   }
 
   func testFrontWindowOnWithoutScreenRecording() {
@@ -98,7 +99,7 @@ final class MCPFeatureHintsTests: XCTestCase {
     var environment = MCPTestEnv().tools().env
     environment.featureState = {
       MCPFeatureState(
-        autoPaste: false, accessibility: true, frontWindowFallback: true, screenRecording: true,
+        autoPaste: false, accessibility: true, frontWindowFallback: true, fieldTextContext: true, screenRecording: true,
         interactionsShared: true)
     }
     let result = MCPConfigTools(env: environment).call(

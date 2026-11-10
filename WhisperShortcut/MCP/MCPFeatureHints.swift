@@ -5,6 +5,7 @@ struct MCPFeatureState {
   var autoPaste: Bool
   var accessibility: Bool
   var frontWindowFallback: Bool
+  var fieldTextContext: Bool
   var screenRecording: Bool
   var interactionsShared: Bool
 }
@@ -53,7 +54,7 @@ enum MCPFeatureHints {
 
   private static func frontWindow(_ s: MCPFeatureState) -> [String: Any]? {
     let id = "dictate_prompt.screenshot_context"
-    let title = "Front window as fallback"
+    let title = "Front window picture"
     let benefit =
       "When the focused field is empty, short or unreadable, Dictate Prompt also sees a picture of the front window (never the whole screen), so it understands what the user is replying to or editing."
     if s.frontWindowFallback && s.screenRecording { return nil }
@@ -72,7 +73,7 @@ enum MCPFeatureHints {
     return hint(
       id: id, title: title, state: "off_permission_missing", benefit: benefit,
       howToEnable:
-        "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window as fallback in the Dictate Prompt settings.")
+        "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in the Dictate Prompt settings.")
   }
 
   private static func recentInteractions(_ s: MCPFeatureState) -> [String: Any]? {
