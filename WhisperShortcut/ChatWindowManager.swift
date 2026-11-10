@@ -37,12 +37,6 @@ class ChatWindowManager {
     }
   }
 
-  /// Shows the chat window and switches to the Meeting view (for live meeting).
-  func showAndSwitchToMeeting() {
-    show()
-    NotificationCenter.default.post(name: .chatSwitchToMeeting, object: nil)
-  }
-
   func close() {
     windowController?.window?.close()
   }

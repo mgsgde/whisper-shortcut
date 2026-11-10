@@ -76,15 +76,6 @@ class AudioMerger {
         DebugLogger.logSuccess("AUDIO-MERGER: Successfully merged \(sorted.count) chunks into \(mergedData.count) bytes total (estimated duration: \(String(format: "%.2f", estimatedDuration))s)")
         return mergedData
     }
-
-    /// Verify that audio data matches expected PCM format.
-    /// - Parameter data: The audio data to verify
-    /// - Returns: True if format matches expected format
-    static func verifyFormat(_ data: Data) -> Bool {
-        guard !data.isEmpty else { return false }
-        guard data.count % bytesPerSample == 0 else { return false }
-        return true
-    }
 }
 
 /// Errors that can occur during audio merging.

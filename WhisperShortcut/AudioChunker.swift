@@ -95,21 +95,6 @@ class AudioChunker {
         cleanup()
     }
 
-    /// Get the duration of an audio file.
-    /// - Parameter fileURL: URL of the audio file
-    /// - Returns: Duration in seconds
-    func getAudioDuration(_ fileURL: URL) async throws -> TimeInterval {
-        try await AudioDuration.avURLAssetSeconds(fileURL)
-    }
-
-    /// Determine if an audio file needs chunking.
-    /// - Parameter fileURL: URL of the audio file
-    /// - Returns: True if the audio should be chunked
-    func needsChunking(_ fileURL: URL) async throws -> Bool {
-        let duration = try await getAudioDuration(fileURL)
-        return duration > AppConstants.chunkingThresholdSeconds
-    }
-
     /// Split an audio file into overlapping chunks, streaming each chunk as soon as it
     /// finishes exporting. Pipelines with the caller's transcription stage: while we're
     /// exporting chunk N+1, the caller can already be uploading chunks 0..N.
