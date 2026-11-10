@@ -3791,15 +3791,30 @@ class MenuBarController: NSObject {
     #if !APP_STORE
     // The field as it is at shortcut press, before ⌘C moves the selection. Counts and the
     // bundle id only — the text itself is never logged.
-    Task.detached(priority: .userInitiated) {
-      let result = FocusedFieldSnapshot.readResult()
-      if let field = result.snapshot {
-        let bundleID = result.bundleID ?? "unknown"
-        DebugLogger.log("PROMPT-CONTEXT: field read (\(field.totalCount) chars, app=\(bundleID))")
-        selection.resolveField(field)
-      } else {
-        DebugLogger.log("PROMPT-CONTEXT: no readable field (\(result.reason))")
-        selection.resolveField(nil, allowsWindowImage: result.allowsWindowImage)
+    // Opt-in: field text and the window picture are both off by default. Read on the main actor.
+    let sendsField = DictationPreferences.promptSendsFocusedFieldTextEnabled
+    let sendsWindow = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
+      : SettingsDefaults.screenshotInPromptMode
+    if !sendsField && !sendsWindow {
+      DebugLogger.log("PROMPT-CONTEXT: field text and front window both off, field not read")
+      selection.resolveField(nil)
+    } else {
+      Task.detached(priority: .userInitiated) {
+        let result = FocusedFieldSnapshot.readResult()
+        if !sendsField {
+          // Read only for the password-field / password-manager check; the text is dropped here.
+          DebugLogger.log(
+            "PROMPT-CONTEXT: field text off, field read only for the password check (app=\(result.bundleID ?? "unknown"))")
+          selection.resolveField(nil, allowsWindowImage: result.allowsWindowImage)
+        } else if let field = result.snapshot {
+          let bundleID = result.bundleID ?? "unknown"
+          DebugLogger.log("PROMPT-CONTEXT: field read (\(field.totalCount) chars, app=\(bundleID))")
+          selection.resolveField(field)
+        } else {
+          DebugLogger.log("PROMPT-CONTEXT: no readable field (\(result.reason))")
+          selection.resolveField(nil, allowsWindowImage: result.allowsWindowImage)
+        }
       }
     }
     #endif

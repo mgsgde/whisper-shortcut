@@ -1326,9 +1326,13 @@ class SpeechService {
     // never for a password field.
     let frontmostExcluded = FocusedFieldSnapshot.frontmostIsExcluded
     let settingEnabled = screenshotInPromptModeEnabled()
+    // Field text is opt-in: with it off, the payload never sees the field, and the window
+    // decision treats the field as missing.
+    let fieldTextEnabled = promptSendsFocusedFieldTextEnabled()
+    let field = PromptScreenContextDecision.effectiveField(fieldContext, fieldTextEnabled: fieldTextEnabled)
     let wantsFieldImage = fieldAllowsWindowImage && PromptScreenContextDecision.wantsWindowImage(
       isComposeTurn: isComposeTurn,
-      field: fieldContext,
+      field: field,
       settingEnabled: settingEnabled,
       modelAcceptsImages: modelAcceptsImages,
       isTemplate: promptTurnKind.isTemplate)
@@ -1355,7 +1359,7 @@ class SpeechService {
       DebugLogger.log("\(logPrefix): Screenshot dropped — model does not accept image input.")
     }
 
-    let fieldLabel = fieldContext.map { String($0.totalCount) } ?? "none"
+    let fieldLabel = field.map { String($0.totalCount) } ?? "none"
     let reason = Self.promptContextReason(
       screenshotSelectionMode: screenshotSelectionMode,
       isTemplate: promptTurnKind.isTemplate,
@@ -1364,7 +1368,7 @@ class SpeechService {
       settingEnabled: settingEnabled,
       modelAcceptsImages: modelAcceptsImages,
       supportsScreenshot: supportsScreenshot,
-      fieldCount: fieldContext?.totalCount,
+      fieldCount: field?.totalCount,
       imageLabel: imageLabel,
       frontmostExcluded: frontmostExcluded)
     DebugLogger.log("\(logPrefix): PROMPT-CONTEXT: field=\(fieldLabel) image=\(imageLabel) reason=\(reason)")
@@ -1405,7 +1409,8 @@ class SpeechService {
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
         : "Front window of the app the user is writing in (context only, do not describe it):",
       fieldBlock: PromptScreenContextDecision.fieldBlock(
-        fieldContext, isComposeTurn: isComposeTurn, isTemplate: promptTurnKind.isTemplate),
+        field, isComposeTurn: isComposeTurn, isTemplate: promptTurnKind.isTemplate,
+        fieldTextEnabled: fieldTextEnabled),
       selectionBlock: selectionBlock,
       history: history,
       systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
@@ -4016,6 +4021,11 @@ class SpeechService {
   }
 
   // MARK: - Prompt Mode Helpers
+
+  /// Reads the "Text around cursor" opt-in (off by default).
+  private func promptSendsFocusedFieldTextEnabled() -> Bool {
+    DictationPreferences.promptSendsFocusedFieldTextEnabled
+  }
 
   /// Reads the "include screenshot in Dictate Prompt" toggle, falling back to the
   /// default when the user hasn't explicitly set it.

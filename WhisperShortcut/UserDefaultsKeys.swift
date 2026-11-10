@@ -111,6 +111,8 @@ enum UserDefaultsKeys {
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
+  /// Bool: Dictate Prompt sends the text around the cursor of the focused field to the model. Absent → off.
+  static let promptSendsFocusedFieldText = "promptSendsFocusedFieldText"
   /// When true, captured screenshots (the Screenshot shortcut and the in-chat button) are also written
   /// as PNG files into the user-selected folder, in addition to the clipboard.
   static let screenshotSaveEnabled = "screenshotSaveEnabled"
