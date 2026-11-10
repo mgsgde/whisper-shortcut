@@ -10,6 +10,7 @@ struct SpeechToPromptSettingsTab: View {
   @FocusState.Binding var focusedField: SettingsFocusField?
   /// Live Screen Recording status for the caption under Front window as fallback.
   @State private var screenRecordingStatus = PermissionStatusChecker.status(for: .screenRecording)
+  @State private var showFieldContextConsent = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -167,30 +168,44 @@ struct SpeechToPromptSettingsTab: View {
       SectionHeader(
         title: "Screen Context",
         systemImage: "menubar.dock.rectangle",
-        subtitle: "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there."
+        subtitle: "Dictate Prompt sends what you said and what you selected. The options below add more from your screen, and only once you turn them on."
       )
 
-      // Placeholder row (plumbing); the final copy and consent dialog replace it.
       HStack(alignment: .center, spacing: 16) {
-        Text("Read the text field:")
+        Text("Text around the cursor:")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
+        // Turning it on only asks; the setting changes when the user agrees in the alert.
+        // Turning it off takes effect at once.
         Toggle("", isOn: Binding(
           get: { viewModel.data.promptFieldContextEnabled },
           set: { newValue in
-            viewModel.data.promptFieldContextEnabled = newValue
-            Task { await viewModel.saveSettings() }
+            if newValue {
+              showFieldContextConsent = true
+            } else {
+              viewModel.data.promptFieldContextEnabled = false
+              Task { await viewModel.saveSettings() }
+            }
           }
         ))
           .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Read the text field")
+          .accessibilityLabel("Text around the cursor")
 
         Spacer()
       }
+      .alert("Send the text around the cursor?", isPresented: $showFieldContextConsent) {
+        Button("Cancel", role: .cancel) {}
+        Button("Allow") {
+          viewModel.data.promptFieldContextEnabled = true
+          Task { await viewModel.saveSettings() }
+        }
+      } message: {
+        Text("Each time you use Dictate Prompt, it reads up to 4,000 characters around the cursor in the app you are writing in, plus that app's name, and sends them to your Dictate Prompt model. With a cloud model, that text goes to its provider.\n\nPassword fields and password managers are never read. You can turn this off here at any time.")
+      }
 
-      Text("Off by default. When on, Dictate Prompt reads the text around the cursor in the app you are writing in and sends it to the model.")
+      Text("Off unless you agree. When on, the text already in the field you are writing in goes to the model, so the result fits it. Never password fields or password managers.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -231,7 +246,7 @@ struct SpeechToPromptSettingsTab: View {
         Spacer()
       }
 
-      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers.")
+      Text("Adds a picture of the front window, never the whole screen, when the text around the cursor is off, short or unreadable. Never in password fields or password managers.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
