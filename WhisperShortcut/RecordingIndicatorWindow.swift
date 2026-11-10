@@ -11,7 +11,9 @@
 //  and Read Aloud playback:
 //    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
 //                 speed button (cycles 0.75×…2×) — ⏸ becomes a spinner while the next chunk is
-//                 loading
+//                 loading. While Read Aloud plays the pill takes key focus (non-activating):
+//                 Space pause/resume, ←/→ 10 s, Esc stop; any other key or a click elsewhere
+//                 hands focus back.
 //  On success the pill hides immediately — the pasted/copied text itself is the
 //  feedback, and lingering UI would cover whatever the user is working on.
 //
@@ -918,9 +920,11 @@ struct RecordingIndicatorView: View {
 // MARK: - Window Plumbing
 
 /// Borderless, non-activating panel so button clicks never steal focus from the
-/// app the user is dictating into. It takes key status only while the user types a
+/// app the user is dictating into. It takes key status while the user types a
 /// Dictate Prompt instruction (while the quick-action list is up) — non-activating, so
-/// the target app stays frontmost.
+/// the target app stays frontmost. While Read Aloud plays the pill takes key focus
+/// (non-activating): Space pause/resume, ←/→ 10 s, Esc stop; any other key or a click
+/// elsewhere hands focus back.
 private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
   /// ⌃1–9 while the card has key focus. Returns true when the digit picked an entry.
@@ -933,11 +937,22 @@ private final class RecordingIndicatorPanel: NSPanel {
   var onReturn: (() -> Bool)?
   /// ⇥ while the card has key focus. Returns true when it switched the dictation template.
   var onTab: (() -> Bool)?
+  /// Read Aloud transport while the pill has key focus. Returns true when the key is consumed.
+  var onSpeakingKey: ((NSEvent) -> Bool)?
+  /// A click landed on the pill. The event is still delivered afterwards.
+  var onMouseDown: (() -> Void)?
   override var canBecomeKey: Bool { acceptsKeyInput }
   override var canBecomeMain: Bool { false }
 
   /// Caught here rather than in SwiftUI: the text field would otherwise take ⌃digit as input.
   override func sendEvent(_ event: NSEvent) {
+    // Read Aloud notices the click (to reclaim keys) but does not swallow it.
+    if event.type == .leftMouseDown {
+      onMouseDown?()
+    }
+    if event.type == .keyDown, onSpeakingKey?(event) == true {
+      return
+    }
     // Only the template picker takes a bare digit, and it shows no field, so nothing is lost.
     if event.type == .keyDown,
       event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
@@ -1044,6 +1059,9 @@ final class RecordingIndicatorManager {
   // MARK: Phase transitions
 
   func showRecording(label: String = String(localized: "Listening")) {
+    if model.phase == .speaking, !model.quickActionsVisible {
+      releaseKeyFocus()
+    }
     model.resetLevels()
     model.statusLabel = label
     model.phase = .recording
@@ -1056,6 +1074,9 @@ final class RecordingIndicatorManager {
   /// processing pill up directly. Otherwise it stays a no-op so pill-less flows
   /// (e.g. file-based processing) don't suddenly grow a pill.
   func showProcessing(summonIfNeeded: Bool = false, label: String = String(localized: "Transcribing")) {
+    if model.phase == .speaking, !model.quickActionsVisible {
+      releaseKeyFocus()
+    }
     model.statusLabel = label
     model.phase = .processing
     if isVisible, let panel {
@@ -1078,9 +1099,15 @@ final class RecordingIndicatorManager {
     }
     model.phase = .speaking
     if isVisible, let panel {
-      if phaseChanged { position(panel) }
+      if phaseChanged {
+        position(panel)
+        takeKeyFocusForSpeaking(panel)
+      }
     } else {
       orderFrontPanel()
+      if phaseChanged, let panel {
+        takeKeyFocusForSpeaking(panel)
+      }
     }
   }
 
@@ -1217,12 +1244,24 @@ final class RecordingIndicatorManager {
     model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// The app the user was in when the field took focus. Reactivated when the list goes,
-  /// so the result pastes there.
+  /// The app the user was in when the pill took key focus. Reactivated on release,
+  /// so the result pastes there and typing lands back in that app.
   private var keyFocusReturnApp: NSRunningApplication?
 
   private func takeKeyFocusIfListed(_ panel: RecordingIndicatorPanel) {
     guard model.quickActionsVisible, !panel.acceptsKeyInput else { return }
+    claimKeyFocus(panel)
+  }
+
+  /// Read Aloud transport: the pill takes keys only while it is the speaking pill, not the
+  /// Dictate Prompt card (that path owns focus through `takeKeyFocusIfListed`).
+  private func takeKeyFocusForSpeaking(_ panel: RecordingIndicatorPanel) {
+    guard model.phase == .speaking, !model.quickActionsVisible, !panel.acceptsKeyInput else { return }
+    claimKeyFocus(panel)
+    DebugLogger.log("READ-ALOUD-KEYS: Pill took key focus")
+  }
+
+  private func claimKeyFocus(_ panel: RecordingIndicatorPanel) {
     keyFocusReturnApp = NSWorkspace.shared.frontmostApplication
     panel.acceptsKeyInput = true
     panel.makeKey()
@@ -1401,6 +1440,45 @@ final class RecordingIndicatorManager {
           || !self.model.visibleTemplateChoices.isEmpty
       else { return false }
       self.toggleTemplate()
+      return true
+    }
+    panel.onMouseDown = { [weak self] in
+      guard let self, let panel = self.panel else { return }
+      self.takeKeyFocusForSpeaking(panel)
+    }
+    panel.onSpeakingKey = { [weak self] event in
+      guard let self, self.model.phase == .speaking,
+        !self.model.quickActionsVisible, self.panel?.acceptsKeyInput == true
+      else { return false }
+      let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+      // ⌘ shortcuts belong to the front app; leave the event for super.sendEvent.
+      if modifiers.contains(.command) { return false }
+      if modifiers.isEmpty {
+        switch event.keyCode {
+        case 49:
+          if event.isARepeat { return true }
+          DebugLogger.log("READ-ALOUD-KEYS: Space")
+          self.onTogglePause?()
+          return true
+        case 123:
+          if !event.isARepeat { DebugLogger.log("READ-ALOUD-KEYS: ←") }
+          self.onSkip?(-RecordingIndicatorView.skipInterval)
+          return true
+        case 124:
+          if !event.isARepeat { DebugLogger.log("READ-ALOUD-KEYS: →") }
+          self.onSkip?(RecordingIndicatorView.skipInterval)
+          return true
+        case 53:
+          if event.isARepeat { return true }
+          DebugLogger.log("READ-ALOUD-KEYS: Esc")
+          self.onCancel?()
+          return true
+        default:
+          break
+        }
+      }
+      self.releaseKeyFocus()
+      DebugLogger.log("READ-ALOUD-KEYS: Unhandled key, focus returned")
       return true
     }
     return panel
