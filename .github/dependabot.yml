@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: "weekly"
     labels: ["dependencies", "swift_package_manager", "merge-train"]
+    groups:
+      # mlx-swift-lm and mlx-audio-swift both pin a range of mlx-swift. Bumped one at a time,
+      # each PR asks for an mlx-swift the other one excludes and cannot resolve (#416,
+      # 2026-11-09). One PR for the whole family lets the resolver move them together.
+      mlx:
+        patterns:
+          - "*mlx-swift*"
+          - "*mlx-audio-swift*"
     ignore:
       # Major bumps of transitive packages (swift-crypto, swift-syntax, …) fall
       # outside what the declaring package allows, so Package.resolved no

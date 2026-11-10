@@ -154,6 +154,15 @@ words, quoted** — a paraphrase cannot be checked by the receiving agent. It is
 authorization for a release: an approval that arrives only through an agent is not an approval,
 and the receiving side lays it before Magnus and waits for his word in his own chat.
 
+**Open PRs merge themselves; mark the ones that must wait.** Since 2026-11-10 the merge train
+(`scripts/merge-train/`) merges every open, non-draft PR of the repo owner once CI is green and
+it has no conflict, with no label needed. A PR that waits on a manual test on a device gets the
+label `needs-device-test`; one that must not merge for another reason gets `hold` or stays a
+draft. Say which in the PR body. Every Monday `stale-prs.sh` mails Magnus every PR open longer
+than 3 days with its reason and closes those open 14 days (branch kept), so a PR nobody is
+finishing does not sit for weeks. Do not stack PRs on unmerged branches: the base merges, the
+stack does not follow.
+
 **Merging needs no go, releasing goes as one daily batch** (owner ruling 2026-10-01: „Merge nach
 main ohne mein Go, sobald die Tests grün sind. Release nur einmal am Tag als Sammelfreigabe."
 A month of sessions showed ~84 replies here that were only „push", „merge", „go"). The

@@ -5,16 +5,19 @@
 # sat open for a week; implementer and session PRs wait the same way. Ported from a sibling
 # project's merge train; see scripts/merge-train/README.md.
 #
-# What it does: takes open PRs against main that carry the `merge-train` label and merges at
-# most ONE per tick, once its CI is green and the branch is up to date with main. Serial on
-# purpose: the commit that gets merged is then exactly the commit CI tested.
+# What it does: takes open, non-draft PRs against main and merges at most ONE per tick, once
+# CI is green and the branch is up to date with main. Opt-out (skipped silently, never failed):
+# labels `merge-train-failed`, `hold`, `needs-device-test`; drafts; a branch starting with
+# `implementer/`; an author who is not the repo owner or Dependabot. The last two are included
+# when the PR carries `merge-train`. Serial on purpose: the commit that gets merged is then
+# exactly the commit CI tested.
 #
 # What it never does: tag, release, touch the parent repo's submodule pointer, or touch any
 # local checkout. Merging happens GitHub-side through gh, so no local git state matters.
 # Releases stay manual (scripts/create-release.sh).
 #
 #     train.sh [--dry-run]     read everything, decide, print what it would do, change nothing
-#     train.sh --add <pr>      put a PR on the train (adds the label)
+#     train.sh --add <pr>      add the `merge-train` label (explicit opt-in)
 #
 # Pause: touch $STATE/PAUSED  (state dir default ~/.local/state/whispershortcut-merge-train)
 set -uo pipefail
@@ -99,6 +102,10 @@ if [[ "$DRY" == "0" ]]; then
         --description "Merged to main by the merge train once CI is green" 2>/dev/null || true
     gh label create "$FAILED_LABEL" --repo "$REPO" --color B60205 \
         --description "The merge train gave up on this PR; see its comment" 2>/dev/null || true
+    gh label create "hold" --repo "$REPO" --color FBCA04 \
+        --description "Merge train: never merge this PR automatically" 2>/dev/null || true
+    gh label create "needs-device-test" --repo "$REPO" --color 1D76DB \
+        --description "Waits on a manual test on a device; the merge train skips it" 2>/dev/null || true
 fi
 
 fail() {  # pr reason
@@ -109,23 +116,41 @@ fail() {  # pr reason
     gh pr edit "$pr" --repo "$REPO" --add-label "$FAILED_LABEL" >/dev/null 2>&1 || true
     gh pr comment "$pr" --repo "$REPO" --body "The merge train stopped on this PR: ${reason}
 
-Fix it, then remove the \`${FAILED_LABEL}\` label to put it back on the train." >/dev/null 2>&1 || true
+Fix it, then remove the \`${FAILED_LABEL}\` label. The train picks the PR up again on its own unless it is opted out (\`hold\`, \`needs-device-test\`, a draft, an \`implementer/\` branch, or an author other than the repo owner or Dependabot — those last two need the \`${LABEL}\` label)." >/dev/null 2>&1 || true
     osascript -e "display notification \"#${pr} stopped: ${reason}\" with title \"Merge train\"" >/dev/null 2>&1 || true
 }
 
 # Candidates, one TSV line each: number, head sha, mergeable, ci (green|red|pending), detail.
-# Drafts and PRs already marked failed are dropped here. CI rule: any red entry is red; no
-# entries or any unfinished entry is pending; otherwise green.
-JSON="$(gh pr list --repo "$REPO" --state open --base main --label "$LABEL" --limit 100 \
+# Dropped silently: drafts; labels merge-train-failed, hold, needs-device-test; an
+# implementer/ branch or an author other than the repo owner or Dependabot, unless the PR
+# carries merge-train. CI rule: any red entry is red; no entries or any unfinished entry is
+# pending; otherwise green.
+JSON="$(gh pr list --repo "$REPO" --state open --base main --limit 100 \
     --json number,title,isDraft,headRefOid,headRefName,author,labels,mergeable,mergeStateStatus,statusCheckRollup,baseRefOid 2>/dev/null)" \
     || { warn "gh pr list failed — skipping."; exit 0; }
 
-ROWS="$(FAILED_LABEL="$FAILED_LABEL" python3 -c '
+ROWS="$(FAILED_LABEL="$FAILED_LABEL" LABEL="$LABEL" REPO_OWNER="${REPO%%/*}" python3 -c '
 import json, os, sys
 RED = {"FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "ERROR", "STARTUP_FAILURE"}
 OK = {"SUCCESS", "NEUTRAL", "SKIPPED"}
+FAILED = os.environ["FAILED_LABEL"]
+OPTIN = os.environ["LABEL"]
+OWNER = os.environ["REPO_OWNER"]
+OPT_OUT = {"hold", "needs-device-test"}
+DEPENDABOT = {"app/dependabot", "dependabot[bot]"}
+
+def trusted(author):
+    login = (author or {}).get("login") or ""
+    return login == OWNER or login in DEPENDABOT
+
 for pr in sorted(json.load(sys.stdin), key=lambda p: p["number"]):
-    if pr["isDraft"] or any(l["name"] == os.environ["FAILED_LABEL"] for l in pr["labels"]):
+    names = {l["name"] for l in pr["labels"]}
+    if pr["isDraft"] or FAILED in names or names & OPT_OUT:
+        continue
+    opted_in = OPTIN in names
+    if (pr.get("headRefName") or "").startswith("implementer/") and not opted_in:
+        continue
+    if not trusted(pr.get("author")) and not opted_in:
         continue
     reds, pending = [], False
     entries = pr.get("statusCheckRollup") or []
@@ -138,7 +163,10 @@ for pr in sorted(json.load(sys.stdin), key=lambda p: p["number"]):
         if val in RED: reds.append(name)
         elif val not in OK: pending = True
     ci = "red" if reds else ("pending" if (pending or not entries) else "green")
-    print("\t".join([str(pr["number"]), pr["headRefOid"], pr["mergeable"], ci, ", ".join(reds)]))
+    # mergeable is null until GitHub has computed it. Treat that as UNKNOWN so one such PR
+    # cannot abort the whole tick (the candidate set is every open PR now).
+    mergeable = pr.get("mergeable") or "UNKNOWN"
+    print("\t".join([str(pr["number"]), pr.get("headRefOid") or "", mergeable, ci, ", ".join(reds)]))
 ' <<<"$JSON")" || { warn "could not parse the PR list — skipping."; exit 0; }
 
 if [[ -z "$ROWS" ]]; then
