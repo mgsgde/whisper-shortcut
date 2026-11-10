@@ -490,6 +490,29 @@ struct MCPConfigToolsTests {
     #expect((o["tune_recipe"] as? String)?.contains("get_configuration") == true)
     #expect((o["system_prompt_texts"] as? [String: String])?["dictate_prompt"] == "Custom rule.")
     #expect(((o["command_texts"] as? [[String: Any]])?.first?["name"]) as? String == "a-cmd")
+    #expect(o["quick_prompts"] is [[String: Any]])
+  }
+
+  @Test("get_configuration shares quick-prompt usage only when recent dictations are shared")
+  func configurationQuickPrompts() {
+    let deniedMessage =
+      "Turn on Save usage data and Let AI apps read my recent dictations to see how often each quick prompt is used."
+    let description = MCPTestEnv().tools().toolDefinitions(access: .read)
+      .first { $0["name"] as? String == "get_configuration" }?["description"] as? String
+    #expect(description?.contains("quick prompts with how often each was used in 30 days") == true)
+
+    let shared = obj(MCPTestEnv().tools().call(name: "get_configuration", arguments: [:], access: .read))
+    #expect(shared["quick_prompts"] is [[String: Any]])
+
+    let loggingOff = MCPTestEnv()
+    loggingOff.logging = false
+    let noLog = obj(loggingOff.tools().call(name: "get_configuration", arguments: [:], access: .read))
+    #expect(noLog["quick_prompts"] as? String == deniedMessage)
+
+    let sharingOff = MCPTestEnv()
+    sharingOff.sharing = false
+    let noShare = obj(sharingOff.tools().call(name: "get_configuration", arguments: [:], access: .read))
+    #expect(noShare["quick_prompts"] as? String == deniedMessage)
   }
 
   @Test("No token leaks through any read output")

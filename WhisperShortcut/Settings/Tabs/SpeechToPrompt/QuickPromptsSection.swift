@@ -17,7 +17,7 @@ struct QuickPromptsSection: View {
       SectionHeader(
         title: "Quick Prompts",
         systemImage: "bolt",
-        subtitle: "Listed above the recording pill while you dictate a prompt. Click one or press ⌃1–9 instead of speaking."
+        subtitle: "The three you use most appear above the recording pill while you dictate a prompt. Click one or press ⌃1–3 instead of speaking."
       )
 
       VStack(alignment: .leading, spacing: 8) {

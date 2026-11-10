@@ -2,9 +2,10 @@
 //  QuickActionStore.swift
 //  WhisperShortcut
 //
-//  Dictate Prompt quick actions for ⌘2: the user's own prompts, then ones learned from
-//  the interaction log. The log is read off the main thread and cached; the ⌘2 path
-//  only touches the cache and UserDefaults.
+//  Dictate Prompt quick actions for ⌘2: the three most-used prompts from the last 30
+//  days. Own prompts and learned ones are ranked together, and own prompts win ties.
+//  The log is read off the main thread and cached; the ⌘2 path only touches the cache
+//  and UserDefaults.
 //
 
 import Foundation
@@ -89,8 +90,9 @@ struct QuickAction: Equatable, Identifiable {
 
 /// Dictate Prompt quick actions for ⌘2.
 ///
-/// The user's own prompts come first (Settings → Dictate Prompt), then ones learned
-/// from the last 30 days of interaction logs. Built-in defaults fill the list only when
+/// The card shows the three most-used prompts from the last 30 days. Own prompts and
+/// ones learned from the interaction log are ranked together; when the number of uses
+/// ties, own prompts win and keep their order. Built-in defaults fill the list only when
 /// the user has none of their own: when logging is off, Offline Mode is on, or fewer
 /// than three learned instructions clear the bar.
 final class QuickActionStore {
@@ -99,9 +101,9 @@ final class QuickActionStore {
 
   static let lookbackDays = 30
   static let maxEntries = 5
-  /// ⌃1–9 picks an entry, so the card never shows more than this many.
+  /// Own prompts kept in Settings. The ⌘2 card shows the `cardEntries` most-used of them.
   static let maxCustomEntries = 9
-  /// How many entries the ⌘2 card shows above the text field.
+  /// How many of the most-used prompts the ⌘2 card shows above the text field. Own prompts win ties.
   static let cardEntries = 3
   static let minimumCount = 2
   static let maxKeyLength = 60
@@ -123,10 +125,13 @@ final class QuickActionStore {
   /// Learned entries only, no built-in defaults. Combined with the user's prompts in `current()`.
   private var cachedLearned: [QuickAction]
   private var cachedForceFallback: Bool
+  /// Normalized key → uses in the last `lookbackDays`. Every key, including a single use.
+  private var cachedCounts: [String: Int]
 
   private init() {
     cachedLearned = []
     cachedForceFallback = false
+    cachedCounts = [:]
   }
 
   /// Cache and UserDefaults only. Safe on the ⌘2 path — never reads the log.
@@ -137,7 +142,8 @@ final class QuickActionStore {
       custom: Self.storedCustomTexts(),
       learned: cachedLearned,
       forceFallback: cachedForceFallback,
-      includeLearned: Self.learnedEnabled)
+      includeLearned: Self.learnedEnabled,
+      counts: cachedCounts)
   }
 
   /// What the ⌘2 card lists, and which entry it opens on. Cache and UserDefaults only.
@@ -147,9 +153,9 @@ final class QuickActionStore {
       preselect: Self.preselectsRecent)
   }
 
-  /// With prompts of the user's own, the card lists `ranked` (theirs, then learned ones) in its
-  /// fixed order, so ⌃n always runs the same prompt; it shows `cardEntries` rows and scrolls to
-  /// the rest. The last one run is highlighted where it stands instead of moving to the top.
+  /// With prompts of the user's own, the card lists the three most-used prompts in `ranked`
+  /// (own prompts win ties) and shows `cardEntries` rows. The last one run is highlighted
+  /// where it stands when that prompt is still on the card.
   /// Without, it lists the last instructions run first (`cardList`) and highlights the first.
   static func card(
     custom: [String], recent: [String], ranked: [QuickAction], preselect: Bool
@@ -158,9 +164,10 @@ final class QuickActionStore {
       let list = cardList(recent: recent, ranked: ranked)
       return (list, preselect && !list.isEmpty ? 0 : nil)
     }
-    guard preselect, let last = recent.first else { return (ranked, nil) }
+    let list = Array(ranked.prefix(cardEntries))
+    guard preselect, let last = recent.first else { return (list, nil) }
     let key = normalizeKey(last.trimmingCharacters(in: .whitespacesAndNewlines))
-    return (ranked, ranked.firstIndex { $0.key == key })
+    return (list, list.firstIndex { $0.key == key })
   }
 
   /// Recent texts first (an entry that also ranks keeps its flags, so a built-in default stays
@@ -220,9 +227,11 @@ final class QuickActionStore {
     let instructions = Self.promptInstructions(lastDays: Self.lookbackDays)
     let forceFallback = !ContextLoggingPreference.isEnabled || OfflineMode.isEnabled
     let learned = Self.rankLearned(from: instructions)
+    let counts = Self.usageCounts(from: instructions)
     cacheLock.lock()
     cachedLearned = learned
     cachedForceFallback = forceFallback
+    cachedCounts = counts
     cacheLock.unlock()
     DebugLogger.log(
       "QUICK-ACTIONS: Cached \(learned.count) entries from \(instructions.count) prompt logs")
@@ -256,29 +265,86 @@ final class QuickActionStore {
     return padding(learned)
   }
 
-  /// Own prompts first (trimmed, blanks and duplicate keys dropped, capped at
-  /// `maxCustomEntries`), then learned entries whose key is not already present.
+  /// With own prompts, the three most-used of the last 30 days (`cardEntries`). Own prompts
+  /// and learned entries are ranked together by `counts` (a missing key counts as 0). Ties
+  /// keep candidate order, so own prompts win ties and keep their order. A learned entry
+  /// whose kind matches an entry already taken is left out (`.other` is not compared).
+  /// Own prompts are capped at `maxCustomEntries` before ranking; learning off returns
+  /// them in their own order, still capped at `cardEntries`.
   /// With no own prompts, learning on returns the same list as `ranked`; learning off
   /// returns nothing. Built-in defaults are never appended once the user has prompts
   /// of their own.
   static func combined(
-    custom: [String], learned: [QuickAction], forceFallback: Bool, includeLearned: Bool
+    custom: [String], learned: [QuickAction], forceFallback: Bool, includeLearned: Bool,
+    counts: [String: Int] = [:]
   ) -> [QuickAction] {
     let own = customActions(from: custom)
     if own.isEmpty {
       guard includeLearned else { return [] }
       return applyingFallback(to: learned, forceFallback: forceFallback)
     }
-    guard includeLearned else { return own }
-    var result = own
-    var seen = Set(own.map(\.key))
-    for action in learned {
-      if result.count >= maxCustomEntries { break }
-      if seen.contains(action.key) { continue }
-      seen.insert(action.key)
+    guard includeLearned else { return Array(own.prefix(cardEntries)) }
+
+    let ownKeys = Set(own.map(\.key))
+    var candidates = own
+    for action in learned where !ownKeys.contains(action.key) {
+      candidates.append(action)
+    }
+    let ranked = candidates.enumerated().sorted { lhs, rhs in
+      let left = counts[lhs.element.key] ?? 0
+      let right = counts[rhs.element.key] ?? 0
+      if left != right { return left > right }
+      return lhs.offset < rhs.offset
+    }.map(\.element)
+
+    var result: [QuickAction] = []
+    var takenKinds = Set<QuickActionKind>()
+    for action in ranked {
+      if result.count >= cardEntries { break }
+      let isOwn = ownKeys.contains(action.key)
+      if !isOwn, action.kind != .other, takenKinds.contains(action.kind) { continue }
       result.append(action)
+      if action.kind != .other { takenKinds.insert(action.kind) }
     }
     return result
+  }
+
+  /// One row per own prompt and per cached learned entry, most used first. `on_card` is
+  /// whether that key is in `current()`. `current()` runs before the lock: NSLock does not re-enter.
+  func usageSummary() -> [[String: Any]] {
+    let onCard = Set(current().map(\.key))
+    cacheLock.lock()
+    let learned = cachedLearned
+    let counts = cachedCounts
+    cacheLock.unlock()
+
+    struct Row {
+      let text: String
+      let uses: Int
+      let own: Bool
+      let onCard: Bool
+      let index: Int
+    }
+    var rows: [Row] = []
+    var seen = Set<String>()
+    func append(_ action: QuickAction, own: Bool) {
+      if seen.contains(action.key) { return }
+      seen.insert(action.key)
+      rows.append(Row(
+        text: action.text, uses: counts[action.key] ?? 0, own: own,
+        onCard: onCard.contains(action.key), index: rows.count))
+    }
+    for action in Self.customActions(from: Self.storedCustomTexts()) { append(action, own: true) }
+    for action in learned { append(action, own: false) }
+    rows.sort { lhs, rhs in
+      if lhs.uses != rhs.uses { return lhs.uses > rhs.uses }
+      return lhs.index < rhs.index
+    }
+    return rows.map { row in
+      [
+        "text": row.text, "uses_30d": row.uses, "own": row.own, "on_card": row.onCard,
+      ] as [String: Any]
+    }
   }
 
   /// Trimmed custom prompts in order. Blanks, empty keys, and later duplicate keys are
@@ -299,6 +365,19 @@ final class QuickActionStore {
   }
 
   // MARK: - Ranking
+
+  /// Uses per normalized key. Every key counts, including a single use. Empty keys and the
+  /// voice-instruction placeholder are skipped.
+  static func usageCounts(from instructions: [String]) -> [String: Int] {
+    let placeholder = normalizeKey(SpeechService.voiceInstructionPlaceholder)
+    var counts: [String: Int] = [:]
+    for raw in instructions {
+      let key = normalizeKey(raw)
+      if key.isEmpty || key == placeholder { continue }
+      counts[key, default: 0] += 1
+    }
+    return counts
+  }
 
   /// Groups prompt instructions and drops same-kind single-word duplicates across
   /// languages. No built-in defaults; `ranked` adds those.

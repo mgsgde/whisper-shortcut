@@ -296,9 +296,7 @@ private enum QuickActionCardMetrics {
   static let dividerSpacing: CGFloat = 4
   static let cornerRadius: CGFloat = 16
 
-  /// The "8 prompts · ⌃1–⌃8 · ↑↓" line under a list longer than `visibleActions`.
-  static let moreHintHeight: CGFloat = 16
-  /// Quick action rows shown at once; the rest scroll inside the same height.
+  /// Quick action rows the card shows; the store caps its list at the same number.
   static let visibleActions = QuickActionStore.cardEntries
 
   static let typeFieldPlaceholder: LocalizedStringKey = "Type an instruction, or just speak"
@@ -312,11 +310,9 @@ private enum QuickActionCardMetrics {
       + (rows > 0 ? divider : 0) + footerHeight
   }
 
-  /// The card for `count` quick actions: at most `visibleActions` rows, plus the hint line when
-  /// more are reachable by scrolling or ⌃digit.
+  /// The card for `count` quick actions: at most `visibleActions` rows.
   static func height(quickActionCount count: Int) -> CGFloat {
     height(count: min(count, visibleActions))
-      + (count > visibleActions ? moreHintHeight : 0)
   }
 }
 
@@ -561,51 +557,14 @@ private struct QuickActionCardView: View {
 
   // MARK: Rows
 
-  private var hiddenActionCount: Int {
-    max(0, actions.count - QuickActionCardMetrics.visibleActions)
-  }
-
-  /// Up to `visibleActions` rows; the rest scroll, and the highlighted entry stays in view.
+  /// At most `visibleActions` rows, all in view: the store never lists more, so nothing scrolls.
   private var actionList: some View {
-    let rows = min(actions.count, QuickActionCardMetrics.visibleActions)
-    return VStack(spacing: 0) {
-      ScrollViewReader { proxy in
-        ScrollView(.vertical, showsIndicators: hiddenActionCount > 0) {
-          VStack(spacing: 0) {
-            ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
-              actionRow(index: index, action: action)
-                .id(index)
-            }
-          }
-        }
-        .scrollDisabled(hiddenActionCount == 0)
-        .frame(height: CGFloat(rows) * QuickActionCardMetrics.rowHeight)
-        .onAppear {
-          if let selectedIndex { proxy.scrollTo(selectedIndex) }
-        }
-        .onChange(of: selectedIndex) { _, index in
-          guard let index else { return }
-          withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(index) }
-        }
+    VStack(spacing: 0) {
+      ForEach(Array(actions.prefix(QuickActionCardMetrics.visibleActions).enumerated()), id: \.element.id) {
+        index, action in
+        actionRow(index: index, action: action)
       }
-      if hiddenActionCount > 0 { moreHint }
     }
-  }
-
-  /// "8 prompts · ⌃1–⌃8 · ↑↓": true at any scroll position, and says how to reach the rest
-  /// without looking.
-  private var moreHint: some View {
-    let last = min(actions.count, 9)
-    return HStack(spacing: 0) {
-      Spacer(minLength: 0)
-      Text("\(actions.count) prompts \u{00B7} \u{2303}1\u{2013}\u{2303}\(last) \u{00B7} \u{2191}\u{2193}")
-        .font(.system(size: 10, weight: .medium).monospacedDigit())
-        .foregroundColor(.white.opacity(0.4))
-        .lineLimit(1)
-    }
-    .padding(.horizontal, 8)
-    .frame(height: QuickActionCardMetrics.moreHintHeight)
-    .accessibilityLabel(String(localized: "\(actions.count) quick prompts, Control-1 to Control-\(last)"))
   }
 
   /// Editing actions mean little without text to edit; they stay clickable but step back.
