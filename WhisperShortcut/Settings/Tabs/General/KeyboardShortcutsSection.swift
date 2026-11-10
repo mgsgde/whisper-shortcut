@@ -40,6 +40,7 @@ struct KeyboardShortcutsSection: View {
       // Selection-based shortcuts copy via ⌘C (Accessibility) — not in the App Store build.
       if ShortcutAction.readAloud.isInThisBuild {
         row("Read Aloud:", $viewModel.data.readAloud, .readAloudShortcut)
+        row("Read Aloud Prompt:", $viewModel.data.readAloudPrompt, .readAloudPromptShortcut)
       }
 
       // Glossary is not a `ShortcutAction` (see that enum). Same App Store exclusion as Read Aloud.

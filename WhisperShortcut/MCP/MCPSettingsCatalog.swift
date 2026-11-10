@@ -54,6 +54,7 @@ enum ShortcutValidation {
       ("Toggle Dictation", config.startRecording), ("Toggle Dictate Prompt", config.startPrompting),
       ("Open Settings", config.openSettings), ("Open Chat", config.openChat),
       ("Screenshot", config.screenshotCapture), ("Read Aloud", config.readAloud),
+      ("Read Aloud Prompt", config.readAloudPrompt),
       ("Add to Glossary", config.addToGlossary),
       ("Dictate Live", config.liveDictate),
     ]
@@ -271,6 +272,7 @@ enum MCPSettingsCatalog {
     case "Toggle Dictate Prompt shortcut": return String(localized: "Toggle Dictate Prompt shortcut")
     case "Screenshot shortcut": return String(localized: "Screenshot shortcut")
     case "Read Aloud shortcut": return String(localized: "Read Aloud shortcut")
+    case "Read Aloud Prompt shortcut": return String(localized: "Read Aloud Prompt shortcut")
     case "Add to Glossary shortcut": return String(localized: "Add to Glossary shortcut")
     case "Dictate Live shortcut": return String(localized: "Dictate Live shortcut")
     case "Open Chat shortcut": return String(localized: "Open Chat shortcut")
@@ -388,6 +390,7 @@ enum MCPSettingsCatalog {
     "shortcuts.dictate_prompt": "Toggle Dictate Prompt",
     "shortcuts.screenshot": "Screenshot",
     "shortcuts.read_aloud": "Read Aloud",
+    "shortcuts.read_aloud_prompt": "Read Aloud Prompt",
     "shortcuts.add_to_glossary": "Add to Glossary",
     "shortcuts.open_chat": "Open Chat",
     "shortcuts.open_settings": "Open Settings",
@@ -1050,6 +1053,9 @@ enum MCPSettingsCatalog {
     settings.append(shortcutSetting(
       id: "shortcuts.read_aloud", title: "Read Aloud shortcut", slot: "Read Aloud",
       keyPath: \.readAloud, unavailableReason: directDownloadOnly))
+    settings.append(shortcutSetting(
+      id: "shortcuts.read_aloud_prompt", title: "Read Aloud Prompt shortcut", slot: "Read Aloud Prompt",
+      keyPath: \.readAloudPrompt, unavailableReason: directDownloadOnly))
     settings.append(shortcutSetting(
       id: "shortcuts.add_to_glossary", title: "Add to Glossary shortcut", slot: "Add to Glossary",
       keyPath: \.addToGlossary, unavailableReason: directDownloadOnly))

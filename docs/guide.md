@@ -50,6 +50,7 @@ Default menu bar shortcuts (all configurable in Settings → General):
 | Template | not set (Settings → Templates) |
 | Screenshot | ⌃⌥3 |
 | Read Aloud | ⌃⌥4 |
+| Read Aloud Prompt | ⌃⌥⇧4 |
 | Chat | ⌥Space |
 | Settings | ⌃⌥0 |
 
@@ -122,6 +123,14 @@ Screen context: with nothing selected, Dictate Prompt reads the focused text fie
 4. A player pill at the bottom of the screen lets you stop (✕), pause / resume, skip ±10 s, drag the progress bar to any position, or change the speed while it reads.
 
 Use Settings → Read Aloud to pick the TTS provider (including the on-device Qwen3 voices, which you download there), voice, Smart Rewrite, and playback speed. Chat replies can also be read aloud from the message actions.
+
+### Read Aloud Prompt
+
+1. Select text in any app.
+2. Press the Read Aloud Prompt shortcut (⌃⌥⇧4) and say what you want to hear: "summarize this in two sentences", "only the to-dos", "read it in English", "explain this code".
+3. Press the shortcut again. Your instruction runs like a Dictate Prompt, with the same model, and the answer is read aloud in the Read Aloud player instead of being pasted. Your clipboard stays as it was.
+
+With nothing selected, it answers your question out loud. Pressing the shortcut while it reads stops playback. It is not available during a live meeting or in the App Store build.
 
 ### Screenshot
 

@@ -15934,6 +15934,37 @@
         }
       }
     },
+    "Read Aloud Prompt" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen mit Anweisung"
+          }
+        }
+      }
+    },
+    "Read Aloud Prompt shortcut" : {
+      "comment" : "MCP proposal review: setting title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Vorlesen mit Anweisung"
+          }
+        }
+      }
+    },
+    "Read Aloud Prompt:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen mit Anweisung:"
+          }
+        }
+      }
+    },
     "Read an email" : {
       "localizations" : {
         "de" : {

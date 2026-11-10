@@ -97,6 +97,9 @@ class SpeechService {
   /// the text, so that path stays off even when the model would otherwise use a screenshot.
   /// Set per turn in `performPrompt`, same as `promptIsEditQuickAction`.
   private var promptUsesScreenshotSelection = false
+  /// Read Aloud Prompt: this turn's reply is spoken, not pasted. Set at the start of every
+  /// `performPrompt`, so a later Dictate Prompt turn does not inherit it.
+  private var promptOutputIsSpoken = false
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -803,7 +806,8 @@ class SpeechService {
     recordingWasSilent: Bool = false,
     selectionIsFromService: Bool = false,
     fieldContext: FocusedFieldSnapshot? = nil,
-    fieldAllowsWindowImage: Bool = true
+    fieldAllowsWindowImage: Bool = true,
+    outputIsSpoken: Bool = false
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
@@ -814,7 +818,8 @@ class SpeechService {
         recordingWasSilent: recordingWasSilent,
         selectionIsFromService: selectionIsFromService,
         fieldContext: fieldContext,
-        fieldAllowsWindowImage: fieldAllowsWindowImage)
+        fieldAllowsWindowImage: fieldAllowsWindowImage,
+        outputIsSpoken: outputIsSpoken)
     }
 
     currentPromptTask = task
@@ -906,6 +911,13 @@ class SpeechService {
     return .edit
   }
 
+  /// Appends the spoken-output rule when the reply will be read aloud. Pure, so the order
+  /// (rule last, and only when spoken) can be tested without a recording.
+  static func spokenOutputSystemPrompt(_ base: String, outputIsSpoken: Bool) -> String {
+    guard outputIsSpoken else { return base }
+    return base + AppConstants.readAloudPromptSpokenOutputRule
+  }
+
   /// Template system prompt: the template instructions and the output rule. No stored prompt,
   /// no writing-style block, no memory style block.
   static func templateTurnSystemPrompt(instructions: String) -> String {
@@ -954,8 +966,11 @@ class SpeechService {
 
   /// Whether this turn is appended to Dictate Prompt history. A template turn never is.
   /// Offline Mode still records nothing; a compose turn still records, as it does today.
-  static func recordsPromptHistory(turnKind: PromptTurnKind, offlineMode: Bool) -> Bool {
-    if turnKind.isTemplate { return false }
+  /// A spoken Read Aloud Prompt turn is not a paste, so it is not history for the next edit.
+  static func recordsPromptHistory(
+    turnKind: PromptTurnKind, offlineMode: Bool, outputIsSpoken: Bool = false
+  ) -> Bool {
+    if outputIsSpoken || turnKind.isTemplate { return false }
     return !offlineMode
   }
 
@@ -1027,12 +1042,14 @@ class SpeechService {
     recordingWasSilent: Bool = false,
     selectionIsFromService: Bool = false,
     fieldContext: FocusedFieldSnapshot? = nil,
-    fieldAllowsWindowImage: Bool = true
+    fieldAllowsWindowImage: Bool = true,
+    outputIsSpoken: Bool = false
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
     lastPromptReplyTruncated = false
     promptTurnKind = .compose
+    promptOutputIsSpoken = outputIsSpoken
     promptRecordingWasSilent = recordingWasSilent
     promptIsEditQuickAction = false
     // Which model runs decides where the selection comes from, so it has to be known first: a
@@ -1414,13 +1431,21 @@ class SpeechService {
   private func systemPrompt(
     logPrefix: String, clipboardContext: String?, usesScreenshotSelection: Bool
   ) -> String {
+    let base: String
     if case .template(let turn) = promptTurnKind {
-      return Self.templateTurnSystemPrompt(instructions: turn.instructions)
+      base = Self.templateTurnSystemPrompt(instructions: turn.instructions)
+    } else {
+      // A spoken turn is not a writing sample and must not pull the paste-oriented style block
+      // in ahead of the spoken-output rule.
+      let styleBlock = promptOutputIsSpoken
+        ? ""
+        : writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock()
+      base = Self.buildDictatePromptSystemPrompt(
+        logPrefix: logPrefix, usesScreenshotSelection: usesScreenshotSelection,
+        styleBlock: styleBlock,
+        template: nil)
     }
-    return Self.buildDictatePromptSystemPrompt(
-      logPrefix: logPrefix, usesScreenshotSelection: usesScreenshotSelection,
-      styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock(),
-      template: nil)
+    return Self.spokenOutputSystemPrompt(base, outputIsSpoken: promptOutputIsSpoken)
   }
 
   /// Earlier Dictate Prompt turns to send with this one. None on a template turn. None on a
@@ -1676,7 +1701,9 @@ class SpeechService {
     // Offline Mode never replays earlier turns (see the history guard above), so recording them
     // would only keep a patient's selection and reply in memory for no purpose. A template turn
     // is not recorded either: its history would be another patient's note in the same format.
-    if Self.recordsPromptHistory(turnKind: promptTurnKind, offlineMode: OfflineMode.isEnabled) {
+    if Self.recordsPromptHistory(
+      turnKind: promptTurnKind, offlineMode: OfflineMode.isEnabled, outputIsSpoken: promptOutputIsSpoken)
+    {
       PromptConversationHistory.shared.append(
         mode: mode,
         selectedText: clipboardContext,
