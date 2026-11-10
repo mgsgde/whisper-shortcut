@@ -132,7 +132,7 @@ struct MCPConfigTools {
     [
       "name": "get_configuration",
       "description":
-        "Overview of how WhisperShortcut is configured: version, models, shortcuts, which system prompt sections are customized, writing style, commands, the access level AI apps have, and the recipe for tuning WhisperShortcut to the user. Call this first when the user wants WhisperShortcut improved.",
+        "Overview of how WhisperShortcut is configured: version, models, shortcuts, which system prompt sections are customized, writing style, commands, quick prompts with how often each was used in 30 days, the access level AI apps have, and the recipe for tuning WhisperShortcut to the user. Call this first when the user wants WhisperShortcut improved.",
       "inputSchema": [
         "type": "object",
         "properties": [
@@ -395,6 +395,9 @@ struct MCPConfigTools {
       ] as [String: Any],
       "tune_recipe": MCPTuneRecipe.text(focus: nil),
       "not_yet_enabled": MCPFeatureHints.build(env.featureState()),
+      "quick_prompts": (env.contextLoggingEnabled() && env.shareRecentInteractions())
+        ? QuickActionStore.shared.usageSummary() as Any
+        : "Turn on Save usage data and Let AI apps read my recent dictations to see how often each quick prompt is used." as Any,
     ]
     if include.contains("system_prompts") {
       var texts: [String: String] = [:]
