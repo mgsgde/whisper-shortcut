@@ -567,6 +567,36 @@ class SpeechService {
     }
   }
 
+  /// Cloud dictation and streaming chunks only. No speech throws `noSpeechDetected`.
+  /// A long quiet head or tail comes back as a temp WAV the caller deletes. Meetings,
+  /// live-meeting chunks and prompt history are unchanged. A gate that is off or not
+  /// loaded yet returns the original URL.
+  private func cloudAudioApplyingSpeechGate(_ audioURL: URL) async throws -> URL {
+    guard Self.speechActivityGateApplies(to: NoSpeechContext.current?.origin) else {
+      return audioURL
+    }
+    switch await SpeechActivityGate.shared.decide(for: audioURL) {
+    case .noSpeech:
+      DebugLogger.logSpeech("SPEECH-GATE: no speech, skipping cloud transcription")
+      throw TranscriptionError.noSpeechDetected
+    case .trim(let start, let end):
+      return try SpeechActivityGate.writeTrimmedCopy(of: audioURL, start: start, end: end)
+    case .keep, nil:
+      return audioURL
+    }
+  }
+
+  /// nil origin is the unattributed shared helper used by dictation. Meeting and history
+  /// origins keep the previous upload behavior.
+  private static func speechActivityGateApplies(to origin: NoSpeechOrigin?) -> Bool {
+    switch origin {
+    case nil, .dictation, .streamingChunk:
+      return true
+    case .meetingSegment, .liveMeetingChunk, .promptHistory:
+      return false
+    }
+  }
+
   // MARK: - Transcription Mode (Private Implementation)
   private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true, punctuationMode: PunctuationMode = .automatic) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
@@ -680,11 +710,21 @@ class SpeechService {
       return result
     }
 
+    // Cloud models only. The offline branches above returned already. `uploadURL` is the
+    // original file, or a trimmed copy when the speech gate cut a long quiet head or tail.
+    let uploadURL = try await cloudAudioApplyingSpeechGate(audioURL)
+    let trimmedCopy = uploadURL.path == audioURL.path ? nil : uploadURL
+    defer {
+      if let trimmedCopy {
+        try? FileManager.default.removeItem(at: trimmedCopy)
+      }
+    }
+
     // Check if using Gemini model
     if model.isGemini {
       // For Gemini, validate format but not size (Gemini supports up to 9.5 hours)
-      try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithGemini(audioURL: audioURL, model: model, promptOverride: promptOverride, reportsProgress: reportsProgress)
+      try validateAudioFileFormat(at: uploadURL)
+      let result = try await transcribeWithGemini(audioURL: uploadURL, model: model, promptOverride: promptOverride, reportsProgress: reportsProgress)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [\(model.displayName)] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -692,14 +732,14 @@ class SpeechService {
 
     // OpenAI cloud transcription (gpt-transcribe / gpt-4o-transcribe / gpt-4o-mini-transcribe)
     if model.isOpenAI, let openAIModelID = model.openAIAPIModelID {
-      try validateAudioFileFormat(at: audioURL)
+      try validateAudioFileFormat(at: uploadURL)
       // gpt-4o-transcribe family accepts a full GPT-4o-style instruction via the `prompt`
       // multipart field — pass the user's dictation prompt so OpenAI behaves like Gemini.
       // `gpt-transcribe` ignores instructions and is fed keywords instead; the shared multipart
       // helper drops this hint for it.
       let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
       let result = try await transcribeWithOpenAI(
-        audioURL: audioURL,
+        audioURL: uploadURL,
         modelID: openAIModelID,
         dictationHint: dictationHint.isEmpty ? nil : dictationHint
       )
@@ -710,10 +750,10 @@ class SpeechService {
 
     // xAI Grok hosted transcription (/v1/stt)
     if model.isXAI {
-      try validateAudioFileFormat(at: audioURL)
+      try validateAudioFileFormat(at: uploadURL)
       let dictationHint = (promptOverride ?? buildDictationPrompt()).trimmingCharacters(in: .whitespacesAndNewlines)
       let result = try await transcribeWithXAI(
-        audioURL: audioURL,
+        audioURL: uploadURL,
         dictationHint: dictationHint.isEmpty ? nil : dictationHint
       )
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
@@ -723,10 +763,10 @@ class SpeechService {
 
     // OpenRouter (audio as a chat-completion content part)
     if model == .openRouterTranscription {
-      try validateAudioFileFormat(at: audioURL)
-      let openRouterDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
+      try validateAudioFileFormat(at: uploadURL)
+      let openRouterDuration = try? await AudioDuration.avURLAssetSeconds(uploadURL)
       let result = try await transcribeWithOpenRouter(
-        audioURL: audioURL, promptOverride: promptOverride, audioDurationSeconds: openRouterDuration)
+        audioURL: uploadURL, promptOverride: promptOverride, audioDurationSeconds: openRouterDuration)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [OpenRouter] transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -734,8 +774,8 @@ class SpeechService {
 
     // Self-hosted OpenAI-compatible endpoint
     if model == .selfHostedTranscription {
-      try validateAudioFileFormat(at: audioURL)
-      let result = try await transcribeWithSelfHostedEndpoint(audioURL: audioURL)
+      try validateAudioFileFormat(at: uploadURL)
+      let result = try await transcribeWithSelfHostedEndpoint(audioURL: uploadURL)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: [Self-hosted Transcription] completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result

@@ -3,8 +3,8 @@
 //  WhisperShortcut
 //
 //  Parakeet Ultra (NVIDIA Parakeet TDT 0.6B v3, retrained by Moondream) through FluidAudio.
-//  The only file that imports FluidAudio — its `Language`, `AudioConverter` and friends stay out
-//  of the rest of the app's namespace.
+//  `Language`, `AudioConverter` and the ASR types stay in this file. `SpeechActivityGate` is the
+//  other FluidAudio importer, and it only uses the Silero VAD.
 //
 
 import Foundation
@@ -36,8 +36,10 @@ final class ParakeetBackend: @unchecked Sendable {
 
   // MARK: - Files
 
-  /// FluidAudio's model root. Holds exactly the Parakeet download (Ultra + the CTC model), so it
-  /// is also what Settings deletes and sizes.
+  /// FluidAudio's model root (`Application Support/FluidAudio/Models`). Holds the Parakeet
+  /// download (Ultra + the CTC model). The Silero VAD model is stored in this same directory.
+  /// Settings deletes and sizes the folder, so deleting Parakeet also removes the VAD model,
+  /// which re-downloads on next launch.
   static var modelsRoot: URL {
     AsrModels.defaultCacheDirectory(for: version).deletingLastPathComponent()
   }
