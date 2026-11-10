@@ -288,7 +288,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
     set +a
 fi
 MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"
-if ! python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "$MAIL_TO" --subject "$subject" --body-file "$tmp/body.txt"; then
+if ! python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "$MAIL_TO" --subject "$subject" --body-file "$tmp/body.txt" \
+    --verdict fyi --verdict-detail "Nichts zu tun, außer du willst einen der PRs fertig machen; der Merge-Train mergt grüne PRs selbst."; then
     kept="${STATE}/stale-last-mail.txt"
     cp "$tmp/body.txt" "$kept" 2>/dev/null || true
     warn "could not send mail — see ${kept}"
