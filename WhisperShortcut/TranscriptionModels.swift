@@ -925,9 +925,12 @@ struct GeminiChatResponse: Codable {
     let text: String?
     let inlineData: GeminiInlineData?
     let functionCall: GeminiFunctionCall?
+    /// True for a reasoning part (only present when thoughts are requested); never visible text.
+    let thought: Bool?
     
     enum CodingKeys: String, CodingKey {
       case text
+      case thought
       case inlineData  // API returns "inlineData" (camelCase), not "inline_data"
       case functionCall = "function_call"
     }

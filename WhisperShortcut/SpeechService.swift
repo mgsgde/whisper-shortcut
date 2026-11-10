@@ -1621,16 +1621,22 @@ class SpeechService {
       throw TranscriptionError.networkError(String(localized: "No candidates in Gemini response"))
     }
 
-    var textContent = ""
-    for part in firstCandidate.content.parts {
-      if let text = part.text {
-        textContent += text
-      }
-    }
+    let textContent = Self.dictatePromptText(from: result)
 
     let normalizedText = PromptReplyCleanup.normalize(textContent)
     try PromptReplyCleanup.validate(normalizedText, mode: logPrefix)
     return normalizedText
+  }
+
+  /// The pasted text of a classic Gemini Dictate Prompt response: thought parts skipped, the rest
+  /// concatenated and stripped of any leaked `start_thought` … `end_thought` block.
+  nonisolated static func dictatePromptText(from response: GeminiChatResponse) -> String {
+    guard let candidate = response.candidates.first else { return "" }
+    var text = ""
+    for part in candidate.content.parts where part.thought != true {
+      if let t = part.text { text += t }
+    }
+    return LeakedThoughtStrip.strip(text)
   }
 
   // MARK: - Dictate Prompt: shared tail
@@ -2525,11 +2531,11 @@ class SpeechService {
     )
 
     guard let firstCandidate = result.candidates.first,
-          let text = firstCandidate.content.parts.first?.text else {
+          let text = firstCandidate.content.parts.first(where: { $0.thought != true })?.text else {
       throw TranscriptionError.networkError(String(localized: "No transcription in response"))
     }
 
-    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return LeakedThoughtStrip.strip(text).trimmingCharacters(in: .whitespacesAndNewlines)
   }
   
   // MARK: - Text-to-Speech Mode

@@ -1062,24 +1062,14 @@ class ChatViewModel: ObservableObject {
 
   // MARK: - Send helpers & Queue
 
-  /// Core send: appends the user message, calls the API, and drains the next queued message on completion.
-  /// Gemini 3.x models occasionally leak their raw reasoning-channel delimiter tokens
-  /// (`start_thought` / `end_thought`) into the visible answer instead of routing them to a
-  /// separate thought part — see the thinkingLevel fix in `PromptModel.geminiThinkingConfig`.
-  /// This is a belt-and-suspenders strip so the user never sees them even if Gemini regresses.
-  /// Runs on the *cumulative* streamed text, so a token split across stream chunks is still caught.
-  /// Harmless for OpenAI/Grok, which never emit these tokens.
+  /// Drops a leaked Gemini reasoning block (`start_thought` … `end_thought`), content included.
+  /// An `end_thought` with no opener drops the prefix; an unclosed `start_thought` drops the tail
+  /// (still streaming, or truncated). Leading spaces and newlines are trimmed.
   static func stripLeakedThoughtTokens(_ text: String) -> String {
-    var cleaned = text
-    for marker in ["start_thought", "end_thought"] {
-      cleaned = cleaned.replacingOccurrences(of: marker, with: "")
-    }
-    // The markers normally sit at the very start; drop the whitespace they leave behind there.
-    // Leading whitespace is never meaningful in a chat answer, so this is safe.
-    while let first = cleaned.first, first == " " || first == "\n" { cleaned.removeFirst() }
-    return cleaned
+    LeakedThoughtStrip.strip(text)
   }
 
+  /// Core send: appends the user message, calls the API, and drains the next queued message on completion.
   private func performSend(
     content: String, attachedParts: [AttachedImagePart], toSessionId: UUID? = nil,
     commandName: String? = nil
