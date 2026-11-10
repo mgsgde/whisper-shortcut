@@ -633,7 +633,7 @@ enum ReplyBlockBuilder {
       let rawContent = group.text.trimmingCharacters(in: .whitespaces)
       let content = MarkdownParsing.renderLatexToUnicode(rawContent)
       var contentAttr = MarkdownParsing.inlineAttributedString(content, options: opts)
-      contentAttr.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
+      contentAttr.font = ChatTheme.bodyFont(size: ChatTheme.bodyFontSize, weight: .regular)
       return ReplyListItem(content: contentAttr, ordinal: group.parsed.ordinal, level: levels[index])
     }
   }
