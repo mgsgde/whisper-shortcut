@@ -126,6 +126,20 @@ struct ChatToolHardeningTests {
     #expect(!ChatLinkPolicy.isSafeToOpen(js))
   }
 
+  @Test func chatSettingsLinkResolvesOnlyKnownTabs() throws {
+    let accounts = try #require(URL(string: "whispershortcut://settings/accounts"))
+    let upper = try #require(URL(string: "WhisperShortcut://Settings/Accounts"))
+    let unknown = try #require(URL(string: "whispershortcut://settings/nope"))
+    let otherHost = try #require(URL(string: "whispershortcut://other/accounts"))
+    let https = try #require(URL(string: "https://settings/accounts"))
+    #expect(ChatSettingsLink.tab(for: accounts) == .accounts)
+    #expect(ChatSettingsLink.tab(for: upper) == .accounts)
+    #expect(ChatSettingsLink.tab(for: unknown) == nil)
+    #expect(ChatSettingsLink.tab(for: otherHost) == nil)
+    #expect(ChatSettingsLink.tab(for: https) == nil)
+    #expect(!ChatLinkPolicy.isSafeToOpen(accounts))
+  }
+
   @Test func chatReplyLinkDelegateSwallowsBlockedSchemes() throws {
     let textView = NSTextView()
     var opened: [URL] = []
