@@ -60,7 +60,7 @@ struct SpeechToTextSettingsTab: View {
             .padding(.top, SettingsConstants.internalSectionSpacing)
         } label: {
           Label(
-            "System prompt — not used by \(viewModel.data.selectedTranscriptionModel.displayName)",
+            "Additional instructions — not used by \(viewModel.data.selectedTranscriptionModel.displayName)",
             systemImage: "text.alignleft"
           )
           .font(.headline)
@@ -103,11 +103,13 @@ struct SpeechToTextSettingsTab: View {
   @ViewBuilder
   private var systemPromptEditor: some View {
     SystemPromptSectionEditor(
-      title: "System Prompt",
+      title: "Additional Instructions",
       systemImage: "text.alignleft",
-      subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter. GPT Transcribe, your own server and every offline model (Whisper, Parakeet, Qwen3) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary.",
-      section: .dictation,
-      defaultContent: AppConstants.defaultTranscriptionSystemPrompt
+      subtitle: "Added to the built-in transcription instructions, which always apply. Describe yourself and your preferences, not the task. Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter; GPT Transcribe, your own server and offline models ignore it. Single terms go in the Glossary.",
+      section: .dictationAdditions,
+      defaultContent: "",
+      builtInCore: AppConstants.defaultTranscriptionSystemPrompt,
+      placeholder: "e.g. I work in hospital IT. Write numbers as digits. No em dashes."
     )
   }
 
