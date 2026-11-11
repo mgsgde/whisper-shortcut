@@ -97,16 +97,16 @@ final class SystemPromptsStore {
 
   // MARK: - Public read
 
-  /// Dictation system prompt. Returns default if section missing or empty.
-  func loadDictationPrompt() -> String {
-    (loadSection(.dictation)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-      ?? AppConstants.defaultTranscriptionSystemPrompt
+  /// The user's additional dictation instructions. Empty when the section is missing or blank.
+  /// Never the fixed core (`AppConstants.defaultTranscriptionSystemPrompt`).
+  func loadDictationAdditions() -> String {
+    loadSection(.dictation)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
-  /// Dictate Prompt system prompt. Returns default if section missing or empty.
-  func loadDictatePromptSystemPrompt() -> String {
-    (loadSection(.promptMode)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-      ?? AppConstants.defaultPromptModeSystemPrompt
+  /// The user's additional Dictate Prompt instructions. Empty when the section is missing or blank.
+  /// Never the fixed core (`AppConstants.defaultPromptModeSystemPrompt`).
+  func loadDictatePromptAdditions() -> String {
+    loadSection(.promptMode)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
   /// Chat system prompt. Returns default if section missing or empty.
@@ -273,6 +273,7 @@ final class SystemPromptsStore {
   func loadSection(_ section: SystemPromptSection) -> String? {
     guard case .contents = currentFile() else { return nil }
     liftUnchangedDefaultsOnce()
+    stripCorePrefixesOnce()
     guard case .contents(let content) = readFile() else { return nil }
     return parseSections(from: content)[section]
   }
@@ -298,6 +299,7 @@ final class SystemPromptsStore {
       break
     }
     liftUnchangedDefaultsOnce()
+    stripCorePrefixesOnce()
     guard case .contents(let content) = readFile() else { return }
     let hasBackup = FileManager.default.fileExists(atPath: backupFileURL.path)
     DebugLogger.log("SYSTEM-PROMPTS: \(path) readable (\(content.count) chars, backup \(hasBackup ? "present" : "none"))")
@@ -352,6 +354,66 @@ final class SystemPromptsStore {
     if write(formatContent(parsed), reason: "lift unedited default(s): \(names)") {
       NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
     }
+  }
+
+  private var didStripCorePrefixes = false
+
+  /// Once per launch, next to `liftUnchangedDefaultsOnce`: a Dictation or Dictate Prompt section
+  /// that still begins with the current fixed core (the shape AI apps produced by appending rules
+  /// to the old full default) keeps only the text after that core. Sections that do not start
+  /// with the core stay verbatim. Logs section names only.
+  private func stripCorePrefixesOnce() {
+    guard !didStripCorePrefixes else { return }
+    guard case .contents(let content) = readFile() else { return }
+    didStripCorePrefixes = true
+    var parsed = parseSections(from: content)
+    var stripped: [SystemPromptSection] = []
+    for (section, core) in Self.fixedCores {
+      guard let body = parsed[section], let remainder = Self.strippingCorePrefix(body, core: core),
+        SystemPromptDefaultsHistory.normalized(remainder) != SystemPromptDefaultsHistory.normalized(body)
+      else { continue }
+      parsed[section] = remainder
+      stripped.append(section)
+    }
+    guard !stripped.isEmpty else { return }
+    let names = stripped.map(\.rawValue).sorted().joined(separator: ", ")
+    if write(formatContent(parsed), reason: "strip built-in core prefix: \(names)") {
+      for section in stripped {
+        DebugLogger.log("SYSTEM-PROMPTS: Stripped built-in core from section \(section.rawValue)")
+      }
+      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    }
+  }
+
+  /// Dictation and Dictate Prompt, with the fixed core each section used to store in full.
+  private static let fixedCores: [(SystemPromptSection, String)] = [
+    (.dictation, AppConstants.defaultTranscriptionSystemPrompt),
+    (.promptMode, AppConstants.defaultPromptModeSystemPrompt),
+  ]
+
+  /// When `text` starts with `core` word by word (line wrapping does not matter), the remainder
+  /// after that prefix, original whitespace kept, ends trimmed. Nil when it does not. "" when
+  /// `text` is exactly the core. An empty core never matches.
+  static func strippingCorePrefix(_ text: String, core: String) -> String? {
+    let coreWords = core.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+    guard !coreWords.isEmpty else { return nil }
+    var index = text.startIndex
+    var matched = 0
+    var endOfCore = text.startIndex
+    while matched < coreWords.count {
+      while index < text.endIndex, text[index].isWhitespace {
+        index = text.index(after: index)
+      }
+      guard index < text.endIndex else { return nil }
+      let wordStart = index
+      while index < text.endIndex, !text[index].isWhitespace {
+        index = text.index(after: index)
+      }
+      guard String(text[wordStart..<index]) == coreWords[matched] else { return nil }
+      endOfCore = index
+      matched += 1
+    }
+    return String(text[endOfCore...]).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   // MARK: - Change history
@@ -558,9 +620,9 @@ final class SystemPromptsStore {
 
   private func defaultFormattedContent() -> String {
     formatContent([
-      .dictation: AppConstants.defaultTranscriptionSystemPrompt,
+      .dictation: AppConstants.defaultDictationAdditions,
       .whisperGlossary: AppConstants.defaultWhisperGlossary,
-      .promptMode: AppConstants.defaultPromptModeSystemPrompt,
+      .promptMode: AppConstants.defaultPromptModeAdditions,
       .chat: AppConstants.defaultChatSystemPrompt,
       .readAloudRewrite: AppConstants.defaultReadAloudRewritePrompt,
     ])
@@ -607,9 +669,9 @@ final class SystemPromptsStore {
   /// existing file.
   private func performMigration() {
     let dictation = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
-      ?? AppConstants.defaultTranscriptionSystemPrompt
+      ?? AppConstants.defaultDictationAdditions
     let promptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
-      ?? AppConstants.defaultPromptModeSystemPrompt
+      ?? AppConstants.defaultPromptModeAdditions
     let content = formatContent([
       .dictation: dictation,
       .whisperGlossary: AppConstants.defaultWhisperGlossary,

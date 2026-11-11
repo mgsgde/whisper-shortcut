@@ -82,9 +82,17 @@ enum ConfigurationReport {
     text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
-  /// The customized text, else the shipped default.
+  /// The prompt actually sent. Dictation and Dictate Prompt are the fixed core plus the user's
+  /// additions. Other sections are the customized text, or the shipped default when empty.
   private static func textInUse(_ section: SystemPromptSection, store: SystemPromptsStore) -> String {
     let text = trimmed(store.loadSection(section))
-    return text.isEmpty ? MCPProposalWindows.defaultText(for: section) : text
+    switch section {
+    case .dictation:
+      return AppConstants.withUserAdditions(core: AppConstants.defaultTranscriptionSystemPrompt, additions: text)
+    case .promptMode:
+      return AppConstants.withUserAdditions(core: AppConstants.defaultPromptModeSystemPrompt, additions: text)
+    default:
+      return text.isEmpty ? MCPProposalWindows.defaultText(for: section) : text
+    }
   }
 }

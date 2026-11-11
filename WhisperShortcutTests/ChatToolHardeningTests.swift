@@ -253,7 +253,8 @@ struct ChatToolHardeningTests {
     #expect(preview != nil)
     #expect(!(preview?.title.isEmpty ?? true))
     #expect(preview?.before == current)
-    #expect(preview?.after == current + "\n" + rule)
+    let after = current.isEmpty ? rule : current + "\n" + rule
+    #expect(preview?.after == after)
   }
 
   @Test func approvalPreviewIsNilForReadUnknownSectionAndOtherTools() {

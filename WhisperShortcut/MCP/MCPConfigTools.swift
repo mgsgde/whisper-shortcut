@@ -199,7 +199,7 @@ struct MCPConfigTools {
     "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\" in WhisperShortcut Settings, in which case it creates a proposal the user reviews there."
     + " " + InteractionLogTool.tuningRules
   private static let updateSystemPromptDescription: String =
-    "Replaces one system prompt section with the full new text (at most about 2,000 characters beyond the built-in default). dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible: keep every existing rule and glossary line, add or edit the one that fixes what the logs show."
+    "Replaces one system prompt section with the full new text (at most about 2,000 characters beyond the built-in default). For dictation and dictate_prompt the section holds only additional instructions (context, vocabulary, style) on top of a fixed built-in prompt that cannot be changed; never restate the task or write a whole prompt there, and empty content clears those two. dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible: keep every existing rule and glossary line, add or edit the one that fixes what the logs show."
     + " " + InteractionLogTool.tuningRules
 
   static let writeToolDefinitions: [[String: Any]] = [
@@ -214,7 +214,11 @@ struct MCPConfigTools {
       updateSystemPromptDescription,
       [
         "section": ["type": "string", "enum": sectionNames],
-        "content": ["type": "string", "description": "The complete new text of the section."],
+        "content": [
+          "type": "string",
+          "description":
+            "The complete new text of the section. For dictation and dictate_prompt: only additional instructions (context, vocabulary, style) on top of the fixed built-in prompt; never restate the task or write a whole prompt. Empty content clears those two.",
+        ],
       ], required: ["section", "content"],
       annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
@@ -359,10 +363,15 @@ struct MCPConfigTools {
       let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       // The default's length lets an AI app see at a glance which customized section grew far
       // past what the app ships, the usual sign of rules piling up.
-      info[name] = [
+      var row: [String: Any] = [
         "customized": SystemPromptsStore.isCustomized(trimmed, for: section), "length": trimmed.count,
         "default_length": MCPProposalWindows.defaultText(for: section).count,
       ]
+      // Dictation and Dictate Prompt: the section is additional instructions. The core is fixed.
+      if section == .dictation || section == .promptMode {
+        row["fixed_core"] = true
+      }
+      info[name] = row
     }
     return info
   }
@@ -554,9 +563,17 @@ struct MCPConfigTools {
     guard let name = args["section"] as? String, let section = Self.sections.first(where: { $0.name == name })?.section else {
       return reject(tool, "unknown section", "section must be one of: \(Self.sectionNames.joined(separator: ", ")).")
     }
-    guard let content = args["content"] as? String,
-      !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    else { return reject(tool, "empty content", "content must be the full new section text.") }
+    guard let rawContent = args["content"] as? String else {
+      return reject(tool, "empty content", "content must be the full new section text.")
+    }
+    let trimmedContent = rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Dictation and Dictate Prompt store only additions, so empty content clears them.
+    // Every other section still rejects an empty replacement.
+    let additionsOnly = section == .dictation || section == .promptMode
+    if trimmedContent.isEmpty && !additionsOnly {
+      return reject(tool, "empty content", "content must be the full new section text.")
+    }
+    let content = additionsOnly && trimmedContent.isEmpty ? "" : rawContent
     let sectionLimit = ChatToolRegistry.instructionsSectionLimit(for: section)
     guard content.count <= sectionLimit else {
       return reject(tool, "too long", "content is \(content.count) characters; the limit is \(sectionLimit). Shorten it.")

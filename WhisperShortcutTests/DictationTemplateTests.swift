@@ -211,22 +211,24 @@ struct DictationTemplateTests {
     #expect(fromMissing.shortcut == nil)
   }
 
-  /// Pins the exact Dictate Prompt system prompt. A later split of template turns must not move
-  /// these strings: a custom `system-prompts.md`, the built-in default, and screenshot selection
-  /// stay byte-for-byte what they are today, with or without a writing-style block.
-  @Test("Dictate Prompt system prompt is the stored prompt, the default, or the screenshot prompt")
+  /// Pins the exact Dictate Prompt system prompt. Stored text is additional instructions after
+  /// the fixed core. Empty additions leave the core. Screenshot selection stays its own prompt.
+  /// A writing-style block still sits between the base and the output rule.
+  @Test("Dictate Prompt system prompt is the core plus additions, or the screenshot prompt")
   func dictatePromptSystemPromptGolden() {
     let stored = "Custom prompt the user wrote"
     let style = "\n\nLearned writing style."
     let outputRule = AppConstants.promptModeOutputRule
+    let composed = AppConstants.withUserAdditions(
+      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored)
 
     func prompt(screenshot: Bool, styleBlock: String, stored: String) -> String {
       SpeechService.buildDictatePromptSystemPrompt(
         usesScreenshotSelection: screenshot, styleBlock: styleBlock, template: nil, stored: stored)
     }
 
-    #expect(prompt(screenshot: false, styleBlock: "", stored: stored) == stored + outputRule)
-    #expect(prompt(screenshot: false, styleBlock: style, stored: stored) == stored + style + outputRule)
+    #expect(prompt(screenshot: false, styleBlock: "", stored: stored) == composed + outputRule)
+    #expect(prompt(screenshot: false, styleBlock: style, stored: stored) == composed + style + outputRule)
     #expect(
       prompt(screenshot: false, styleBlock: "", stored: "")
         == AppConstants.defaultPromptModeSystemPrompt + outputRule)
@@ -239,20 +241,23 @@ struct DictationTemplateTests {
       prompt(screenshot: true, styleBlock: style, stored: stored) == screenshotBase + style + outputRule)
   }
 
-  @Test("A template replaces the stored prompt; a blank one leaves it")
+  @Test("A template replaces the base; stored text is additional instructions on the core")
   func dictatePromptBase() {
     let stored = "Custom prompt the user wrote"
     let template = "Practice note format"
+    let composed = AppConstants.withUserAdditions(
+      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored)
     #expect(SpeechService.dictatePromptBase(stored: stored, template: template) == template)
-    #expect(SpeechService.dictatePromptBase(stored: stored, template: nil) == stored)
-    #expect(SpeechService.dictatePromptBase(stored: stored, template: "") == stored)
-    #expect(SpeechService.dictatePromptBase(stored: stored, template: "  \n") == stored)
+    #expect(SpeechService.dictatePromptBase(stored: stored, template: nil) == composed)
+    #expect(SpeechService.dictatePromptBase(stored: stored, template: "") == composed)
+    #expect(SpeechService.dictatePromptBase(stored: stored, template: "  \n") == composed)
     #expect(SpeechService.dictatePromptBase(stored: "  ", template: nil) == AppConstants.defaultPromptModeSystemPrompt)
     #expect(SpeechService.dictatePromptBase(stored: "", template: nil) == AppConstants.defaultPromptModeSystemPrompt)
-    // Moving a system prompt into a template hands the model the identical base.
+    // A template replaces the base for this turn. The same text stored as additions does not.
+    #expect(SpeechService.dictatePromptBase(stored: "", template: customPrompt) == customPrompt)
     #expect(
-      SpeechService.dictatePromptBase(stored: "", template: customPrompt)
-        == SpeechService.dictatePromptBase(stored: customPrompt, template: nil))
+      SpeechService.dictatePromptBase(stored: customPrompt, template: nil)
+        == AppConstants.withUserAdditions(core: AppConstants.defaultPromptModeSystemPrompt, additions: customPrompt))
   }
 
   /// Regression: a custom prompt vanished after an update on 2026-10-19. A fresh store is the
@@ -276,14 +281,16 @@ struct DictationTemplateTests {
       ])
 
       let store = SystemPromptsStore(contextDirectoryURL: dir)
-      let loaded = store.loadDictatePromptSystemPrompt()
+      let loaded = store.loadDictatePromptAdditions()
       #expect(loaded == customPrompt)
       #expect(try Data(contentsOf: fileURL) == before)
       #expect(!FileManager.default.fileExists(atPath: store.backupFileURL.path))
-      #expect(SpeechService.dictatePromptBase(stored: loaded, template: nil) == customPrompt)
+      #expect(
+        SpeechService.dictatePromptBase(stored: loaded, template: nil)
+          == AppConstants.withUserAdditions(core: AppConstants.defaultPromptModeSystemPrompt, additions: customPrompt))
 
       let second = SystemPromptsStore(contextDirectoryURL: dir)
-      #expect(second.loadDictatePromptSystemPrompt() == customPrompt)
+      #expect(second.loadDictatePromptAdditions() == customPrompt)
       #expect(try Data(contentsOf: fileURL) == before)
       #expect(!FileManager.default.fileExists(atPath: second.backupFileURL.path))
     }

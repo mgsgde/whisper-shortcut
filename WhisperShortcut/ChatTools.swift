@@ -237,8 +237,9 @@ enum ChatToolRegistry {
     let stored = isGlossary
       ? SystemPromptsStore.shared.loadWhisperGlossary()
       : SystemPromptsStore.shared.loadSection(section) ?? ""
-    // An emptied prompt section runs on the built-in default; a rule appended to "" would
-    // silently replace that whole default with one line.
+    // An emptied Chat section still runs on its built-in default, so a rule appended to "" is
+    // appended to that default. Dictation and Dictate Prompt defaults are empty additions: the
+    // fixed core stays in code, and a rule appended to "" is just that rule.
     let current = !isGlossary && stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       ? MCPProposalWindows.defaultText(for: section) : stored
     let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -506,7 +507,7 @@ enum ChatToolRegistry {
   /// Built apart from the declaration literal: concatenation inside a large `[String: Any]`
   /// literal is a known way to make the type checker give up.
   private static let instructionsToolDescription: String =
-        "Reads and edits WhisperShortcut's own instructions, so the user can tune how the app behaves by asking instead of editing Settings. Sections: 'dictation' (the Dictate prompt: how speech becomes text), 'whisper_glossary' (names and terms the recognizer should spell right, one per line, optionally Term (not \"wrong\", \"wrong2\")), 'dictate_prompt' (Dictate Prompt: rewriting selected text from a voice instruction), 'chat' (your own system prompt in this chat). Call it when the user states a lasting preference about how a mode should behave, or asks you to fix a recurring mistake. "
+        "Reads and edits WhisperShortcut's own instructions, so the user can tune how the app behaves by asking instead of editing Settings. Sections: 'dictation' (additional instructions only, on top of a fixed built-in prompt that cannot be changed: context, vocabulary, style for how speech becomes text; never restate the task or write a whole prompt), 'whisper_glossary' (names and terms the recognizer should spell right, one per line, optionally Term (not \"wrong\", \"wrong2\")), 'dictate_prompt' (additional instructions only, on top of a fixed built-in prompt that cannot be changed: context, vocabulary, style for rewriting selected text; never restate the task or write a whole prompt), 'chat' (your own system prompt in this chat). Call it when the user states a lasting preference about how a mode should behave, or asks you to fix a recurring mistake. "
         + InteractionLogTool.tuningRules
         + " To find the mistake, call read_recent_interactions (when available); before adding a term or rule, call read_config_history so a term the user removed on purpose is not re-added. ALWAYS call action='read' on the section first and check whether an existing rule already covers or contradicts the request: then 'replace' or 'remove' that rule rather than appending a second, conflicting one. Use 'append' for one genuinely new rule or glossary term. 'remove' on whisper_glossary only when the user asked to drop that entry. Every change is shown to the user for approval. For a single dictation term, remember_dictation_term also works; for facts about the user use remember_about_user."
 

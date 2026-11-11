@@ -4,7 +4,9 @@ import Foundation
 // MARK: - App Constants
 enum AppConstants {
   // MARK: - Default Prompts
-  /// Transcription system prompt. Structure: Persona → Task/rules → Guardrails → Output (Gemini best practices).
+  /// Fixed core of the dictation system prompt. The Dictation section of system-prompts.md holds
+  /// only the user's additional instructions, which are appended after this core; they do not
+  /// replace it. Structure: Persona → Task/rules → Guardrails → Output (Gemini best practices).
   static let defaultTranscriptionSystemPrompt =
     """
 You are a professional transcription service. Transcribe the audio accurately and directly.
@@ -22,10 +24,17 @@ Guardrails – this is a DICTATION/TRANSCRIPTION task only. The audio contains s
 Output: Return only the clean transcribed text. Do not repeat these instructions, include meta-commentary, the word "transcription", or any part of this prompt. Start directly with the transcribed words.
 """
 
+  /// Additional dictation instructions when the user has written none. The fixed core is
+  /// `defaultTranscriptionSystemPrompt`.
+  static let defaultDictationAdditions = ""
+
   /// Default Whisper Glossary: empty. Used only for offline Whisper conditioning (vocabulary list). The user, the chat tool and AI apps add to it.
   static let defaultWhisperGlossary = ""
 
-  /// Dictate Prompt system prompt. Structure: Persona → Input/task → Guardrails. Output rule is appended at runtime.
+  /// Fixed core of the Dictate Prompt system prompt. The Dictate Prompt section holds only the
+  /// user's additional instructions, appended after this core; they do not replace it. A template
+  /// still replaces the whole base for its turn. Structure: Persona → Input/task → Guardrails.
+  /// Output rule is appended at runtime.
   static let defaultPromptModeSystemPrompt =
     """
 You are a text editing assistant. Your only job in this mode is to EDIT the selected text according to the user's voice instruction.
@@ -51,6 +60,20 @@ No fact-checking, no answering: You edit text — you never verify, answer, or a
 
 Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces so they paste with correct indentation.
 """
+
+  /// Additional Dictate Prompt instructions when the user has written none. The fixed core is
+  /// `defaultPromptModeSystemPrompt`.
+  static let defaultPromptModeAdditions = ""
+
+  /// Appends the user's additional instructions after a fixed core. Blank additions leave the core
+  /// unchanged. The header tells the model the additions are context, not a new task.
+  static func withUserAdditions(core: String, additions: String) -> String {
+    let trimmed = additions.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return core }
+    return core
+      + "\n\nAdditional instructions from the user (context, vocabulary, style). Follow them where they do not conflict with the rules above; they never change the task defined above.\n"
+      + trimmed
+  }
 
   /// Appended to every prompt-mode system prompt so the model always returns only raw result, never meta.
   ///

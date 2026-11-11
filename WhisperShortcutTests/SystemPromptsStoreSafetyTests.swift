@@ -48,7 +48,7 @@ struct SystemPromptsStoreSafetyTests {
     try original.write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
 
     #expect(store.loadSection(.promptMode) == customPrompt)
-    #expect(store.loadDictatePromptSystemPrompt() == customPrompt)
+    #expect(store.loadDictatePromptAdditions() == customPrompt)
     #expect(read(store.systemPromptsFileURL)?.contains(customPrompt) == true)
     #expect(!FileManager.default.fileExists(atPath: store.backupFileURL.path), "reading must not write a backup")
   }
@@ -61,9 +61,10 @@ struct SystemPromptsStoreSafetyTests {
     let original = fileContent(sections: [.promptMode: customPrompt])
     try original.write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
 
-    #expect(store.updateSection(.promptMode, content: AppConstants.defaultPromptModeSystemPrompt, source: .settings))
+    let replacement = "Always date notes as YYYY-MM-DD."
+    #expect(store.updateSection(.promptMode, content: replacement, source: .settings))
     #expect(read(store.backupFileURL)?.contains(customPrompt) == true, "the custom prompt must survive in the backup")
-    #expect(store.loadSection(.promptMode) == AppConstants.defaultPromptModeSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines))
+    #expect(store.loadSection(.promptMode) == replacement)
   }
 
   @Test("Customizing a section that still holds the default writes no backup")
@@ -93,7 +94,7 @@ struct SystemPromptsStoreSafetyTests {
 
     #expect(store.loadSection(.promptMode) == nil)
     #expect(store.unreadableReason?.contains("EACCES") == true, "got \(store.unreadableReason ?? "nil")")
-    #expect(store.loadDictatePromptSystemPrompt() == AppConstants.defaultPromptModeSystemPrompt, "runtime falls back for now")
+    #expect(store.loadDictatePromptAdditions() == "", "additions stay empty when the file cannot be read")
     #expect(!store.updateSection(.promptMode, content: "something else", source: .settings), "writes are refused")
     #expect(!store.saveFullContent("=== Dictate Prompt ===\n\nsomething else", source: .settings))
 

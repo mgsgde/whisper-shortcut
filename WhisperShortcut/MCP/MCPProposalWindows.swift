@@ -160,8 +160,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
 
   // MARK: - Names
 
-  /// What the change replaces. A section the user never customized runs on the built-in default,
-  /// so that is what the diff compares against, not an empty text.
+  /// What the change replaces. When the stored text is empty, the diff uses the section's shipped
+  /// default: empty additional instructions for Dictation and Dictate Prompt, the full prompt for
+  /// the other sections.
   static func baseline(for proposal: MCPProposal) -> String {
     if let previous = proposal.previousContent, !previous.isEmpty { return previous }
     guard proposal.kind == .systemPrompt,
@@ -170,12 +171,13 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     return defaultText(for: section)
   }
 
-  /// The built-in text a section runs on until the user customizes it.
+  /// The text a section holds until the user customizes it. Dictation and Dictate Prompt hold only
+  /// additional instructions (empty until the user adds some); their fixed cores live in code.
   static func defaultText(for section: SystemPromptSection) -> String {
     switch section {
-    case .dictation: return AppConstants.defaultTranscriptionSystemPrompt
+    case .dictation: return AppConstants.defaultDictationAdditions
     case .whisperGlossary: return AppConstants.defaultWhisperGlossary
-    case .promptMode: return AppConstants.defaultPromptModeSystemPrompt
+    case .promptMode: return AppConstants.defaultPromptModeAdditions
     case .chat: return AppConstants.defaultChatSystemPrompt
     case .readAloudRewrite: return AppConstants.defaultReadAloudRewritePrompt
     }

@@ -483,9 +483,12 @@ struct MCPConfigToolsTests {
     #expect((o["models"] as? [String: String])?["transcription_model"] == "whisper-base")
     let prompts = o["system_prompts"] as? [String: Any]
     #expect((prompts?["dictate_prompt"] as? [String: Any])?["customized"] as? Bool == true)
+    #expect((prompts?["dictate_prompt"] as? [String: Any])?["fixed_core"] as? Bool == true)
+    #expect((prompts?["dictation"] as? [String: Any])?["fixed_core"] as? Bool == true)
+    #expect((prompts?["chat"] as? [String: Any])?["fixed_core"] == nil)
     #expect(
       (prompts?["dictate_prompt"] as? [String: Any])?["default_length"] as? Int
-        == AppConstants.defaultPromptModeSystemPrompt.count)
+        == AppConstants.defaultPromptModeAdditions.count)
     #expect((o["ai_app_access"] as? [String: Any])?["level"] as? String == "propose")
     #expect((o["tune_recipe"] as? String)?.contains("get_configuration") == true)
     #expect((o["system_prompt_texts"] as? [String: String])?["dictate_prompt"] == "Custom rule.")

@@ -158,10 +158,13 @@ class SpeechService {
   }
 
   // MARK: - Prompt Building
-  /// Returns the dictation system prompt (custom prompt only).
+  /// Dictation system prompt: the fixed core plus the user's additional instructions.
+  /// The glossary hint is appended by the caller, after this.
   private func buildDictationPrompt() -> String {
-    SystemPromptsStore.shared.loadDictationPrompt()
-      .trimmingCharacters(in: .whitespacesAndNewlines)
+    AppConstants.withUserAdditions(
+      core: AppConstants.defaultTranscriptionSystemPrompt,
+      additions: SystemPromptsStore.shared.loadDictationAdditions()
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   /// Appends the user's vocabulary Glossary (when non-empty) to a transcription instruction.
@@ -472,8 +475,8 @@ class SpeechService {
   }
 
   /// The full transcription instruction shared by every Gemini sub-path (inline, Files API, and
-  /// chunking): the user's dictation prompt — or the built-in default when unset — with the
-  /// vocabulary Glossary appended. Substituting the default *before* appending the Glossary keeps
+  /// chunking): the fixed dictation core plus the user's additional instructions, with the
+  /// vocabulary Glossary appended. Composing the core *before* appending the Glossary keeps
   /// all three paths identical; previously the chunking path appended the Glossary to an empty
   /// base, sending a bare word-list with no transcription instruction when only a Glossary was set.
   /// `suppressGlossary` drops the vocabulary block for the glossary-echo retry — see
@@ -1189,9 +1192,9 @@ class SpeechService {
 
   // MARK: - Gemini Dictate Prompt Helpers
 
-  /// Loads the user's Dictate Prompt system prompt (or the built-in default when empty)
-  /// and appends the strict output rule. All Dictate Prompt paths (Gemini, OpenAI, text)
-  /// use this composition.
+  /// Dictate Prompt system prompt: the fixed core plus the user's additional instructions,
+  /// then the strict output rule. A non-blank template replaces that base for this one turn.
+  /// All Dictate Prompt paths (Gemini, OpenAI, text) use this composition.
   /// Static because the prewarmer needs it too: priming a local server's prompt cache means
   /// sending the exact system prompt the real request will send, and that has to be reachable
   /// without a `SpeechService` instance or a recording in flight.
@@ -1199,8 +1202,8 @@ class SpeechService {
   /// clipboard even in the App Store build, and telling it to read a highlighted region of a
   /// screenshot it never receives is how it ends up "editing" the instruction instead.
   /// `styleBlock` (the learned writing style) goes before the output rule, so that rule stays last.
-  /// `template`, when non-blank, replaces the stored prompt for this one turn. Screenshot-selection
-  /// mode ignores it: the selection lives in the image, and that prompt stays as it is.
+  /// Screenshot-selection mode ignores the stored additions and the template: the selection lives
+  /// in the image, and that prompt stays as it is.
   static func buildDictatePromptSystemPrompt(
     logPrefix: String, usesScreenshotSelection: Bool, styleBlock: String = "",
     template: String? = nil
@@ -1212,22 +1215,22 @@ class SpeechService {
       return buildDictatePromptSystemPrompt(
         usesScreenshotSelection: true, styleBlock: styleBlock, template: template, stored: "")
     }
-    let stored = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
+    let stored = SystemPromptsStore.shared.loadDictatePromptAdditions()
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty {
       DebugLogger.log("\(logPrefix): Using dictation template")
     } else if stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       DebugLogger.log("\(logPrefix): Using base system prompt")
     } else {
-      DebugLogger.log("\(logPrefix): Using custom system prompt")
+      DebugLogger.log("\(logPrefix): Using core + user additions")
     }
     return buildDictatePromptSystemPrompt(
       usesScreenshotSelection: false, styleBlock: styleBlock, template: template, stored: stored)
   }
 
-  /// Same composition as `buildDictatePromptSystemPrompt`, with the stored prompt passed in.
-  /// Pure: no store read and no logging, so tests can pin the exact string a custom prompt,
-  /// the built-in default, and screenshot-selection mode produce.
+  /// Same composition as `buildDictatePromptSystemPrompt`, with the stored additions passed in.
+  /// Pure: no store read and no logging, so tests can pin the exact string user additions,
+  /// the fixed core, and screenshot-selection mode produce.
   static func buildDictatePromptSystemPrompt(
     usesScreenshotSelection: Bool, styleBlock: String = "", template: String? = nil, stored: String
   ) -> String {
@@ -1239,14 +1242,14 @@ class SpeechService {
     return base + styleBlock + AppConstants.promptModeOutputRule
   }
 
-  /// The base of the Dictate Prompt system prompt: a template chosen for this turn, else the
-  /// user's stored prompt, else the built-in default. Pure, so tests can feed it what a store read.
+  /// The base of the Dictate Prompt system prompt: a non-empty template replaces the base for
+  /// this turn; otherwise the fixed core plus the user's additional instructions (`stored`).
+  /// Pure, so tests can feed it what a store read.
   static func dictatePromptBase(stored: String, template: String?) -> String {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty { return trimmedTemplate }
-    let trimmedStored = stored.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmedStored.isEmpty { return trimmedStored }
-    return AppConstants.defaultPromptModeSystemPrompt
+    return AppConstants.withUserAdditions(
+      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored)
   }
 
   /// Shown when screenshot-selection mode (App Store build) has no screenshot to send. Shared by
