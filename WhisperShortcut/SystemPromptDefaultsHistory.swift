@@ -70,6 +70,7 @@ enum SystemPromptDefaultsHistory {
   /// reads as "never edited" (relevant for the next time the default changes).
   static let shippedFingerprints: [SystemPromptSection: Set<String>] = [
     .dictation: [
+      "8497a411d8c8e760d7d65452e5143816ab0ff5506271d4a6acd5472e685eaf99",
       "7c2eef87377517af4421469b2e59e59b3c8209e1d369292efbd47f0efac18326",
       "b0dd47740cf7817f5eeebf2278618ec9b8d2f3d8b4872a12b9ce04ad12d29d49",
       "dff5482e5e9ba6fe0927a9714d4d2194f4344da0b98a9330c95228c5af76a970",
@@ -91,6 +92,7 @@ enum SystemPromptDefaultsHistory {
       "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     ],
     .promptMode: [
+      "66b0c92baa1f734af2edd7ff58250faa1dcc48071ed4baec8041933b124d82b1",
       "de0fe1e16899304ac9a386472ba9f1e0ccfdda827870d8bc2eef91a519dcc8d8",
       "ea53b0e8d0a914224aa6e83a436c6d46b45e31c30f340022635584cb70cba39c",
       "9ed51c62f80518f367dc0ac6ce6ee79131a957e3ee4b4f116b715a71f31f2f73",
@@ -112,6 +114,7 @@ enum SystemPromptDefaultsHistory {
       "7506154dbdeea0372ef89ecfd3a9327f518de9de6119eea3e1b12a8f05a0ece2",
     ],
     .chat: [
+      "181b2f5f4047c84905c7933f61536a2269552642e52e25f0c029779411e1c974",
       "b63b18caf0379f0c76233563e44ad1301ab703515bd5761fb4cc61cce49928b4",
       "32460af44df42508e6c2385acebd3eb82a1ed3759e3e8f66e1a04d61e4ef580d",
       "c87a724b57973033aca6ee1fd1028024d33f20b47ddc557ca711c413238f8d39",

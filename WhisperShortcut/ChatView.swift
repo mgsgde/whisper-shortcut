@@ -1161,7 +1161,8 @@ class ChatViewModel: ObservableObject {
           steps: toolSteps,
           systemInstruction: {
             self.buildSystemInstruction(
-              for: sendingSession, offline: selectedModel.provider == .localMLX)
+              for: sendingSession, offline: selectedModel.provider == .localMLX,
+              webSearch: selectedModel.supportsGrounding)
           },
           options: { isFinalRound in
             ChatRequestOptions(
@@ -1816,7 +1817,12 @@ class ChatViewModel: ObservableObject {
 
   /// The blocks only a tool-calling model can act on: slash commands, Google, image generation,
   /// memory and app-config tools, shared folders and what we learned about them.
-  private func toolAndWorkspaceInstructions(for s: ChatSession) -> String {
+  private func toolAndWorkspaceInstructions(
+    for s: ChatSession,
+    // Same value as `openChatModel.supportsGrounding`. `Self` is illegal in a default
+    // argument, and that property is main-actor-isolated.
+    webSearch: Bool = PromptModel.loadSelectedChatModel().supportsGrounding
+  ) -> String {
     var text = ""
     // Order matters for provider prompt caching (Anthropic cache_control, OpenAI/Gemini implicit
     // prefix caching): stable blocks first, blocks that change within a session last. Anything
@@ -1828,8 +1834,13 @@ class ChatViewModel: ObservableObject {
       .map { "- `\($0.command)` — \($0.description)" }
       .joined(separator: "\n")
     text += "\n\nAvailable slash commands in this chat:\n\(commandsList)"
+    if webSearch {
+      text += "\n\nWEB SEARCH: You have a web search tool. Search before answering anything that can change or that you are not certain is current: prices, fees, limits, exchange, tax or interest rates, version numbers, release dates, news, opening hours, availability. This applies to follow-up questions too — re-verify instead of defending an earlier answer from memory. Skip searching only for conversational or static content (grammar, math, rewriting, opinions). The user sees the sources attached to your answer."
+    } else {
+      text += "\n\nNO WEB SEARCH: You cannot search the web in this chat. Answer from what you know; for prices, versions, release dates, news or anything else that may have changed, say in one short sentence that it may be out of date. Never claim to have searched and never cite sources you did not get from a tool."
+    }
     if GoogleAccountOAuthService.shared.isConnected {
-      text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_update_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_update, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nTo CHANGE an existing task (due date, title, notes, status) always call google_tasks_update — never delete and re-create it.\nWhen an instruction affects several items (e.g. re-dating five tasks), emit ALL the independent calls together in ONE turn instead of one call per turn — the number of tool rounds per answer is limited, and one-at-a-time editing runs out of rounds before the batch is finished.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks.\nIf earlier messages in this conversation said you had no access, that is outdated — the user has connected since; call the tool now."
+      text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_update_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_update, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nTo CHANGE an existing task (due date, title, notes, status) always call google_tasks_update — never delete and re-create it.\nWhen an instruction affects several items (e.g. re-dating five tasks), emit ALL the independent calls together in ONE turn instead of one call per turn — the number of tool rounds per answer is limited, and one-at-a-time editing runs out of rounds before the batch is finished.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks.\nIf earlier messages in this conversation said you had no access, that is outdated — the user has connected since; call the tool now. Gmail: be economical — start with ONE focused gmail_search (sender, subject or date filters), read only the few most relevant messages, and summarize what you found rather than re-querying with reworded terms. When a calendar tool result includes an `html_link`, include that link in your answer. When a tasks tool result includes a `web_view_link`, include that link in your answer."
     } else {
       text += "\n\nGOOGLE ACCOUNT NOT CONNECTED: You have no access to the user's Google Calendar, Google Tasks or Gmail in this session. Never offer or promise to create, change or look up calendar events, tasks or emails there. The first time the user asks for any of that, answer with one short sentence that the Google account isn't connected yet, plus this markdown link (link text in the user's language): [Google-Konto verbinden](whispershortcut://settings/accounts). For a calendar event you may also offer a Google Calendar quick-add link (https://calendar.google.com/calendar/render?action=TEMPLATE&text=...&dates=...) as a fallback."
     }
@@ -1894,7 +1905,12 @@ class ChatViewModel: ObservableObject {
   /// `offline` (the in-process MLX model) swaps in a short prompt without the tool, web-search and
   /// workspace blocks: the model can call none of them, and a 4B model told it has web search and
   /// Gmail invents both. Memory and meeting context still apply — they need no tool.
-  private func buildSystemInstruction(for target: ChatSession? = nil, offline: Bool = false) -> [String: Any] {
+  private func buildSystemInstruction(
+    for target: ChatSession? = nil, offline: Bool = false,
+    // Same value as `openChatModel.supportsGrounding`. `Self` is illegal in a default
+    // argument, and that property is main-actor-isolated.
+    webSearch: Bool = PromptModel.loadSelectedChatModel().supportsGrounding
+  ) -> [String: Any] {
     let s = target ?? session
     var text = offline
       ? AppConstants.defaultOfflineChatSystemPrompt
@@ -1910,7 +1926,7 @@ class ChatViewModel: ObservableObject {
         chatModel: Self.openChatModel,
         userMessages: s.messages.filter { $0.role == .user }.map(\.content))
     } else {
-      text += toolAndWorkspaceInstructions(for: s)
+      text += toolAndWorkspaceInstructions(for: s, webSearch: webSearch)
     }
     // Persistent user memory (UserContext/memory.md): durable facts the user told us across sessions.
     // Injected into every chat request; empty when the user has no memory (then nothing is added).
