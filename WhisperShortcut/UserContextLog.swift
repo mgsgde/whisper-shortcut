@@ -24,6 +24,8 @@ enum PromptHistorySource: String, CaseIterable {
   case settings
   /// The Glossary shortcut ("Add Selection to Glossary").
   case glossaryShortcut
+  /// One-time move of a legacy full prompt into the additions sections.
+  case migration
 
   var displayName: String {
     switch self {
@@ -34,6 +36,7 @@ enum PromptHistorySource: String, CaseIterable {
     case .mcpUndo: return String(localized: "AI app (MCP) undo")
     case .settings: return String(localized: "Settings")
     case .glossaryShortcut: return String(localized: "Glossary shortcut")
+    case .migration: return "Migration"
     }
   }
 

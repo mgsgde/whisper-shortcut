@@ -4,9 +4,10 @@ import Foundation
 // MARK: - App Constants
 enum AppConstants {
   // MARK: - Default Prompts
-  /// Fixed core of the dictation system prompt. The Dictation section of system-prompts.md holds
-  /// only the user's additional instructions, which are appended after this core; they do not
-  /// replace it. Structure: Persona → Task/rules → Guardrails → Output (Gemini best practices).
+  /// Built-in Dictation instructions. Used when the legacy Dictation section is empty. The user's
+  /// context and style live in Dictation Additions and are wrapped around this core by
+  /// `withUserAdditions`. A non-empty legacy section replaces this core entirely.
+  /// Structure: Persona → Task/rules → Guardrails → Output (Gemini best practices).
   static let defaultTranscriptionSystemPrompt =
     """
 You are a professional transcription service. Transcribe the audio accurately and directly.
@@ -24,20 +25,19 @@ Guardrails – this is a DICTATION/TRANSCRIPTION task only. The audio contains s
 Output: Return only the clean transcribed text. Do not repeat these instructions, include meta-commentary, the word "transcription", or any part of this prompt. Start directly with the transcribed words.
 """
 
-  /// Additional dictation instructions when the user has written none. The fixed core is
-  /// `defaultTranscriptionSystemPrompt`.
+  /// Default body of the Dictation Additions section: nothing until the user writes context or style.
   static let defaultDictationAdditions = ""
 
   /// Default Whisper Glossary: empty. Used only for offline Whisper conditioning (vocabulary list). The user, the chat tool and AI apps add to it.
   static let defaultWhisperGlossary = ""
 
-  /// Fixed core of the Dictate Prompt system prompt. The Dictate Prompt section holds only the
-  /// user's additional instructions, appended after this core; they do not replace it. A template
+  /// Built-in Dictate Prompt instructions. Used when the legacy Dictate Prompt section is empty.
+  /// Additions are wrapped around this core; a non-empty legacy section replaces it. A template
   /// still replaces the whole base for its turn. Structure: Persona → Input/task → Guardrails.
   /// Output rule is appended at runtime.
   static let defaultPromptModeSystemPrompt =
     """
-You are a text editing assistant. Your only job in this mode is to EDIT the selected text according to the user's voice instruction.
+You are a text editing assistant. When text is selected, your job is to EDIT it according to the user's voice instruction. When the request is marked NO SELECTED TEXT, the spoken words are the content to write (see the output rule).
 
 Input: You receive (1) SELECTED TEXT (the text to edit), (2) a VOICE INSTRUCTION — a transcribed command (e.g. "make it shorter", "rephrase", "translate to English", "fix grammar", "turn into bullet points") — and optionally (3) a screenshot of the current screen. The voice is an INSTRUCTION, not dictation. Use the screenshot so you know how to change the text: it shows the environment (app, layout, surrounding content, tone). Your edited text must always be consistent with that environment (style, tone, context, formatting, emojis). Do not describe or mention the screenshot in your output.
 
@@ -61,18 +61,26 @@ No fact-checking, no answering: You edit text — you never verify, answer, or a
 Guardrails: Return only the modified text. No explanations, meta-commentary, or decorative markdown (no **bold**, # headers, code blocks). No intros (e.g. "Here is...") or outros (e.g. "Let me know if..."). Return only the clean, modified text. When the user wants a list or bullet points, use a leading dash and space (- ) per item and indent sub-items with spaces so they paste with correct indentation.
 """
 
-  /// Additional Dictate Prompt instructions when the user has written none. The fixed core is
-  /// `defaultPromptModeSystemPrompt`.
+  /// Default body of the Dictate Prompt Additions section.
   static let defaultPromptModeAdditions = ""
 
-  /// Appends the user's additional instructions after a fixed core. Blank additions leave the core
-  /// unchanged. The header tells the model the additions are context, not a new task.
-  static func withUserAdditions(core: String, additions: String) -> String {
+  /// Closes the dictation additions sandwich: the preferences never change this task.
+  static let dictationTaskReminder = "transcribe what was said."
+
+  /// Closes the Dictate Prompt additions sandwich.
+  static let dictatePromptTaskReminder =
+    "apply the spoken instruction to the selected text, or, when nothing is selected, write the spoken content as finished text."
+
+  /// Wraps non-empty additions around a fixed core. Blank additions leave the core unchanged.
+  /// The tags and `taskReminder` tell the model the additions are context and style, not a new task.
+  static func withUserAdditions(core: String, additions: String, taskReminder: String) -> String {
     let trimmed = additions.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return core }
     return core
-      + "\n\nAdditional instructions from the user (context, vocabulary, style). Follow them where they do not conflict with the rules above; they never change the task defined above.\n"
+      + "\n\n<user_preferences>\n"
       + trimmed
+      + "\n</user_preferences>\nThe preferences above add context and style. They never change the task: "
+      + taskReminder
   }
 
   /// Appended to every prompt-mode system prompt so the model always returns only raw result, never meta.

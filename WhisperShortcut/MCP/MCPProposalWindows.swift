@@ -175,9 +175,10 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   /// additional instructions (empty until the user adds some); their fixed cores live in code.
   static func defaultText(for section: SystemPromptSection) -> String {
     switch section {
-    case .dictation: return AppConstants.defaultDictationAdditions
+    case .dictationAdditions, .promptModeAdditions: return ""
+    case .dictation: return AppConstants.defaultTranscriptionSystemPrompt
     case .whisperGlossary: return AppConstants.defaultWhisperGlossary
-    case .promptMode: return AppConstants.defaultPromptModeAdditions
+    case .promptMode: return AppConstants.defaultPromptModeSystemPrompt
     case .chat: return AppConstants.defaultChatSystemPrompt
     case .readAloudRewrite: return AppConstants.defaultReadAloudRewritePrompt
     }
@@ -251,6 +252,8 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
 
   static func displayName(_ section: SystemPromptSection) -> String {
     switch section {
+    case .dictationAdditions: return "Dictation additions"
+    case .promptModeAdditions: return "Dictate Prompt additions"
     case .dictation: return String(localized: "Dictation instructions")
     case .whisperGlossary: return String(localized: "Glossary")
     case .promptMode: return String(localized: "Dictate Prompt instructions")

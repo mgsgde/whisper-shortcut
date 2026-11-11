@@ -9,7 +9,13 @@
 import Foundation
 
 /// Section identifiers for the unified system-prompts file.
+///
+/// Additions sections are declared first so they are written at the top of the file. Builds that
+/// do not know those headers skip unknown lines until the first header they do know, and therefore
+/// never read additions as a whole prompt.
 enum SystemPromptSection: String, CaseIterable {
+  case dictationAdditions = "dictationAdditions"
+  case promptModeAdditions = "promptModeAdditions"
   case dictation = "dictation"
   case whisperGlossary = "whisperGlossary"
   case promptMode = "promptMode"
@@ -18,11 +24,40 @@ enum SystemPromptSection: String, CaseIterable {
 
   var fileHeader: String {
     switch self {
+    case .dictationAdditions: return "=== Dictation Additions ==="
+    case .promptModeAdditions: return "=== Dictate Prompt Additions ==="
     case .dictation: return "=== Dictation (Speech-to-Text) ==="
     case .whisperGlossary: return "=== Whisper Glossary (Offline) ==="
     case .promptMode: return "=== Dictate Prompt ==="
     case .chat: return "=== Chat ==="
     case .readAloudRewrite: return "=== Read Aloud Rewrite ==="
+    }
+  }
+
+  /// The legacy full-prompt section that pairs with an additions section, if this is one.
+  var legacyCounterpart: SystemPromptSection? {
+    switch self {
+    case .dictationAdditions: return .dictation
+    case .promptModeAdditions: return .promptMode
+    default: return nil
+    }
+  }
+
+  /// The additions section that pairs with a legacy full-prompt section, if this is one.
+  var additionsCounterpart: SystemPromptSection? {
+    switch self {
+    case .dictation: return .dictationAdditions
+    case .promptMode: return .promptModeAdditions
+    default: return nil
+    }
+  }
+
+  /// Accepts either side of a Dictation or Dictate Prompt pair and returns (legacy, additions).
+  var promptPair: (legacy: SystemPromptSection, additions: SystemPromptSection)? {
+    switch self {
+    case .dictation, .dictationAdditions: return (.dictation, .dictationAdditions)
+    case .promptMode, .promptModeAdditions: return (.promptMode, .promptModeAdditions)
+    default: return nil
     }
   }
 
@@ -90,7 +125,20 @@ final class SystemPromptsStore {
     return _unreadableReason
   }
 
-  private init() { contextDirectoryOverride = nil }
+  /// Reason stored on proposals that migration cases 1 and 2 retire.
+  static let migrationProposalReason = "superseded by prompt additions migration"
+
+  /// Called after migration cases 1 or 2 with the legacy sections those cases cleared.
+  /// The shared store points this at `MCPProposalStore`. Scratch stores leave it nil so tests
+  /// never touch the user's proposals; a test that cares about the decline sets it.
+  var declineLegacyProposals: ((Set<SystemPromptSection>) -> Void)?
+
+  private init() {
+    contextDirectoryOverride = nil
+    declineLegacyProposals = { sections in
+      MCPProposalStore.shared.declinePending(sections: sections, reason: SystemPromptsStore.migrationProposalReason)
+    }
+  }
 
   /// Tests only: a store rooted in a scratch directory instead of the real UserContext.
   init(contextDirectoryURL: URL) { contextDirectoryOverride = contextDirectoryURL }
@@ -98,15 +146,53 @@ final class SystemPromptsStore {
   // MARK: - Public read
 
   /// The user's additional dictation instructions. Empty when the section is missing or blank.
-  /// Never the fixed core (`AppConstants.defaultTranscriptionSystemPrompt`).
   func loadDictationAdditions() -> String {
+    loadSection(.dictationAdditions)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  }
+
+  /// Legacy Dictation prompt. Non-empty means it replaces the built-in instructions entirely.
+  func loadLegacyDictationPrompt() -> String {
     loadSection(.dictation)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
   /// The user's additional Dictate Prompt instructions. Empty when the section is missing or blank.
-  /// Never the fixed core (`AppConstants.defaultPromptModeSystemPrompt`).
   func loadDictatePromptAdditions() -> String {
+    loadSection(.promptModeAdditions)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  }
+
+  /// Legacy Dictate Prompt. Non-empty means it replaces the built-in instructions entirely.
+  func loadLegacyDictatePrompt() -> String {
     loadSection(.promptMode)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  }
+
+  /// The legacy full prompt that replaces the built-in for this additions section, when one is active.
+  func legacyFullPrompt(for additionsSection: SystemPromptSection) -> String? {
+    guard let legacy = additionsSection.promptPair?.legacy else { return nil }
+    let text = (loadSection(legacy) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    return text.isEmpty ? nil : text
+  }
+
+  /// Turns a legacy full prompt into additions. Strips a shipped core when every line of some
+  /// version is still present; otherwise the whole legacy text becomes the additions. The legacy
+  /// section is cleared either way. History source is `.settings`.
+  @discardableResult
+  func convertLegacyToAdditions(_ section: SystemPromptSection) -> Bool {
+    guard let pair = section.promptPair else { return false }
+    if case .unreadable = currentFile() { return false }
+    prepareFile()
+    guard case .contents(let content) = readFile() else { return false }
+    var parsed = parseSections(from: content)
+    let before = parsed
+    let legacyText = (parsed[pair.legacy] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !legacyText.isEmpty else { return false }
+    let sets = SystemPromptDefaultsHistory.shippedLineSets[pair.legacy] ?? []
+    let moved = Self.strippingShippedCore(legacyText, lineSets: sets) ?? legacyText
+    parsed[pair.legacy] = ""
+    parsed[pair.additions] = moved
+    guard write(formatContent(parsed), reason: "convert legacy \(pair.legacy.rawValue) to additions") else { return false }
+    recordChanges(from: before, source: .settings)
+    NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    return true
   }
 
   /// Chat system prompt. Returns default if section missing or empty.
@@ -220,7 +306,9 @@ final class SystemPromptsStore {
   /// Load full file content for the editor. Returns default formatted content if the file is missing
   /// (after migration attempt) or unreadable.
   func loadFullContent() -> String {
-    guard case .contents(let content) = currentFile() else { return defaultFormattedContent() }
+    guard case .contents = currentFile() else { return defaultFormattedContent() }
+    prepareFile()
+    guard case .contents(let content) = readFile() else { return defaultFormattedContent() }
     return content
   }
 
@@ -238,6 +326,7 @@ final class SystemPromptsStore {
   @discardableResult
   func saveFullContent(_ rawContent: String, source: PromptHistorySource) -> Bool {
     if case .unreadable = currentFile() { return refuseWrite("save") }
+    prepareFile()
     let before = sectionsOnDisk()
     guard write(formatContent(parseSections(from: rawContent)), reason: "save") else { return false }
     recordChanges(from: before, source: source)
@@ -254,8 +343,13 @@ final class SystemPromptsStore {
   /// A call site cannot forget it, and none writes it a second time.
   @discardableResult
   func updateSection(_ section: SystemPromptSection, content: String, source: PromptHistorySource) -> Bool {
-    var parsed: [SystemPromptSection: String]
     switch currentFile() {
+    case .unreadable: return refuseWrite("update section \(section.rawValue)")
+    case .missing, .contents: break
+    }
+    prepareFile()
+    var parsed: [SystemPromptSection: String]
+    switch readFile() {
     case .contents(let existing): parsed = parseSections(from: existing)
     case .missing: parsed = parseSections(from: defaultFormattedContent())
     case .unreadable: return refuseWrite("update section \(section.rawValue)")
@@ -272,8 +366,7 @@ final class SystemPromptsStore {
   /// Nil when the section is absent or the file cannot be read (see `unreadableReason`).
   func loadSection(_ section: SystemPromptSection) -> String? {
     guard case .contents = currentFile() else { return nil }
-    liftUnchangedDefaultsOnce()
-    stripCorePrefixesOnce()
+    prepareFile()
     guard case .contents(let content) = readFile() else { return nil }
     return parseSections(from: content)[section]
   }
@@ -298,8 +391,7 @@ final class SystemPromptsStore {
     case .contents:
       break
     }
-    liftUnchangedDefaultsOnce()
-    stripCorePrefixesOnce()
+    prepareFile()
     guard case .contents(let content) = readFile() else { return }
     let hasBackup = FileManager.default.fileExists(atPath: backupFileURL.path)
     DebugLogger.log("SYSTEM-PROMPTS: \(path) readable (\(content.count) chars, backup \(hasBackup ? "present" : "none"))")
@@ -309,13 +401,21 @@ final class SystemPromptsStore {
     }
   }
 
-  /// "custom (1234 chars)", "default (812 chars)", "empty" or "missing" — no content.
+  /// "custom (1234 chars)", "legacy full prompt (1234 chars)", "additions (80 chars)",
+  /// "empty (built-in)", "empty" or "missing". Never the prompt text.
   static func describe(_ body: String?, for section: SystemPromptSection) -> String {
     guard let body else { return "missing" }
     let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { return "empty" }
-    let kind = isCustomized(trimmed, for: section) ? "custom" : "default"
-    return "\(kind) (\(trimmed.count) chars)"
+    switch section {
+    case .dictation, .promptMode:
+      return trimmed.isEmpty ? "empty (built-in)" : "legacy full prompt (\(trimmed.count) chars)"
+    case .dictationAdditions, .promptModeAdditions:
+      return trimmed.isEmpty ? "empty" : "additions (\(trimmed.count) chars)"
+    default:
+      if trimmed.isEmpty { return "empty" }
+      let kind = isCustomized(trimmed, for: section) ? "custom" : "default"
+      return "\(kind) (\(trimmed.count) chars)"
+    }
   }
 
   /// True when the section holds text the user wrote: non-empty and not any default the app shipped.
@@ -337,6 +437,15 @@ final class SystemPromptsStore {
   }
 
   private var didLiftUnchangedDefaults = false
+  private var didMigrateAdditions = false
+
+  /// Lift unchanged shipped defaults, then migrate legacy full prompts into additions.
+  /// Migration runs after the lift so a section that is still a shipped default is on the
+  /// current wording before it is classified.
+  private func prepareFile() {
+    liftUnchangedDefaultsOnce()
+    migrateAdditionsOnce()
+  }
 
   /// Once per launch: sections the user never edited — still equal to some default this app has
   /// shipped before — are rewritten to the current default. Without this, a default that changes
@@ -356,64 +465,121 @@ final class SystemPromptsStore {
     }
   }
 
-  private var didStripCorePrefixes = false
-
-  /// Once per launch, next to `liftUnchangedDefaultsOnce`: a Dictation or Dictate Prompt section
-  /// that still begins with the current fixed core (the shape AI apps produced by appending rules
-  /// to the old full default) keeps only the text after that core. Sections that do not start
-  /// with the core stay verbatim. Logs section names only.
-  private func stripCorePrefixesOnce() {
-    guard !didStripCorePrefixes else { return }
-    guard case .contents(let content) = readFile() else { return }
-    didStripCorePrefixes = true
-    var parsed = parseSections(from: content)
-    var stripped: [SystemPromptSection] = []
-    for (section, core) in Self.fixedCores {
-      guard let body = parsed[section], let remainder = Self.strippingCorePrefix(body, core: core),
-        SystemPromptDefaultsHistory.normalized(remainder) != SystemPromptDefaultsHistory.normalized(body)
-      else { continue }
-      parsed[section] = remainder
-      stripped.append(section)
-    }
-    guard !stripped.isEmpty else { return }
-    let names = stripped.map(\.rawValue).sorted().joined(separator: ", ")
-    if write(formatContent(parsed), reason: "strip built-in core prefix: \(names)") {
-      for section in stripped {
-        DebugLogger.log("SYSTEM-PROMPTS: Stripped built-in core from section \(section.rawValue)")
-      }
-      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
-    }
+  /// Outcome of classifying one legacy full prompt. `legacy` and `additions` are what to store.
+  struct LegacyPromptMigration: Equatable {
+    var caseNumber: Int
+    var legacy: String
+    var additions: String
   }
 
-  /// Dictation and Dictate Prompt, with the fixed core each section used to store in full.
-  private static let fixedCores: [(SystemPromptSection, String)] = [
-    (.dictation, AppConstants.defaultTranscriptionSystemPrompt),
-    (.promptMode, AppConstants.defaultPromptModeSystemPrompt),
-  ]
-
-  /// When `text` starts with `core` word by word (line wrapping does not matter), the remainder
-  /// after that prefix, original whitespace kept, ends trimmed. Nil when it does not. "" when
-  /// `text` is exactly the core. An empty core never matches.
-  static func strippingCorePrefix(_ text: String, core: String) -> String? {
-    let coreWords = core.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-    guard !coreWords.isEmpty else { return nil }
-    var index = text.startIndex
-    var matched = 0
-    var endOfCore = text.startIndex
-    while matched < coreWords.count {
-      while index < text.endIndex, text[index].isWhitespace {
-        index = text.index(after: index)
-      }
-      guard index < text.endIndex else { return nil }
-      let wordStart = index
-      while index < text.endIndex, !text[index].isWhitespace {
-        index = text.index(after: index)
-      }
-      guard String(text[wordStart..<index]) == coreWords[matched] else { return nil }
-      endOfCore = index
-      matched += 1
+  /// Classifies one legacy section. Case 1 clears a shipped or empty prompt. Case 2 keeps only
+  /// the lines that are not a single shipped core. Case 3 leaves a prompt that is the user's own,
+  /// or a shipped core with paragraphs deleted or edited.
+  ///
+  /// A stripped remainder that still contains a line from some other shipped core is case 3:
+  /// that shape is a damaged default, not a core plus the user's own rules. `lineSets` overrides
+  /// the generated history in tests.
+  static func migrateLegacyPrompt(
+    _ raw: String, section: SystemPromptSection, lineSets: [Set<String>]? = nil
+  ) -> LegacyPromptMigration {
+    let legacy = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if legacy.isEmpty || SystemPromptDefaultsHistory.isShippedDefault(legacy, for: section) {
+      return LegacyPromptMigration(caseNumber: 1, legacy: "", additions: "")
     }
-    return String(text[endOfCore...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    let sets = lineSets ?? SystemPromptDefaultsHistory.shippedLineSets[section] ?? []
+    if let stripped = strippingShippedCore(legacy, lineSets: sets),
+      !remainderContainsShippedLine(stripped, lineSets: sets)
+    {
+      return LegacyPromptMigration(caseNumber: 2, legacy: "", additions: stripped)
+    }
+    return LegacyPromptMigration(caseNumber: 3, legacy: legacy, additions: "")
+  }
+
+  /// Lines of `text` minus one shipped core, when `text` contains every line of some version.
+  /// Keeps the order and original text of the remaining lines. Drops a header that ends with ":"
+  /// when the line under it was dropped. Collapses runs of 3 or more newlines and trims.
+  /// Nil when no version is fully contained.
+  static func strippingShippedCore(_ text: String, lineSets: [Set<String>]) -> String? {
+    let lines = text.components(separatedBy: "\n")
+    var present = Set<String>()
+    for line in lines {
+      let norm = SystemPromptDefaultsHistory.normalized(line)
+      guard !norm.isEmpty else { continue }
+      present.insert(SystemPromptDefaultsHistory.fingerprint(line))
+    }
+    let matches = lineSets.filter { !$0.isEmpty && $0.isSubset(of: present) }
+    guard let best = matches.max(by: { $0.count < $1.count }) else { return nil }
+    var drop = Array(repeating: false, count: lines.count)
+    for (index, line) in lines.enumerated() {
+      let norm = SystemPromptDefaultsHistory.normalized(line)
+      if !norm.isEmpty, best.contains(SystemPromptDefaultsHistory.fingerprint(line)) {
+        drop[index] = true
+      }
+    }
+    if lines.count >= 2 {
+      for index in stride(from: lines.count - 2, through: 0, by: -1) {
+        let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+        if !drop[index], trimmed.hasSuffix(":"), drop[index + 1] {
+          drop[index] = true
+        }
+      }
+    }
+    var joined = lines.enumerated().filter { !drop[$0.offset] }.map(\.element).joined(separator: "\n")
+    while joined.contains("\n\n\n") {
+      joined = joined.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+    }
+    return joined.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func remainderContainsShippedLine(_ remainder: String, lineSets: [Set<String>]) -> Bool {
+    guard !remainder.isEmpty else { return false }
+    let shipped = Set(lineSets.joined())
+    for line in remainder.components(separatedBy: "\n") {
+      let norm = SystemPromptDefaultsHistory.normalized(line)
+      guard !norm.isEmpty else { continue }
+      if shipped.contains(SystemPromptDefaultsHistory.fingerprint(line)) { return true }
+    }
+    return false
+  }
+
+  /// Once per launch, after `liftUnchangedDefaultsOnce`. For each legacy section whose additions
+  /// header is not in the file yet: case 1 clears a shipped or empty prompt, case 2 keeps only
+  /// the user's extra lines, case 3 leaves the text as a full replacement. Writing the additions
+  /// header, even with an empty body, marks that section done. One log line per section, counts
+  /// only. Cases 1 and 2 decline pending proposals that still target the legacy section.
+  private func migrateAdditionsOnce() {
+    guard !didMigrateAdditions else { return }
+    guard case .contents(let content) = readFile() else { return }
+    didMigrateAdditions = true
+    var parsed = parseSections(from: content)
+    let pairs: [(SystemPromptSection, SystemPromptSection)] = [
+      (.dictation, .dictationAdditions),
+      (.promptMode, .promptModeAdditions),
+    ]
+    var changed = false
+    var superseded = Set<SystemPromptSection>()
+    for (legacy, additions) in pairs {
+      guard parsed[additions] == nil else { continue }
+      let body = parsed[legacy] ?? ""
+      let outcome = Self.migrateLegacyPrompt(body, section: legacy)
+      parsed[legacy] = outcome.legacy
+      parsed[additions] = outcome.additions
+      changed = true
+      let legacyCount = body.trimmingCharacters(in: .whitespacesAndNewlines).count
+      DebugLogger.log(
+        "SYSTEM-PROMPTS: migration \(legacy.rawValue) case \(outcome.caseNumber) (legacy \(legacyCount) chars, additions \(outcome.additions.count) chars)")
+      if outcome.caseNumber == 1 || outcome.caseNumber == 2 {
+        superseded.insert(legacy)
+      }
+    }
+    guard changed else { return }
+    let before = parseSections(from: content)
+    guard write(formatContent(parsed), reason: "migrate prompt additions") else { return }
+    recordChanges(from: before, source: .migration)
+    if !superseded.isEmpty {
+      declineLegacyProposals?(superseded)
+    }
+    NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
   }
 
   // MARK: - Change history
@@ -620,16 +786,24 @@ final class SystemPromptsStore {
 
   private func defaultFormattedContent() -> String {
     formatContent([
-      .dictation: AppConstants.defaultDictationAdditions,
+      .dictationAdditions: AppConstants.defaultDictationAdditions,
+      .promptModeAdditions: AppConstants.defaultPromptModeAdditions,
+      .dictation: "",
       .whisperGlossary: AppConstants.defaultWhisperGlossary,
-      .promptMode: AppConstants.defaultPromptModeAdditions,
+      .promptMode: "",
       .chat: AppConstants.defaultChatSystemPrompt,
       .readAloudRewrite: AppConstants.defaultReadAloudRewritePrompt,
     ])
   }
 
+  /// Additions sections are omitted when the key is absent, so a lift of an old file does not
+  /// write their headers before migration has classified the legacy text. A present key, even
+  /// with an empty body, is written and marks migration done.
   private func formatContent(_ sections: [SystemPromptSection: String]) -> String {
-    SystemPromptSection.allCases.map { section in
+    SystemPromptSection.allCases.compactMap { section -> String? in
+      if section.legacyCounterpart != nil, sections[section] == nil {
+        return nil
+      }
       let body = sections[section] ?? ""
       return section.fileHeader + "\n\n" + body
     }.joined(separator: "\n\n")
@@ -668,10 +842,9 @@ final class SystemPromptsStore {
   /// `.withoutOverwriting` (O_EXCL), so even a racing or mis-detected "missing" cannot replace an
   /// existing file.
   private func performMigration() {
-    let dictation = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
-      ?? AppConstants.defaultDictationAdditions
-    let promptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt)
-      ?? AppConstants.defaultPromptModeAdditions
+    let dictation = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText) ?? ""
+    let promptMode = UserDefaults.standard.string(forKey: UserDefaultsKeys.promptModeSystemPrompt) ?? ""
+    // Additions headers are omitted on purpose. The next read classifies these legacy bodies.
     let content = formatContent([
       .dictation: dictation,
       .whisperGlossary: AppConstants.defaultWhisperGlossary,

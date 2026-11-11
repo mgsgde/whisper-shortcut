@@ -231,11 +231,11 @@ struct MCPConfigToolsTests {
   func caps() {
     let env = MCPTestEnv()
     let t = env.tools()
-    let big = String(repeating: "a", count: ChatToolRegistry.instructionsSectionLimit(for: .promptMode) + 1)
+    let big = String(repeating: "a", count: ChatToolRegistry.instructionsSectionLimit(for: .promptModeAdditions) + 1)
     let r = t.call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": big, "rationale": "r"], access: .write)
     #expect(r.isError)
-    #expect(env.systemPrompts.loadSection(.promptMode) != big)
+    #expect(env.systemPrompts.loadSection(.promptModeAdditions) != big)
     let bigProfile = String(repeating: "a", count: WritingStyleStore.maxChars + 1)
     let w = t.call(name: "update_writing_style_profile", arguments: ["content": bigProfile, "rationale": "r"], access: .write)
     #expect(w.isError)
@@ -474,7 +474,7 @@ struct MCPConfigToolsTests {
   @Test("get_configuration reports state, recipe and inline texts")
   func configuration() {
     let env = MCPTestEnv(level: .propose)
-    env.systemPrompts.updateSection(.promptMode, content: "Custom rule.", source: .settings)
+    env.systemPrompts.updateSection(.promptModeAdditions, content: "Custom rule.", source: .settings)
     _ = try? env.commands.save(name: "a-cmd", text: "Do it.", scope: .both)
     let r = env.tools().call(name: "get_configuration", arguments: ["include": ["system_prompts", "writing_style", "commands"]], access: .read)
     let o = obj(r)
@@ -483,9 +483,10 @@ struct MCPConfigToolsTests {
     #expect((o["models"] as? [String: String])?["transcription_model"] == "whisper-base")
     let prompts = o["system_prompts"] as? [String: Any]
     #expect((prompts?["dictate_prompt"] as? [String: Any])?["customized"] as? Bool == true)
-    #expect((prompts?["dictate_prompt"] as? [String: Any])?["fixed_core"] as? Bool == true)
-    #expect((prompts?["dictation"] as? [String: Any])?["fixed_core"] as? Bool == true)
-    #expect((prompts?["chat"] as? [String: Any])?["fixed_core"] == nil)
+    #expect((prompts?["dictate_prompt"] as? [String: Any])?["purpose"] as? String != nil)
+    #expect((prompts?["dictate_prompt"] as? [String: Any])?["warnings"] is [String])
+    #expect((prompts?["dictation"] as? [String: Any])?["legacy_full_prompt"] == nil)
+    #expect((prompts?["chat"] as? [String: Any])?["replaces_built_in"] == nil)
     #expect(
       (prompts?["dictate_prompt"] as? [String: Any])?["default_length"] as? Int
         == AppConstants.defaultPromptModeAdditions.count)
@@ -618,7 +619,7 @@ struct MCPConfigToolsTests {
   @Test("resources/list and resources/read")
   func resources() throws {
     let env = MCPTestEnv()
-    env.systemPrompts.updateSection(.promptMode, content: "Be brief.", source: .settings)
+    env.systemPrompts.updateSection(.promptModeAdditions, content: "Be brief.", source: .settings)
     env.writingStyle.saveProfile("Direct.")
     _ = try env.commands.save(name: "daily", text: "Plan my day.", scope: .chat)
     let d = env.dispatcher()

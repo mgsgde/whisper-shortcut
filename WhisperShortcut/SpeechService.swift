@@ -158,13 +158,23 @@ class SpeechService {
   }
 
   // MARK: - Prompt Building
-  /// Dictation system prompt: the fixed core plus the user's additional instructions.
-  /// The glossary hint is appended by the caller, after this.
+  /// Dictation system prompt. A non-empty legacy section replaces the built-in core. Otherwise
+  /// the core plus the user's additions. The glossary hint is appended by the caller, after this.
   private func buildDictationPrompt() -> String {
-    AppConstants.withUserAdditions(
-      core: AppConstants.defaultTranscriptionSystemPrompt,
-      additions: SystemPromptsStore.shared.loadDictationAdditions()
+    Self.dictationBase(
+      additions: SystemPromptsStore.shared.loadDictationAdditions(),
+      legacy: SystemPromptsStore.shared.loadLegacyDictationPrompt()
     ).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Pure dictation base: a non-empty legacy prompt wins; otherwise the core plus additions.
+  static func dictationBase(additions: String, legacy: String) -> String {
+    let trimmedLegacy = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmedLegacy.isEmpty { return trimmedLegacy }
+    return AppConstants.withUserAdditions(
+      core: AppConstants.defaultTranscriptionSystemPrompt,
+      additions: additions,
+      taskReminder: AppConstants.dictationTaskReminder)
   }
 
   /// Appends the user's vocabulary Glossary (when non-empty) to a transcription instruction.
@@ -1216,40 +1226,49 @@ class SpeechService {
         usesScreenshotSelection: true, styleBlock: styleBlock, template: template, stored: "")
     }
     let stored = SystemPromptsStore.shared.loadDictatePromptAdditions()
+    let legacy = SystemPromptsStore.shared.loadLegacyDictatePrompt()
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty {
       DebugLogger.log("\(logPrefix): Using dictation template")
+    } else if !legacy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      DebugLogger.log("\(logPrefix): Using legacy full prompt")
     } else if stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       DebugLogger.log("\(logPrefix): Using base system prompt")
     } else {
       DebugLogger.log("\(logPrefix): Using core + user additions")
     }
     return buildDictatePromptSystemPrompt(
-      usesScreenshotSelection: false, styleBlock: styleBlock, template: template, stored: stored)
+      usesScreenshotSelection: false, styleBlock: styleBlock, template: template, stored: stored,
+      legacy: legacy)
   }
 
   /// Same composition as `buildDictatePromptSystemPrompt`, with the stored additions passed in.
   /// Pure: no store read and no logging, so tests can pin the exact string user additions,
   /// the fixed core, and screenshot-selection mode produce.
   static func buildDictatePromptSystemPrompt(
-    usesScreenshotSelection: Bool, styleBlock: String = "", template: String? = nil, stored: String
+    usesScreenshotSelection: Bool, styleBlock: String = "", template: String? = nil, stored: String,
+    legacy: String = ""
   ) -> String {
     if usesScreenshotSelection {
       return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + styleBlock
         + AppConstants.promptModeOutputRule
     }
-    let base = dictatePromptBase(stored: stored, template: template)
+    let base = dictatePromptBase(stored: stored, template: template, legacy: legacy)
     return base + styleBlock + AppConstants.promptModeOutputRule
   }
 
-  /// The base of the Dictate Prompt system prompt: a non-empty template replaces the base for
-  /// this turn; otherwise the fixed core plus the user's additional instructions (`stored`).
-  /// Pure, so tests can feed it what a store read.
-  static func dictatePromptBase(stored: String, template: String?) -> String {
+  /// The base of the Dictate Prompt system prompt. A non-empty template replaces the base for
+  /// this turn. Otherwise a non-empty legacy prompt replaces the built-in core. Otherwise the
+  /// core plus the user's additions (`stored`). Pure, so tests can feed it what a store read.
+  static func dictatePromptBase(stored: String, template: String?, legacy: String = "") -> String {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty { return trimmedTemplate }
+    let trimmedLegacy = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmedLegacy.isEmpty { return trimmedLegacy }
     return AppConstants.withUserAdditions(
-      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored)
+      core: AppConstants.defaultPromptModeSystemPrompt,
+      additions: stored,
+      taskReminder: AppConstants.dictatePromptTaskReminder)
   }
 
   /// Shown when screenshot-selection mode (App Store build) has no screenshot to send. Shared by

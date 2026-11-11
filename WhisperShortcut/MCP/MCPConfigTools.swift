@@ -90,8 +90,8 @@ struct MCPConfigTools {
 
   /// Model-facing section names, in display order.
   static let sections: [(name: String, section: SystemPromptSection)] = [
-    ("dictation", .dictation), ("whisper_glossary", .whisperGlossary),
-    ("dictate_prompt", .promptMode), ("chat", .chat), ("read_aloud_rewrite", .readAloudRewrite),
+    ("dictation", .dictationAdditions), ("whisper_glossary", .whisperGlossary),
+    ("dictate_prompt", .promptModeAdditions), ("chat", .chat), ("read_aloud_rewrite", .readAloudRewrite),
   ]
   /// Always a proposal, at every access level. A meeting or an email an AI app reads could contain
   /// text meant to change these instructions, or to remove glossary lines.
@@ -244,7 +244,7 @@ struct MCPConfigTools {
     [
       "name": "report_problem",
       "description":
-        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Saves a report the user reviews in WhisperShortcut; nothing is sent unless they open it as a GitHub issue themselves. Remove names, patient, customer and other private data from the examples.",
+        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Before calling, read get_configuration; if a section's warnings explain the problem, fix the configuration instead. Saves a report the user reviews in WhisperShortcut; nothing is sent unless they open it as a GitHub issue themselves. Remove names, patient, customer and other private data from the examples.",
       "inputSchema": [
         "type": "object",
         "properties": [
@@ -363,13 +363,16 @@ struct MCPConfigTools {
       let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       // The default's length lets an AI app see at a glance which customized section grew far
       // past what the app ships, the usual sign of rules piling up.
+      let legacy = env.targets.systemPrompts.legacyFullPrompt(for: section)
       var row: [String: Any] = [
         "customized": SystemPromptsStore.isCustomized(trimmed, for: section), "length": trimmed.count,
         "default_length": MCPProposalWindows.defaultText(for: section).count,
+        "purpose": SystemPromptSectionGuide.purpose(for: section),
+        "warnings": SystemPromptSectionGuide.warnings(for: section, text: trimmed, legacyActive: legacy != nil),
       ]
-      // Dictation and Dictate Prompt: the section is additional instructions. The core is fixed.
-      if section == .dictation || section == .promptMode {
-        row["fixed_core"] = true
+      if let legacy {
+        row["legacy_full_prompt"] = legacy
+        row["replaces_built_in"] = true
       }
       info[name] = row
     }
@@ -569,7 +572,7 @@ struct MCPConfigTools {
     let trimmedContent = rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
     // Dictation and Dictate Prompt store only additions, so empty content clears them.
     // Every other section still rejects an empty replacement.
-    let additionsOnly = section == .dictation || section == .promptMode
+    let additionsOnly = section == .dictationAdditions || section == .promptModeAdditions
     if trimmedContent.isEmpty && !additionsOnly {
       return reject(tool, "empty content", "content must be the full new section text.")
     }
@@ -583,7 +586,9 @@ struct MCPConfigTools {
       let previous = env.targets.systemPrompts.loadSection(section)
       if MCPConfigTargets.normalized(previous) == MCPConfigTargets.normalized(content) {
         log(tool, "applied", "no-op", len: content.count)
-        return (json(["status": "no_change", "message": "The section already has this text."]), false)
+        return systemPromptResult(
+          ["status": "no_change", "message": "The section already has this text."],
+          section: section, content: content)
       }
       if proposalOnly {
         do {
@@ -591,14 +596,20 @@ struct MCPConfigTools {
             kind: .systemPrompt, section: section.rawValue, previousContent: previous,
             proposedContent: content, rationale: r.value!)
           log(tool, "proposed", name, len: content.count)
-          return pendingResult(p.id)
+          return systemPromptResult(
+            ["status": "pending_review", "id": p.id, "message": "Waiting for the user to accept it in WhisperShortcut."],
+            section: section, content: content)
         } catch {
           return reject(tool, "too many pending", error.localizedDescription)
         }
       }
-      return appliedResult(
-        env.applier.applySystemPrompt(section: section, content: content, rationale: r.value!, viaProposal: false),
-        tool: tool, len: content.count)
+      switch env.applier.applySystemPrompt(section: section, content: content, rationale: r.value!, viaProposal: false) {
+      case .success(let changeID):
+        log(tool, "applied", len: content.count)
+        return systemPromptResult(["status": "applied", "change_id": changeID], section: section, content: content)
+      case .failure(let error):
+        return reject(tool, "write failed", error.localizedDescription)
+      }
     }
   }
 
@@ -748,9 +759,73 @@ struct MCPConfigTools {
       parts.append("## Suspected cause\n\(suspectedCause)")
     }
     parts.append("## Why settings can't fix it\n\(whyNotSettings)")
+    parts.append(configurationAppendix())
     parts.append(
       "---\nReported by an AI app via WhisperShortcut's MCP server.\n\(FeedbackLinks.environmentBlock)")
     return parts.joined(separator: "\n\n")
+  }
+
+  /// App-generated snapshot appended to every problem report. Warnings are included, never used
+  /// to reject the report. Custom text is the legacy full prompt when one is active, otherwise
+  /// the additions, and is cut at 1,500 characters.
+  private func configurationAppendix() -> String {
+    let settings = env.settings()
+    var lines = ["## Configuration (added by WhisperShortcut)"]
+    lines.append("transcription_model: \(settings["transcription_model"] ?? "")")
+    lines.append("dictate_prompt_model: \(settings["dictate_prompt_model"] ?? "")")
+    let modes: [(String, SystemPromptSection)] = [
+      ("dictation", .dictationAdditions),
+      ("dictate_prompt", .promptModeAdditions),
+    ]
+    for (name, section) in modes {
+      let additions = (env.targets.systemPrompts.loadSection(section) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let legacy = env.targets.systemPrompts.legacyFullPrompt(for: section)
+      let mode: String
+      let custom: String?
+      if let legacy {
+        mode = "legacy full prompt (\(legacy.count) chars, replaces built-in)"
+        custom = legacy
+      } else if !additions.isEmpty {
+        mode = "built-in + additions (\(additions.count) chars)"
+        custom = additions
+      } else {
+        mode = "built-in"
+        custom = nil
+      }
+      lines.append("\(name): \(mode)")
+      let warnings = SystemPromptSectionGuide.warnings(
+        for: section, text: additions, legacyActive: legacy != nil)
+      if !warnings.isEmpty {
+        lines.append("Warnings:")
+        lines.append(contentsOf: warnings.map { "- \($0)" })
+      }
+      if let custom {
+        lines.append("```")
+        lines.append(String(custom.prefix(1_500)))
+        lines.append("```")
+      }
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  /// Adds the legacy-prompt note and the warnings of `content` to a system-prompt tool result.
+  private func systemPromptResult(
+    _ base: [String: Any], section: SystemPromptSection, content: String
+  ) -> MCPToolResult {
+    var payload = base
+    if env.targets.systemPrompts.legacyFullPrompt(for: section) != nil {
+      let note =
+        "A legacy full prompt replaces the built-in instructions for this mode; these additions take effect once the user converts it in Settings."
+      if let existing = payload["message"] as? String, !existing.isEmpty {
+        payload["message"] = existing + " " + note
+      } else {
+        payload["message"] = note
+      }
+    }
+    let warnings = SystemPromptSectionGuide.warnings(for: section, text: content, legacyActive: false)
+    if !warnings.isEmpty { payload["warnings"] = warnings }
+    return (json(payload), false)
   }
 
   /// Always a proposal, at every access level above read: the user decides whether to open the issue.
@@ -817,7 +892,8 @@ struct MCPConfigTools {
     var list: [[String: Any]] = Self.sections.map { s in
       [
         "uri": "\(Self.resourcePrefix)system-prompt/\(s.name)", "name": "System prompt: \(s.name)",
-        "description": "Current text of the \(s.name) system prompt section.", "mimeType": "text/markdown",
+        "description": "Current text of the \(s.name) system prompt section. \(SystemPromptSectionGuide.purpose(for: s.section))",
+        "mimeType": "text/markdown",
       ]
     }
     list.append([

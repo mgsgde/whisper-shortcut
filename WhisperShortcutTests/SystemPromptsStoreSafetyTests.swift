@@ -48,7 +48,8 @@ struct SystemPromptsStoreSafetyTests {
     try original.write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
 
     #expect(store.loadSection(.promptMode) == customPrompt)
-    #expect(store.loadDictatePromptAdditions() == customPrompt)
+    #expect(store.loadLegacyDictatePrompt() == customPrompt)
+    #expect(store.loadDictatePromptAdditions() == "")
     #expect(read(store.systemPromptsFileURL)?.contains(customPrompt) == true)
     #expect(!FileManager.default.fileExists(atPath: store.backupFileURL.path), "reading must not write a backup")
   }
@@ -129,7 +130,9 @@ struct SystemPromptsStoreSafetyTests {
   @Test("The startup summary describes sections without their content")
   func describeHasNoContent() {
     let custom = SystemPromptsStore.describe(customPrompt, for: .promptMode)
-    #expect(custom == "custom (\(customPrompt.count) chars)")
+    #expect(custom == "legacy full prompt (\(customPrompt.count) chars)")
+    #expect(SystemPromptsStore.describe("", for: .dictation) == "empty (built-in)")
+    #expect(SystemPromptsStore.describe("Be brief.", for: .dictationAdditions) == "additions (9 chars)")
     #expect(!custom.contains("Anamnese"))
     #expect(SystemPromptsStore.describe(AppConstants.defaultChatSystemPrompt, for: .chat).hasPrefix("default ("))
     #expect(SystemPromptsStore.describe("", for: .whisperGlossary) == "empty")

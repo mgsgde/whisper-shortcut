@@ -220,7 +220,8 @@ struct DictationTemplateTests {
     let style = "\n\nLearned writing style."
     let outputRule = AppConstants.promptModeOutputRule
     let composed = AppConstants.withUserAdditions(
-      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored)
+      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored,
+      taskReminder: AppConstants.dictatePromptTaskReminder)
 
     func prompt(screenshot: Bool, styleBlock: String, stored: String) -> String {
       SpeechService.buildDictatePromptSystemPrompt(
@@ -246,7 +247,8 @@ struct DictationTemplateTests {
     let stored = "Custom prompt the user wrote"
     let template = "Practice note format"
     let composed = AppConstants.withUserAdditions(
-      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored)
+      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored,
+      taskReminder: AppConstants.dictatePromptTaskReminder)
     #expect(SpeechService.dictatePromptBase(stored: stored, template: template) == template)
     #expect(SpeechService.dictatePromptBase(stored: stored, template: nil) == composed)
     #expect(SpeechService.dictatePromptBase(stored: stored, template: "") == composed)
@@ -257,7 +259,9 @@ struct DictationTemplateTests {
     #expect(SpeechService.dictatePromptBase(stored: "", template: customPrompt) == customPrompt)
     #expect(
       SpeechService.dictatePromptBase(stored: customPrompt, template: nil)
-        == AppConstants.withUserAdditions(core: AppConstants.defaultPromptModeSystemPrompt, additions: customPrompt))
+        == AppConstants.withUserAdditions(
+          core: AppConstants.defaultPromptModeSystemPrompt, additions: customPrompt,
+          taskReminder: AppConstants.dictatePromptTaskReminder))
   }
 
   /// Regression: a custom prompt vanished after an update on 2026-10-19. A fresh store is the
@@ -281,16 +285,15 @@ struct DictationTemplateTests {
       ])
 
       let store = SystemPromptsStore(contextDirectoryURL: dir)
-      let loaded = store.loadDictatePromptAdditions()
+      let loaded = store.loadLegacyDictatePrompt()
       #expect(loaded == customPrompt)
+      #expect(store.loadDictatePromptAdditions() == "")
       #expect(try Data(contentsOf: fileURL) == before)
       #expect(!FileManager.default.fileExists(atPath: store.backupFileURL.path))
-      #expect(
-        SpeechService.dictatePromptBase(stored: loaded, template: nil)
-          == AppConstants.withUserAdditions(core: AppConstants.defaultPromptModeSystemPrompt, additions: customPrompt))
+      #expect(SpeechService.dictatePromptBase(stored: "", template: nil, legacy: loaded) == customPrompt)
 
       let second = SystemPromptsStore(contextDirectoryURL: dir)
-      #expect(second.loadDictatePromptAdditions() == customPrompt)
+      #expect(second.loadLegacyDictatePrompt() == customPrompt)
       #expect(try Data(contentsOf: fileURL) == before)
       #expect(!FileManager.default.fileExists(atPath: second.backupFileURL.path))
     }

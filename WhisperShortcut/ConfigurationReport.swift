@@ -50,9 +50,13 @@ enum ConfigurationReport {
     lines += ["", "## System prompts"]
     for (name, section) in flaggedSections {
       let text = trimmed(store.loadSection(section))
-      let state = SystemPromptsStore.isCustomized(text, for: section) ? "customized" : "default"
-      let count = text.isEmpty ? MCPProposalWindows.defaultText(for: section).count : text.count
-      lines.append("\(name): \(state), \(count) chars")
+      if let legacy = store.legacyFullPrompt(for: section) {
+        lines.append("\(name): legacy full prompt, \(legacy.count) chars")
+      } else {
+        let state = SystemPromptsStore.isCustomized(text, for: section) ? "customized" : "default"
+        let count = text.isEmpty ? MCPProposalWindows.defaultText(for: section).count : text.count
+        lines.append("\(name): \(state), \(count) chars")
+      }
     }
 
     if options.includePrompts {
@@ -82,15 +86,22 @@ enum ConfigurationReport {
     text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
-  /// The prompt actually sent. Dictation and Dictate Prompt are the fixed core plus the user's
-  /// additions. Other sections are the customized text, or the shipped default when empty.
+  /// The prompt actually sent. A legacy full prompt replaces the built-in. Otherwise Dictation
+  /// and Dictate Prompt are the core plus additions. Other sections are the stored text, or the
+  /// shipped default when empty.
   private static func textInUse(_ section: SystemPromptSection, store: SystemPromptsStore) -> String {
     let text = trimmed(store.loadSection(section))
     switch section {
-    case .dictation:
-      return AppConstants.withUserAdditions(core: AppConstants.defaultTranscriptionSystemPrompt, additions: text)
-    case .promptMode:
-      return AppConstants.withUserAdditions(core: AppConstants.defaultPromptModeSystemPrompt, additions: text)
+    case .dictationAdditions:
+      if let legacy = store.legacyFullPrompt(for: section) { return legacy }
+      return AppConstants.withUserAdditions(
+        core: AppConstants.defaultTranscriptionSystemPrompt, additions: text,
+        taskReminder: AppConstants.dictationTaskReminder)
+    case .promptModeAdditions:
+      if let legacy = store.legacyFullPrompt(for: section) { return legacy }
+      return AppConstants.withUserAdditions(
+        core: AppConstants.defaultPromptModeSystemPrompt, additions: text,
+        taskReminder: AppConstants.dictatePromptTaskReminder)
     default:
       return text.isEmpty ? MCPProposalWindows.defaultText(for: section) : text
     }

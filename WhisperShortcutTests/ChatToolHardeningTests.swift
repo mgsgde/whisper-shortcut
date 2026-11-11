@@ -222,6 +222,8 @@ struct ChatToolHardeningTests {
       #expect(limit >= MCPProposalWindows.defaultText(for: section).count + 2_000)
       #expect(limit >= 5_000)
     }
+    #expect(ChatToolRegistry.instructionsSectionLimit(for: .dictationAdditions) == 2_000)
+    #expect(ChatToolRegistry.instructionsSectionLimit(for: .promptModeAdditions) == 2_000)
   }
 
   @Test("A default plus one 40-character rule fits the limit for Dictate Prompt and Chat")
@@ -239,9 +241,9 @@ struct ChatToolHardeningTests {
   /// The append test uses `dictation`, the section with the shortest default, so a stored user
   /// prompt near its limit is the least likely to make the append refuse and the preview vanish.
   private func currentDictationText() -> String {
-    let stored = SystemPromptsStore.shared.loadSection(.dictation) ?? ""
+    let stored = SystemPromptsStore.shared.loadSection(.dictationAdditions) ?? ""
     return stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      ? MCPProposalWindows.defaultText(for: .dictation) : stored
+      ? MCPProposalWindows.defaultText(for: .dictationAdditions) : stored
   }
 
   @Test func approvalPreviewShowsBeforeAndAfterForAppend() {

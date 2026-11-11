@@ -175,7 +175,7 @@ struct SystemPromptSectionEditor: View {
       return String(localized: "You can also change this by asking in Chat — e.g. “when I say correct, never translate”. Edits made there land in this text.")
     case .whisperGlossary:
       return String(localized: "You can also add terms by asking in Chat — e.g. “Kimi is spelled with one m”.")
-    case .dictation, .chat, .readAloudRewrite:
+    case .dictation, .chat, .readAloudRewrite, .dictationAdditions, .promptModeAdditions:
       return nil
     }
   }
