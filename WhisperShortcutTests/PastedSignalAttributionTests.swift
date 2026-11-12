@@ -36,6 +36,8 @@ struct PastedSignalAttributionTests {
 
   @Test("pasted logged after its interaction references that interaction, with no phantom restart")
   func pastedReferencesPastedInteraction() async throws {
+    ContextLoggingPreference.testOverride = true
+    defer { ContextLoggingPreference.testOverride = nil }
     try #require(ContextLoggingPreference.isEnabled)
     let logger = ContextLogger.shared
     let restartsBefore = signals(.dictationRestart).count
@@ -59,6 +61,8 @@ struct PastedSignalAttributionTests {
 
   @Test("an unpasted dictation followed by a quick restart is flagged against that dictation")
   func unpastedRestartReferencesInteraction() async throws {
+    ContextLoggingPreference.testOverride = true
+    defer { ContextLoggingPreference.testOverride = nil }
     try #require(ContextLoggingPreference.isEnabled)
     let logger = ContextLogger.shared
     let restartsBefore = signals(.dictationRestart).count
@@ -75,6 +79,8 @@ struct PastedSignalAttributionTests {
 
   @Test("a dictation row carries the processing latency it was given")
   func transcriptionRowCarriesLatency() async throws {
+    ContextLoggingPreference.testOverride = true
+    defer { ContextLoggingPreference.testOverride = nil }
     try #require(ContextLoggingPreference.isEnabled)
     ContextLogger.shared.logTranscription(result: "timed", model: "test", latencyMs: 1234)
     await flush()
