@@ -139,8 +139,19 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Local read-only MCP server for meeting transcripts; does nothing unless the user enabled it.
     // Skipped in a sidecar: the user's own instance owns the MCP port and the update checks.
     if !AppConstants.isSidecarInstance {
-      MCPServer.shared.startIfEnabled()
-      MCPProposalWindows.shared.start()
+      // Not in "Dictation only": no AI app connects to a dictation tool. Turning the mode off
+      // starts the server (below) without a relaunch.
+      if !DictationOnlyMode.isEnabled {
+        MCPServer.shared.startIfEnabled()
+        MCPProposalWindows.shared.start()
+      }
+      NotificationCenter.default.addObserver(
+        forName: .dictationOnlyModeChanged, object: nil, queue: .main
+      ) { _ in
+        guard !DictationOnlyMode.isEnabled else { return }
+        MCPServer.shared.startIfEnabled()
+        MCPProposalWindows.shared.start()
+      }
 
       #if !APP_STORE && canImport(Sparkle)
       // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
@@ -198,7 +209,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
           if !hasCompletedOnboarding {
             WelcomeWindowController.shared.show()
-          } else if !TranscriptionModel.loadSelected().hasRequiredCredential {
+          } else if !TranscriptionModel.loadSelected().hasRequiredCredential
+            && !DictationOnlyMode.isEnabled
+          {
             SettingsManager.shared.showSettings(tab: .accounts)
           }
         }

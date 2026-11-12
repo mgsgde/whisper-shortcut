@@ -8,8 +8,11 @@ struct SettingsView: View {
   @Environment(\.dismiss) private var dismiss
   @FocusState private var focusedField: SettingsFocusField?
 
+  /// A stored or requested tab that "Dictation only" hides falls back to General; the stored
+  /// raw value is left as it is, so the full app returns to the tab the user had.
   private var selectedTab: SettingsTab {
-    SettingsTab(rawValue: selectedTabRaw) ?? .general
+    let tab = SettingsTab(rawValue: selectedTabRaw) ?? .general
+    return DictationOnlyMode.visibleTabs([tab], enabled: DictationOnlyMode.isEnabled).first ?? .general
   }
 
   var body: some View {
@@ -31,6 +34,11 @@ struct SettingsView: View {
     }
     .onAppear {
       setupWindow()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .dictationOnlyModeChanged)) { _ in
+      // The sidebar and the selected tab read the flag when the body runs; a changed
+      // `@AppStorage` value forces that.
+      selectedTabRaw = selectedTab.rawValue
     }
     .onReceive(NotificationCenter.default.publisher(for: .openPrivacyPermissionsTab)) { _ in
       selectedTabRaw = SettingsTab.permissions.rawValue

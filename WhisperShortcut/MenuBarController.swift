@@ -45,6 +45,7 @@ class MenuBarController: NSObject {
     case showMeetingAudio = 128
     case welcomeTour = 129
     case aiAppProposals = 130
+    case chatSeparator = 135
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -457,6 +458,8 @@ class MenuBarController: NSObject {
     }
 
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+      // "Dictation only" never opens the chat, so the window is not built in the background.
+      guard !DictationOnlyMode.isEnabled else { return }
       ChatWindowManager.shared.preWarm()
     }
   }
@@ -568,7 +571,9 @@ class MenuBarController: NSObject {
     // Chat window
     menu.addItem(makeItem(Self.chatRow))
 
-    menu.addItem(NSMenuItem.separator())
+    let chatSeparator = NSMenuItem.separator()
+    chatSeparator.tag = MenuTag.chatSeparator.rawValue
+    menu.addItem(chatSeparator)
 
     // Settings and quit.
     // Use a neutral selector and clear image explicitly to avoid AppKit
@@ -1050,6 +1055,17 @@ class MenuBarController: NSObject {
   }
 
   private func setupNotifications() {
+    // "Dictation only" switched: show and hide the status-menu rows without rebuilding the menu.
+    NotificationCenter.default.addObserver(
+      forName: .dictationOnlyModeChanged, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, let menu = self.statusItem?.menu else { return }
+        self.refreshMenu(menu)
+        self.updateMeetingBacklogItems(menu)
+      }
+    }
+
     // On-device Read Aloud holds audio back until it can play without running dry; the pill's
     // spinner becomes a progress ring for that wait. Posted on the main actor.
     NotificationCenter.default.addObserver(
@@ -1386,6 +1402,35 @@ class MenuBarController: NSObject {
       localized: Self.meetingRowTitle(
         isActive: isLiveMeetingActive,
         canResume: !LiveMeetingTranscriptStore.shared.chunks.isEmpty))
+
+    applyDictationOnlyVisibility(menu)
+  }
+
+  /// Hides the rows "Dictation only" removes, by `isHidden` on the existing items: the menu is
+  /// never rebuilt, so tags stay stable. Rows that decide their own visibility (proposals, the
+  /// meeting backlog) are only ever forced hidden here, never shown. With the mode off the
+  /// always-present rows are set visible, which is what they already were.
+  private func applyDictationOnlyVisibility(_ menu: NSMenu) {
+    let visible = Set(DictationOnlyMode.menuRows(enabled: DictationOnlyMode.isEnabled))
+    func apply(_ row: StatusMenuRow, ownsVisibility: Bool = false, tags: [MenuTag]) {
+      let hidden = !visible.contains(row)
+      for tag in tags {
+        guard let item = menu.item(withTag: tag.rawValue) else { continue }
+        if hidden {
+          item.isHidden = true
+        } else if !ownsVisibility {
+          item.isHidden = false
+        }
+      }
+    }
+    apply(.dictatePrompt, tags: [.dictatePrompt])
+    apply(.readAloud, tags: [.readAloud])
+    apply(.readAloudPrompt, tags: [.readAloudPrompt])
+    apply(.screenshot, tags: [.screenshot])
+    apply(.liveMeeting, tags: [.liveMeeting])
+    apply(.chat, tags: [.chat, .chatSeparator])
+    apply(.meetingBacklog, ownsVisibility: true, tags: [.retryMeetingTranscription, .showMeetingAudio])
+    apply(.aiAppProposals, ownsVisibility: true, tags: [.aiAppProposals])
   }
 
   /// Rebuilds the "Recent Transcriptions" submenu and hides both history rows while there is
@@ -1436,6 +1481,7 @@ class MenuBarController: NSObject {
     retryItem?.isHidden = count == 0 && !retrying
     showItem?.isHidden = count == 0
     retryItem?.isEnabled = !retrying
+    defer { applyDictationOnlyVisibility(menu) }
     retryItem?.title =
       retrying
       ? String(localized: "Retrying Meeting Transcription…")
@@ -1768,6 +1814,7 @@ class MenuBarController: NSObject {
   /// list (empty for one template, or for a template's own shortcut). Stopping ignores both
   /// and just ends the recording. A meeting ignores both, as it always has.
   private func togglePrompting(template: DictationTemplate?, choices: [DictationTemplate] = []) {
+    if DictationOnlyMode.blocks("Dictate Prompt") { return }
     let isMeeting = isLiveMeetingActive
     switch availability(.dictatePrompt) {
     case .stop:
@@ -2150,11 +2197,13 @@ class MenuBarController: NSObject {
   }
 
   @objc func openChatWindow() {
+    if DictationOnlyMode.blocks("Chat") { return }
     ChatWindowManager.shared.toggle()
   }
 
   /// Opens the chat window from the global shortcut. If the window is already open, closes it (same toggle behavior as the menu).
   private func openChatWindowFromShortcut() {
+    if DictationOnlyMode.blocks("Chat (shortcut)") { return }
     if ChatWindowManager.shared.isWindowOpen() {
       ChatWindowManager.shared.close()
       return
@@ -2174,6 +2223,7 @@ class MenuBarController: NSObject {
   /// Hotkey handler: picks the right action based on current state.
   /// In-window buttons should post the explicit notification (start/resume/stop) instead.
   @objc func toggleLiveMeeting() {
+    if DictationOnlyMode.blocks("Live Meeting") { return }
     if isLiveMeetingActive {
       stopLiveMeeting()
     } else if !LiveMeetingTranscriptStore.shared.chunks.isEmpty {
@@ -4802,6 +4852,7 @@ extension MenuBarController: ShortcutDelegate {
   }
 
   @objc func takeScreenshot() {
+    if DictationOnlyMode.blocks("Screenshot") { return }
     if !Thread.isMainThread {
       DispatchQueue.main.async { [weak self] in self?.takeScreenshot() }
       return
@@ -4959,6 +5010,7 @@ extension MenuBarController: ShortcutDelegate {
   /// Read Aloud for text a macOS Service already supplied. No clipboard snapshot: the pasteboard
   /// was never touched. Pressing the service again while playback is running stops it.
   func readAloudFromService(text: String) {
+    if DictationOnlyMode.blocks("Read Aloud (service)") { return }
     if attemptReadAloudToggleOff() { return }
     switch availability(.readAloudSelection) {
     case .ignored(.liveMeetingActive):
@@ -4995,6 +5047,7 @@ extension MenuBarController: ShortcutDelegate {
   @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
 
   func toggleReadAloudPrompting() {
+    if DictationOnlyMode.blocks("Read Aloud Prompt") { return }
     switch availability(.dictatePrompt) {
     case .stop, .cancelPendingStart, .cancelProcessing:
       togglePrompting(template: nil)
@@ -5037,6 +5090,7 @@ extension MenuBarController: ShortcutDelegate {
   @objc func readAloudPromptFromMenu() { toggleReadAloudPrompting() }
 
   private func triggerReadSelectedTextAloud() {
+    if DictationOnlyMode.blocks("Read Aloud") { return }
     if attemptReadAloudToggleOff() { return }
     switch availability(.readAloudSelection) {
     case .ignored(.liveMeetingActive):
