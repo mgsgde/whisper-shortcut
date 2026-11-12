@@ -21,6 +21,8 @@ struct DictationOnlySection: View {
       Toggle(isOn: Binding(get: { isOn }, set: change)) {
         Text("Dictation only")
           .font(.headline)
+          // Switch on the trailing edge, like the other switches in Settings.
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
       .toggleStyle(.switch)
 

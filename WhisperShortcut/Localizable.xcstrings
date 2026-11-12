@@ -1,6 +1,96 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "All features" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Funktionen"
+          }
+        }
+      }
+    },
+    "Allow access" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugriff erlauben"
+          }
+        }
+      }
+    },
+    "Chat with AI and notes from meetings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat mit KI und Notizen aus Meetings."
+          }
+        }
+      }
+    },
+    "Check again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut prüfen"
+          }
+        }
+      }
+    },
+    "Choose a key for dictation in Settings → General → Keyboard Shortcuts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legen Sie unter Einstellungen → Allgemein → Tastenkürzel eine Taste zum Diktieren fest."
+          }
+        }
+      }
+    },
+    "Choose “Do Nothing”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie „Keine Aktion“."
+          }
+        }
+      }
+    },
+    "Choose…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auswählen …"
+          }
+        }
+      }
+    },
+    "Click “Try dictation” and read this sentence aloud:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicken Sie auf „Diktat ausprobieren“ und lesen Sie diesen Satz laut vor:"
+          }
+        }
+      }
+    },
+    "Come back to this window. It checks again by itself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kehren Sie zu diesem Fenster zurück. Es prüft dann von selbst noch einmal."
+          }
+        }
+      }
+    },
     "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt, Chat and Read Aloud; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions and Read Aloud needs /audio/speech, which LM Studio and mlx_lm.server do not serve." : {
       "localizations" : {
         "de" : {
@@ -17,6 +107,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur Diktat"
+          }
+        }
+      }
+    },
+    "Dictation plus AI that rewrites your text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren und dazu KI, die Ihren Text umschreibt."
+          }
+        }
+      }
+    },
+    "Did a word come out wrong?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wurde ein Wort falsch geschrieben?"
           }
         }
       }
@@ -41,12 +151,122 @@
         }
       }
     },
+    "Find “Press 🌐 key to”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suchen Sie „Drücken der 🌐-Taste“."
+          }
+        }
+      }
+    },
+    "For example a name or a technical term" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel ein Name oder ein Fachbegriff"
+          }
+        }
+      }
+    },
+    "How do you want to use WhisperShortcut?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie möchten Sie WhisperShortcut nutzen?"
+          }
+        }
+      }
+    },
+    "I dictate in:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich diktiere auf:"
+          }
+        }
+      }
+    },
+    "macOS asks you to allow the microphone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS bittet Sie, das Mikrofon zu erlauben."
+          }
+        }
+      }
+    },
+    "macOS asks you to allow two things. WhisperShortcut needs both." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS bittet Sie, zwei Dinge zu erlauben. WhisperShortcut braucht beide."
+          }
+        }
+      }
+    },
+    "macOS did not accept the change. Please change it yourself as shown below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat die Änderung nicht übernommen. Bitte ändern Sie es selbst, wie unten beschrieben."
+          }
+        }
+      }
+    },
+    "macOS may then ask for your password or Touch ID. That request comes from macOS, not from WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS fragt danach eventuell nach Ihrem Passwort oder Touch ID. Diese Abfrage kommt von macOS, nicht von WhisperShortcut."
+          }
+        }
+      }
+    },
+    "More to set up." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr einzurichten."
+          }
+        }
+      }
+    },
+    "Names and technical terms are sometimes misheard. Write the word the way it should be spelled, and WhisperShortcut will use that spelling." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen und Fachbegriffe werden manchmal falsch verstanden. Schreiben Sie das Wort so, wie es richtig geschrieben wird. WhisperShortcut verwendet dann diese Schreibweise."
+          }
+        }
+      }
+    },
     "Names and terms that come out wrong. Write each one the way it should be spelled, separated by commas." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Namen und Begriffe, die falsch erkannt werden. Schreiben Sie jeden so, wie er richtig geschrieben wird, getrennt durch Kommas."
+          }
+        }
+      }
+    },
+    "No account needed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Konto nötig."
           }
         }
       }
@@ -81,12 +301,132 @@
         }
       }
     },
+    "One-time download" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmaliger Download"
+          }
+        }
+      }
+    },
+    "One-time download, about %lld MB. After that no internet is needed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmaliger Download, etwa %lld MB. Danach ist kein Internet mehr nötig."
+          }
+        }
+      }
+    },
+    "Open the keyboard settings:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen Sie die Tastatur-Einstellungen:"
+          }
+        }
+      }
+    },
+    "Or change it yourself:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oder ändern Sie es selbst:"
+          }
+        }
+      }
+    },
+    "Please choose the language you dictate in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte wählen Sie die Sprache, in der Sie diktieren."
+          }
+        }
+      }
+    },
+    "Please enter one word or name, not a sentence." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte geben Sie ein Wort oder einen Namen ein, keinen Satz."
+          }
+        }
+      }
+    },
+    "Press a key, speak, and the text appears where your cursor is." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste drücken, sprechen, und der Text erscheint dort, wo Ihr Cursor steht."
+          }
+        }
+      }
+    },
+    "Press a key, speak, and the text is copied. Paste it with ⌘V." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste drücken, sprechen, und der Text wird kopiert. Fügen Sie ihn mit ⌘V ein."
+          }
+        }
+      }
+    },
+    "Punctuation is added automatically." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satzzeichen werden automatisch gesetzt."
+          }
+        }
+      }
+    },
     "Removed from %@'s settings. %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus den Einstellungen von %@ entfernt. %@"
+          }
+        }
+      }
+    },
+    "Right now the 🌐 key opens “%@”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Moment öffnet die 🌐-Taste „%@“."
+          }
+        }
+      }
+    },
+    "Saved. From now on WhisperShortcut writes “%@”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeichert. Ab jetzt schreibt WhisperShortcut „%@“."
+          }
+        }
+      }
+    },
+    "Say punctuation out loud, for example “Komma”, “Punkt” or “neuer Absatz”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprechen Sie Satzzeichen aus, zum Beispiel „Komma“, „Punkt“ oder „neuer Absatz“."
           }
         }
       }
@@ -101,6 +441,26 @@
         }
       }
     },
+    "So the text can appear where your cursor is." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit der Text dort erscheinen kann, wo Ihr Cursor steht."
+          }
+        }
+      }
+    },
+    "So WhisperShortcut can hear you. What you say stays on this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit WhisperShortcut Sie hören kann. Was Sie sagen, bleibt auf diesem Mac."
+          }
+        }
+      }
+    },
     "Starting the download…" : {
       "localizations" : {
         "de" : {
@@ -111,12 +471,192 @@
         }
       }
     },
+    "The download is not finished yet. Dictation works as soon as it is." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download ist noch nicht fertig. Das Diktieren funktioniert, sobald er fertig ist."
+          }
+        }
+      }
+    },
+    "The download is not finished yet. The test can start as soon as it is." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download ist noch nicht fertig. Der Test kann beginnen, sobald er fertig ist."
+          }
+        }
+      }
+    },
+    "The easiest way to dictate is the 🌐 key at the bottom left of your keyboard. On this Mac it still does something else." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am einfachsten diktieren Sie mit der 🌐-Taste unten links auf Ihrer Tastatur. Auf diesem Mac macht sie noch etwas anderes."
+          }
+        }
+      }
+    },
     "The language you dictate in." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Sprache, in der Sie diktieren."
+          }
+        }
+      }
+    },
+    "The list of words is full. Remove a word in Settings → Dictate → Glossary first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wortliste ist voll. Entfernen Sie zuerst ein Wort unter Einstellungen → Diktieren → Glossar."
+          }
+        }
+      }
+    },
+    "The microphone is not allowed yet. Allow it in System Settings → Privacy & Security → Microphone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Mikrofon ist noch nicht erlaubt. Erlauben Sie es unter Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon."
+          }
+        }
+      }
+    },
+    "The microphone is switched off. You can continue and allow it later in System Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Mikrofon ist ausgeschaltet. Sie können weitermachen und es später in den Systemeinstellungen erlauben."
+          }
+        }
+      }
+    },
+    "The text appears where your cursor is, while you speak." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text erscheint schon während Sie sprechen dort, wo Ihr Cursor steht."
+          }
+        }
+      }
+    },
+    "The text is then copied. Paste it with ⌘V." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text wird dann kopiert. Fügen Sie ihn mit ⌘V ein."
+          }
+        }
+      }
+    },
+    "The text then appears where your cursor is." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text erscheint dann dort, wo Ihr Cursor steht."
+          }
+        }
+      }
+    },
+    "The 🌐 key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die 🌐-Taste"
+          }
+        }
+      }
+    },
+    "The 🌐 key is free. Press it once to start dictating and once more to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die 🌐-Taste ist frei. Einmal drücken startet das Diktat, noch einmal drücken beendet es."
+          }
+        }
+      }
+    },
+    "There is not enough free space on this Mac. About %lld MB is needed, but only %lld MB is free. Delete files you no longer need, then click “Check again”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Mac ist nicht genug Platz frei. Nötig sind etwa %lld MB, frei sind nur %lld MB. Löschen Sie Dateien, die Sie nicht mehr brauchen, und klicken Sie dann auf „Erneut prüfen“."
+          }
+        }
+      }
+    },
+    "To dictate, press %@. Press it again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren drücken Sie %@. Zum Beenden drücken Sie es noch einmal."
+          }
+        }
+      }
+    },
+    "To dictate, press the 🌐 key. Press it again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren drücken Sie die 🌐-Taste. Zum Beenden drücken Sie sie noch einmal."
+          }
+        }
+      }
+    },
+    "Try it" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausprobieren"
+          }
+        }
+      }
+    },
+    "Try it again with that word:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Probieren Sie es mit diesem Wort noch einmal:"
+          }
+        }
+      }
+    },
+    "Use the 🌐 key for dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🌐-Taste zum Diktieren verwenden"
+          }
+        }
+      }
+    },
+    "WhisperShortcut lives in the menu bar at the top of your screen, as a small microphone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut finden Sie in der Menüleiste oben auf dem Bildschirm, als kleines Mikrofon."
           }
         }
       }
@@ -20581,16 +21121,6 @@
         }
       }
     },
-    "Three quick steps: choose offline or cloud dictation, allow the microphone, and try it once. About a minute." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Drei kurze Schritte: Offline- oder Cloud-Diktat wählen, das Mikrofon erlauben und einmal ausprobieren. Etwa eine Minute."
-          }
-        }
-      }
-    },
     "Title" : {
       "localizations" : {
         "de" : {
@@ -21043,16 +21573,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schalten Sie „Nutzungsdaten sichern“ ein, damit gemessen wird."
-          }
-        }
-      }
-    },
-    "Turn your voice into text in any app." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aus Ihrer Stimme wird Text, in jeder App."
           }
         }
       }
@@ -22395,6 +22915,16 @@
         }
       }
     },
+    "Words that come out wrong: click the microphone in the menu bar, then Settings → Dictate → Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Wörter, die falsch geschrieben werden: Klicken Sie in der Menüleiste auf das Mikrofon, dann auf Einstellungen → Diktieren → Glossar."
+          }
+        }
+      }
+    },
     "Work Chat" : {
       "localizations" : {
         "de" : {
@@ -22421,6 +22951,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Funktioniert ohne Internet und ohne Konto"
+          }
+        }
+      }
+    },
+    "Works without internet. Nothing leaves this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert ohne Internet. Nichts verlässt diesen Mac."
           }
         }
       }
@@ -22615,6 +23155,36 @@
         }
       }
     },
+    "You can also skip this and start dictation with a key combination instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können diesen Schritt auch überspringen und das Diktat stattdessen mit einer Tastenkombination starten."
+          }
+        }
+      }
+    },
+    "You can change this later in Settings → General." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können das später unter Einstellungen → Allgemein ändern."
+          }
+        }
+      }
+    },
+    "You can continue while it downloads." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können weitermachen, während er läuft."
+          }
+        }
+      }
+    },
     "You can revisit this tour any time from Welcome Tour… in the menu bar." : {
       "localizations" : {
         "de" : {
@@ -22625,12 +23195,32 @@
         }
       }
     },
+    "You can skip this. Later you find all your words in Settings → Dictate → Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können das überspringen. Später finden Sie alle Ihre Wörter unter Einstellungen → Diktieren → Glossar."
+          }
+        }
+      }
+    },
     "You can undo it in Settings → Claude & AI Apps." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sie können das unter Einstellungen → Claude & KI-Apps rückgängig machen."
+          }
+        }
+      }
+    },
+    "You have about %lld seconds. Click “Stop” when you have finished." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie haben etwa %lld Sekunden. Klicken Sie auf „Stopp“, wenn Sie fertig sind."
           }
         }
       }
@@ -22761,6 +23351,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihr Glossar ist voll. Whisper liest nur die ersten etwa 224 Tokens, „%@“ würde also nie verwendet. Entfernen Sie nicht mehr benötigte Begriffe unter Einstellungen → Diktieren."
+          }
+        }
+      }
+    },
+    "Your language" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Sprache"
           }
         }
       }
@@ -27696,6 +28296,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ist nichts markiert, kann Dictate Prompt ein Bild des Fensters, in dem Sie schreiben, an Ihr Dictate-Prompt-Modell schicken, nie den ganzen Bildschirm. Alles, was in diesem Fenster sichtbar ist, geht mit. Bei einem Cloud-Modell geht das Bild an dessen Anbieter.\n\nNie bei Passwortfeldern oder Passwort-Managern. Sie können das hier jederzeit wieder ausschalten."
+          }
+        }
+      }
+    },
+    "“Komma” becomes a comma, “Punkt” a full stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus „Komma“ wird ein Komma, aus „Punkt“ ein Punkt."
+          }
+        }
+      }
+    },
+    "“%@” is already saved." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ ist schon gespeichert."
           }
         }
       }

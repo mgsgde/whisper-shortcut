@@ -1,30 +1,6 @@
 import AppKit
 import SwiftUI
 
-struct WelcomeIntroStep: View {
-  var body: some View {
-    VStack(spacing: 28) {
-      Image(systemName: "waveform.and.mic")
-        .font(.system(size: 64))
-        .foregroundStyle(.tint)
-      VStack(spacing: 10) {
-        Text("Welcome to WhisperShortcut")
-          .font(.largeTitle)
-          .fontWeight(.semibold)
-        Text("Turn your voice into text in any app.")
-          .font(.title3)
-          .foregroundStyle(.secondary)
-      }
-      Text("Three quick steps: choose offline or cloud dictation, allow the microphone, and try it once. About a minute.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: 540)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-  }
-}
-
 /// Prominent, tappable "this app is open source" banner with a direct link to
 /// the public repository. Surfaced on the privacy step (and in Settings) so the
 /// open-source nature is obvious at a glance rather than hidden in a small button.

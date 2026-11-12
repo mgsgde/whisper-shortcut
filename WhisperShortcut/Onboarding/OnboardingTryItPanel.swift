@@ -5,11 +5,26 @@ import SwiftUI
 /// seconds, transcribe, show the text.
 /// Continue is never gated on this — a hung transcription must not trap the user.
 struct OnboardingTryItPanel: View {
-  @StateObject private var controller = OnboardingTryItController()
+  @StateObject private var controller: OnboardingTryItController
+  /// Replaces the default caption. "Dictation only" puts its own instruction above the panel.
+  private let caption: LocalizedStringKey?
+  private let onSuccess: (() -> Void)?
+
+  /// `recordSeconds`: 3 in the full tour (a quick check), about 8 on the "Dictation only" test
+  /// step, where a whole sentence with spoken punctuation is read aloud.
+  init(
+    recordSeconds: Int = OnboardingTryItController.defaultRecordSeconds,
+    caption: LocalizedStringKey? = nil,
+    onSuccess: (() -> Void)? = nil
+  ) {
+    _controller = StateObject(wrappedValue: OnboardingTryItController(recordSeconds: recordSeconds))
+    self.caption = caption
+    self.onSuccess = onSuccess
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("Record a few seconds and see the transcript here. You can skip this.")
+      Text(caption ?? "Record a few seconds and see the transcript here. You can skip this.")
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -77,6 +92,9 @@ struct OnboardingTryItPanel: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .cardChrome()
     .onDisappear { controller.cancel() }
+    .onChange(of: controller.phase) { _, phase in
+      if case .success(let text) = phase, !text.isEmpty { onSuccess?() }
+    }
   }
 }
 
@@ -94,11 +112,16 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
   private var recorder: AudioRecorder?
   private var countdownTask: Task<Void, Never>?
   private let speechService = SpeechService()
-  private static let recordSeconds = 3
+  static let defaultRecordSeconds = 3
+  let recordSeconds: Int
+
+  init(recordSeconds: Int = OnboardingTryItController.defaultRecordSeconds) {
+    self.recordSeconds = max(1, recordSeconds)
+  }
 
   func start() {
     guard phase == .idle || isRetryable else { return }
-    phase = .recording(remaining: Self.recordSeconds)
+    phase = .recording(remaining: recordSeconds)
     let recorder = AudioRecorder()
     recorder.delegate = self
     self.recorder = recorder
@@ -141,7 +164,7 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
     countdownTask?.cancel()
     countdownTask = Task { @MainActor [weak self] in
       guard let self else { return }
-      for remaining in stride(from: Self.recordSeconds, through: 1, by: -1) {
+      for remaining in stride(from: self.recordSeconds, through: 1, by: -1) {
         guard !Task.isCancelled else { return }
         self.phase = .recording(remaining: remaining)
         try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -165,11 +188,16 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
     Task { @MainActor [weak self] in
       guard let self else { return }
       do {
-        let text = try await self.speechService.transcribe(
+        let model = TranscriptionModel.loadSelected()
+        let punctuation = PunctuationMode.effective(
+          stored: .current, isOffline: model.isOffline, duringMeeting: false)
+        let raw = try await self.speechService.transcribe(
           audioURL: audioURL,
           cancellable: false,
-          reportsProgress: false
+          reportsProgress: false,
+          punctuationMode: punctuation
         )
+        let text = Self.applySpokenPunctuation(raw, model: model, mode: punctuation)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         self.phase = .success(trimmed)
         DebugLogger.log("ONBOARDING: try-it succeeded (\(trimmed.count) chars)")
@@ -196,6 +224,21 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
       DebugLogger.logError("ONBOARDING: try-it record failed: \(error.logDescription)")
       self.recorder = nil
     }
+  }
+
+  /// The same post-processing real dictation does (`MenuBarController`): offline engines write a
+  /// spoken "Komma" out as a word. Without it the test showed "Komma" where dictation later puts
+  /// ",", so the one screen meant to build trust showed a result the app never produces.
+  static func applySpokenPunctuation(
+    _ transcript: String, model: TranscriptionModel, mode: PunctuationMode
+  ) -> String {
+    guard model.isOffline else { return transcript }
+    let timedMarks = model.offlineModelType?.engine == .parakeet
+    let source =
+      mode == .spokenOnly
+      ? SpokenPunctuation.stripModelPunctuation(from: transcript, timedMarks: timedMarks)
+      : transcript
+    return SpokenPunctuation.apply(to: source, mode: mode, timedMarks: timedMarks)
   }
 
   /// Where a failed try-it recording should send the user in Settings.
