@@ -45,6 +45,14 @@ actor SpeechActivityGate {
     loadState = .loading
     let started = CFAbsoluteTimeGetCurrent()
     do {
+      // `VadManager` downloads the model when it is missing; a test profile blocks that.
+      // (Folder name differs across FluidAudio versions: "silero-vad", "silero-vad-coreml".)
+      if TestProfile.isActive {
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: ParakeetBackend.modelsRoot.path)) ?? []
+        if !entries.contains(where: { $0.hasPrefix("silero-vad") }) {
+          try TestProfile.checkModelDownloadAllowed("silero-vad")
+        }
+      }
       // 0.5 is Silero's standard threshold. The package default (0.85) drops quiet speech,
       // and this gate's job is to drop audio, so a miss here is a lost dictation.
       let manager = try await VadManager(config: VadConfig(defaultThreshold: 0.5))
