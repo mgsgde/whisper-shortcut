@@ -651,7 +651,7 @@ enum ChatToolRegistry {
     ],
     [
       "name": "google_calendar_create_event",
-      "description": "Creates a new calendar event (meeting, appointment) on Google Calendar. Supports recurring events (e.g. yearly birthdays, weekly standups) via the recurrence parameter, and all-day events via all_day. Do NOT use for tasks or to-dos — use google_tasks_create instead. Always confirm details with the user before calling this.",
+      "description": "Creates a new calendar event (meeting, appointment) on Google Calendar. Supports recurring events (e.g. yearly birthdays, weekly standups) via the recurrence parameter, and all-day events via all_day. Do NOT use for tasks or to-dos — use google_tasks_create instead. Call it right away when the request gives a title and a date/time, without asking first; only an event with other attendees needs the user's go-ahead.",
       "parameters": [
         "type": "object",
         "properties": [
@@ -787,7 +787,7 @@ enum ChatToolRegistry {
     ],
     [
       "name": "google_tasks_create",
-      "description": "Creates a new Google Task (to-do item, not a calendar event). Use when the user asks to add a task, to-do, or reminder. Do NOT use for calendar events or meetings — use google_calendar_create_event instead.",
+      "description": "Creates a new Google Task (to-do item, not a calendar event). Use when the user asks to add a task, to-do, or reminder. Do NOT use for calendar events or meetings — use google_calendar_create_event instead. Call it right away when the request gives the task, without asking first.",
       "parameters": [
         "type": "object",
         "properties": [
