@@ -2567,6 +2567,12 @@ class MenuBarController: NSObject {
   
   // MARK: - Shared audio-job envelope
 
+  /// What an auto-paste did, handed back so `runAudioJob` logs `pasted` after the interaction.
+  private struct AutoPasteOutcome {
+    let chars: Int
+    let targetBundleId: String
+  }
+
   /// Everything that differs between the two finished-recording pipelines. What surrounds them —
   /// cancellation detection, staleness, `processedAudioURLs` bookkeeping, the `duringMeeting` fork
   /// and the cleanup ordering — is identical and lives in `runAudioJob`.
@@ -2629,7 +2635,8 @@ class MenuBarController: NSObject {
 
   /// Runs one finished recording: produce the text, deliver it, and clean up — or handle
   /// cancellation, staleness and failure. `afterCopy` runs after the clipboard write and
-  /// auto-paste (logging and history), so it cannot delay the paste.
+  /// auto-paste (logging and history), so it cannot delay the paste. The `pasted` signal is logged
+  /// after `afterCopy` so it references the interaction `afterCopy` just logged, not the previous one.
   @MainActor
   private func runAudioJob(
     _ spec: AudioJobSpec,
@@ -2693,8 +2700,14 @@ class MenuBarController: NSObject {
       if spec.mode == .transcription, !duringMeeting {
         await self.recordDictatedWritingSample(result)
       }
-      let didAutoPaste = await self.autoPasteIfEnabled(logMode: spec.interactionLogMode)
+      let pasteOutcome = await self.autoPasteIfEnabled()
+      let didAutoPaste = pasteOutcome != nil
       await afterCopy(result)
+      if let pasteOutcome {
+        ContextLogger.shared.logSignal(
+          .pasted, mode: spec.interactionLogMode,
+          detail: ["chars": String(pasteOutcome.chars), "targetBundleId": pasteOutcome.targetBundleId])
+      }
 
       await MainActor.run { [weak self] in
         self?.reviewPrompter.recordSuccessfulOperation()
@@ -3201,6 +3214,9 @@ class MenuBarController: NSObject {
     // Taken before transcription starts, so strips logged by this dictation (and not an earlier
     // one) can be attached to its history entry.
     let dictationStart = Date()
+    // Job start to transcript ready (the same span a Dictate Prompt row reports as `latencyMs`);
+    // set in `produce`, read in `afterCopy`.
+    var transcriptLatencyMs: Int?
     // "Only when spoken" is an offline-dictation setting; meeting segments keep model punctuation.
     let punctuationMode = PunctuationMode.effective(
       stored: .current, isOffline: transcriptionModelForCapture.isOffline, duringMeeting: duringMeeting)
@@ -3269,6 +3285,7 @@ class MenuBarController: NSObject {
             }
           }
         }
+        transcriptLatencyMs = Int(Date().timeIntervalSince(dictationStart) * 1000)
         // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the
         // whole transcript, after streamed chunks are joined, so a command at a chunk edge still
         // attaches to the word before it.
@@ -3292,7 +3309,8 @@ class MenuBarController: NSObject {
           result: result,
           model: modelDisplayName,
           transcriptionModel: transcriptionModelForCapture.rawValue,
-          durationMs: recordingDurationMs
+          durationMs: recordingDurationMs,
+          latencyMs: transcriptLatencyMs
         )
       })
   }
@@ -4160,14 +4178,14 @@ class MenuBarController: NSObject {
   }
 
   /// Performs auto-paste if enabled in settings.
-  /// - Returns: `true` when ⌘V was posted; `false` when the result stays on the clipboard for the
+  /// - Returns: the paste details when ⌘V was posted (the caller logs `pasted` once the interaction
+  ///   is logged); `nil` when the result stays on the clipboard for the
   ///   user to paste manually (App Store build, setting off, missing Accessibility permission, or
   ///   no safe target app: WhisperShortcut itself, or the recorded app would not come forward).
   @MainActor
-  @discardableResult
-  private func autoPasteIfEnabled(logMode: String?) async -> Bool {
+  private func autoPasteIfEnabled() async -> AutoPasteOutcome? {
     #if APP_STORE
-    return false
+    return nil
     #else
     if Self.autoPasteAvailable {
       // Every job is a generation, pasting or not: a delayed restore from an earlier job must not
@@ -4179,13 +4197,13 @@ class MenuBarController: NSObject {
         AccessibilityPermissionManager.requestAtUseTime(for: .autoPaste)
         // Nothing was pasted, so the result has to stay on the clipboard for the user's own ⌘V.
         clipboardManager.discardRestorePoint()
-        return false
+        return nil
       }
       if clipboardOnlyForNextResult {
         clipboardOnlyForNextResult = false
         DebugLogger.log("AUTO-PASTE: Not pasting — re-run from the menu, result stays on the clipboard")
         clipboardManager.discardRestorePoint()
-        return false
+        return nil
       }
       // What we just wrote; ⌘V is sent only while the pasteboard still holds exactly this.
       let writtenChangeCount = NSPasteboard.general.changeCount
@@ -4220,7 +4238,7 @@ class MenuBarController: NSObject {
             + "recorded: \(recorded?.bundleId ?? "none")); result stays on the clipboard")
         // The user pastes this themselves, so the old clipboard must not be restored over it.
         clipboardManager.discardRestorePoint()
-        return false
+        return nil
       }
 
       guard
@@ -4233,7 +4251,7 @@ class MenuBarController: NSObject {
         DebugLogger.logWarning("AUTO-PASTE: Skipped, clipboard changed before paste")
         // Whatever is on the pasteboard now is not ours to overwrite with an old snapshot.
         clipboardManager.discardRestorePoint()
-        return false
+        return nil
       }
 
       simulatePaste()
@@ -4245,16 +4263,6 @@ class MenuBarController: NSObject {
         "AUTO-PASTE: Pasted \(chars) chars into "
           + "\(target?.localizedName ?? "unknown") "
           + "(\(target?.bundleIdentifier ?? "no bundle id"))")
-
-      // The result reached the user's cursor: the strongest available "this worked" signal, and
-      // the one that stops a following dictation from being counted as a retry.
-      ContextLogger.shared.logSignal(
-        .pasted,
-        mode: logMode,
-        detail: [
-          "chars": String(chars),
-          "targetBundleId": target?.bundleIdentifier ?? "unknown",
-        ])
 
       // Non-destructive paste: give the receiving app time to read the pasteboard, then put
       // the user's previous clipboard back. With restore off, the optional "clear" setting empties
@@ -4291,11 +4299,11 @@ class MenuBarController: NSObject {
           }
         }
       }
-      return true
+      return AutoPasteOutcome(chars: chars, targetBundleId: target?.bundleIdentifier ?? "unknown")
     }
     // Auto-paste is off: the result stays on the clipboard, so there is nothing to restore.
     clipboardManager.discardRestorePoint()
-    return false
+    return nil
     #endif
   }
 
