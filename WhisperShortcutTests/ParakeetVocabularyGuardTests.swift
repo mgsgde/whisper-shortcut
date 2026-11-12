@@ -182,6 +182,27 @@ struct ParakeetVocabularyGuardTests {
       ParakeetVocabularyGuard.restoreGlossaryCasing(in: "B125", glossaryTerms: ["B12"]) == "B125")
   }
 
+  @Test("A casing term glued to the end of the word before it gets its own word")
+  func splitsTermGluedToPrecedingWord() {
+    let terms = ["GdB", "ADL", "VersMedV"]
+    func restore(_ text: String) -> String {
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: text, glossaryTerms: terms)
+    }
+    // Real Parakeet output for "Gesamt GdB fünfzig" (real voice and say-Eddy).
+    #expect(restore("GesamtgdB50, Merkzeichen G") == "Gesamt GdB 50, Merkzeichen G")
+    #expect(restore("GesamtgDB50, Merkzeichen G") == "Gesamt GdB 50, Merkzeichen G")
+    #expect(restore("GesamtGdB dreißig") == "Gesamt GdB dreißig")
+    #expect(restore("EinzelgdB") == "Einzel GdB")
+    // Ordinary words that only contain the letters stay: no capital inside the match, an all-caps
+    // or too-short word before it, a letter after it, or a digit before the word.
+    #expect(restore("Der Radler fährt") == "Der Radler fährt")
+    #expect(restore("Einzelgdb") == "Einzelgdb")
+    #expect(restore("GESAMTGDB") == "GESAMTGDB")
+    #expect(restore("AbGdB") == "AbGdB")
+    #expect(restore("GesamtgdBx") == "GesamtgdBx")
+    #expect(restore("3HausGdB") == "3HausGdB")
+  }
+
   private let everydayGlossary = [
     "Seiter", "TEP", "PNP", "Wirbelsäule", "Methotrexat", "GdB",
   ]
