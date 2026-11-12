@@ -75,7 +75,28 @@ Facts: Keep every fact exactly as written — names, dates, times, numbers, coun
   /// are fed back to the model — so the wording has to match in both, or the model sees the current
   /// turn framed one way and the history framed another.
   static let clipboardSelectionHeader =
-    "SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):"
+    "\(clipboardSelectionLabel) (apply the voice instruction to this text):"
+
+  /// The request scaffold's own labels, shared by every request builder and by `PromptReplyGuard`,
+  /// so a reply that echoes them (leaked model reasoning quoting its input) is recognised by the
+  /// exact words the app sends.
+  static let clipboardSelectionLabel = "SELECTED TEXT FROM CLIPBOARD"
+  static let voiceInstructionLabel = "VOICE INSTRUCTION:"
+
+  /// Dictate Prompt reply guard (`PromptReplyGuard`): a reply longer than
+  /// `max(promptReplyRunawayMinChars, promptReplyRunawayFactor × (selection + instruction))` is not
+  /// pasted. Generous on purpose; observed runaway: 11,000 characters of self-talk for a 1-character
+  /// selection and a ~400-character instruction.
+  static let promptReplyRunawayMinChars = 2000
+  static let promptReplyRunawayFactor = 8
+
+  /// Dictate Prompt instruction guard (`PromptInstructionGuard`): a transcribed instruction with
+  /// fewer letters is a mis-transcription ("0", "Oh."), and one of at most `instructionSnapMaxWords`
+  /// words that is `instructionSnapMinSimilarity` close to exactly one saved quick prompt is
+  /// replaced by that prompt.
+  static let instructionMinLetters = 3
+  static let instructionSnapMaxWords = 5
+  static let instructionSnapMinSimilarity = 0.8
 
   // MARK: - App Store: Accessibility-free Dictate Prompt
 

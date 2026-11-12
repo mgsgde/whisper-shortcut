@@ -27599,6 +27599,66 @@
           }
         }
       }
+    },
+    "Reply Not Pasted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwort nicht eingefügt"
+          }
+        }
+      }
+    },
+    "Instruction Not Understood" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anweisung nicht verstanden"
+          }
+        }
+      }
+    },
+    "⚠️ Reply Not Pasted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Antwort nicht eingefügt"
+          }
+        }
+      }
+    },
+    "🎤 Not Understood" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Nicht verstanden"
+          }
+        }
+      }
+    },
+    "⚠️ Reply Not Pasted\n\nThe model's reply looked wrong, so nothing was pasted and your text is unchanged. Your recording was kept – try Retry or another model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Antwort nicht eingefügt\n\nDie Antwort des Modells sah fehlerhaft aus, daher wurde nichts eingefügt und Ihr Text ist unverändert. Ihre Aufnahme ist gespeichert, versuchen Sie „Erneut versuchen“ oder ein anderes Modell."
+          }
+        }
+      }
+    },
+    "🎤 Instruction Not Understood\n\nYour spoken instruction was not understood, so nothing was changed. Please say it again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Anweisung nicht verstanden\n\nIhre gesprochene Anweisung wurde nicht verstanden, daher wurde nichts geändert. Bitte sagen Sie sie noch einmal."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
