@@ -1,0 +1,495 @@
+#!/bin/bash
+# UI catalogue: every screen of a feature, in every state, in English and German, as numbered PNGs
+# plus an index.md (screen, state, language → file). Runs only in isolated test profiles
+# (scripts/rebuild-and-restart.sh --sidecar --profile …) and quits only its own profile's pid.
+#
+#   bash scripts/ui-catalogue.sh dictation-only [--out DIR] [--langs "en de"] [--no-build]
+#                                               [--audio-de WAV] [--audio-en WAV]
+#
+# States this Mac cannot produce on demand (🌐 key in conflict, microphone denied, a download at
+# 40 %, a full disk, an Intel Mac …) come from the profile-only launch arguments in
+# WhisperShortcut/TestProfileOverrides.swift. The test dictation runs on a WAV file instead of the
+# microphone (--audio-file); without --audio-<lang> the script makes one with `say`. A given WAV is
+# copied into the profile's own container at run time only.
+#
+# Needs Accessibility and Screen Recording for the terminal (see the run-whisper-shortcut skill).
+# A macOS permission dialog of the profile app itself is photographed, never answered.
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/test-profile.sh
+source "$SCRIPT_DIR/lib/test-profile.sh"
+
+SET="${1:-}"; shift || true
+OUT=""
+LANGS="en de"
+BUILD=true
+AUDIO_DE=""
+AUDIO_EN=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --out) OUT="$2"; shift ;;
+    --langs) LANGS="$2"; shift ;;
+    --no-build) BUILD=false ;;
+    --audio-de) AUDIO_DE="$2"; shift ;;
+    --audio-en) AUDIO_EN="$2"; shift ;;
+    *) echo "unknown argument $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+case "$SET" in
+  dictation-only) ;;
+  *) echo "usage: bash scripts/ui-catalogue.sh dictation-only [--out DIR] [--langs \"en de\"] [--no-build]" >&2; exit 2 ;;
+esac
+OUT="${OUT:-${TMPDIR:-/tmp}/ws-ui-catalogue/$SET}"
+mkdir -p "$OUT"
+rm -f "$OUT"/*.png "$OUT/index.md"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# SwiftUI buttons here expose no title to Accessibility, so buttons are found by their order in
+# the window's content (depth first), always inside the profile's own process (by pid).
+cat >"$WORK/ax.applescript" <<'APPLESCRIPT'
+-- ax <pid> dump | click-button <n, negative from the end> | click-role <AXRole> | set-field <text>
+property hits : {}
+property dumped : {}
+
+on run argv
+  set thePid to (item 1 of argv) as integer
+  set theAct to item 2 of argv
+  set theArg to ""
+  if (count of argv) > 2 then set theArg to item 3 of argv
+  tell application "System Events"
+    set w to window 1 of (first process whose unix id is thePid)
+  end tell
+  set theRole to "AXButton"
+  if theAct is "click-role" then set theRole to theArg
+  if theAct is "set-field" then set theRole to "AXTextField"
+  collect(w, theRole, 0)
+  if theAct is "dump" then
+    set AppleScript's text item delimiters to linefeed
+    return dumped as text
+  end if
+  if (count of hits) is 0 then return "missing"
+  set idx to 1
+  if theAct is "click-button" then set idx to theArg as integer
+  if idx < 0 then set idx to (count of hits) + idx + 1
+  if idx < 1 or idx > (count of hits) then return "missing"
+  set el to item idx of hits
+  tell application "System Events"
+    if theAct is "set-field" then
+      set focused of el to true
+      set value of el to theArg
+    else
+      click el
+    end if
+  end tell
+  return "ok"
+end run
+
+on collect(el, theRole, depth)
+  if depth > 16 then return
+  tell application "System Events"
+    set kids to {}
+    try
+      set kids to UI elements of el
+    end try
+    repeat with c in kids
+      set r to ""
+      try
+        set r to role of c
+      end try
+      set n to ""
+      try
+        set n to (value of attribute "AXTitle" of c) as text
+      end try
+      try
+        if n is "" or n is "missing value" then set n to (name of c) as text
+      end try
+      set end of my dumped to (r & " | " & n)
+      -- Skip the title bar buttons (close, zoom, minimize): they have a subrole.
+      set sr to ""
+      try
+        set sr to (subrole of c) as text
+      end try
+      if r is theRole and sr is not "AXCloseButton" and sr is not "AXZoomButton" and sr is not "AXMinimizeButton" and sr is not "AXFullScreenButton" then set end of my hits to (contents of c)
+      my collect(c, theRole, depth + 1)
+    end repeat
+  end tell
+end collect
+APPLESCRIPT
+
+N=0
+PROFILE=""
+L=""
+PID=""
+
+# ---------------------------------------------------------------------------------------------
+# Strings: the German UI text for an English key, from the string catalogue.
+t() {
+  if [[ "$L" == en ]]; then printf '%s' "$1"; return; fi
+  python3 - "$PROJECT_DIR/WhisperShortcut/Localizable.xcstrings" "$1" "$L" <<'PY'
+import json, sys
+path, key, lang = sys.argv[1:4]
+entry = json.load(open(path))["strings"].get(key, {})
+print(entry.get("localizations", {}).get(lang, {}).get("stringUnit", {}).get("value", key), end="")
+PY
+}
+
+profile_pid() { pgrep -f "$(profile_app_path "$PROJECT_DIR" "$PROFILE")/Contents/MacOS" 2>/dev/null | head -n1 || true; }
+
+ax() {
+  osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID)
+$1
+end tell" 2>&1
+}
+
+# launch <app args…>: a fresh profile in language $L. Stops only this profile's previous pid.
+launch() {
+  local args=(--sidecar --profile "$PROFILE" --fresh --app-arg -AppleLanguages --app-arg "($L)")
+  [[ "$BUILD" == true ]] || args+=(--no-build)
+  local a
+  for a in "$@"; do args+=(--app-arg "$a"); done
+  if [[ "$BUILD" == true ]]; then
+    while pgrep -x xcodebuild >/dev/null 2>&1; do echo "   waiting for another xcodebuild…"; sleep 15; done
+  fi
+  if ! bash "$PROJECT_DIR/scripts/rebuild-and-restart.sh" "${args[@]}" >"$WORK/launch.log" 2>&1; then
+    echo "❌ launch failed:"; tail -20 "$WORK/launch.log"; exit 1
+  fi
+  BUILD=false
+  PID="$(profile_pid)"
+  [[ -n "$PID" ]] || { echo "❌ profile $PROFILE not running"; exit 1; }
+}
+
+wait_window() {
+  local i
+  for i in $(seq 1 30); do
+    [[ "$(ax 'return count of windows')" =~ ^[1-9] ]] && { sleep 1.5; return 0; }
+    sleep 0.5
+  done
+  echo "   (no window appeared)"; return 1
+}
+
+# record <screen> <state> <png path>
+record() {
+  printf '| %02d | %s | %s | %s | %s |\n' "$N" "$1" "$2" "$L" "$(basename "$3")" >>"$OUT/index.md"
+  echo "  $(basename "$3")  —  $1 / $2"
+}
+
+FILE=""
+next_file() { N=$((N + 1)); FILE="$(printf '%s/%02d-%s-%s.png' "$OUT" "$N" "$L" "$1")"; }
+
+# The topmost on-screen window of the profile's pid (CGWindowID), optionally only one on the given
+# window layer (101 = a menu). The status item itself (layer 25) never counts. Captured by id, so
+# nothing of another app that overlaps it lands in the picture.
+window_id() {
+  osascript -l JavaScript -e "
+ObjC.import('CoreGraphics');
+const list = ObjC.castRefToObject(\$.CGWindowListCopyWindowInfo(\$.kCGWindowListOptionOnScreenOnly, 0));
+let found = '';
+for (let i = 0; i < list.count && !found; i++) {
+  const w = list.objectAtIndex(i);
+  const layer = w.objectForKey('kCGWindowLayer').js;
+  if (w.objectForKey('kCGWindowOwnerPID').js != $PID || layer == 25) continue;
+  if ('${1:-}' !== '' && layer != Number('${1:-}')) continue;
+  found = String(w.objectForKey('kCGWindowNumber').js);
+}
+found" 2>/dev/null
+}
+
+# A picture as large as a display is deleted unseen: it may hold other apps' windows.
+guard_size() {
+  [[ -f "$1" ]] || return 1
+  local w h; w="$(sips -g pixelWidth "$1" | awk '/pixelWidth/{print $2}')"; h="$(sips -g pixelHeight "$1" | awk '/pixelHeight/{print $2}')"
+  if osascript -l JavaScript -e "ObjC.import('AppKit'); const s = \$.NSScreen.screens; let hit = false;
+for (let i = 0; i < s.count; i++) { const f = s.objectAtIndex(i).frame; const k = s.objectAtIndex(i).backingScaleFactor;
+  if (Math.abs(f.size.width * k - $w) < 4 && Math.abs(f.size.height * k - $h) < 80) hit = true; } hit" 2>/dev/null | grep -q true; then
+    rm -f "$1"; echo "   (display-sized picture deleted unseen)"; return 1
+  fi
+}
+
+# Never a full-screen or region capture: other apps' windows (anything the user has open) must not
+# land in a picture. No window found → no picture, and the index says so.
+# A locked screen hides every window from capture. Wait for the unlock (up to 10 minutes)
+# instead of recording a run of empty shots.
+wait_unlocked() {
+  local n=0
+  while ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; do
+    (( n == 0 )) && echo "   (screen is locked: waiting for it to be unlocked)"
+    (( ++n > 60 )) && { echo "   (screen still locked after 10 minutes: giving up)"; return 1; }
+    sleep 10
+  done
+}
+
+capture_window() {   # capture_window <file> [layer]
+  local id="" i
+  wait_unlocked || return 1
+  for i in 1 2 3 4 5 6; do
+    id="$(window_id "${2:-}")"
+    [[ "$id" =~ ^[0-9]+$ ]] && break
+    sleep 1
+  done
+  if [[ "$id" =~ ^[0-9]+$ ]]; then screencapture -x -o -l "$id" "$1"; guard_size "$1"; return; fi
+  echo "   (no window of pid $PID found: not captured)"
+  return 1
+}
+
+# shot_window <slug> <screen> <state>: the front window of the profile.
+shot_window() {
+  next_file "$1"; local f="$FILE"
+  if capture_window "$f"; then record "$2" "$3" "$f"; else record "$2" "$3 (NOT CAPTURED: window not found)" "-"; fi
+}
+
+# The microphone prompt is a macOS window owned by a system agent, not by the profile. Only a window
+# of one of those agents is captured, by its id; never the screen.
+prompt_window_id() {
+  osascript -l JavaScript -e "
+ObjC.import('CoreGraphics');
+const owners = ['UserNotificationCenter', 'CoreServicesUIAgent', 'universalAccessAuthWarn', 'WhisperShortcut Dev'];
+const list = ObjC.castRefToObject(\$.CGWindowListCopyWindowInfo(\$.kCGWindowListOptionOnScreenOnly, 0));
+let found = '';
+for (let i = 0; i < list.count && !found; i++) {
+  const w = list.objectAtIndex(i);
+  const owner = w.objectForKey('kCGWindowOwnerName').js;
+  const pid = w.objectForKey('kCGWindowOwnerPID').js;
+  const layer = w.objectForKey('kCGWindowLayer').js;
+  if (layer == 0 || layer == 25 || owners.indexOf(owner) < 0) continue;
+  if (owner == 'WhisperShortcut Dev' && pid != $PID) continue;
+  found = String(w.objectForKey('kCGWindowNumber').js);
+}
+found" 2>/dev/null
+}
+
+shot_prompt() {
+  next_file "$1"; local f="$FILE" id
+  id="$(prompt_window_id)"
+  if [[ "$id" =~ ^[0-9]+$ ]]; then
+    screencapture -x -o -l "$id" "$f"
+    if guard_size "$f"; then record "$2" "$3" "$f"; else record "$2" "$3 (NOT CAPTURED)" "-"; fi
+  else
+    echo "   (prompt window not found: not captured)"
+    record "$2" "$3 (NOT CAPTURED: prompt window not found)" "-"
+  fi
+}
+
+# shot_menu <slug> <screen> <state>: the status menu, as text. A menu is translucent, so a picture
+# of it shows a blurred copy of whatever lies behind it (other apps' windows). The item titles,
+# their enabled state and shortcuts are read through Accessibility instead and written to a .txt.
+shot_menu() {
+  N=$((N + 1)); local f; f="$(printf '%s/%02d-%s-%s.txt' "$OUT" "$N" "$L" "$1")"
+  ax 'click menu bar item 1 of menu bar 2' >/dev/null
+  sleep 0.8
+  ax 'set out to ""
+repeat with mi in menu items of menu 1 of menu bar item 1 of menu bar 2
+  set t to name of mi
+  if t is missing value then
+    set out to out & "----" & linefeed
+  else
+    set k to ""
+    try
+      set c to value of attribute "AXMenuItemCmdChar" of mi
+      if c is not missing value then set k to "   [shortcut: " & c & "]"
+    end try
+    set e to ""
+    if not (enabled of mi) then set e to "   (greyed out)"
+    set out to out & t & e & k & linefeed
+  end if
+end repeat
+return out' >"$f"
+  osascript -e 'tell application "System Events" to key code 53' >/dev/null 2>&1
+  record "$2" "$3 (text: item titles)" "$f"
+}
+
+click_menu_item() {
+  ax "click menu bar item 1 of menu bar 2
+delay 0.4
+click menu item \"$1\" of menu 1 of menu bar item 1 of menu bar 2" >/dev/null
+}
+
+# ax_walk dump | click-button <n, negative counts from the end> | click-role <AXRole> | set-field <text>
+ax_walk() { osascript "$WORK/ax.applescript" "$PID" "$@" 2>&1; }
+
+click_nth() {
+  local r; r="$(ax_walk click-button "$1")"
+  [[ "$r" == ok ]] || echo "   (button #$1 not found: $r)"
+}
+
+click_role() { ax_walk click-role "$1" >/dev/null; }
+
+# Sets the first text field's value through Accessibility (no keystrokes: they would go to
+# whatever app is in front).
+type_into_field() { ax_walk set-field "$1" >/dev/null; }
+
+# wait_for_text <text> [seconds]: until some text of the window contains it.
+wait_for_text() {
+  local i limit="${2:-60}"
+  for i in $(seq 1 "$limit"); do
+    ax_walk dump | grep -qF -- "$1" && return 0
+    sleep 1
+  done
+  echo "   (text \"$1\" did not appear)"; return 1
+}
+
+# The WAV for the test dictation, copied into the profile's own container (its sandbox can read it).
+place_audio() {
+  local src="$1" dest
+  dest="$(profile_container "$PROFILE")/Data/tmp/ws-catalogue-$L.wav"
+  mkdir -p "$(dirname "$dest")"
+  cp "$src" "$dest"
+  printf '%s' "$dest"
+}
+
+audio_source() {
+  local given="$AUDIO_EN" voice="Samantha" sentence="Today is a good day to try dictation."
+  if [[ "$L" == de ]]; then
+    given="$AUDIO_DE"; voice="Anna"
+    sentence="Heute ist ein schöner Tag, und ich probiere das Diktieren aus."
+  fi
+  if [[ -n "$given" ]]; then printf '%s' "$given"; return; fi
+  say -v "$voice" -o "$WORK/say-$L.wav" --data-format=LEI16@16000 "$sentence" 2>/dev/null \
+    || say -o "$WORK/say-$L.wav" --data-format=LEI16@16000 "$sentence"
+  printf '%s' "$WORK/say-$L.wav"
+}
+
+audio_path() { printf '%s' "$(profile_container "$PROFILE")/Data/tmp/ws-catalogue-$L.wav"; }
+
+quit_profile() {
+  local pid; pid="$(profile_pid)"
+  [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
+  sleep 1
+}
+
+# ---------------------------------------------------------------------------------------------
+catalogue_dictation_only() {
+  local free=(--globe free --mic granted --accessibility granted)
+  local audio; audio="$(audio_source)"
+
+  echo "── $L: first screen"
+  launch --onboarding-step mode "${free[@]}"; wait_window
+  shot_window mode "First screen" "default (Dictation only preselected)"
+  launch --onboarding-step mode --recording-running "${free[@]}"; wait_window
+  click_nth -1; sleep 1   # Continue
+  shot_window mode-refused "First screen" "Continue refused: a recording is running"
+
+  echo "── $L: 🌐 key"
+  launch --onboarding-step globe --globe emoji --mic granted --accessibility granted; wait_window
+  shot_window globe-emoji "🌐 key" "conflict: Show Emoji & Symbols"
+  launch --onboarding-step globe --globe dictation --mic granted --accessibility granted; wait_window
+  shot_window globe-dictation "🌐 key" "conflict: Start Dictation"
+  launch --onboarding-step globe "${free[@]}"; wait_window
+  shot_window globe-free "🌐 key" "free"
+
+  echo "── $L: language"
+  launch --onboarding-step language "${free[@]}"; wait_window
+  shot_window language "Language" "Mac language preselected"
+  launch --onboarding-step language --language-needs-pick "${free[@]}"; wait_window
+  shot_window language-pick "Language" "needs an explicit pick (Mac language not supported)"
+
+  echo "── $L: permissions"
+  launch --onboarding-step permissions --globe free --mic not-determined --accessibility missing; wait_window
+  shot_window perm-none "Permissions" "microphone not asked, Accessibility missing"
+  launch --onboarding-step permissions --globe free --mic granted --accessibility missing; wait_window
+  shot_window perm-mic "Permissions" "microphone granted, Accessibility missing"
+  launch --onboarding-step permissions --globe free --mic denied --accessibility missing; wait_window
+  shot_window perm-denied "Permissions" "microphone denied, Accessibility missing"
+  launch --onboarding-step permissions "${free[@]}"; wait_window
+  shot_window perm-all "Permissions" "both granted"
+
+  echo "── $L: download"
+  launch --onboarding-step download "${free[@]}" --download not-started; wait_window
+  shot_window dl-not-started "Download" "not started"
+  launch --onboarding-step download "${free[@]}" --download running:40; wait_window
+  shot_window dl-running "Download" "running at 40 %"
+  launch --onboarding-step download "${free[@]}" --download finished; wait_window
+  shot_window dl-finished "Download" "finished"
+  launch --onboarding-step download "${free[@]}" --download failed; wait_window; sleep 2.5
+  shot_window dl-failed "Download" "failed (network connection lost)"
+  launch --onboarding-step download "${free[@]}" --download not-started --disk-full; wait_window
+  shot_window dl-disk "Download" "not enough disk space"
+
+  echo "── $L: test dictation"
+  launch --onboarding-step test "${free[@]}" --download running:40; wait_window
+  shot_window test-waiting "Test" "download still running"
+  launch --onboarding-step test "${free[@]}" --audio-file "$(audio_path)"; wait_window
+  place_audio "$audio" >/dev/null
+  shot_window test-ready "Test" "ready to start"
+  click_nth 1   # Try dictation
+  wait_for_text "$(t "It works")" 90
+  sleep 0.5
+  shot_window test-result "Test" "result of a test dictation (audio file)"
+
+  echo "── $L: glossary"
+  launch --onboarding-step glossary "${free[@]}" --audio-file "$(audio_path)"; wait_window
+  place_audio "$audio" >/dev/null
+  shot_window glossary "Glossary" "empty"
+  type_into_field "Kizomba"
+  click_nth 1; sleep 1   # Save
+  shot_window glossary-saved "Glossary" "word saved, try again offered"
+  click_nth 2   # Try dictation, below the saved word
+  wait_for_text "$(t "It works")" 90
+  sleep 0.5
+  shot_window glossary-retry "Glossary" "result of the second test dictation"
+
+  echo "── $L: last screen"
+  launch --onboarding-step done "${free[@]}" --download finished; wait_window
+  shot_window done-ready "Done" "ready (🌐 key, Live)"
+  launch --onboarding-step done --globe emoji --mic granted --accessibility granted --download finished; wait_window
+  shot_window done-shortcut "Done" "🌐 key still in conflict: key combination"
+  launch --onboarding-step done --globe free --mic granted --accessibility missing --download finished; wait_window
+  shot_window done-copied "Done" "Accessibility missing: text is copied"
+  launch --onboarding-step done "${free[@]}" --download finished --intel; wait_window
+  shot_window done-intel "Done" "Intel Mac: Live unavailable, plain dictation"
+  launch --onboarding-step done --globe free --mic denied --accessibility granted --download running:40; wait_window
+  shot_window done-almost "Done" "almost ready: microphone denied, download running"
+
+  echo "── $L: Settings"
+  launch --dictation-only on --settings-tab general "${free[@]}" --download finished; wait_window
+  shot_window settings-general "Settings → General" "mode on"
+  launch --dictation-only on --settings-tab general "${free[@]}" --download finished --recording-running; wait_window
+  click_role AXCheckBox; sleep 1
+  shot_window settings-general-refused "Settings → General" "switch refused: a recording is running"
+  launch --dictation-only on --settings-tab dictate "${free[@]}" --download finished; wait_window
+  shot_window settings-dictate "Settings → Dictate" "mode on"
+  launch --dictation-only on --settings-tab dictate "${free[@]}" --download running:40; wait_window
+  shot_window settings-dictate-dl "Settings → Dictate" "mode on, download running"
+  launch --dictation-only off --settings-tab general "${free[@]}"; wait_window
+  shot_window settings-general-off "Settings → General" "mode off"
+
+  echo "── $L: status menu and popups"
+  launch --dictation-only on "${free[@]}" --download finished; sleep 3
+  shot_menu menu-on "Status menu" "mode on"
+  launch --dictation-only on "${free[@]}" --download running:40; sleep 3
+  shot_menu menu-on-dl "Status menu" "mode on, download running"
+  launch --dictation-only off "${free[@]}"; sleep 3
+  shot_menu menu-off "Status menu" "mode off"
+  launch --dictation-only on "${free[@]}" --download running:40; sleep 3
+  click_menu_item "$(t Dictate)"; sleep 1
+  shot_window popup-dl-running "Popup after the dictation key" "mode on, download running"
+  launch --dictation-only on "${free[@]}" --download not-started; sleep 3
+  click_menu_item "$(t Dictate)"; sleep 1
+  shot_window popup-dl-missing "Popup after the dictation key" "mode on, download not started"
+
+  echo "── $L: macOS permission prompts of the profile app (photographed, not answered)"
+  launch --onboarding-step permissions --globe free; wait_window
+  click_nth 1; sleep 2.5   # Allow (microphone)
+  shot_prompt prompt-mic "macOS prompt" "microphone (prompt window only)"
+  quit_profile
+}
+
+{
+  echo "# UI catalogue: $SET"
+  echo
+  echo "Generated $(date '+%Y-%m-%d %H:%M') by scripts/ui-catalogue.sh from $(git -C "$PROJECT_DIR" rev-parse --short HEAD)."
+  echo
+  echo "| # | Screen | State | Language | File |"
+  echo "|---|---|---|---|---|"
+} >"$OUT/index.md"
+
+for L in $LANGS; do
+  PROFILE="uicat-$L"
+  "catalogue_${SET//-/_}"
+  quit_profile
+done
+echo "✅ $N screenshots, index: $OUT/index.md"

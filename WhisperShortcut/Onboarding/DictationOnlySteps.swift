@@ -145,10 +145,14 @@ struct DictationOnlyGlobeKeyStep: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
+      // The subtitle follows the key: "still does something else" next to a green "is free" line
+      // contradicted itself.
       WelcomeStepHeader(
         systemImage: "globe",
         title: "The 🌐 key",
-        subtitle: "The easiest way to dictate is the 🌐 key at the bottom left of your keyboard. On this Mac it still does something else.")
+        subtitle: status.usage.systemSettingsLabel != nil
+          ? "The easiest way to dictate is the 🌐 key at the bottom left of your keyboard. On this Mac it still does something else."
+          : "The easiest way to dictate is the 🌐 key at the bottom left of your keyboard.")
 
       if let systemAction = status.usage.systemSettingsLabel {
         VStack(alignment: .leading, spacing: 14) {
@@ -174,6 +178,12 @@ struct DictationOnlyGlobeKeyStep: View {
           }
 
           manualPath
+
+          // Says what skipping means in practice, instead of a vague "you can also skip this".
+          Text("Rather leave the key as it is? Click Continue. You then start dictation with a key combination, which the last screen shows.")
+            .font(DictationOnlyFont.note)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
       } else {
         Label("The 🌐 key is free. Press it once to start dictating and once more to stop.", systemImage: "checkmark.circle.fill")
@@ -181,11 +191,6 @@ struct DictationOnlyGlobeKeyStep: View {
           .foregroundStyle(.green)
           .fixedSize(horizontal: false, vertical: true)
       }
-
-      Text("You can also skip this and start dictation with a key combination instead.")
-        .font(DictationOnlyFont.note)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
 
       Spacer(minLength: 0)
     }
@@ -472,10 +477,11 @@ struct DictationOnlyDownloadStep: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
+      // The title already says "one-time download"; the subtitle says what it is for.
       WelcomeStepHeader(
         systemImage: "arrow.down.circle",
         title: "One-time download",
-        subtitle: "One-time download, about \(Self.model.estimatedSizeMB) MB. After that no internet is needed.")
+        subtitle: "WhisperShortcut needs its speech recognition on this Mac (about \(Self.model.estimatedSizeMB) MB). After that no internet is needed.")
 
       if let shortOfSpace {
         VStack(alignment: .leading, spacing: 10) {
@@ -493,7 +499,8 @@ struct DictationOnlyDownloadStep: View {
         }
       } else {
         OfflineModelDownloadCard(modelType: Self.model, startsDownloadOnAppear: true, plainCopy: true)
-        if !modelManager.isModelAvailable(Self.model) {
+        // Only while something downloads: under a failed or not-started download it was untrue.
+        if modelManager.downloadingModels.contains(Self.model) {
           Text("You can continue while it downloads.")
             .font(DictationOnlyFont.note)
             .foregroundStyle(.secondary)
@@ -615,12 +622,14 @@ struct DictationOnlyGlossaryStep: View {
         Text("Try it again with that word:")
           .font(DictationOnlyFont.note)
           .foregroundStyle(.secondary)
+        // Bordered start: Continue stays the one primary button, the retry is an offer.
         OnboardingTryItPanel(
           recordSeconds: DictationOnlyTestStep.recordSeconds,
-          caption: "You have about \(DictationOnlyTestStep.recordSeconds) seconds. Click “Stop” when you have finished.")
+          caption: "You have about \(DictationOnlyTestStep.recordSeconds) seconds. Click “Stop” when you have finished.",
+          prominentStart: false)
       }
 
-      Text("You can skip this. Later you find all your words in Settings → Dictate → Glossary.")
+      Text("Nothing came out wrong? Click Continue. You find your words later in Settings → Dictate → Glossary.")
         .font(DictationOnlyFont.note)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -754,7 +763,9 @@ struct DictationOnlyDoneStep: View {
   private var startLine: LocalizedStringKey {
     switch startKey {
     case .fn: return "To dictate, press the 🌐 key. Press it again to stop."
-    case .shortcut(let keys): return "To dictate, press \(keys). Press it again to stop."
+    // Key names as printed on the keys: "⌥⌃1" means nothing to someone who has never used it.
+    case .shortcut(let keys):
+      return "To dictate, press \(DictationOnlyKeyNames.spell(keys)) together. Press them again to stop."
     case .none: return "Choose a key for dictation in Settings → General → Keyboard Shortcuts."
     }
   }

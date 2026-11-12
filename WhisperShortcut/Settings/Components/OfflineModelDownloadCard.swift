@@ -158,7 +158,11 @@ struct OfflineModelDownloadCard: View {
           return
         }
         await MainActor.run {
-          downloadError = SpeechErrorFormatter.formatForUser(error)
+          // "Dictation only": no error codes ("NSURLErrorDomain error -1005"), just what to do.
+          // The log line below keeps the detail.
+          downloadError = plainCopy
+            ? String(localized: "The download stopped. Check the internet connection, then click Download again.")
+            : SpeechErrorFormatter.formatForUser(error)
         }
         DebugLogger.logError("ONBOARDING: \(modelType.displayName) download failed: \(error.logDescription)")
       }

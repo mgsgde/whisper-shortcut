@@ -270,7 +270,15 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     }
   }
 
+  /// True for the offline dictation models: a test profile launched with `--download` runs a
+  /// pretend download for them (`TestProfileOverrides.runStubDownload`).
+  nonisolated var usesTestProfileDownloadStub: Bool { false }
+
   private func performDownload(_ model: Model, onProgress: ((Double) -> Void)?) async throws {
+    if usesTestProfileDownloadStub, TestProfileOverrides.current.download != nil {
+      try await performStubDownload(model, onProgress: onProgress)
+      return
+    }
     // Test profiles (`TestProfile`) never download unless launched with --allow-model-downloads.
     try TestProfile.checkModelDownloadAllowed(model.displayName)
     try DiskSpace.require(estimatedSizeMB: model.estimatedSizeMB, at: rootDirectory)
@@ -315,6 +323,28 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
         throw error
       }
       DebugLogger.logError("\(logPrefix): Download failed: \(error.logDescription)")
+      throw ModelStoreError.downloadFailed(error.localizedDescription)
+    }
+  }
+
+  /// The test-profile stand-in for `performDownload`: same published state, no network, no files.
+  private func performStubDownload(_ model: Model, onProgress: ((Double) -> Void)?) async throws {
+    try DiskSpace.require(estimatedSizeMB: model.estimatedSizeMB, at: rootDirectory)
+    downloadingModels.insert(model)
+    downloadProgress[model] = 0
+    defer {
+      downloadingModels.remove(model)
+      downloadProgress[model] = nil
+    }
+    DebugLogger.log("\(logPrefix): TEST-PROFILE pretend download for \(model.displayName)")
+    do {
+      try await TestProfileOverrides.runStubDownload { [weak self] fraction in
+        guard let self, self.downloadingModels.contains(model) else { return }
+        self.downloadProgress[model] = fraction
+        onProgress?(fraction)
+      }
+    } catch {
+      if Self.isCancellation(error) { throw CancellationError() }
       throw ModelStoreError.downloadFailed(error.localizedDescription)
     }
   }

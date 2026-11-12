@@ -45,7 +45,9 @@ class AccessibilityPermissionManager {
 
   /// Checks if the app has accessibility permissions (pure check, never prompts).
   static func hasAccessibilityPermission() -> Bool {
-    AXIsProcessTrusted()
+    // Test profile only (`--accessibility`): every reader sees the same state as the screens.
+    if let overridden = TestProfileOverrides.current.accessibility { return overridden == .granted }
+    return AXIsProcessTrusted()
   }
 
   /// Triggers the native macOS Accessibility prompt. This also pre-registers WhisperShortcut in

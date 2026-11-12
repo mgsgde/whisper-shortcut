@@ -71,6 +71,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
     DebugLogger.log("APP-LIFECYCLE: launched pid=\(getpid()) version=\(version) build=\(build)")
 
+    // Test profile only: the start state `scripts/ui-catalogue.sh` asks for (TestProfileOverrides).
+    TestProfileOverrides.applyAtLaunch()
+
     // Silero VAD for the cloud speech gate. Both targets launch through this delegate.
     // Utility priority, and `decide` does not wait: until the model is loaded, chunks upload as before.
     Task.detached(priority: .utility) {
@@ -207,7 +210,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           if ApplicationsFolderMove.offerIfNeeded() { return }
           #endif
           let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
-          if !hasCompletedOnboarding {
+          TestProfileOverrides.openRequestedWindow()  // test profile only; no-op otherwise
+          if TestProfileOverrides.current.settingsTab != nil {
+            // Settings is already open on the requested tab.
+          } else if !hasCompletedOnboarding {
             WelcomeWindowController.shared.show()
           } else if !TranscriptionModel.loadSelected().hasRequiredCredential
             && !DictationOnlyMode.isEnabled

@@ -9,6 +9,11 @@ enum DiskSpace {
   /// If the volume cannot report capacity, the download proceeds rather than blocking setup.
   static func require(estimatedSizeMB: Int, at url: URL) throws {
     let neededBytes = Int64((Double(estimatedSizeMB) * 1_000_000 * downloadMargin).rounded())
+    // Test profile only (`TestProfileOverrides`, `--disk-full`).
+    if TestProfileOverrides.current.diskFull {
+      throw DiskSpaceError.insufficient(
+        neededMB: Int((Double(neededBytes) / 1_000_000).rounded(.up)), availableMB: 312)
+    }
     let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
     guard let available = values?.volumeAvailableCapacityForImportantUsage else { return }
     if available < neededBytes {

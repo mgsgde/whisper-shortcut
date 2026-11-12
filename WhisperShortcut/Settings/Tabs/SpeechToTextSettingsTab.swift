@@ -28,7 +28,14 @@ struct SpeechToTextSettingsTab: View {
   private var dictationOnlyBody: some View {
     VStack(alignment: .leading, spacing: 0) {
       if let missing = missingOfflineModel {
-        OfflineModelDownloadCard(modelType: missing, plainCopy: true)
+        // The card has no title in plain copy; without this line a lone Download button said
+        // nothing about what it fetches or why.
+        VStack(alignment: .leading, spacing: 10) {
+          Text("Dictation needs a one-time download first (about \(missing.estimatedSizeMB) MB). After that no internet is needed.")
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
+          OfflineModelDownloadCard(modelType: missing, plainCopy: true)
+        }
         SpacedSectionDivider()
       }
 
@@ -210,7 +217,9 @@ struct SpeechToTextSettingsTab: View {
     #if !APP_STORE
     VStack(alignment: .leading, spacing: 8) {
       ShortcutHintRow(label: "Add Selection to Glossary:", shortcut: viewModel.data.addToGlossary)
-      Text("Select a correctly spelled term anywhere — in your practice software, a document, an email — and press the shortcut to append it here. No model is involved, so this is also the way to grow the Glossary while Offline Mode is on.")
+      Text(dictationOnly
+        ? ("Select a correctly spelled word anywhere, in your practice software, a document or an email, and press the shortcut. The word is added here." as LocalizedStringKey)
+        : "Select a correctly spelled term anywhere — in your practice software, a document, an email — and press the shortcut to append it here. No model is involved, so this is also the way to grow the Glossary while Offline Mode is on.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -272,7 +281,9 @@ struct SpeechToTextSettingsTab: View {
       SectionHeader(
         title: "Punctuation",
         systemImage: "text.quote",
-        subtitle: "Offline models set periods and commas on their own. Choose Only when spoken to set every mark yourself."
+        subtitle: dictationOnly
+          ? LocalizedStringResource("Periods and commas are set automatically. Choose “Only when spoken” to say every mark yourself.")
+          : LocalizedStringResource("Offline models set periods and commas on their own. Choose Only when spoken to set every mark yourself.")
       )
 
       Picker("Punctuation", selection: $viewModel.data.punctuationMode) {
@@ -377,9 +388,12 @@ struct SpeechToTextSettingsTab: View {
       case .dictate:
         modeCaption("The text is inserted when you stop.")
       case .live:
-        if let liveUnavailable {
+        if let liveUnavailable, !(dictationOnly && liveUnavailable == .notDownloaded) {
           // Selectable anyway: refusing the click silently looked like a broken control.
+          // "Dictation only" with the download missing: the download card above already says it.
           liveUnavailableWarning(liveUnavailable)
+        } else if dictationOnly {
+          modeCaption("Text appears at the cursor after each pause. Everything stays on this Mac.")
         } else {
           modeCaption("Text appears at the cursor after each pause, transcribed offline by Parakeet Ultra.")
         }

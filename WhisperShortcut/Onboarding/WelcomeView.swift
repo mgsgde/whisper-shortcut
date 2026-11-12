@@ -154,11 +154,19 @@ struct WelcomeView: View {
   @AppStorage(UserDefaultsKeys.whisperLanguage) private var dictationLanguage: WhisperLanguage =
     SettingsDefaults.whisperLanguage
   @ObservedObject private var globeKey = GlobeKeyStatus.shared
+  /// For the download step's footer: Continue steps back while nothing downloads yet.
+  @ObservedObject private var modelManager = ModelManager.shared
 
   init() {
     let defaults = UserDefaults.standard
     let modeOn = DictationOnlyMode.isEnabled
-    let steps = DictationOnlyFlow.currentSteps()
+    var steps = DictationOnlyFlow.currentSteps()
+    // Test profile only (`--onboarding-step`): the step asked for is on the path even when this
+    // Mac's state would skip it (the 🌐 step with the key already free).
+    if case .dictationOnly(let forced)? = TestProfileOverrides.current.onboardingStep, !steps.contains(forced) {
+      let current = steps
+      steps = DictationOnlyStep.allCases.filter { current.contains($0) || $0 == forced }
+    }
     switch OnboardingPosition.resume(
       stored: defaults.integer(forKey: UserDefaultsKeys.onboardingCurrentStep), modeOn: modeOn, steps: steps)
     {
@@ -338,7 +346,12 @@ struct WelcomeView: View {
     case .permissions:
       return micStatus != .granted || (!DictationOnlyDefaults.isAppStoreBuild && axStatus != .granted)
     case .test: return !testSucceeded
-    case .language, .download, .glossary, .done, .none: return false
+    // Not started, failed or short of space: the screen's own button (Download, Check again)
+    // is what to click next.
+    case .download:
+      let model = DictationOnlyDownloadStep.model
+      return !modelManager.isModelAvailable(model) && !modelManager.downloadingModels.contains(model)
+    case .language, .glossary, .done, .none: return false
     }
   }
 
@@ -439,7 +452,7 @@ struct WelcomeView: View {
         DictationOnlyMode.setEnabled(
           enabled, meetingActive: activity.meetingActive, recording: activity.recording)
       },
-      applyDefaults: { DictationOnlyDefaults.apply() })
+      applyDefaults: { DictationOnlyDefaults.apply(preferredLanguages: TestProfileOverrides.current.preferredLanguages) })
     switch outcome {
     case .refusedWhileBusy:
       modeChoiceRefused = true

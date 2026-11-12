@@ -9,31 +9,49 @@ struct OnboardingTryItPanel: View {
   /// Replaces the default caption. "Dictation only" puts its own instruction above the panel.
   private let caption: LocalizedStringKey?
   private let onSuccess: (() -> Void)?
+  /// False where the screen's Continue is already the primary button (the Glossary retry).
+  private let prominentStart: Bool
 
   /// `recordSeconds`: 3 in the full tour (a quick check), about 8 on the "Dictation only" test
   /// step, where a whole sentence with spoken punctuation is read aloud.
   init(
     recordSeconds: Int = OnboardingTryItController.defaultRecordSeconds,
     caption: LocalizedStringKey? = nil,
+    prominentStart: Bool = true,
     onSuccess: (() -> Void)? = nil
   ) {
     _controller = StateObject(wrappedValue: OnboardingTryItController(recordSeconds: recordSeconds))
     self.caption = caption
+    self.prominentStart = prominentStart
     self.onSuccess = onSuccess
+  }
+
+  /// The instruction is for before and during the recording; next to a result it was stale.
+  private var showsCaption: Bool {
+    switch controller.phase {
+    case .success, .failure: return false
+    default: return true
+    }
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text(caption ?? "Record a few seconds and see the transcript here. You can skip this.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      if showsCaption {
+        Text(caption ?? "Record a few seconds and see the transcript here. You can skip this.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
 
       switch controller.phase {
       case .idle:
-        Button("Try dictation") { controller.start() }
-          .buttonStyle(.borderedProminent)
+        let start = Button("Try dictation") { controller.start() }
           .pointerCursorOnHover()
+        if prominentStart {
+          start.buttonStyle(.borderedProminent)
+        } else {
+          start.buttonStyle(.bordered).controlSize(.large)
+        }
       case .recording(let remaining):
         HStack(spacing: 8) {
           ProgressView().controlSize(.small)
@@ -122,11 +140,40 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
   func start() {
     guard phase == .idle || isRetryable else { return }
     phase = .recording(remaining: recordSeconds)
+    // Test profile only (`--audio-file`): transcribe a recording instead of the microphone.
+    if let path = TestProfileOverrides.current.audioFile {
+      startFromFile(path)
+      return
+    }
     let recorder = AudioRecorder()
     recorder.delegate = self
     self.recorder = recorder
     recorder.startRecording()
     DebugLogger.log("ONBOARDING: try-it recording started")
+  }
+
+  /// Copies the file (`transcribe` deletes what it is given), shows a short countdown, transcribes.
+  private func startFromFile(_ path: String) {
+    let copy = FileManager.default.temporaryDirectory
+      .appendingPathComponent("try-it-\(UUID().uuidString).\((path as NSString).pathExtension)")
+    do {
+      try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: copy)
+    } catch {
+      phase = .failure(error.localizedDescription, .speechToText)
+      return
+    }
+    DebugLogger.log("ONBOARDING: try-it from a test-profile audio file")
+    countdownTask?.cancel()
+    countdownTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      for remaining in stride(from: self.recordSeconds, through: max(1, self.recordSeconds - 1), by: -1) {
+        guard !Task.isCancelled else { return }
+        self.phase = .recording(remaining: remaining)
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+      }
+      guard !Task.isCancelled else { return }
+      self.transcribe(audioURL: copy)
+    }
   }
 
   func stopEarly() {

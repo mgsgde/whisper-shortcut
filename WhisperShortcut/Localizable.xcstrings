@@ -101,6 +101,16 @@
         }
       }
     },
+    "Dictation needs a one-time download first (about %lld MB). After that no internet is needed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren ist zuerst ein einmaliger Download nötig (etwa %lld MB). Danach ist kein Internet mehr nötig."
+          }
+        }
+      }
+    },
     "No folder is selected. Choose one in Settings → Screenshot. The screenshot is on the clipboard." : {
       "localizations" : {
         "de" : {
@@ -197,6 +207,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ich diktiere auf:"
+          }
+        }
+      }
+    },
+    "Nothing came out wrong? Click Continue. You find your words later in Settings → Dictate → Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts falsch geschrieben? Klicken Sie auf „Weiter“. Ihre Wörter finden Sie später unter Einstellungen → Diktieren → Glossar."
+          }
+        }
+      }
+    },
+    "Periods and commas are set automatically. Choose “Only when spoken” to say every mark yourself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Punkt und Komma werden automatisch gesetzt. Wählen Sie „Nur gesprochen“, wenn Sie jedes Satzzeichen selbst ansagen wollen."
+          }
+        }
+      }
+    },
+    "Rather leave the key as it is? Click Continue. You then start dictation with a key combination, which the last screen shows." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soll die Taste bleiben, wie sie ist? Klicken Sie auf „Weiter“. Das Diktat starten Sie dann mit einer Tastenkombination, die Ihnen der letzte Schritt zeigt."
+          }
+        }
+      }
+    },
+    "Select a correctly spelled word anywhere, in your practice software, a document or an email, and press the shortcut. The word is added here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markieren Sie irgendwo ein richtig geschriebenes Wort, in Ihrer Praxissoftware, einem Dokument oder einer E-Mail, und drücken Sie das Tastenkürzel. Das Wort wird hier ergänzt."
+          }
+        }
+      }
+    },
+    "Text appears at the cursor after each pause. Everything stays on this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text erscheint nach jeder Pause am Cursor. Alles bleibt auf diesem Mac."
+          }
+        }
+      }
+    },
+    "The download stopped. Check the internet connection, then click Download again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download wurde unterbrochen. Prüfen Sie die Internetverbindung und klicken Sie dann noch einmal auf „Herunterladen“."
+          }
+        }
+      }
+    },
+    "The easiest way to dictate is the 🌐 key at the bottom left of your keyboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am einfachsten diktieren Sie mit der 🌐-Taste unten links auf Ihrer Tastatur."
+          }
+        }
+      }
+    },
+    "To dictate, press %@ together. Press them again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren drücken Sie %@ gleichzeitig. Zum Beenden drücken Sie die Tasten noch einmal."
+          }
+        }
+      }
+    },
+    "WhisperShortcut needs its speech recognition on this Mac (about %lld MB). After that no internet is needed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut braucht seine Spracherkennung auf diesem Mac (etwa %lld MB). Danach ist kein Internet mehr nötig."
           }
         }
       }
@@ -28336,6 +28436,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“ ist schon gespeichert."
+          }
+        }
+      }
+    },
+    "The download is still running. You can dictate as soon as it has finished." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download läuft noch. Sobald er fertig ist, können Sie diktieren."
+          }
+        }
+      }
+    },
+    "Dictation needs a one-time download first. Start it in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Diktieren ist zuerst ein einmaliger Download nötig. Starten Sie ihn unter Einstellungen → Diktieren."
           }
         }
       }

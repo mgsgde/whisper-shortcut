@@ -134,6 +134,22 @@ enum DictationOnlyStartKey: Equatable {
   }
 }
 
+/// A shortcut in the words printed on the keys, for the last screen: "⌥⌃1" becomes
+/// "control + option + 1". Apple's keyboards print these names in English in every layout, so
+/// they are not translated. Modifiers come in the order they sit on the keyboard.
+enum DictationOnlyKeyNames {
+  private static let modifiers: [(glyph: Character, name: String)] = [
+    ("⌃", "control"), ("⌥", "option"), ("⇧", "shift"), ("⌘", "command"),
+  ]
+
+  static func spell(_ glyphs: String) -> String {
+    let present = modifiers.filter { glyphs.contains($0.glyph) }.map(\.name)
+    let key = String(glyphs.filter { char in !modifiers.contains { $0.glyph == char } })
+      .trimmingCharacters(in: .whitespaces)
+    return (present + (key.isEmpty ? [] : [key])).joined(separator: " + ")
+  }
+}
+
 /// Where the text goes, as the last screen promises it. Live text only where Live really runs.
 enum DictationOnlyDelivery: Equatable {
   /// Text appears at the cursor while speaking.

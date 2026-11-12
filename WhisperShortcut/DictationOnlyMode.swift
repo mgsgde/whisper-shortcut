@@ -124,6 +124,16 @@ enum DictationOnlyMode {
     return tab == .accounts ? .speechToText : .general
   }
 
+  // MARK: - Download not finished
+
+  /// What a dictation key press says while the one-time download is not done. One text for every
+  /// path (Fn and Live, the Dictate shortcut, the menu): no model name, no "Dictate Live".
+  static func downloadPendingMessage(downloadRunning: Bool) -> String {
+    downloadRunning
+      ? String(localized: "The download is still running. You can dictate as soon as it has finished.")
+      : String(localized: "Dictation needs a one-time download first. Start it in Settings → Dictate.")
+  }
+
   // MARK: - What is running
 
   /// What the Settings switch and the onboarding card need to know before they flip the flag.
@@ -136,7 +146,11 @@ enum DictationOnlyMode {
   /// Set by `MenuBarController`, which owns the app state. Nil (tests, early launch) reads idle.
   nonisolated(unsafe) static var activityProvider: (() -> Activity)?
 
-  static var currentActivity: Activity { activityProvider?() ?? .idle }
+  static var currentActivity: Activity {
+    // Test profile only (`TestProfileOverrides`, `--recording-running`).
+    if TestProfileOverrides.current.recordingRunning { return Activity(meetingActive: false, recording: true) }
+    return activityProvider?() ?? .idle
+  }
 }
 
 /// The Settings → General switch. It only writes the flag through `DictationOnlyMode.setEnabled`;

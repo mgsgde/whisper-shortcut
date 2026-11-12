@@ -30,6 +30,19 @@ enum LiveDictation {
         return String(localized: "Download Parakeet Ultra in Settings → Dictate to use Dictate Live.")
       }
     }
+
+    /// The popup line for the person who pressed the dictation key. "Dictation only" never names
+    /// a model or "Dictate Live": there the key simply dictates, so a missing model is the one-time
+    /// download, still running or not yet started.
+    func message(dictationOnly: Bool, downloadRunning: Bool) -> String {
+      guard dictationOnly, self == .notDownloaded else { return message }
+      return DictationOnlyMode.downloadPendingMessage(downloadRunning: downloadRunning)
+    }
+
+    /// The popup title. "Dictation only" calls it what the person did: dictate.
+    static func popupTitle(dictationOnly: Bool) -> LocalizedStringResource {
+      dictationOnly ? "Dictation" : "Dictate Live"
+    }
   }
 
   enum StartDecision: Equatable {
@@ -39,6 +52,8 @@ enum LiveDictation {
   }
 
   static var isAppleSilicon: Bool {
+    // Test profile only (`TestProfileOverrides`, `--intel`).
+    if TestProfileOverrides.current.intelMac { return false }
     #if arch(arm64)
     return true
     #else
