@@ -59,7 +59,7 @@ struct OnboardingTryItPanel: View {
             .foregroundStyle(.red)
             .fixedSize(horizontal: false, vertical: true)
           HStack(spacing: 8) {
-            Button("Open Settings → \(tab.rawValue)") {
+            Button("Open Settings → \(String(localized: tab.displayName))") {
               SettingsManager.shared.showSettings(tab: tab)
             }
             .buttonStyle(.bordered)
@@ -175,7 +175,9 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
         DebugLogger.log("ONBOARDING: try-it succeeded (\(trimmed.count) chars)")
       } catch {
         let message = SpeechErrorFormatter.formatForUser(error)
-        let tab = Self.settingsTab(for: error, message: message)
+        // "Dictation only" hides Accounts; the button then names the tab it really opens.
+        let tab = DictationOnlyMode.reachableTab(
+          Self.settingsTab(for: error, message: message), enabled: DictationOnlyMode.isEnabled)
         self.phase = .failure(message, tab)
         DebugLogger.logError("ONBOARDING: try-it failed: \(error.logDescription)")
       }

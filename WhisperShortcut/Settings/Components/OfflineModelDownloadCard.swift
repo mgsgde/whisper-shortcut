@@ -11,6 +11,9 @@ struct OfflineModelDownloadCard: View {
   /// click on a Download button was a step people missed — they sat in front of a greyed-out
   /// Continue without seeing why (Magnus, 2026-11-09).
   var startsDownloadOnAppear = false
+  /// "Dictation only": no model name, no key talk, no title (the step or tab around it already
+  /// says what this is), just progress, size and the button.
+  var plainCopy = false
 
   @ObservedObject private var modelManager = ModelManager.shared
   @State private var downloadError: String?
@@ -21,25 +24,17 @@ struct OfflineModelDownloadCard: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 8) {
-        Image(systemName: "laptopcomputer.and.arrow.down")
-          .foregroundStyle(.tint)
-        Text("Run offline with an on-device model")
-          .font(.callout)
-          .fontWeight(.semibold)
-        Spacer()
+      if !plainCopy {
+        header
       }
 
-      Text(modelType.engine == .parakeet
-        ? ("No key required — audio never leaves your Mac. \(modelType.displayName) transcribes 25 European languages, German and English included, in a fraction of a second. For other languages, pick a Whisper model later in Settings → Dictate." as LocalizedStringKey)
-        : "No key required — audio never leaves your Mac. \(modelType.displayName) runs on this Mac; other offline models are in Settings → Dictate.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
       if isAvailable {
-        Label("\(modelType.displayName) ready — you can continue.", systemImage: "checkmark.seal.fill")
-          .font(.caption)
+        Label(
+          plainCopy
+            ? ("Download complete." as LocalizedStringKey)
+            : "\(modelType.displayName) ready — you can continue.",
+          systemImage: "checkmark.seal.fill")
+          .font(plainCopy ? .callout : .caption)
           .foregroundStyle(.green)
       } else if isDownloading {
         VStack(alignment: .leading, spacing: 8) {
@@ -47,22 +42,34 @@ struct OfflineModelDownloadCard: View {
             ProgressView(value: progress)
               .progressViewStyle(.linear)
             HStack {
-              Text("Downloading \(modelType.displayName) — \(Int(progress * 100))%")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+              Group {
+                if plainCopy {
+                  Text("Downloading… \(Int(progress * 100))%")
+                } else {
+                  Text("Downloading \(modelType.displayName) — \(Int(progress * 100))%")
+                }
+              }
+              .font(plainCopy ? .callout : .caption)
+              .foregroundStyle(.secondary)
+              .monospacedDigit()
               Spacer()
               Text(sizeLabel(progress: progress))
-                .font(.caption)
+                .font(plainCopy ? .callout : .caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
             }
           } else {
             HStack(spacing: 8) {
               ProgressView().controlSize(.small)
-              Text("Starting \(modelType.displayName)…")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+              Group {
+                if plainCopy {
+                  Text("Starting the download…")
+                } else {
+                  Text("Starting \(modelType.displayName)…")
+                }
+              }
+              .font(plainCopy ? .callout : .caption)
+              .foregroundStyle(.secondary)
             }
           }
           Button("Cancel") {
@@ -76,10 +83,16 @@ struct OfflineModelDownloadCard: View {
         }
       } else {
         Button(action: download) {
-          Label(
-            "Download \(modelType.displayName) (≈\(modelType.estimatedSizeMB) MB)",
-            systemImage: "arrow.down.circle")
-            .font(.callout)
+          Group {
+            if plainCopy {
+              Label("Download (about \(modelType.estimatedSizeMB) MB)", systemImage: "arrow.down.circle")
+            } else {
+              Label(
+                "Download \(modelType.displayName) (≈\(modelType.estimatedSizeMB) MB)",
+                systemImage: "arrow.down.circle")
+            }
+          }
+          .font(.callout)
         }
         // Reached only when nothing is running: before the first click, or after a cancel or a
         // failed download. In onboarding it is the one thing standing before Continue, so it
@@ -90,7 +103,7 @@ struct OfflineModelDownloadCard: View {
 
       if let downloadError {
         Label(downloadError, systemImage: "exclamationmark.triangle.fill")
-          .font(.caption2)
+          .font(plainCopy ? .callout : .caption2)
           .foregroundStyle(.red)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -105,6 +118,25 @@ struct OfflineModelDownloadCard: View {
     .onChange(of: isAvailable) { _, available in
       if available { notifyIfReady() }
     }
+  }
+
+  @ViewBuilder
+  private var header: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "laptopcomputer.and.arrow.down")
+        .foregroundStyle(.tint)
+      Text("Run offline with an on-device model")
+        .font(.callout)
+        .fontWeight(.semibold)
+      Spacer()
+    }
+
+    Text(modelType.engine == .parakeet
+      ? ("No key required — audio never leaves your Mac. \(modelType.displayName) transcribes 25 European languages, German and English included, in a fraction of a second. For other languages, pick a Whisper model later in Settings → Dictate." as LocalizedStringKey)
+      : "No key required — audio never leaves your Mac. \(modelType.displayName) runs on this Mac; other offline models are in Settings → Dictate.")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
   }
 
   private func sizeLabel(progress: Double) -> String {

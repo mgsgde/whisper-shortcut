@@ -11,12 +11,112 @@
         }
       }
     },
+    "Dictation only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Diktat"
+          }
+        }
+      }
+    },
+    "Download (about %lld MB)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herunterladen (etwa %lld MB)"
+          }
+        }
+      }
+    },
+    "Download complete." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download abgeschlossen."
+          }
+        }
+      }
+    },
+    "Names and terms that come out wrong. Write each one the way it should be spelled, separated by commas." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen und Begriffe, die falsch erkannt werden. Schreiben Sie jeden so, wie er richtig geschrieben wird, getrennt durch Kommas."
+          }
+        }
+      }
+    },
+    "Not possible right now: a recording or meeting is running. Try again when it has finished." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerade nicht möglich, weil eine Aufnahme oder ein Meeting läuft. Versuchen Sie es danach noch einmal."
+          }
+        }
+      }
+    },
+    "Nothing is deleted. When you switch it off, your shortcuts and settings are back." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es wird nichts gelöscht. Wenn Sie es ausschalten, sind Ihre Tastenkürzel und Einstellungen wieder da."
+          }
+        }
+      }
+    },
+    "Offline Mode stays on. You can switch it off in Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus bleibt an. Sie können ihn unter Berechtigungen & Datenschutz ausschalten."
+          }
+        }
+      }
+    },
     "Removed from %@'s settings. %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus den Einstellungen von %@ entfernt. %@"
+          }
+        }
+      }
+    },
+    "Shows only dictation. Chat, meetings, AI rewriting and the other features are hidden." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt nur das Diktieren. Chat, Meetings, KI-Umschreiben und die übrigen Funktionen werden ausgeblendet."
+          }
+        }
+      }
+    },
+    "Starting the download…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download startet …"
+          }
+        }
+      }
+    },
+    "The language you dictate in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Sprache, in der Sie diktieren."
           }
         }
       }

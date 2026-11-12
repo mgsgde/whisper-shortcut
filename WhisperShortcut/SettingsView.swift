@@ -44,8 +44,8 @@ struct SettingsView: View {
       selectedTabRaw = SettingsTab.permissions.rawValue
     }
     .onReceive(NotificationCenter.default.publisher(for: .openSettingsTab)) { note in
-      if let raw = note.object as? String, SettingsTab(rawValue: raw) != nil {
-        selectedTabRaw = raw
+      if let raw = note.object as? String, let tab = SettingsTab(rawValue: raw) {
+        selectedTabRaw = DictationOnlyMode.reachableTab(tab, enabled: DictationOnlyMode.isEnabled).rawValue
       }
     }
   }

@@ -10,6 +10,11 @@ struct GeneralSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      // First: it decides what the rest of Settings shows.
+      DictationOnlySection()
+
+      SpacedSectionDivider()
+
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()

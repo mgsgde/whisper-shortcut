@@ -1055,6 +1055,14 @@ class MenuBarController: NSObject {
   }
 
   private func setupNotifications() {
+    // The "Dictation only" switch is refused while something runs (`DictationOnlyMode.setEnabled`);
+    // Settings and onboarding ask here. Read on the main thread, where `appState` lives.
+    DictationOnlyMode.activityProvider = { [weak self] in
+      guard let self else { return .idle }
+      return DictationOnlyMode.Activity(
+        meetingActive: self.isLiveMeetingActive, recording: self.appState.isRecording)
+    }
+
     // "Dictation only" switched: show and hide the status-menu rows without rebuilding the menu.
     NotificationCenter.default.addObserver(
       forName: .dictationOnlyModeChanged, object: nil, queue: .main

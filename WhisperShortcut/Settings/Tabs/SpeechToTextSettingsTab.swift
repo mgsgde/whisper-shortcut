@@ -8,8 +8,89 @@ struct SpeechToTextSettingsTab: View {
   /// Collapsed by default when the selected model ignores the system prompt — it is still there
   /// for the user who switches back to a cloud model, just not in the way of the field that works.
   @State private var showIgnoredSystemPrompt = false
+  /// "Dictation only" shows the four things a dictating user changes (`dictationOnlyBody`).
+  @AppStorage(UserDefaultsKeys.dictationOnlyMode) private var dictationOnly = false
 
   var body: some View {
+    if dictationOnly {
+      dictationOnlyBody
+    } else {
+      fullBody
+    }
+  }
+
+  // MARK: - Dictation only
+
+  /// Mode, language, punctuation and Glossary. No model picker, cloud rows or prompt editor:
+  /// the onboarding card already chose the on-device model. If that model is missing (deleted, or
+  /// the download never finished) the download card stands first, since nothing works without it.
+  @ViewBuilder
+  private var dictationOnlyBody: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      if let missing = missingOfflineModel {
+        OfflineModelDownloadCard(modelType: missing, plainCopy: true)
+        SpacedSectionDivider()
+      }
+
+      #if !APP_STORE
+      dictateModeSection
+      SpacedSectionDivider()
+      #endif
+
+      dictationOnlyLanguageSection
+      SpacedSectionDivider()
+
+      if viewModel.data.selectedTranscriptionModel.isOffline {
+        punctuationSection
+        SpacedSectionDivider()
+      }
+
+      glossaryEditor(subtitle: "Names and terms that come out wrong. Write each one the way it should be spelled, separated by commas.")
+    }
+  }
+
+  /// The selected on-device model when its files are not on this Mac.
+  private var missingOfflineModel: OfflineModelType? {
+    let model = viewModel.data.selectedTranscriptionModel
+    guard let type = model.offlineModelType, !model.isOfflineModelAvailable() else { return nil }
+    return type
+  }
+
+  /// Only languages the selected model writes, and no Auto-detect unless it is already stored:
+  /// a dictating user speaks one language, and Auto-detect on a short sentence guesses wrong.
+  private var dictationOnlyLanguageSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Language",
+        systemImage: "globe",
+        subtitle: "The language you dictate in."
+      )
+
+      Picker("Language", selection: $viewModel.data.whisperLanguage) {
+        ForEach(dictationOnlyLanguages, id: \.self) { language in
+          Text(language.displayName).tag(language)
+        }
+      }
+      .pickerStyle(.menu)
+      .labelsHidden()
+      .fixedSize()
+      .onChange(of: viewModel.data.whisperLanguage) {
+        Task { await viewModel.saveSettings() }
+      }
+    }
+  }
+
+  private var dictationOnlyLanguages: [WhisperLanguage] {
+    let current = viewModel.data.whisperLanguage
+    let model = viewModel.data.selectedTranscriptionModel.offlineModelType
+    return WhisperLanguage.allCases.filter { language in
+      language == current || (language != .auto && (model?.supports(language) ?? true))
+    }
+  }
+
+  // MARK: - Full app
+
+  private var fullBody: some View {
     VStack(alignment: .leading, spacing: 0) {
       #if !APP_STORE
       // First, and next to the model picker: Live depends on the model, so the requirement and
@@ -111,12 +192,16 @@ struct SpeechToTextSettingsTab: View {
     )
   }
 
-  @ViewBuilder
   private var glossaryEditor: some View {
+    glossaryEditor(subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 short terms, far fewer long ones such as German medical terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.")
+  }
+
+  @ViewBuilder
+  private func glossaryEditor(subtitle: LocalizedStringResource) -> some View {
     SystemPromptSectionEditor(
       title: "Glossary",
       systemImage: "character.book.closed",
-      subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 short terms, far fewer long ones such as German medical terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.",
+      subtitle: subtitle,
       section: .whisperGlossary,
       defaultContent: AppConstants.defaultWhisperGlossary
     )
