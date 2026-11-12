@@ -476,6 +476,7 @@ class MenuBarController: NSObject {
       if !missingSetupWarningActive {
         button.toolTip = appState.tooltip
       }
+      applyProfileTooltip(to: button)
     }
 
     // Create menu. The delegate fires pending review/support prompts on open (menuWillOpen).
@@ -1274,6 +1275,7 @@ class MenuBarController: NSObject {
 
   private func updateMenuBarIcon() {
     guard let button = statusItem?.button else { return }
+    defer { applyProfileTooltip(to: button) }
     applyCurrentAppearance(to: button)
     // The warning branch already set its own tooltip; the lines below would put the mic tooltip back.
     if missingSetupWarningActive { return }
@@ -1339,6 +1341,21 @@ class MenuBarController: NSObject {
   /// Local Debug builds carry an orange "DEV" tag next to the icon, so it is obvious at a glance
   /// which binary owns the hotkeys when the installed release could be running too. A sidecar
   /// (worktree build next to the user's instance, no hotkeys) shows a purple "TEST" instead.
+  /// "DEV", "TEST", or "TEST <name>" for a test profile (dev-only, not localized, like the badge).
+  private static var devBadgeText: String {
+    if let profile = TestProfile.name { return "TEST \(profile)" }
+    return AppConstants.isSidecarInstance ? "TEST" : "DEV"
+  }
+
+  /// A test profile's tooltip names the profile, so instances can be told apart on hover.
+  private func applyProfileTooltip(to button: NSStatusBarButton) {
+    guard let profile = TestProfile.name else { return }
+    let prefix = "Test profile \"\(profile)\""
+    let current = button.toolTip ?? ""
+    guard !current.hasPrefix(prefix) else { return }
+    button.toolTip = current.isEmpty ? prefix : "\(prefix) · \(current)"
+  }
+
   private func applyDevBadge(to button: NSStatusBarButton) {
     guard AppConstants.isDevBuild else { return }
     let title = NSMutableAttributedString(
@@ -1346,7 +1363,7 @@ class MenuBarController: NSObject {
       attributes: [.font: NSFont.menuBarFont(ofSize: 0)])
     let badgeFont = NSFont.systemFont(ofSize: 9, weight: .heavy)
     title.append(NSAttributedString(
-      string: (button.title.isEmpty ? "" : " ") + (AppConstants.isSidecarInstance ? "TEST" : "DEV"),
+      string: (button.title.isEmpty ? "" : " ") + Self.devBadgeText,
       attributes: [
         .font: badgeFont,
         .foregroundColor: AppConstants.isSidecarInstance ? NSColor.systemPurple : NSColor.systemOrange,

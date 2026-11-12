@@ -271,6 +271,8 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   }
 
   private func performDownload(_ model: Model, onProgress: ((Double) -> Void)?) async throws {
+    // Test profiles (`TestProfile`) never download unless launched with --allow-model-downloads.
+    try TestProfile.checkModelDownloadAllowed(model.displayName)
     try DiskSpace.require(estimatedSizeMB: model.estimatedSizeMB, at: rootDirectory)
 
     downloadingModels.insert(model)

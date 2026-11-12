@@ -101,6 +101,16 @@
         }
       }
     },
+    "No folder is selected. Choose one in Settings → Screenshot. The screenshot is on the clipboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es ist kein Ordner ausgewählt. Wählen Sie einen in den Einstellungen → Screenshot. Der Screenshot liegt in der Zwischenablage."
+          }
+        }
+      }
+    },
     "Dictation only" : {
       "localizations" : {
         "de" : {
@@ -397,6 +407,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus den Einstellungen von %@ entfernt. %@"
+          }
+        }
+      }
+    },
+    "Screenshot not saved to folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshot nicht im Ordner gespeichert"
           }
         }
       }

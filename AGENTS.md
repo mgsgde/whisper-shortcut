@@ -43,6 +43,12 @@ whether the PR gets merged. The short version, in case your tool does not open i
 - **Trust the build, not IDE diagnostics.** SourceKit often shows transient cross-file
   `Cannot find type 'X' in scope` errors after edits even when `xcodebuild` succeeds.
   Only the exit status of `bash scripts/rebuild-and-restart.sh` is authoritative.
+- **Look at UI in a test profile before it ships.** `bash scripts/rebuild-and-restart.sh --sidecar
+  --profile <name> --fresh` launches the build isolated from every other instance (own bundle id,
+  settings, data; keys in memory; first-launch state with `--fresh`), so you may flip any setting or
+  run the onboarding there; drive and screenshot it with `WS_PROFILE=<name>` and the
+  `run-whisper-shortcut` driver. A plain sidecar shares the Dev build's settings and data: never
+  change anything in one. Details: `.agents/skills/run-whisper-shortcut/SKILL.md` → "Test profiles".
 - **Never pipe a command whose exit code decides something.** `bash scripts/run-tests.sh | tail`
   reports `tail`'s status. Redirect to a file and read it, or set `pipefail`. Test output is
   quoted verbatim in the report — never summarised, never `| tail`.
