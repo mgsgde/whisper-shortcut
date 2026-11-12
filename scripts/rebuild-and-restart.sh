@@ -44,6 +44,8 @@ source "$SCRIPT_DIR/lib/daily-app.sh"
 source "$SCRIPT_DIR/lib/build-lock.sh"
 # shellcheck source=lib/test-profile.sh
 source "$SCRIPT_DIR/lib/test-profile.sh"
+# shellcheck source=lib/worktree.sh
+source "$SCRIPT_DIR/lib/worktree.sh"
 # Parse flags (order-independent)
 APP_STORE=false
 DEVELOPMENT=false
@@ -102,11 +104,13 @@ fi
 
 # An app launched from a worktree dies with it: `git worktree remove` deletes the binary under
 # the running process, macOS TCC can no longer resolve its path, and every dictation records
-# silence until it is relaunched (queue #10, 2026-09-16). Inside .claude/worktrees/ we therefore
-# say so before launching, and offer to launch the main checkout's app instead.
+# silence until it is relaunched (queue #10, 2026-09-16). In any linked git worktree (asked of git, so
+# .claude/worktrees/<n> and <parent>/.worktrees/<n> both count) we therefore say so before
+# launching, and offer to launch the main checkout's app instead.
 IN_WORKTREE=false
-MAIN_ROOT="${PROJECT_DIR%%/.claude/worktrees/*}"
-if [[ "$MAIN_ROOT" != "$PROJECT_DIR" ]]; then
+MAIN_ROOT="$PROJECT_DIR"
+if _wt_root="$(worktree_main_root "$PROJECT_DIR")"; then
+  MAIN_ROOT="$_wt_root"
   IN_WORKTREE=true
   if [[ "$APP_STORE" == true ]]; then
     MAIN_APP="$MAIN_ROOT/build/DerivedData-AppStore/Build/Products/Debug/WhisperShortcut-AppStore.app"
