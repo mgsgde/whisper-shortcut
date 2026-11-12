@@ -25,8 +25,8 @@ struct InteractionLogEntry: Codable {
   /// Whether a screenshot was attached to a `prompt`-mode request. Lets analysis distinguish
   /// screenshot-grounded output from fabrication when `selectedText` is empty. Nil for other modes.
   let hadScreenshot: Bool?
-  /// End-to-end Dictate Prompt time, from `performPrompt` entry until the turn is logged.
-  /// Nil for other modes.
+  /// End-to-end Dictate Prompt time, from `performPrompt` entry until the turn is logged; for
+  /// `transcription`, from job start until the transcript is ready. Nil for other modes.
   let latencyMs: Int?
   /// Dictate Prompt provider: "gemini", "openai", "local", or "mlx". Nil for other modes.
   let provider: String?
@@ -386,8 +386,17 @@ class ContextLogger {
   /// starts, read when its interaction is logged. Guarded by `lastInteractionLock`.
   private var targetApp: InteractionTargetApp?
 
+  /// Under the XCTest host this is a per-process temp directory: the test target shares the app's
+  /// bundle id, so the real directory would collect the suite's signals and interactions and skew
+  /// every usage analysis. Tests that read back what they logged keep working — every reader goes
+  /// through `directoryURL`.
   private lazy var contextDirectoryURL: URL = {
-    AppSupportPaths.whisperShortcutApplicationSupportURL()
+    if TestHost.isActive {
+      return FileManager.default.temporaryDirectory
+        .appendingPathComponent("WhisperShortcutTests-\(ProcessInfo.processInfo.processIdentifier)")
+        .appendingPathComponent(contextDirectoryName)
+    }
+    return AppSupportPaths.whisperShortcutApplicationSupportURL()
       .appendingPathComponent(contextDirectoryName)
   }()
 
@@ -451,7 +460,10 @@ class ContextLogger {
 
   // MARK: - Public Logging Methods
 
-  func logTranscription(result: String, model: String?, transcriptionModel: String? = nil, durationMs: Int? = nil) {
+  func logTranscription(
+    result: String, model: String?, transcriptionModel: String? = nil, durationMs: Int? = nil,
+    latencyMs: Int? = nil
+  ) {
     // Before the guard: opt-in usage statistics are independent of "Save usage data". Only the
     // model id goes in — never `result`.
     TelemetryService.shared.completed(.dictation, modelKind: .transcription, model: transcriptionModel)
@@ -468,7 +480,7 @@ class ContextLogger {
       voice: nil,
       transcriptionModel: transcriptionModel,
       hadScreenshot: nil,
-      latencyMs: nil,
+      latencyMs: latencyMs,
       provider: nil,
       loadMs: nil,
       context: recordingContext(section: .dictation, durationMs: durationMs)
@@ -891,9 +903,10 @@ class ContextLogger {
     // Remember what was just logged so a later signal can name the interaction it judges.
     // A fresh entry starts unpasted; `logSignal(.pasted)` is what marks it delivered.
     //
-    // Set synchronously, not inside the async block: auto-paste posts its ⌘V 50 ms after this
-    // call, and if the marker were still queued behind disk I/O the `pasted` flag could land on
-    // nothing — which would turn the user's next dictation into a phantom `dictationRestart`.
+    // Set synchronously, not inside the async block: callers log `pasted` right after the
+    // interaction (`runAudioJob` does so after `afterCopy`), and if the marker were still queued
+    // behind disk I/O the `pasted` flag could land on nothing — which would turn the user's next
+    // dictation into a phantom `dictationRestart`.
     lastInteractionLock.lock()
     lastInteractions[entry.mode] = LastInteractionMarker(ts: entry.ts, date: Date(), pasted: false)
     lastInteractionLock.unlock()
