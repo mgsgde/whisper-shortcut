@@ -26,7 +26,7 @@ Three modes, each with its own schema:
 
 | Mode | Fields | Purpose |
 |---|---|---|
-| `transcription` | `result, transcriptionModel, model, ts` (+ `appBundleId, appName, durationMs, language, promptVersion` since 2026-11-02; `audioRef` on older rows only) | Dictate (speech-to-text) output |
+| `transcription` | `result, transcriptionModel, model, ts` (+ `appBundleId, appName, durationMs, language, promptVersion` since 2026-11-02; `latencyMs` = job start to transcript ready; `audioRef` on older rows only) | Dictate (speech-to-text) output |
 | `prompt` | `userInstruction, selectedText, modelResponse, model, hadScreenshot, latencyMs, provider, template, ts` (+ the same context fields) | Dictate Prompt edits |
 | `geminiChat` | `userInstruction, modelResponse, model, ts` (+ `promptVersion`) | Chat replies |
 
