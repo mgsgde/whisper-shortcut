@@ -49,6 +49,30 @@ the build as a *sidecar* (`--sidecar`, badge TEST, no global hotkeys / Fn key / 
 user's own instance and never kills it; use `--replace` to take over instead. Both share the process name
 "WhisperShortcut Dev", so the driver targets the instance running from this checkout's bundle by pid and
 `quit` only kills that pid. Hotkey-driven features cannot be tested in a sidecar; the menu can.
+But a plain sidecar **shares the Dev build's settings, data and keychain**: do not flip settings,
+reset onboarding or edit the glossary there. Use a test profile for that.
+
+### Test profiles — the default for looking at UI
+
+```bash
+# Fresh, isolated instance: first-launch state (Welcome window), own settings/data, keys in memory.
+bash scripts/rebuild-and-restart.sh --sidecar --profile demo --fresh
+WS_PROFILE=demo bash .agents/skills/run-whisper-shortcut/driver.sh shot "Settings…" settings
+WS_PROFILE=demo bash .agents/skills/run-whisper-shortcut/driver.sh quit     # kills only that pid
+```
+
+A profile is a copy of the build with its own bundle id `com.magnusgoedde.whispershortcut.dev.profile.<name>`
+(so macOS gives it its own container: UserDefaults, Application Support, Documents, Logs), re-signed
+without the keychain group; the app keeps keys in memory only, sends no telemetry, never touches the
+login item or the 🌐 key setting, and is always a sidecar (badge **TEST <name>**, tooltip names the
+profile). It refuses to run (exit 78, `TEST-PROFILE: refusing …` in the log) if that isolation is not
+in place. Flags: `--fresh` (wipe that profile first), `--no-models` (see no offline models; downloads
+stay blocked), `--allow-model-downloads`, `--no-build` (relaunch the existing build), `--app-arg <arg>`.
+Models are shared read-only from the Dev container (`WS_PROFILE_MODELS_FROM=dev|release`), never
+re-downloaded. Not isolated: TCC (the profile asks for Microphone / Accessibility / Screen Recording as
+a new app) and the unified log subsystem. `bash scripts/test-profile-selfcheck.sh` proves the daily
+instances stay byte-identical. **New or changed UI must be looked at in a profile instance**, with
+screenshots, before it ships.
 
 ## Run (agent path) — the driver
 
@@ -100,8 +124,10 @@ Re-open it from the status menu ▸ "Welcome Tour…" (or "Finish setup…" whil
 | --- | --- | --- |
 | Re-show Welcome (safe) | `bash $D onboarding-reset` | Keychain API keys, app data, preferences |
 | True first-run (destructive) | `bash $D onboarding-wipe` | Keychain only — deletes the app container |
+| True first-run, isolated (preferred) | `bash scripts/rebuild-and-restart.sh --sidecar --profile <name> --fresh` | Nothing of any other instance is touched |
 
-Only use `onboarding-wipe` when you explicitly need a cold install. Warn the user first.
+Only use `onboarding-wipe` (without `WS_PROFILE`) when you explicitly need a cold install of the Dev
+build itself. Warn the user first. With `WS_PROFILE=<name>` it wipes only that profile.
 
 ### Walk through Welcome
 

@@ -543,6 +543,12 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Launch at Login
   func setLaunchAtLogin(_ enabled: Bool) {
+    // A test profile must not register a login item on the developer's Mac (TestProfile.swift).
+    if TestProfile.isActive {
+      DebugLogger.logInfo("LAUNCH: test profile, not touching the login item (requested \(enabled))")
+      data.launchAtLogin = enabled
+      return
+    }
     do {
       if enabled {
         if SMAppService.mainApp.status == .enabled {

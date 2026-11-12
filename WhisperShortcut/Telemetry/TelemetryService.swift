@@ -49,7 +49,9 @@ final class TelemetryService: @unchecked Sendable {
 
   /// Blocked by Offline Mode or by an administrator — the switch is hidden and forced off.
   var isAvailable: Bool {
-    !env.offlineMode() && !env.defaults.bool(forKey: UserDefaultsKeys.telemetryForceDisabled)
+    // A test profile (`TestProfile`) never sends anything on the developer's behalf.
+    !TestProfile.isActive
+      && !env.offlineMode() && !env.defaults.bool(forKey: UserDefaultsKeys.telemetryForceDisabled)
   }
 
   /// The user's own choice, ignoring Offline Mode and the admin key. Off unless set.

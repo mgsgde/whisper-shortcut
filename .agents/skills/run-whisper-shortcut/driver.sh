@@ -37,6 +37,14 @@
 #
 # Screenshots land in $WS_SHOT_DIR (default /tmp). `shot "Settings…" settings` → /tmp/ws-settings.png
 #
+# Test profile: WS_PROFILE=<name> points every command at that isolated profile instance (see
+# scripts/rebuild-and-restart.sh --profile): `build` builds and launches it (pass --fresh for a
+# first-launch state), `ensure` launches it, `quit` kills only its pid, `onboarding-wipe` wipes only
+# its container. Without a running profile instance, commands fail instead of falling back to
+# another instance by name.
+#   WS_PROFILE=demo bash driver.sh build --fresh
+#   WS_PROFILE=demo bash driver.sh shot "Settings…" settings
+#
 # Language: WS_LANG=de launches the app in German (`-AppleLanguages (de)`), for the layout check
 # of a translation. Quit first (`driver.sh quit`), then `WS_LANG=de driver.sh ensure`. Menu items
 # are then German too: "Einstellungen…" instead of "Settings…".
@@ -51,6 +59,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"   # .claude/skills/run-whisper-shortcut → project root
 APP_PATH="$PROJECT_DIR/build/DerivedData/Build/Products/Debug/$APP.app"
 SHOT_DIR="${WS_SHOT_DIR:-/tmp}"
+PROFILE="${WS_PROFILE:-}"
+if [[ -n "$PROFILE" ]]; then
+  # shellcheck source=../../../scripts/lib/test-profile.sh
+  source "$PROJECT_DIR/scripts/lib/test-profile.sh"
+  profile_valid_name "$PROFILE" || { echo "❌ invalid WS_PROFILE \"$PROFILE\"" >&2; exit 2; }
+  APP_PATH="$(profile_app_path "$PROJECT_DIR" "$PROFILE")"
+  BUNDLE_ID="$(profile_bundle_id "$PROFILE")"
+fi
 
 # A worktree build runs as a sidecar next to the user's own instance (same process name), so every
 # command targets, by pid, the instance that runs from THIS checkout's bundle when there is one.
@@ -71,22 +87,33 @@ other_instance_running() {
 # AppleScript process specifier: the sidecar by pid, else by name.
 proc_spec() {
   local pid; pid="$(target_pid)"
-  if [[ -n "$pid" ]]; then echo "(first process whose unix id is $pid)"; else echo "process \"$APP\""; fi
+  if [[ -n "$pid" ]]; then echo "(first process whose unix id is $pid)"
+  elif [[ -n "$PROFILE" ]]; then echo "❌ profile \"$PROFILE\" is not running" >&2; exit 1
+  else echo "process \"$APP\""; fi
 }
 # Launch this checkout's bundle; as a sidecar when another instance already owns the hotkeys.
 launch_app() {
   local lang=()
   [[ -n "${WS_LANG:-}" ]] && lang=(-AppleLanguages "(${WS_LANG})")
+  if [[ -n "$PROFILE" ]]; then
+    [[ -d "$APP_PATH" ]] || { echo "❌ no profile bundle at $APP_PATH — run: WS_PROFILE=$PROFILE bash driver.sh build" >&2; exit 1; }
+    open -n "$APP_PATH" --args --sidecar --profile "$PROFILE" ${lang[@]+"${lang[@]}"}
+    return
+  fi
   if other_instance_running; then open -n "$APP_PATH" --args --sidecar ${lang[@]+"${lang[@]}"}; else open -n "$APP_PATH" --args ${lang[@]+"${lang[@]}"}; fi
 }
 # Quit only the instance of this checkout (never `pkill -x`, which would take the user's too).
 quit_app() {
   local pid; pid="$(target_pid)"
   if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true
+  elif [[ -n "$PROFILE" ]]; then return 0   # never fall back to a name: that is another instance
   else osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true; fi
 }
 
-is_running() { [[ -n "$(target_pid)" ]] || pgrep -x "$APP" >/dev/null 2>&1; }
+is_running() {
+  [[ -n "$(target_pid)" ]] && return 0
+  [[ -z "$PROFILE" ]] && pgrep -x "$APP" >/dev/null 2>&1
+}
 
 require_running() {
   if ! is_running; then
@@ -143,7 +170,11 @@ shoot() {
 cmd="${1:-}"; shift || true
 case "$cmd" in
   build)
-    bash "$PROJECT_DIR/scripts/rebuild-and-restart.sh" "$@"
+    if [[ -n "$PROFILE" ]]; then
+      bash "$PROJECT_DIR/scripts/rebuild-and-restart.sh" --sidecar --profile "$PROFILE" "$@"
+    else
+      bash "$PROJECT_DIR/scripts/rebuild-and-restart.sh" "$@"
+    fi
     ;;
   ensure)
     if is_running; then echo "already running"; else launch_app; sleep 2; echo "launched"; fi
@@ -201,7 +232,13 @@ case "$cmd" in
     ;;
   onboarding-reset)
     bash "$PROJECT_DIR/scripts/meeting-guard.sh" --dev-only || exit 1
-    defaults write "$BUNDLE_ID" hasCompletedOnboarding -bool false
+    if [[ -n "$PROFILE" ]]; then
+      quit_app; sleep 1
+      plist="$(profile_defaults_plist "$PROFILE")"
+      defaults write "${plist%.plist}" hasCompletedOnboarding -bool false
+    else
+      defaults write "$BUNDLE_ID" hasCompletedOnboarding -bool false
+    fi
     quit_app
     sleep 1
     launch_app
@@ -213,13 +250,13 @@ case "$cmd" in
     echo "⚠️  DESTRUCTIVE: deleting app container (Keychain API keys survive)" >&2
     quit_app
     sleep 1
-    rm -rf "$HOME/Library/Containers/$BUNDLE_ID"
+    if [[ -n "$PROFILE" ]]; then wipe_profile "$PROFILE"; else rm -rf "$HOME/Library/Containers/$BUNDLE_ID"; fi
     launch_app
     sleep 2
     echo "onboarding-wipe: fresh first-run state"
     ;;
   *)
-    sed -n '2,40p' "$SCRIPT_DIR/driver.sh"
+    sed -n '2,50p' "$SCRIPT_DIR/driver.sh"
     exit 1
     ;;
 esac
