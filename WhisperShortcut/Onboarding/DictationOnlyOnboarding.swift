@@ -17,11 +17,11 @@ enum OnboardingModeChoice: Equatable {
   case dictationOnly
   case allFeatures
 
-  /// What the first screen shows as already chosen. A fresh install picks nothing: both answers
-  /// are real, and the person should make that choice. A tour opened again shows what is in use.
+  /// What the first screen shows as already chosen. A fresh install starts on "Dictation only"
+  /// (visual only: nothing is written until Continue). A tour opened again shows what is in use.
   static func prefilled(modeOn: Bool, completedBefore: Bool) -> OnboardingModeChoice? {
     if modeOn { return .dictationOnly }
-    return completedBefore ? .allFeatures : nil
+    return completedBefore ? .allFeatures : .dictationOnly
   }
 }
 
