@@ -38,3 +38,22 @@ struct ScreenshotSaveLocationTests {
       error: row.error, folderPath: row.path, volumeIsMounted: row.mounted) == row.discard, "\(row.note)")
   }
 }
+
+@Suite("Screenshot save folder — missing folder notice")
+struct ScreenshotMissingFolderTests {
+  @Test("Notify once, then log only; nothing when off or a folder is still configured", arguments: [
+    (true, false, false, ScreenshotSaveLocation.MissingFolderAction.notify),
+    (true, false, true, .logOnly),
+    (true, true, false, .none),
+    (true, true, true, .none),
+    (false, false, false, .none),
+    (false, true, true, .none),
+  ])
+  func decision(
+    enabled: Bool, hasFolder: Bool, notified: Bool, expected: ScreenshotSaveLocation.MissingFolderAction
+  ) {
+    #expect(
+      ScreenshotSaveLocation.missingFolderAction(
+        enabled: enabled, hasFolder: hasFolder, alreadyNotifiedThisLaunch: notified) == expected)
+  }
+}

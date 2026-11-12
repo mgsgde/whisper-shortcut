@@ -104,11 +104,51 @@ enum ScreenshotSaveLocation {
     }
   }
 
+  /// What to do when a screenshot could not be saved because resolving the folder returned nil.
+  enum MissingFolderAction: Equatable {
+    /// Saving is off, or a folder is still configured (transient, e.g. an unmounted drive).
+    case none
+    /// First time this launch: warn in the log and tell the user once.
+    case notify
+    /// Already told the user this launch: plain debug log only.
+    case logOnly
+  }
+
+  /// Pure decision for `handleMissingFolder`. `hasFolder` is read after the resolve attempt, so a
+  /// bookmark that was just discarded counts as "no folder" and a transient failure as "has folder".
+  static func missingFolderAction(
+    enabled: Bool, hasFolder: Bool, alreadyNotifiedThisLaunch: Bool
+  ) -> MissingFolderAction {
+    guard enabled, !hasFolder else { return .none }
+    return alreadyNotifiedThisLaunch ? .logOnly : .notify
+  }
+
+  private static var notifiedNoFolderThisLaunch = false
+
+  private static func handleMissingFolder() {
+    let action = missingFolderAction(
+      enabled: isEnabled, hasFolder: hasFolder,
+      alreadyNotifiedThisLaunch: notifiedNoFolderThisLaunch)
+    switch action {
+    case .none:
+      return
+    case .logOnly:
+      DebugLogger.log("SCREENSHOT: Save requested but no folder is selected (already told the user)")
+    case .notify:
+      notifiedNoFolderThisLaunch = true
+      DebugLogger.logWarning("SCREENSHOT: Save requested but no folder is selected — telling the user once")
+      guard !TestHost.isActive else { return }
+      PopupNotificationWindow.showInfo(
+        "No folder is selected. Choose one in Settings → Screenshot. The screenshot is on the clipboard.",
+        title: "Screenshot not saved to folder", customDisplayDuration: 8)
+    }
+  }
+
   /// Writes the PNG into the chosen folder under a timestamped name. Returns the written URL or nil.
   @discardableResult
   static func save(_ pngData: Data) -> URL? {
     guard let folder = resolveFolderURL() else {
-      DebugLogger.logError("SCREENSHOT: Save requested but no folder is configured")
+      handleMissingFolder()
       return nil
     }
     let accessed = folder.startAccessingSecurityScopedResource()
