@@ -148,7 +148,7 @@ struct DictationOnlyOnboardingTests {
     #expect(calls.applied == 0)
   }
 
-  @Test("First screen pre-selects nothing on a fresh install")
+  @Test("First screen pre-selects Dictation only on a fresh install")
   func prefill() {
     #expect(OnboardingModeChoice.prefilled(modeOn: false, completedBefore: false) == .dictationOnly)
     #expect(OnboardingModeChoice.prefilled(modeOn: false, completedBefore: true) == .allFeatures)
