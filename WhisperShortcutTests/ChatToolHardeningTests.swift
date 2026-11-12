@@ -273,4 +273,36 @@ struct ChatToolHardeningTests {
              "text": "zzz-no-such-line-\(UUID().uuidString)"])
     #expect(preview == nil)
   }
+
+  // MARK: Google create-without-confirmation
+
+  private func description(of tool: String) -> String {
+    let all = ChatToolRegistry.calendarFunctionDeclarations + ChatToolRegistry.tasksFunctionDeclarations
+    return all.first { $0["name"] as? String == tool }?["description"] as? String ?? ""
+  }
+
+  @Test func createToolsDoNotAskForConfirmation() {
+    for name in ["google_calendar_create_event", "google_tasks_create"] {
+      let text = description(of: name)
+      #expect(!text.isEmpty, "\(name) missing")
+      #expect(!text.lowercased().contains("confirm"), "\(name)")
+    }
+    #expect(description(of: "google_calendar_create_event").contains("other attendees"))
+  }
+
+  @Test func deleteToolsStillAskForConfirmation() {
+    for name in ["google_calendar_delete_event", "google_tasks_delete"] {
+      #expect(description(of: name).lowercased().contains("confirm"), "\(name)")
+    }
+  }
+
+  @Test func connectedGoogleInstructionsCreateDirectlyButConfirmDeleteAndModify() {
+    let text = ChatViewModel.googleConnectedInstructions(timeZoneID: "Europe/Berlin")
+    #expect(text.contains("Create calendar events and tasks right away"))
+    #expect(text.contains("other attendees"))
+    #expect(text.contains("Never say something was created or added unless the tool call returned success"))
+    #expect(text.contains("ALWAYS confirm with the user before deleting or modifying existing events and tasks"))
+    #expect(!text.contains("Always confirm details before creating"))
+    #expect(text.contains("Europe/Berlin"))
+  }
 }
