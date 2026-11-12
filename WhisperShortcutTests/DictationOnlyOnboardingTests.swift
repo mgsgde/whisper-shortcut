@@ -150,7 +150,7 @@ struct DictationOnlyOnboardingTests {
 
   @Test("First screen pre-selects nothing on a fresh install")
   func prefill() {
-    #expect(OnboardingModeChoice.prefilled(modeOn: false, completedBefore: false) == nil)
+    #expect(OnboardingModeChoice.prefilled(modeOn: false, completedBefore: false) == .dictationOnly)
     #expect(OnboardingModeChoice.prefilled(modeOn: false, completedBefore: true) == .allFeatures)
     #expect(OnboardingModeChoice.prefilled(modeOn: true, completedBefore: true) == .dictationOnly)
   }
@@ -263,5 +263,34 @@ struct DictationOnlyOnboardingTests {
     #expect(!DictationOnlyTestSentence.sentence(for: .en).contains("Komma"))
     #expect(DictationOnlyTestSentence.usesSpokenPunctuation(.de))
     #expect(!DictationOnlyTestSentence.usesSpokenPunctuation(.fr))
+  }
+
+  // MARK: - Model still downloading after the tour
+
+  @Test("A Parakeet selection whose files are not on disk yet is kept by the reconciler, with or without a key")
+  func pendingDownloadKeepsSelection() {
+    let defaults = makeDefaults()
+    let key = UserDefaultsKeys.selectedTranscriptionModel
+    defaults.set(TranscriptionModel.parakeetUltra.rawValue, forKey: key)
+    ModelSelectionReconciler.reconcileTranscription(
+      key: key, fallback: SettingsDefaults.selectedTranscriptionModel, defaults: defaults)
+    #expect(defaults.string(forKey: key) == TranscriptionModel.parakeetUltra.rawValue)
+    // The meetings slot follows dictation while unset and is never written by the reconciler.
+    ModelSelectionReconciler.reconcileTranscription(
+      key: UserDefaultsKeys.selectedTranscriptionModelForMeetings,
+      fallback: SettingsDefaults.selectedTranscriptionModel, skipWhenUnset: true, defaults: defaults)
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) == nil)
+  }
+
+  @Test("Dictate Live with the model not downloaded is refused with a notice, never started as cloud Dictate")
+  func liveRefusedWhileDownloading() {
+    let reason = LiveDictation.unavailableReason(
+      model: .parakeetUltra, downloaded: false, appleSilicon: true, duringMeeting: false)
+    #expect(reason == .notDownloaded)
+    #expect(
+      LiveDictation.startDecision(mode: .live, unavailable: reason) == .refuse(.notDownloaded))
+    #expect(
+      LiveDictation.unavailableReason(
+        model: .parakeetUltra, downloaded: true, appleSilicon: true, duringMeeting: false) == nil)
   }
 }
