@@ -337,6 +337,18 @@ struct SpeechErrorFormatter {
 
         The model returned no text. Your recording was kept – try Retry or another model.
         """)
+    case .promptReplyRejected:
+      return String(localized: """
+        ⚠️ Reply Not Pasted
+
+        The model's reply looked wrong, so nothing was pasted and your text is unchanged. Your recording was kept – try Retry or another model.
+        """)
+    case .instructionNotUnderstood:
+      return String(localized: """
+        🎤 Instruction Not Understood
+
+        Your spoken instruction was not understood, so nothing was changed. Please say it again.
+        """)
     case .noSpeechDetected:
       return String(localized: """
         🎤 No Speech Detected
@@ -451,6 +463,10 @@ struct SpeechErrorFormatter {
       return String(localized: "❌ Empty File")
     case .emptyModelReply:
       return String(localized: "⚠️ No Reply")
+    case .promptReplyRejected:
+      return String(localized: "⚠️ Reply Not Pasted")
+    case .instructionNotUnderstood:
+      return String(localized: "🎤 Not Understood")
     case .localModelFailed:
       return String(localized: "⚠️ Offline Model Error")
     case .noSpeechDetected:
