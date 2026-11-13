@@ -5,6 +5,11 @@
 #
 #   bash scripts/ui-catalogue.sh dictation-only [--out DIR] [--langs "en de"] [--no-build]
 #                                               [--audio-de WAV] [--audio-en WAV]
+#                                               [--only SLUG[,SLUG…]]
+#
+# --only captures just those shot slugs (empty: every shot, as before). The block from one
+# launch call to the next runs only when it contains a named slug. Unselected shots keep their
+# numbers, are not captured, and are left out of the index.
 #
 # States this Mac cannot produce on demand (🌐 key in conflict, microphone denied, a download at
 # 40 %, a full disk, an Intel Mac …) come from the profile-only launch arguments in
@@ -28,6 +33,7 @@ LANGS="en de"
 BUILD=true
 AUDIO_DE=""
 AUDIO_EN=""
+ONLY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --out) OUT="$2"; shift ;;
@@ -35,17 +41,21 @@ while [[ $# -gt 0 ]]; do
     --no-build) BUILD=false ;;
     --audio-de) AUDIO_DE="$2"; shift ;;
     --audio-en) AUDIO_EN="$2"; shift ;;
+    --only) ONLY="${2//[[:space:]]/}"; shift ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
   shift
 done
 case "$SET" in
   dictation-only) ;;
-  *) echo "usage: bash scripts/ui-catalogue.sh dictation-only [--out DIR] [--langs \"en de\"] [--no-build]" >&2; exit 2 ;;
+  *) echo "usage: bash scripts/ui-catalogue.sh dictation-only [--out DIR] [--langs \"en de\"] [--no-build] [--only SLUG[,SLUG…]]" >&2; exit 2 ;;
 esac
 OUT="${OUT:-${TMPDIR:-/tmp}/ws-ui-catalogue/$SET}"
 mkdir -p "$OUT"
-rm -f "$OUT"/*.png "$OUT/index.md"
+# A partial run overwrites the shots it takes and leaves the previous pictures in place.
+if [[ -z "$ONLY" ]]; then
+  rm -f "$OUT"/*.png "$OUT/index.md"
+fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -125,6 +135,11 @@ N=0
 PROFILE=""
 L=""
 PID=""
+# Set by launch when --only names no shot in the caller's block. Helpers that drive the app
+# return immediately while it is true. quit_profile does not.
+SKIP_BLOCK=false
+# Shot slugs that appeared in a launch block this run, for the unknown-slug check.
+SEEN=""
 
 # ---------------------------------------------------------------------------------------------
 # Strings: the German UI text for an English key, from the string catalogue.
@@ -141,13 +156,71 @@ PY
 profile_pid() { pgrep -f "$(profile_app_path "$PROJECT_DIR" "$PROFILE")/Contents/MacOS" 2>/dev/null | head -n1 || true; }
 
 ax() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   osascript -e "tell application \"System Events\" to tell (first process whose unix id is $PID)
 $1
 end tell" 2>&1
 }
 
+# True when slug $1 should be captured. An empty ONLY means every shot.
+shot_wanted() {
+  [[ -z "$ONLY" ]] && return 0
+  case ",${ONLY}," in
+    *,"$1",*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Remember a slug that exists in the catalogue, so a typo in --only can be reported.
+note_slug() {
+  case ",${SEEN}," in
+    *,"$1",*) ;;
+    *) SEEN="${SEEN:+$SEEN,}$1" ;;
+  esac
+}
+
+# Warn for each --only slug that no launch block contained. Returns 1 when any were unknown.
+report_unknown_slugs() {
+  [[ -z "$ONLY" ]] && return 0
+  local rest="${ONLY}," slug unknown=0
+  while [[ "$rest" == *,* ]]; do
+    slug="${rest%%,*}"
+    rest="${rest#*,}"
+    [[ -z "$slug" ]] && continue
+    case ",${SEEN}," in
+      *,"${slug}",*) ;;
+      *) echo "⚠️ unknown slug: ${slug}"; unknown=1 ;;
+    esac
+  done
+  return "$unknown"
+}
+
 # launch <app args…>: a fresh profile in language $L. Stops only this profile's previous pid.
+# With --only set, the block from this call to the next launch (or the closing brace of the
+# catalogue function) is skipped when it contains none of the named shots. A skip does not
+# build, and it leaves BUILD set so the first block that does run still builds once.
 launch() {
+  if [[ -n "$ONLY" ]]; then
+    local start line slug src wanted
+    start=$(( BASH_LINENO[0] + 1 ))
+    src="${BASH_SOURCE[0]:-$0}"
+    wanted=false
+    while IFS= read -r line; do
+      [[ "$line" =~ ^[[:space:]]*# ]] && continue
+      [[ "$line" =~ (^|[[:space:]])launch[[:space:]] ]] && break
+      [[ "$line" =~ ^[[:space:]]*}[[:space:]]*$ ]] && break
+      if [[ "$line" =~ (shot_window|shot_prompt|shot_menu)[[:space:]]+([A-Za-z0-9_-]+) ]]; then
+        slug="${BASH_REMATCH[2]}"
+        note_slug "$slug"
+        if shot_wanted "$slug"; then wanted=true; fi
+      fi
+    done < <(tail -n +"$start" "$src")
+    if [[ "$wanted" == false ]]; then
+      SKIP_BLOCK=true
+      return 0
+    fi
+    SKIP_BLOCK=false
+  fi
   local args=(--sidecar --profile "$PROFILE" --fresh --app-arg -AppleLanguages --app-arg "($L)")
   [[ "$BUILD" == true ]] || args+=(--no-build)
   local a
@@ -164,6 +237,7 @@ launch() {
 }
 
 wait_window() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   local i
   for i in $(seq 1 30); do
     [[ "$(ax 'return count of windows')" =~ ^[1-9] ]] && { sleep 1.5; return 0; }
@@ -185,6 +259,7 @@ next_file() { N=$((N + 1)); FILE="$(printf '%s/%02d-%s-%s.png' "$OUT" "$N" "$L" 
 # window layer (101 = a menu). The status item itself (layer 25) never counts. Captured by id, so
 # nothing of another app that overlaps it lands in the picture.
 window_id() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   osascript -l JavaScript -e "
 ObjC.import('CoreGraphics');
 const list = ObjC.castRefToObject(\$.CGWindowListCopyWindowInfo(\$.kCGWindowListOptionOnScreenOnly, 0));
@@ -215,6 +290,7 @@ for (let i = 0; i < s.count; i++) { const f = s.objectAtIndex(i).frame; const k 
 # A locked screen hides every window from capture. Wait for the unlock (up to 10 minutes)
 # instead of recording a run of empty shots.
 wait_unlocked() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   local n=0
   while ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; do
     (( n == 0 )) && echo "   (screen is locked: waiting for it to be unlocked)"
@@ -224,6 +300,7 @@ wait_unlocked() {
 }
 
 capture_window() {   # capture_window <file> [layer]
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   local id="" i
   wait_unlocked || return 1
   for i in 1 2 3 4 5 6; do
@@ -238,6 +315,7 @@ capture_window() {   # capture_window <file> [layer]
 
 # shot_window <slug> <screen> <state>: the front window of the profile.
 shot_window() {
+  if [[ "$SKIP_BLOCK" == true ]] || ! shot_wanted "$1"; then next_file "$1"; return 0; fi
   next_file "$1"; local f="$FILE"
   if capture_window "$f"; then record "$2" "$3" "$f"; else record "$2" "$3 (NOT CAPTURED: window not found)" "-"; fi
 }
@@ -245,6 +323,7 @@ shot_window() {
 # The microphone prompt is a macOS window owned by a system agent, not by the profile. Only a window
 # of one of those agents is captured, by its id; never the screen.
 prompt_window_id() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   osascript -l JavaScript -e "
 ObjC.import('CoreGraphics');
 const owners = ['UserNotificationCenter', 'CoreServicesUIAgent', 'universalAccessAuthWarn', 'WhisperShortcut Dev'];
@@ -263,6 +342,7 @@ found" 2>/dev/null
 }
 
 shot_prompt() {
+  if [[ "$SKIP_BLOCK" == true ]] || ! shot_wanted "$1"; then next_file "$1"; return 0; fi
   next_file "$1"; local f="$FILE" id
   id="$(prompt_window_id)"
   if [[ "$id" =~ ^[0-9]+$ ]]; then
@@ -278,6 +358,7 @@ shot_prompt() {
 # of it shows a blurred copy of whatever lies behind it (other apps' windows). The item titles,
 # their enabled state and shortcuts are read through Accessibility instead and written to a .txt.
 shot_menu() {
+  if [[ "$SKIP_BLOCK" == true ]] || ! shot_wanted "$1"; then next_file "$1"; return 0; fi
   N=$((N + 1)); local f; f="$(printf '%s/%02d-%s-%s.txt' "$OUT" "$N" "$L" "$1")"
   ax 'click menu bar item 1 of menu bar 2' >/dev/null
   sleep 0.8
@@ -303,27 +384,39 @@ return out' >"$f"
 }
 
 click_menu_item() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   ax "click menu bar item 1 of menu bar 2
 delay 0.4
 click menu item \"$1\" of menu 1 of menu bar item 1 of menu bar 2" >/dev/null
 }
 
 # ax_walk dump | click-button <n, negative counts from the end> | click-role <AXRole> | set-field <text>
-ax_walk() { osascript "$WORK/ax.applescript" "$PID" "$@" 2>&1; }
+ax_walk() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
+  osascript "$WORK/ax.applescript" "$PID" "$@" 2>&1
+}
 
 click_nth() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   local r; r="$(ax_walk click-button "$1")"
   [[ "$r" == ok ]] || echo "   (button #$1 not found: $r)"
 }
 
-click_role() { ax_walk click-role "$1" >/dev/null; }
+click_role() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
+  ax_walk click-role "$1" >/dev/null
+}
 
 # Sets the first text field's value through Accessibility (no keystrokes: they would go to
 # whatever app is in front).
-type_into_field() { ax_walk set-field "$1" >/dev/null; }
+type_into_field() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
+  ax_walk set-field "$1" >/dev/null
+}
 
 # wait_for_text <text> [seconds]: until some text of the window contains it.
 wait_for_text() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   local i limit="${2:-60}"
   for i in $(seq 1 "$limit"); do
     ax_walk dump | grep -qF -- "$1" && return 0
@@ -334,6 +427,7 @@ wait_for_text() {
 
 # The WAV for the test dictation, copied into the profile's own container (its sandbox can read it).
 place_audio() {
+  [[ "$SKIP_BLOCK" == true ]] && return 0
   local src="$1" dest
   dest="$(profile_container "$PROFILE")/Data/tmp/ws-catalogue-$L.wav"
   mkdir -p "$(dirname "$dest")"
@@ -412,6 +506,8 @@ catalogue_dictation_only() {
   echo "── $L: test dictation"
   launch --onboarding-step test "${free[@]}" --download running:40; wait_window
   shot_window test-waiting "Test" "download still running"
+  launch --onboarding-step test --globe free --mic denied --accessibility granted; wait_window
+  shot_window test-mic-denied "Test" "microphone denied"
   launch --onboarding-step test "${free[@]}" --audio-file "$(audio_path)"; wait_window
   place_audio "$audio" >/dev/null
   shot_window test-ready "Test" "ready to start"
@@ -493,3 +589,4 @@ for L in $LANGS; do
   quit_profile
 done
 echo "✅ $N screenshots, index: $OUT/index.md"
+report_unknown_slugs || exit 1
