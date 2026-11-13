@@ -36,7 +36,14 @@ protocol KeychainManaging {
 }
 
 class KeychainManager: KeychainManaging {
-  static let shared = KeychainManager()
+  /// A test profile (`TestProfile`) keeps keys in memory only and never calls `SecItem*`.
+  static let shared: KeychainManager =
+    TestProfile.isActive
+    ? KeychainManager(store: InMemoryKeychainItemStore(), dataProtection: false)
+    : KeychainManager()
+
+  /// For logs and the profile self-check: which store backs this manager.
+  var backendDescription: String { store is InMemoryKeychainItemStore ? "memory" : "system" }
 
   // MARK: - Constants
   private enum Constants {

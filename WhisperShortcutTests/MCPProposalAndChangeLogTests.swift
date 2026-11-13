@@ -21,7 +21,7 @@ struct MCPProposalAndChangeLogTests {
     let id = propose(env)
     #expect(env.proposals.status(of: id)?.status == .pending)
     guard case .success(let changeID) = env.proposals.accept(id) else { Issue.record("accept failed"); return }
-    #expect(env.systemPrompts.loadSection(.dictation) == "Proposed text")
+    #expect(env.systemPrompts.loadSection(.dictationAdditions) == "Proposed text")
     #expect(env.proposals.status(of: id)?.status == .accepted)
     #expect(env.proposals.status(of: id)?.edited == false)
     #expect(env.proposals.pending.isEmpty)
@@ -83,12 +83,12 @@ struct MCPProposalAndChangeLogTests {
   @Test("Accept refuses when the target changed since the proposal; proposal stays pending")
   func acceptStale() {
     let env = MCPTestEnv(level: .propose)
-    env.systemPrompts.updateSection(.dictation, content: "Original.", source: .settings)
+    env.systemPrompts.updateSection(.dictationAdditions, content: "Original.", source: .settings)
     let id = propose(env)
-    env.systemPrompts.updateSection(.dictation, content: "Edited by hand.", source: .settings)
+    env.systemPrompts.updateSection(.dictationAdditions, content: "Edited by hand.", source: .settings)
     guard case .failure(let error) = env.proposals.accept(id) else { Issue.record("stale accept must fail"); return }
     #expect(error.localizedDescription == "This changed since the AI app suggested it. Decline it and ask the AI app again.")
-    #expect(env.systemPrompts.loadSection(.dictation) == "Edited by hand.")
+    #expect(env.systemPrompts.loadSection(.dictationAdditions) == "Edited by hand.")
     #expect(env.proposals.status(of: id)?.status == .pending)
     #expect(env.changeLog.changes.isEmpty)
   }
@@ -140,16 +140,16 @@ struct MCPProposalAndChangeLogTests {
   @Test("Undo restores the previous content and logs mcp-undo")
   func undoRestores() {
     let env = MCPTestEnv(level: .apply)
-    env.systemPrompts.updateSection(.promptMode, content: "Old rule.", source: .settings)
+    env.systemPrompts.updateSection(.promptModeAdditions, content: "Old rule.", source: .settings)
     let r = env.tools().call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": "New rule.", "rationale": "r"], access: .write)
     #expect(obj(r)["status"] as? String == "pending_review")
     guard case .success(let id) = env.proposals.accept(obj(r)["id"] as? String ?? "") else {
       Issue.record("accept failed"); return
     }
-    #expect(env.systemPrompts.loadSection(.promptMode) == "New rule.")
+    #expect(env.systemPrompts.loadSection(.promptModeAdditions) == "New rule.")
     #expect(env.changeLog.undo(id) == .undone)
-    #expect(env.systemPrompts.loadSection(.promptMode) == "Old rule.")
+    #expect(env.systemPrompts.loadSection(.promptModeAdditions) == "Old rule.")
     #expect(env.changeLog.changes.first?.undoneAt != nil)
     #expect(env.history.contains { $0.hasSuffix("|mcp-undo") })
     #expect(env.changeLog.undo(id) == .notFound)
@@ -158,16 +158,16 @@ struct MCPProposalAndChangeLogTests {
   @Test("Undo after a later manual edit is a conflict and writes nothing")
   func undoConflict() {
     let env = MCPTestEnv(level: .apply)
-    env.systemPrompts.updateSection(.promptMode, content: "Old rule.", source: .settings)
+    env.systemPrompts.updateSection(.promptModeAdditions, content: "Old rule.", source: .settings)
     let r = env.tools().call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": "New rule.", "rationale": "r"], access: .write)
     guard case .success(let id) = env.proposals.accept(obj(r)["id"] as? String ?? "") else {
       Issue.record("accept failed"); return
     }
-    #expect(env.systemPrompts.loadSection(.promptMode) == "New rule.")
-    env.systemPrompts.updateSection(.promptMode, content: "Manual edit.", source: .settings)
+    #expect(env.systemPrompts.loadSection(.promptModeAdditions) == "New rule.")
+    env.systemPrompts.updateSection(.promptModeAdditions, content: "Manual edit.", source: .settings)
     #expect(env.changeLog.undo(id) == .conflict(current: "Manual edit."))
-    #expect(env.systemPrompts.loadSection(.promptMode) == "Manual edit.")
+    #expect(env.systemPrompts.loadSection(.promptModeAdditions) == "Manual edit.")
     #expect(env.changeLog.changes.first?.undoneAt == nil)
   }
 

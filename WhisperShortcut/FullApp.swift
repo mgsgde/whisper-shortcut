@@ -118,6 +118,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     migrateNotificationPositionDefault()
     migrateSettingsCloseOnFocusLossToOff()
+    migrateChatFollowNewContentToOn()
 
     // The activation policy is not persisted by macOS, so the optional Dock icon has to be
     // re-applied on every launch.
@@ -238,6 +239,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // sidecar sits inside `startDailySchedule`.
     Task { @MainActor in WritingStyleAutoUpdater.shared.startDailySchedule() }
 
+    // `scripts/test-profile-selfcheck.sh` only: proves where settings, glossary and keys land.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { TestProfile.runSelfcheckIfRequested() }
   }
 
   /// The prompts file exists but macOS would not let us read it (typically App Data protection, EPERM).
@@ -355,6 +358,25 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       defaults.set(false, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
       DebugLogger.log(
         "MIGRATION: settingsCloseOnFocusLoss true → false (window no longer closes on outside click)")
+    }
+  }
+
+  /// One-shot migration (2026-11): the `chatFollowNewContent` default moved false → true
+  /// ("the chat should scroll along with new text"), but builds before that had already
+  /// written `false` out explicitly — `SettingsViewModel.save()` persists every slot on any
+  /// settings change. Those installs therefore never saw the new default and the chat stayed
+  /// put. This flips the stored value once; the toggle stays, so anyone who wants the old
+  /// behaviour can turn it back off in Settings → Chat → Appearance.
+  private func migrateChatFollowNewContentToOn() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateChatFollowNewContentToOn)
+    else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateChatFollowNewContentToOn)
+    if defaults.object(forKey: UserDefaultsKeys.chatFollowNewContent) != nil
+      && !defaults.bool(forKey: UserDefaultsKeys.chatFollowNewContent) {
+      defaults.set(true, forKey: UserDefaultsKeys.chatFollowNewContent)
+      DebugLogger.log(
+        "MIGRATION: chatFollowNewContent false → true (chat scrolls along with new text by default)")
     }
   }
 
@@ -702,6 +724,10 @@ class FullWhisperShortcut {
   }
 
   static func main() {
+    // Before anything reads a setting, a file or the keychain: a process asked to be a test
+    // profile that is not provably isolated exits here (TestProfile.swift).
+    TestProfile.enforceIsolationOrExit()
+
     // Claude Desktop launches this binary as its stdio MCP server. That process must not
     // become a second menu-bar app, so the bridge runs before NSApplication exists.
     if CommandLine.arguments.contains(MCPStdioBridge.argument) { MCPStdioBridge.run() }

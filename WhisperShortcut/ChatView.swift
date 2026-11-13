@@ -1326,6 +1326,7 @@ class ChatViewModel: ObservableObject {
   /// Asks the user on the inline approval card and suspends the turn until they answer. Stop
   /// (task cancellation) and deleting the chat answer "deny", so the send task never leaks.
   /// "Allow for this chat" answers later calls of the same tool without asking.
+  /// "Always allow" answers later calls of that tool in every chat, including after a restart.
   private func confirmToolCall(
     name: String, summary: String, preview: ToolApprovalPreview?, sessionId: UUID, requestId: UUID
   ) async -> Bool {
@@ -1337,6 +1338,10 @@ class ChatViewModel: ObservableObject {
     }
     if chatWideApprovals[sessionId]?.contains(name) == true {
       DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) allowed for this chat")
+      return true
+    }
+    if ChatToolAlwaysAllow.shared.contains(name) {
+      DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) always allowed")
       return true
     }
     let decision = await withTaskCancellationHandler {
@@ -1360,8 +1365,14 @@ class ChatViewModel: ObservableObject {
       }
     }
     DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) → \(decision)")
-    if decision == .allowForChat {
+    switch decision {
+    case .alwaysAllow:
+      ChatToolAlwaysAllow.shared.allow(name)
       chatWideApprovals[sessionId, default: []].insert(name)
+    case .allowForChat:
+      chatWideApprovals[sessionId, default: []].insert(name)
+    case .allow, .deny:
+      break
     }
     return decision != .deny
   }
@@ -4236,8 +4247,8 @@ struct ChatView: View {
       followsBottom = wasFollowing
       proxy.scrollTo(saved, anchor: .top)
       // A session that was following the bottom is put back on the newest content, not on the
-      // anchor it happened to have: the anchor is only the layout starting point. Only when the
-      // user turned on "Scroll along with new text" in Settings → Chat.
+      // anchor it happened to have: the anchor is only the layout starting point. Only while
+      // "Scroll along with new text" is on (default) in Settings → Chat.
       if wasFollowing && followNewContentEnabled { scrollToBottom(proxy: proxy) }
     } else if viewModel.messages.isEmpty {
       // An empty chat starts at the top, instantly: an animated scroll to the bottom starts from

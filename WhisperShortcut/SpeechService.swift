@@ -158,10 +158,37 @@ class SpeechService {
   }
 
   // MARK: - Prompt Building
-  /// Returns the dictation system prompt (custom prompt only).
+  /// Dictation system prompt. The user's own legacy section replaces the built-in core.
+  /// A shipped default counts as empty, and then the core plus the user's additions apply.
+  /// The glossary hint is appended by the caller, after this.
   private func buildDictationPrompt() -> String {
-    SystemPromptsStore.shared.loadDictationPrompt()
-      .trimmingCharacters(in: .whitespacesAndNewlines)
+    Self.dictationBase(
+      additions: SystemPromptsStore.shared.loadDictationAdditions(),
+      legacy: SystemPromptsStore.shared.loadLegacyDictationPrompt()
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// A legacy full prompt replaces the built-in core only when it is the user's own text.
+  /// Blank text and any wording this app has shipped, including a copy that differs only by
+  /// surrounding whitespace, count as empty so the core and the additions apply.
+  private static func legacyReplacesBuiltIn(_ legacy: String, section: SystemPromptSection) -> Bool {
+    let trimmed = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return false }
+    if SystemPromptDefaultsHistory.isShippedDefault(legacy, for: section) { return false }
+    if SystemPromptDefaultsHistory.isShippedDefault(trimmed, for: section) { return false }
+    return true
+  }
+
+  /// Pure dictation base: the user's own legacy prompt wins. A shipped default counts as empty,
+  /// and then the core plus additions apply.
+  static func dictationBase(additions: String, legacy: String) -> String {
+    if Self.legacyReplacesBuiltIn(legacy, section: .dictation) {
+      return legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return AppConstants.withUserAdditions(
+      core: AppConstants.defaultTranscriptionSystemPrompt,
+      additions: additions,
+      taskReminder: AppConstants.dictationTaskReminder)
   }
 
   /// Appends the user's vocabulary Glossary (when non-empty) to a transcription instruction.
@@ -472,8 +499,8 @@ class SpeechService {
   }
 
   /// The full transcription instruction shared by every Gemini sub-path (inline, Files API, and
-  /// chunking): the user's dictation prompt — or the built-in default when unset — with the
-  /// vocabulary Glossary appended. Substituting the default *before* appending the Glossary keeps
+  /// chunking): the fixed dictation core plus the user's additional instructions, with the
+  /// vocabulary Glossary appended. Composing the core *before* appending the Glossary keeps
   /// all three paths identical; previously the chunking path appended the Glossary to an empty
   /// base, sending a bare word-list with no transcription instruction when only a Glossary was set.
   /// `suppressGlossary` drops the vocabulary block for the glossary-echo retry — see
@@ -1189,9 +1216,9 @@ class SpeechService {
 
   // MARK: - Gemini Dictate Prompt Helpers
 
-  /// Loads the user's Dictate Prompt system prompt (or the built-in default when empty)
-  /// and appends the strict output rule. All Dictate Prompt paths (Gemini, OpenAI, text)
-  /// use this composition.
+  /// Dictate Prompt system prompt: the fixed core plus the user's additional instructions,
+  /// then the strict output rule. A non-blank template replaces that base for this one turn.
+  /// All Dictate Prompt paths (Gemini, OpenAI, text) use this composition.
   /// Static because the prewarmer needs it too: priming a local server's prompt cache means
   /// sending the exact system prompt the real request will send, and that has to be reachable
   /// without a `SpeechService` instance or a recording in flight.
@@ -1199,8 +1226,8 @@ class SpeechService {
   /// clipboard even in the App Store build, and telling it to read a highlighted region of a
   /// screenshot it never receives is how it ends up "editing" the instruction instead.
   /// `styleBlock` (the learned writing style) goes before the output rule, so that rule stays last.
-  /// `template`, when non-blank, replaces the stored prompt for this one turn. Screenshot-selection
-  /// mode ignores it: the selection lives in the image, and that prompt stays as it is.
+  /// Screenshot-selection mode ignores the stored additions and the template: the selection lives
+  /// in the image, and that prompt stays as it is.
   static func buildDictatePromptSystemPrompt(
     logPrefix: String, usesScreenshotSelection: Bool, styleBlock: String = "",
     template: String? = nil
@@ -1212,41 +1239,52 @@ class SpeechService {
       return buildDictatePromptSystemPrompt(
         usesScreenshotSelection: true, styleBlock: styleBlock, template: template, stored: "")
     }
-    let stored = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
+    let stored = SystemPromptsStore.shared.loadDictatePromptAdditions()
+    let legacy = SystemPromptsStore.shared.loadLegacyDictatePrompt()
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty {
       DebugLogger.log("\(logPrefix): Using dictation template")
+    } else if Self.legacyReplacesBuiltIn(legacy, section: .promptMode) {
+      DebugLogger.log("\(logPrefix): Using legacy full prompt")
     } else if stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       DebugLogger.log("\(logPrefix): Using base system prompt")
     } else {
-      DebugLogger.log("\(logPrefix): Using custom system prompt")
+      DebugLogger.log("\(logPrefix): Using core + user additions")
     }
     return buildDictatePromptSystemPrompt(
-      usesScreenshotSelection: false, styleBlock: styleBlock, template: template, stored: stored)
+      usesScreenshotSelection: false, styleBlock: styleBlock, template: template, stored: stored,
+      legacy: legacy)
   }
 
-  /// Same composition as `buildDictatePromptSystemPrompt`, with the stored prompt passed in.
-  /// Pure: no store read and no logging, so tests can pin the exact string a custom prompt,
-  /// the built-in default, and screenshot-selection mode produce.
+  /// Same composition as `buildDictatePromptSystemPrompt`, with the stored additions passed in.
+  /// Pure: no store read and no logging, so tests can pin the exact string user additions,
+  /// the fixed core, and screenshot-selection mode produce.
   static func buildDictatePromptSystemPrompt(
-    usesScreenshotSelection: Bool, styleBlock: String = "", template: String? = nil, stored: String
+    usesScreenshotSelection: Bool, styleBlock: String = "", template: String? = nil, stored: String,
+    legacy: String = ""
   ) -> String {
     if usesScreenshotSelection {
       return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + styleBlock
         + AppConstants.promptModeOutputRule
     }
-    let base = dictatePromptBase(stored: stored, template: template)
+    let base = dictatePromptBase(stored: stored, template: template, legacy: legacy)
     return base + styleBlock + AppConstants.promptModeOutputRule
   }
 
-  /// The base of the Dictate Prompt system prompt: a template chosen for this turn, else the
-  /// user's stored prompt, else the built-in default. Pure, so tests can feed it what a store read.
-  static func dictatePromptBase(stored: String, template: String?) -> String {
+  /// The base of the Dictate Prompt system prompt. A non-empty template replaces the base for
+  /// this turn. Otherwise the user's own legacy prompt replaces the built-in core. A shipped
+  /// default counts as empty, and then the core plus the user's additions (`stored`) apply.
+  /// Pure, so tests can feed it what a store read.
+  static func dictatePromptBase(stored: String, template: String?, legacy: String = "") -> String {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty { return trimmedTemplate }
-    let trimmedStored = stored.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmedStored.isEmpty { return trimmedStored }
-    return AppConstants.defaultPromptModeSystemPrompt
+    if Self.legacyReplacesBuiltIn(legacy, section: .promptMode) {
+      return legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return AppConstants.withUserAdditions(
+      core: AppConstants.defaultPromptModeSystemPrompt,
+      additions: stored,
+      taskReminder: AppConstants.dictatePromptTaskReminder)
   }
 
   /// Shown when screenshot-selection mode (App Store build) has no screenshot to send. Shared by

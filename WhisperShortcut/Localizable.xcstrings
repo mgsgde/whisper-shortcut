@@ -1,6 +1,76 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Always allow" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Immer erlauben"
+          }
+        }
+      }
+    },
+    "Always allowed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Immer erlaubt"
+          }
+        }
+      }
+    },
+    "Ask again for all" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei allen wieder fragen"
+          }
+        }
+      }
+    },
+    "Change Trello cards" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trello-Karten ändern"
+          }
+        }
+      }
+    },
+    "Change calendar events" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kalendertermine ändern"
+          }
+        }
+      }
+    },
+    "Change tasks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufgaben ändern"
+          }
+        }
+      }
+    },
+    "Complete tasks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufgaben abhaken"
+          }
+        }
+      }
+    },
     "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt, Chat and Read Aloud; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions and Read Aloud needs /audio/speech, which LM Studio and mlx_lm.server do not serve." : {
       "localizations" : {
         "de" : {
@@ -11,12 +81,92 @@
         }
       }
     },
+    "Create Trello cards" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trello-Karten anlegen"
+          }
+        }
+      }
+    },
+    "Create calendar events" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kalendertermine anlegen"
+          }
+        }
+      }
+    },
+    "Create tasks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufgaben anlegen"
+          }
+        }
+      }
+    },
+    "Move Trello cards" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trello-Karten verschieben"
+          }
+        }
+      }
+    },
+    "Never ask again for this kind of action. You can undo this in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Art von Aktion nie mehr fragen. Rückgängig machen kannst du das unter Einstellungen → Konten."
+          }
+        }
+      }
+    },
+    "No folder is selected. Choose one in Settings → Screenshot. The screenshot is on the clipboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es ist kein Ordner ausgewählt. Wählen Sie einen in den Einstellungen → Screenshot. Der Screenshot liegt in der Zwischenablage."
+          }
+        }
+      }
+    },
     "Removed from %@'s settings. %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus den Einstellungen von %@ entfernt. %@"
+          }
+        }
+      }
+    },
+    "Screenshot not saved to folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshot nicht im Ordner gespeichert"
+          }
+        }
+      }
+    },
+    "The chat does these without asking first. Remove one to get the approval card back." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Aktionen führt der Chat ohne Rückfrage aus. Entferne eine, damit wieder gefragt wird."
           }
         }
       }
@@ -27596,6 +27746,346 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ist nichts markiert, kann Dictate Prompt ein Bild des Fensters, in dem Sie schreiben, an Ihr Dictate-Prompt-Modell schicken, nie den ganzen Bildschirm. Alles, was in diesem Fenster sichtbar ist, geht mit. Bei einem Cloud-Modell geht das Bild an dessen Anbieter.\n\nNie bei Passwortfeldern oder Passwort-Managern. Sie können das hier jederzeit wieder ausschalten."
+          }
+        }
+      }
+    },
+    "Additional Instructions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusätzliche Anweisungen"
+          }
+        }
+      }
+    },
+    "Added to the built-in Dictate Prompt instructions, which always apply. Describe yourself and how your texts should sound, not the task. A different output format for one job, such as a clinical note, belongs in a Template." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird an die eingebauten Anweisungen für Dictate Prompt angehängt, die immer gelten. Beschreiben Sie sich und wie Ihre Texte klingen sollen, nicht die Aufgabe. Ein anderes Ausgabeformat für eine bestimmte Aufgabe, etwa einen Arztbrief, gehört in eine Vorlage."
+          }
+        }
+      }
+    },
+    "Added to the built-in transcription instructions, which always apply. Describe yourself and your preferences, not the task. Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter; GPT Transcribe, your own server and offline models ignore it. Single terms go in the Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird an die eingebauten Anweisungen für die Transkription angehängt, die immer gelten. Beschreiben Sie sich und Ihre Vorlieben, nicht die Aufgabe. Genutzt von Gemini, GPT-4o Transcribe, xAI Grok und OpenRouter; GPT Transcribe, Ihr eigener Server und Offline-Modelle ignorieren sie. Einzelne Begriffe gehören ins Glossar."
+          }
+        }
+      }
+    },
+    "e.g. I work in hospital IT. Teams messages short and informal. Lists with dashes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "z. B. Ich arbeite in der Krankenhaus-IT. Teams-Nachrichten kurz und locker. Listen mit Spiegelstrichen."
+          }
+        }
+      }
+    },
+    "e.g. I work in hospital IT. Write numbers as digits. No em dashes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "z. B. Ich arbeite in der Krankenhaus-IT. Zahlen als Ziffern. Keine Gedankenstriche."
+          }
+        }
+      }
+    },
+    "Additional instructions — not used by %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusätzliche Anweisungen – von %@ nicht genutzt"
+          }
+        }
+      }
+    },
+    "Clear" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leeren"
+          }
+        }
+      }
+    },
+    "Remove your additional instructions. The previous version is kept in system-prompts.md.bak." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt Ihre zusätzlichen Anweisungen. Die vorherige Fassung bleibt in system-prompts.md.bak erhalten."
+          }
+        }
+      }
+    },
+    "Built-in instructions (always applied)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingebaute Anweisungen (gelten immer)"
+          }
+        }
+      }
+    },
+    "Your own full prompt replaces the built-in instructions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener vollständiger Prompt ersetzt die eingebauten Anweisungen"
+          }
+        }
+      }
+    },
+    "Improvements to the built-in instructions don’t reach it, and the additions below take effect only after you convert it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbesserungen an den eingebauten Anweisungen erreichen ihn nicht, und die Zusätze unten wirken erst, wenn Sie ihn umwandeln."
+          }
+        }
+      }
+    },
+    "Show" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzeigen"
+          }
+        }
+      }
+    },
+    "Hide" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausblenden"
+          }
+        }
+      }
+    },
+    "Convert" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umwandeln"
+          }
+        }
+      }
+    },
+    "Keeps only what goes beyond the built-in instructions, as additions. The previous version is kept in system-prompts.md.bak." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behält nur, was über die eingebauten Anweisungen hinausgeht, als Zusätze. Die vorherige Fassung bleibt in system-prompts.md.bak erhalten."
+          }
+        }
+      }
+    },
+    "Could not convert. Your prompt is unchanged; details are in the log." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umwandeln fehlgeschlagen. Ihr Prompt ist unverändert; Details stehen im Log."
+          }
+        }
+      }
+    },
+    "A full custom prompt replaces the built-in instructions for this mode, so improvements to them do not reach it. Convert it: keep only context, vocabulary and style as additions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein eigener vollständiger Prompt ersetzt die eingebauten Anweisungen für diesen Modus, deshalb erreichen ihn Verbesserungen daran nicht. Wandeln Sie ihn um und behalten Sie nur Kontext, Vokabular und Stil als Zusätze."
+          }
+        }
+      }
+    },
+    "Starts like a whole prompt. The built-in instructions already set the role and task; keep only context, vocabulary and style." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beginnt wie ein ganzer Prompt. Rolle und Aufgabe legen die eingebauten Anweisungen schon fest; behalten Sie nur Kontext, Vokabular und Stil."
+          }
+        }
+      }
+    },
+    "Redefines the task. Additions cannot change the task; keep only context, vocabulary and style." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Definiert die Aufgabe neu. Zusätze können die Aufgabe nicht ändern; behalten Sie nur Kontext, Vokabular und Stil."
+          }
+        }
+      }
+    },
+    "Describes editing selected text, which is Dictate Prompt; move it to dictate_prompt." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibt das Bearbeiten von markiertem Text, also Dictate Prompt; verschieben Sie es in die Zusätze von Dictate Prompt."
+          }
+        }
+      }
+    },
+    "Long additions water down the built-in rules; keep only the few rules the user needs." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lange Zusätze verwässern die eingebauten Regeln; behalten Sie nur die wenigen Regeln, die wirklich nötig sind."
+          }
+        }
+      }
+    },
+    "Dictation additions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat-Zusätze"
+          }
+        }
+      }
+    },
+    "Dictate Prompt additions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate-Prompt-Zusätze"
+          }
+        }
+      }
+    },
+    "Migration" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Migration"
+          }
+        }
+      }
+    },
+    "Orthopedics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orthopädie"
+          }
+        }
+      }
+    },
+    "Psychiatry & Psychotherapy" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Psychiatrie & Psychotherapie"
+          }
+        }
+      }
+    },
+    "Expert Reports" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gutachten"
+          }
+        }
+      }
+    },
+    "Glossary Starter List" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fachglossar"
+          }
+        }
+      }
+    },
+    "Add Specialist Terms" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fachbegriffe hinzufügen"
+          }
+        }
+      }
+    },
+    "Added %lld terms." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Begriffe hinzugefügt."
+          }
+        }
+      }
+    },
+    "%lld already there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld waren schon da."
+          }
+        }
+      }
+    },
+    "%lld did not fit: the Glossary is full." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld passten nicht mehr, das Glossar ist voll."
+          }
+        }
+      }
+    },
+    "All terms are already in the Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Begriffe stehen schon im Glossar."
+          }
+        }
+      }
+    },
+    "Starter lists of German specialist terms. Remove what you never say." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fachbegriffe als Startpunkt. Löschen Sie, was Sie nie diktieren."
           }
         }
       }

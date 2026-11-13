@@ -25,7 +25,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 ## What it does
 
 **Dictation**
-- **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right.
+- **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right. Settings → Dictate offers one-click starter lists of German specialist terms (orthopedics, psychiatry/psychotherapy, expert reports).
 - **Dictate Live**: text appears at the cursor after every short pause while you keep talking (on-device, Apple silicon).
 - **Offline dictation**: [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) transcribes 25 European languages on your Mac in a fraction of a second; Whisper covers the rest.
 
@@ -45,6 +45,17 @@ The welcome tour on first launch walks you through permissions, picking a provid
 - Keys live in your Keychain, data in the app's folder on your Mac. Usage statistics are opt-in and never contain text or audio. Details in [privacy.md](privacy.md).
 
 Every feature, setting and model is described in the **[User Guide](docs/guide.md)**.
+
+## Your own instructions
+
+Dictate and Dictate Prompt have built-in instructions that always apply, because they define how the mode works: Dictate writes down what you said, Dictate Prompt applies what you say to the selected text, or writes it as finished text when nothing is selected. In Settings you add **additional instructions** on top, for you or for an AI app that tunes WhisperShortcut over MCP:
+
+- **Belongs there**: who you are and your field ("I work in hospital IT"), tone per app ("Teams messages short and informal"), spelling and list style ("no em dashes").
+- **Does not belong there**: a whole prompt. Don't start with "You are…" or "Your task…", and don't paste a dictation prompt into Dictate Prompt. The mode stays the same; only the result changes.
+- **Single names and terms** go in the Glossary.
+- **A different output format** for one job, such as a clinical note, goes in a Template. A template replaces the instructions for that one recording.
+
+Settings, Chat and connected AI apps show a warning when the additions read like a whole prompt. Full prompts from earlier versions that replace the built-in instructions keep working and show a button to convert them.
 
 ## Shortcuts
 

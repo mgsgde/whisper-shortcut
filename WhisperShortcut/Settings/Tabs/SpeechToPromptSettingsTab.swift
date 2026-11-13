@@ -47,13 +47,15 @@ struct SpeechToPromptSettingsTab: View {
 
       SpacedSectionDivider()
 
-      // Dictate Prompt system prompt editor
+      // Dictate Prompt: the user's additions on top of the fixed built-in instructions.
       SystemPromptSectionEditor(
-        title: "System Prompt",
+        title: "Additional Instructions",
         systemImage: "text.alignleft",
-        subtitle: "Instructions sent to the model in Dictate Prompt mode. Edit to customize how voice instructions are applied to text.",
-        section: .promptMode,
-        defaultContent: AppConstants.defaultPromptModeSystemPrompt
+        subtitle: "Added to the built-in Dictate Prompt instructions, which always apply. Describe yourself and how your texts should sound, not the task. A different output format for one job, such as a clinical note, belongs in a Template.",
+        section: .promptModeAdditions,
+        defaultContent: "",
+        builtInCore: AppConstants.defaultPromptModeSystemPrompt,
+        placeholder: "e.g. I work in hospital IT. Teams messages short and informal. Lists with dashes."
       )
 
       SpacedSectionDivider()

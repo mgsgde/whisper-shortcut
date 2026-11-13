@@ -33,6 +33,9 @@ struct MCPProposal: Codable, Identifiable {
   var edited: Bool
   /// The batch, for `.settings` only. Optional so older JSONL lines without this field still decode.
   var settingsChanges: [MCPSettingsChangeItem]? = nil
+  /// Why a pending proposal was declined without the user, when the app did it. Optional so older
+  /// lines still decode.
+  var resolutionReason: String? = nil
 }
 
 /// Pending AI-app proposals in `UserContext/mcp-proposals.jsonl`, so a quit does not lose them.
@@ -248,6 +251,26 @@ final class MCPProposalStore: ObservableObject {
       all[index].status = .declined
       commit()
       DebugLogger.log("MCP-CONFIG: proposal \(all[index].kind.rawValue) declined")
+    }
+  }
+
+  /// Declines every pending system-prompt proposal whose section is one of `sections`.
+  /// Used when migration cases 1 and 2 retire a legacy full prompt those proposals still target.
+  func declinePending(sections: Set<SystemPromptSection>, reason: String) {
+    MCPMain.run {
+      let raws = Set(sections.map(\.rawValue))
+      var count = 0
+      for index in all.indices {
+        guard all[index].status == .pending, all[index].kind == .systemPrompt,
+          let section = all[index].section, raws.contains(section)
+        else { continue }
+        all[index].status = .declined
+        all[index].resolutionReason = reason
+        count += 1
+      }
+      guard count > 0 else { return }
+      commit()
+      DebugLogger.log("MCP-CONFIG: declined \(count) pending proposal(s): \(reason)")
     }
   }
 

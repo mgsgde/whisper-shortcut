@@ -8,6 +8,7 @@ struct SpeechToTextSettingsTab: View {
   /// Collapsed by default when the selected model ignores the system prompt — it is still there
   /// for the user who switches back to a cloud model, just not in the way of the field that works.
   @State private var showIgnoredSystemPrompt = false
+  @State private var starterListStatus: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -60,7 +61,7 @@ struct SpeechToTextSettingsTab: View {
             .padding(.top, SettingsConstants.internalSectionSpacing)
         } label: {
           Label(
-            "System prompt — not used by \(viewModel.data.selectedTranscriptionModel.displayName)",
+            "Additional instructions — not used by \(viewModel.data.selectedTranscriptionModel.displayName)",
             systemImage: "text.alignleft"
           )
           .font(.headline)
@@ -103,11 +104,13 @@ struct SpeechToTextSettingsTab: View {
   @ViewBuilder
   private var systemPromptEditor: some View {
     SystemPromptSectionEditor(
-      title: "System Prompt",
+      title: "Additional Instructions",
       systemImage: "text.alignleft",
-      subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter. GPT Transcribe, your own server and every offline model (Whisper, Parakeet, Qwen3) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary.",
-      section: .dictation,
-      defaultContent: AppConstants.defaultTranscriptionSystemPrompt
+      subtitle: "Added to the built-in transcription instructions, which always apply. Describe yourself and your preferences, not the task. Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter; GPT Transcribe, your own server and offline models ignore it. Single terms go in the Glossary.",
+      section: .dictationAdditions,
+      defaultContent: "",
+      builtInCore: AppConstants.defaultTranscriptionSystemPrompt,
+      placeholder: "e.g. I work in hospital IT. Write numbers as digits. No em dashes."
     )
   }
 
@@ -121,6 +124,27 @@ struct SpeechToTextSettingsTab: View {
       defaultContent: AppConstants.defaultWhisperGlossary
     )
     .id(SettingsAnchor.glossary)
+
+    HStack(spacing: 8) {
+      Menu("Add Specialist Terms") {
+        ForEach(GlossaryStarterLists.all) { list in
+          Button(list.name) {
+            let r = SystemPromptsStore.shared.appendStarterList(list)
+            starterListStatus = Self.starterListStatusText(r)
+          }
+        }
+      }
+      .menuStyle(.borderlessButton)
+      .fixedSize()
+      if let status = starterListStatus {
+        Text(status).font(.caption).foregroundColor(.secondary)
+      }
+    }
+    .padding(.top, SettingsConstants.internalSectionSpacing)
+    Text("Starter lists of German specialist terms. Remove what you never say.")
+      .font(.caption)
+      .foregroundColor(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
 
     #if !APP_STORE
     VStack(alignment: .leading, spacing: 8) {
@@ -140,6 +164,15 @@ struct SpeechToTextSettingsTab: View {
     }
     .padding(.top, SettingsConstants.internalSectionSpacing)
     #endif
+  }
+
+  private static func starterListStatusText(_ r: (added: Int, alreadyThere: Int, didNotFit: Int)) -> String {
+    if r.added == 0 && r.didNotFit == 0 { return String(localized: "All terms are already in the Glossary.") }
+    var parts: [String] = []
+    if r.added > 0 { parts.append(String(localized: "Added \(r.added) terms.")) }
+    if r.alreadyThere > 0 { parts.append(String(localized: "\(r.alreadyThere) already there.")) }
+    if r.didNotFit > 0 { parts.append(String(localized: "\(r.didNotFit) did not fit: the Glossary is full.")) }
+    return parts.joined(separator: " ")
   }
 
   // MARK: - Language Section

@@ -14,6 +14,9 @@ enum UserDefaultsKeys {
   /// array of session UUID strings. Without it a tab switch back to a live conversation stopped
   /// the autoscroll, because a bottom-read session still has a top message.
   static let chatScrollFollowing = "chatScrollFollowing"
+  /// Tool names the user chose "Always allow" for, stored as `[String]`. Later calls skip the
+  /// approval card in every chat. See `ChatToolAlwaysAllow`.
+  static let chatAlwaysAllowedTools = "chatAlwaysAllowedTools"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"
@@ -106,8 +109,12 @@ enum UserDefaultsKeys {
   // MARK: - Chat Appearance
   /// Prose typeface of the chat transcript (`ChatFontDesign` raw value). Absent → `.sans`.
   static let chatFontDesign = "chatFontDesign"
-  /// Bool: the chat follows new content (streaming replies, live notes) while at the bottom. Absent → off.
+  /// Bool: the chat follows new content (streaming replies, live notes) while at the bottom. Absent → on.
   static let chatFollowNewContent = "chatFollowNewContent"
+  /// One-shot migration flag: the `chatFollowNewContent` default moved false → true (2026-11),
+  /// but `SettingsViewModel.save()` had already written `false` out on most installs.
+  /// See `FullAppDelegate.migrateChatFollowNewContentToOn`.
+  static let didMigrateChatFollowNewContentToOn = "didMigrateChatFollowNewContentToOn"
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
