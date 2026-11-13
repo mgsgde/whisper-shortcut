@@ -667,8 +667,12 @@ enum TextProcessingUtility {
       throw TranscriptionError.noSpeechDetected
     }
     
-    // Check for exact prompt match
-    if trimmedText.contains(defaultPrompt) {
+    // Check for exact prompt match, and for the additions wrapper the built-in core adds
+    // around the user's preferences. Dictate Prompt replies are not checked here.
+    if trimmedText.contains(defaultPrompt)
+      || trimmedText.contains("<user_preferences>")
+      || trimmedText.contains("The preferences above add context")
+    {
       throw TranscriptionError.promptLeakDetected
     }
     
