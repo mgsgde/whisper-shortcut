@@ -256,6 +256,13 @@ struct ToolApprovalCardView: View {
         diffBlock(preview)
       }
       HStack(spacing: 8) {
+        // Same eligibility as "for this chat": never deletes, file writes, links or memory.
+        // Set apart on the left and plain, so it is not hit by mistake for the default button.
+        if request.offersAllowForChat {
+          Button("Always allow") { onDecision(.alwaysAllow) }
+            .buttonStyle(.link)
+            .help("Never ask again for this kind of action. You can undo this in Settings → Accounts.")
+        }
         Spacer()
         Button("Deny") { onDecision(.deny) }
           .keyboardShortcut(.cancelAction)

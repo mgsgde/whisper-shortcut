@@ -1,12 +1,132 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Always allow" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Immer erlauben"
+          }
+        }
+      }
+    },
+    "Always allowed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Immer erlaubt"
+          }
+        }
+      }
+    },
+    "Ask again for all" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei allen wieder fragen"
+          }
+        }
+      }
+    },
+    "Change Trello cards" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trello-Karten ändern"
+          }
+        }
+      }
+    },
+    "Change calendar events" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kalendertermine ändern"
+          }
+        }
+      }
+    },
+    "Change tasks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufgaben ändern"
+          }
+        }
+      }
+    },
+    "Complete tasks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufgaben abhaken"
+          }
+        }
+      }
+    },
     "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt, Chat and Read Aloud; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions and Read Aloud needs /audio/speech, which LM Studio and mlx_lm.server do not serve." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbinden Sie Ihren eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt, Chat und Vorlesen; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions und Vorlesen braucht /audio/speech, die LM Studio und mlx_lm.server nicht anbieten."
+          }
+        }
+      }
+    },
+    "Create Trello cards" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trello-Karten anlegen"
+          }
+        }
+      }
+    },
+    "Create calendar events" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kalendertermine anlegen"
+          }
+        }
+      }
+    },
+    "Create tasks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufgaben anlegen"
+          }
+        }
+      }
+    },
+    "Move Trello cards" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trello-Karten verschieben"
+          }
+        }
+      }
+    },
+    "Never ask again for this kind of action. You can undo this in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Art von Aktion nie mehr fragen. Rückgängig machen kannst du das unter Einstellungen → Konten."
           }
         }
       }
@@ -37,6 +157,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Screenshot nicht im Ordner gespeichert"
+          }
+        }
+      }
+    },
+    "The chat does these without asking first. Remove one to get the approval card back." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Aktionen führt der Chat ohne Rückfrage aus. Entferne eine, damit wieder gefragt wird."
           }
         }
       }
