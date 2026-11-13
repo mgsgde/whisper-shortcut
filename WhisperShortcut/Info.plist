@@ -51,7 +51,7 @@
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>In an online meeting, WhisperShortcut records what the other participants say so it is part of the transcript.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>WhisperShortcut records your voice only while you dictate or record a meeting, and turns it into text.</string>
+	<string>WhisperShortcut records your voice only while you have started a recording, and turns it into text.</string>
 	<key>NSServices</key>
 	<array>
 		<dict>

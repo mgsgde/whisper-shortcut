@@ -62,13 +62,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperShortcut records your voice only while you dictate or record a meeting, and turns it into text."
+            "value" : "WhisperShortcut records your voice only while you have started a recording, and turns it into text."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperShortcut nimmt Ihre Stimme nur beim Diktieren oder bei Meeting-Aufnahmen auf und macht daraus Text."
+            "value" : "WhisperShortcut nimmt Ihre Stimme nur auf, solange Sie eine Aufnahme gestartet haben, und macht daraus Text."
           }
         }
       }

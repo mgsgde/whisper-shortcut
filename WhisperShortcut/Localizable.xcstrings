@@ -28459,6 +28459,38 @@
           }
         }
       }
+    },
+    "The test needs the microphone. Allow WhisperShortcut in System Settings → Privacy & Security → Microphone, then come back here." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The test needs the microphone. Allow WhisperShortcut in System Settings → Privacy & Security → Microphone, then come back here."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für den Test braucht WhisperShortcut das Mikrofon. Erlauben Sie es unter Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon und kommen Sie dann hierher zurück."
+          }
+        }
+      }
+    },
+    "WhisperShortcut lives in the menu bar at the top of your screen. Until the download is finished it shows ⚠️, then a small microphone." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut lives in the menu bar at the top of your screen. Until the download is finished it shows ⚠️, then a small microphone."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut finden Sie oben in der Menüleiste. Bis der Download fertig ist, steht dort ⚠️, danach ein kleines Mikrofon."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

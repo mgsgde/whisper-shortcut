@@ -545,6 +545,8 @@ struct DictationOnlyTestStep: View {
   @AppStorage(UserDefaultsKeys.whisperLanguage) private var language: WhisperLanguage =
     SettingsDefaults.whisperLanguage
 
+  @State private var micStatus = PermissionStatusChecker.status(for: .microphone)
+
   private var modelReady: Bool { modelManager.isModelAvailable(DictationOnlyDownloadStep.model) }
 
   var body: some View {
@@ -567,7 +569,22 @@ struct DictationOnlyTestStep: View {
           .foregroundStyle(.secondary)
       }
 
-      if modelReady {
+      if micStatus == .denied {
+        // A test without the microphone can only fail; say why instead of letting it.
+        Label(
+          "The test needs the microphone. Allow WhisperShortcut in System Settings → Privacy & Security → Microphone, then come back here.",
+          systemImage: "mic.slash")
+          .font(DictationOnlyFont.note)
+          .foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+        Button("Open System Settings") {
+          if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
+          }
+        }
+        .buttonStyle(.borderedProminent)
+        .pointerCursorOnHover()
+      } else if modelReady {
         OnboardingTryItPanel(
           recordSeconds: Self.recordSeconds,
           caption: "You have about \(Self.recordSeconds) seconds. Click “Stop” when you have finished.",
@@ -584,6 +601,9 @@ struct DictationOnlyTestStep: View {
       Spacer(minLength: 0)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      micStatus = PermissionStatusChecker.status(for: .microphone)
+    }
   }
 }
 
@@ -727,7 +747,11 @@ struct DictationOnlyDoneStep: View {
       VStack(alignment: .leading, spacing: 14) {
         line(icon: "keyboard", startLine)
         line(icon: "text.cursor", deliveryLine)
-        line(icon: "menubar.rectangle", "WhisperShortcut lives in the menu bar at the top of your screen, as a small microphone.")
+        line(
+          icon: "menubar.rectangle",
+          modelReady
+            ? "WhisperShortcut lives in the menu bar at the top of your screen, as a small microphone."
+            : "WhisperShortcut lives in the menu bar at the top of your screen. Until the download is finished it shows ⚠️, then a small microphone.")
         line(icon: "character.book.closed", "Words that come out wrong: click the microphone in the menu bar, then Settings → Dictate → Glossary.")
       }
       .padding(18)
