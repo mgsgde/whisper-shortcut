@@ -172,7 +172,15 @@ struct TestProfileOverrides: Equatable {
     }
     if let mode = overrides.dictationOnlyMode {
       if mode { enterDictationOnly() } else { defaults.set(false, forKey: UserDefaultsKeys.dictationOnlyMode) }
-      if overrides.onboardingStep == nil { defaults.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding) }
+      if overrides.onboardingStep == nil {
+        // A fresh install that has finished onboarding: it must not be pinned to the old ⌘-digit
+        // shortcuts (ShortcutConfigManager pins installs that completed onboarding), or Settings
+        // shows ⌘1 while the Welcome Tour's last screen says control + option + 1.
+        if !defaults.bool(forKey: "shortcut_defaults_ctrl_option_v1") {
+          defaults.set(true, forKey: "shortcut_defaults_ctrl_option_v1")
+        }
+        defaults.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
+      }
     }
     DebugLogger.log("TEST-PROFILE: overrides applied \(overrides)")
   }

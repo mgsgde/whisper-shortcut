@@ -481,12 +481,12 @@
         }
       }
     },
-    "Press a key, speak, and the text is copied. Paste it with ⌘V." : {
+    "Press a key, speak, and the text is copied. Paste it with command + V." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Taste drücken, sprechen, und der Text wird kopiert. Fügen Sie ihn mit ⌘V ein."
+            "value" : "Taste drücken, sprechen, und der Text wird kopiert. Fügen Sie ihn mit command + V ein."
           }
         }
       }
@@ -671,12 +671,12 @@
         }
       }
     },
-    "The text is then copied. Paste it with ⌘V." : {
+    "The text is then copied. Paste it with command + V." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Text wird dann kopiert. Fügen Sie ihn mit ⌘V ein."
+            "value" : "Der Text wird dann kopiert. Fügen Sie ihn mit command + V ein."
           }
         }
       }
@@ -2959,12 +2959,12 @@
         }
       }
     },
-    "Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. German, offline models." : {
+    "Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. This works for German only." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nur gesprochen: Satzzeichen werden nicht automatisch gesetzt. Sagen Sie „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ oder „Schrägstrich“. Deutsch, Offline-Modelle."
+            "value" : "Nur gesprochen: Satzzeichen werden nicht automatisch gesetzt. Sagen Sie „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ oder „Schrägstrich“. Das funktioniert nur auf Deutsch."
           }
         }
       }

@@ -79,7 +79,7 @@ struct WelcomeModeChoiceStep: View {
   /// The App Store build cannot paste at the cursor, so it never promises it.
   private static var deliveryFact: LocalizedStringKey {
     #if APP_STORE
-    return "Press a key, speak, and the text is copied. Paste it with ⌘V."
+    return "Press a key, speak, and the text is copied. Paste it with command + V."
     #else
     return "Press a key, speak, and the text appears where your cursor is."
     #endif
@@ -774,7 +774,7 @@ struct DictationOnlyDoneStep: View {
     switch delivery {
     case .live: return "The text appears where your cursor is, while you speak."
     case .atCursor: return "The text then appears where your cursor is."
-    case .copied: return "The text is then copied. Paste it with ⌘V."
+    case .copied: return "The text is then copied. Paste it with command + V."
     }
   }
 

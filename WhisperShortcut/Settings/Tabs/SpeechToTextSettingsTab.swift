@@ -301,7 +301,7 @@ struct SpeechToTextSettingsTab: View {
       }
 
       if viewModel.data.punctuationMode == .spokenOnly {
-        Text("Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. German, offline models.")
+        Text("Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. This works for German only.")
           .font(.callout)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
