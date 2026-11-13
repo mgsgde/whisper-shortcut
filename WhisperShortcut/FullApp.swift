@@ -226,6 +226,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // sidecar sits inside `startDailySchedule`.
     Task { @MainActor in WritingStyleAutoUpdater.shared.startDailySchedule() }
 
+    // `scripts/test-profile-selfcheck.sh` only: proves where settings, glossary and keys land.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { TestProfile.runSelfcheckIfRequested() }
   }
 
   /// The prompts file exists but macOS would not let us read it (typically App Data protection, EPERM).
@@ -709,6 +711,10 @@ class FullWhisperShortcut {
   }
 
   static func main() {
+    // Before anything reads a setting, a file or the keychain: a process asked to be a test
+    // profile that is not provably isolated exits here (TestProfile.swift).
+    TestProfile.enforceIsolationOrExit()
+
     // Claude Desktop launches this binary as its stdio MCP server. That process must not
     // become a second menu-bar app, so the bridge runs before NSApplication exists.
     if CommandLine.arguments.contains(MCPStdioBridge.argument) { MCPStdioBridge.run() }

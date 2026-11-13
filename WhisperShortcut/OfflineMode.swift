@@ -198,8 +198,13 @@ final class OfflineModeURLProtocol: URLProtocol {
 enum ContextLoggingPreference {
 
   static var isEnabled: Bool {
-    isEnabled(offlineMode: OfflineMode.isEnabled, storedFlag: storedFlag)
+    if let testOverride, TestHost.isActive { return testOverride }
+    return isEnabled(offlineMode: OfflineMode.isEnabled, storedFlag: storedFlag)
   }
+
+  /// Test seam: forces `isEnabled` inside the XCTest host, so a test of the logging path does not
+  /// depend on (or write to) the user's real preference. Ignored outside the test host.
+  nonisolated(unsafe) static var testOverride: Bool?
 
   /// The rule with both inputs passed in. Tests use this instead of switching the real mode on:
   /// the test process also makes live provider calls, and a global flip blocks those mid-run.

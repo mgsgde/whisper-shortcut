@@ -80,6 +80,11 @@ enum GlobeKeyUsage: Equatable {
     /// disappears in a future macOS. Live effect is still to be confirmed on a Mac set to
     /// "Show Emoji & Symbols": press Fn in TextEdit after freeing; the emoji picker must not open.
     static func freeForFnDictation() -> Bool {
+      // A test profile must not change a system-wide keyboard setting (TestProfile.swift).
+      guard !TestProfile.isActive else {
+        DebugLogger.log("GLOBE-KEY: not changing AppleFnUsageType from a test profile")
+        return false
+      }
       var path = "CFPreferences"
       // RTLD_DEFAULT is (void *)-2.
       if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "TISUpdateFnUsageType") {

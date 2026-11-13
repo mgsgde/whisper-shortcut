@@ -209,7 +209,8 @@ Output rules (CRITICAL):
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
   /// Local Debug builds run as `com.magnusgoedde.whispershortcut.dev` ("WhisperShortcut Dev"), so
   /// macOS TCC and the keychain keep them apart from the installed release. Drives the DEV badge.
-  static let isDevBuild = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true
+  /// A test profile (`TestProfile`, bundle `….dev.profile.<name>`) is a Dev build too.
+  static let isDevBuild = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true || TestProfile.isActive
   /// The real home directory. A sandboxed app's `NSHomeDirectory()` is its container, so the
   /// passwd entry is the only way to name `~/Applications`.
   static let realHomeDirectory: String = {
@@ -239,6 +240,9 @@ Output rules (CRITICAL):
   /// Why this process is a sidecar ("argv" / "release running" / "daily dev running"), nil when
   /// it is not one.
   static let sidecarReason: String? = {
+    // A test profile is always a sidecar, whatever its arguments: it must never own hotkeys, the
+    // Fn key, the MCP port or update checks.
+    if TestProfile.isActive { return "test profile" }
     if ProcessInfo.processInfo.arguments.contains("--sidecar") { return "argv" }
     if isDevBuild,
       !NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut").isEmpty

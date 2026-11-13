@@ -1646,15 +1646,15 @@ class SpeechService {
     return normalizedText
   }
 
-  /// The pasted text of a classic Gemini Dictate Prompt response: thought parts skipped, the rest
-  /// concatenated and stripped of any leaked `start_thought` … `end_thought` block.
+  /// The pasted text of a classic Gemini Dictate Prompt response: thought parts skipped, a leaked
+  /// English planning block dropped, then any leaked `start_thought` … `end_thought` block stripped.
   nonisolated static func dictatePromptText(from response: GeminiChatResponse) -> String {
     guard let candidate = response.candidates.first else { return "" }
-    var text = ""
+    var parts: [String] = []
     for part in candidate.content.parts where part.thought != true {
-      if let t = part.text { text += t }
+      if let text = part.text { parts.append(text) }
     }
-    return LeakedThoughtStrip.strip(text)
+    return LeakedThoughtStrip.strip(LeakedPlanningStrip.strip(parts: parts))
   }
 
   // MARK: - Dictate Prompt: shared tail

@@ -160,7 +160,9 @@ enum ParakeetVocabularyGuard {
   /// case-insensitively ("GDB" → "GdB"). Limited to single-token terms with an internal capital
   /// ("GdB", "VersMedV", "HbA1c") or written fully upper-case ("ADL", "ACE"), so an ordinary
   /// capitalised noun such as "Merkzeichen" is never forced into a different case. A match glued
-  /// to a letter is left alone. A match glued to a digit run ("GDB50", Parakeet writing "GdB 50"
+  /// to a following letter is left alone; one glued to the end of a preceding word gets a space
+  /// when it carries a capital mid-word ("GesamtgdB" → "Gesamt GdB", see
+  /// `isGluedToPrecedingWord`). A match glued to a digit run ("GDB50", Parakeet writing "GdB 50"
   /// without the space) becomes the term, a space and the digits ("GdB 50"), unless the term
   /// itself ends in a digit ("B12" is not split from a following digit).
   static func restoreGlossaryCasing(in text: String, glossaryTerms: [String]) -> String {
@@ -177,8 +179,12 @@ enum ParakeetVocabularyGuard {
         let afterOK = range.upperBound == result.endIndex
           || !isWordCharacter(result[range.upperBound])
         let glueDigits = !afterOK && !endsInDigit && result[range.upperBound].isNumber
-        if beforeOK && (afterOK || glueDigits) && (glueDigits || result[range] != term) {
-          let replacement = glueDigits ? term + " " : term
+        let glueWord = !beforeOK && (afterOK || glueDigits)
+          && isGluedToPrecedingWord(range, in: result)
+        if (beforeOK || glueWord) && (afterOK || glueDigits)
+          && (glueWord || glueDigits || result[range] != term)
+        {
+          let replacement = (glueWord ? " " : "") + term + (glueDigits ? " " : "")
           let offset = result.distance(from: result.startIndex, to: range.lowerBound)
           result.replaceSubrange(range, with: replacement)
           searchStart = result.index(result.startIndex, offsetBy: offset + replacement.count)
@@ -188,6 +194,21 @@ enum ParakeetVocabularyGuard {
       }
     }
     return result
+  }
+
+  /// True when the match at `range` ends a word it was glued onto by the model: "GesamtgdB50"
+  /// (Parakeet for "Gesamt GdB 50"). Only a capital inside the matched letters makes it a term,
+  /// which no German word has mid-word ("Radler" never yields "ADL"), and only after an ordinary
+  /// capitalised word of at least three letters that has a lower-case letter ("GESAMTGDB" stays).
+  private static func isGluedToPrecedingWord(_ range: Range<String.Index>, in text: String) -> Bool {
+    guard text[range].contains(where: \.isUppercase) else { return false }
+    var start = range.lowerBound
+    while start > text.startIndex, text[text.index(before: start)].isLetter {
+      start = text.index(before: start)
+    }
+    if start > text.startIndex, text[text.index(before: start)].isNumber { return false }
+    let head = text[start..<range.lowerBound]
+    return head.count >= 3 && head.first?.isUppercase == true && head.contains(where: \.isLowercase)
   }
 
   private static func hasDistinctiveCasing(_ term: String) -> Bool {
