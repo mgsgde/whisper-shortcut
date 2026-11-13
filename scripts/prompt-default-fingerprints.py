@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Regenerates the shipped-default fingerprints in
-WhisperShortcut/SystemPromptDefaultsHistory.swift from git history.
+WhisperShortcut/SystemPromptDefaultsHistory.swift.
 
 Every wording of the constants listed for a section is fingerprinted (SHA-256 of the
-whitespace-normalised text), across the whole git history plus the working tree. The
-first constant is the current default the section is lifted to. Dictation and Dictate
+whitespace-normalised text). Sources are HEAD history plus every release tag plus the
+working tree. The generated file is append-only: entries are never dropped, since an
+installed user may still have that wording. A squash merge drops branch commits from
+history.
+
+The first constant is the current default the section is lifted to. Dictation and Dictate
 Prompt keep the built-in core as that default. The additions sections' default is empty.
 
 Also writes `shippedLineSets`: for Dictation and Dictate Prompt, one set per historical
@@ -73,10 +77,109 @@ def git(*args):
     return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout
 
 
+_HEX = re.compile(r'"([0-9a-f]{64})"')
+
+
+def existing_entries(path) -> tuple[dict[str, list[str]], dict[str, list[tuple]]]:
+    """Fingerprints and line sets already written in the generated Swift file.
+
+    Empty dicts when the file is missing. Only the shippedFingerprints and
+    shippedLineSets blocks are read; anything else in the file is ignored.
+    """
+    if not path.is_file():
+        return {}, {}
+    lines = path.read_text().splitlines()
+
+    def block(marker):
+        start = next((i for i, line in enumerate(lines) if marker in line), None)
+        if start is None:
+            return []
+        out = []
+        for line in lines[start + 1:]:
+            if line == "  ]":
+                break
+            out.append(line)
+        return out
+
+    fingerprints: dict[str, list[str]] = {}
+    current: list[str] | None = None
+    for line in block("static let shippedFingerprints"):
+        matched = re.match(r"    \.(\w+): \[", line)
+        if matched:
+            current = []
+            fingerprints[matched.group(1)] = current
+            continue
+        if line == "    ],":
+            current = None
+            continue
+        if current is None:
+            continue
+        found = _HEX.search(line)
+        if found:
+            current.append(found.group(1))
+
+    line_sets: dict[str, list[tuple]] = {}
+    sets: list[tuple] | None = None
+    acc: list[str] | None = None
+    for line in block("static let shippedLineSets"):
+        if acc is None:
+            matched = re.match(r"    \.(\w+): \[", line)
+            if matched:
+                sets = []
+                line_sets[matched.group(1)] = sets
+                continue
+            if line == "    ],":
+                sets = None
+                continue
+        if line == "      Set([":
+            acc = []
+            continue
+        if line == "      ]),":
+            if sets is not None and acc is not None:
+                sets.append(tuple(sorted(acc)))
+            acc = None
+            continue
+        if acc is None:
+            continue
+        found = _HEX.search(line)
+        if found:
+            acc.append(found.group(1))
+
+    return fingerprints, line_sets
+
+
+def merge_kept(computed, old):
+    """Computed order, then entries the file already had that history no longer does.
+
+    Between two wordings that are still in history, a newly found wording is
+    written first and any wording only the existing file still has follows it,
+    in the file's order. Wordings older than everything history still has are
+    appended. Entries the file already has are never dropped.
+    """
+    computed_set = set(computed)
+    groups = {}
+    anchor = None
+    for item in reversed(old):
+        if item in computed_set:
+            anchor = item
+            continue
+        groups.setdefault(anchor, []).append(item)
+    for items in groups.values():
+        items.reverse()
+
+    merged = []
+    for item in computed:
+        merged.extend(groups.pop(item, ()))
+        merged.append(item)
+    merged.extend(groups.pop(None, ()))
+    kept = len(old) - sum(1 for item in old if item in computed_set)
+    return merged, kept
+
+
 def main():
-    # Working tree first (uncommitted edits count), then every commit that touched the file.
+    # Working tree first (uncommitted edits count), then HEAD history and every release tag.
     sources = [("working tree", CONSTANTS.read_text())]
-    for sha in git("log", "--format=%H", "--", "WhisperShortcut/AppConstants.swift").split():
+    for sha in git("log", "--format=%H", "HEAD", "--tags", "--", "WhisperShortcut/AppConstants.swift").split():
         sources.append((sha[:8], git("show", f"{sha}:WhisperShortcut/AppConstants.swift")))
 
     per_section = {case: [] for case, _ in SECTIONS}  # ordered, newest first, unique
@@ -100,6 +203,23 @@ def main():
                 continue
             seen_line_sets[case].add(fps)
             line_sets[case].append(fps)
+
+    # Keep every entry the existing file already has. History is newest-first;
+    # a wording only the file still has stays after the history entries that
+    # precede it, so a squash merge cannot drop an installed user's wording.
+    old_fingerprints, old_line_sets = existing_entries(OUT)
+    kept = 0
+    known_sections = {case for case, _ in SECTIONS}
+    for case, old in old_fingerprints.items():
+        if case not in known_sections:
+            continue
+        per_section[case], added = merge_kept(per_section[case], old)
+        kept += added
+    for case, old in old_line_sets.items():
+        if case not in LINE_SET_CONSTANTS:
+            continue
+        line_sets[case], added = merge_kept(line_sets[case], old)
+        kept += added
 
     lines = [
         "//",
@@ -202,6 +322,7 @@ def main():
     print(f"wrote {OUT.relative_to(ROOT)}: {total} fingerprints across {len(SECTIONS)} sections")
     for case, fps in per_section.items():
         print(f"  {case}: {len(fps)}")
+    print(f"kept {kept} entries from the existing file that git history no longer has")
 
 
 if __name__ == "__main__":
