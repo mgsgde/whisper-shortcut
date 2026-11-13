@@ -155,7 +155,8 @@ enum DictationOnlyMode {
 
 /// The Settings → General switch. It only writes the flag through `DictationOnlyMode.setEnabled`;
 /// it never calls `DictationOnlyDefaults.apply` (spec decision 4), so switching the mode on in
-/// Settings changes no model, language or Offline Mode.
+/// Settings changes no model, language or Offline Mode. Switching off restores what the
+/// onboarding card changed, if it did.
 enum DictationOnlySettingsSwitch {
   enum Outcome: Equatable {
     case changed
@@ -163,13 +164,17 @@ enum DictationOnlySettingsSwitch {
     case refusedWhileBusy
   }
 
+  @MainActor
   static func change(
     to enabled: Bool, activity: DictationOnlyMode.Activity,
-    defaults: UserDefaults = .standard, notificationCenter: NotificationCenter = .default
+    defaults: UserDefaults = .standard, notificationCenter: NotificationCenter = .default,
+    restoreDefaults: @MainActor () -> Void = { DictationOnlyDefaults.restore() }
   ) -> Outcome {
     let changed = DictationOnlyMode.setEnabled(
       enabled, meetingActive: activity.meetingActive, recording: activity.recording,
       defaults: defaults, notificationCenter: notificationCenter)
+    // Switching off gives back what the onboarding card changed (a no-op when it never did).
+    if changed, !enabled { restoreDefaults() }
     return changed ? .changed : .refusedWhileBusy
   }
 }
@@ -177,8 +182,17 @@ enum DictationOnlySettingsSwitch {
 // MARK: - First-run defaults
 
 /// The defaults the "Dictation only" onboarding card applies, once. Nothing calls this at launch
-/// and the Settings switch never does: the switch only hides and shows.
+/// and the Settings switch never does: the switch only hides and shows. What `apply` is about to
+/// change is saved first, so turning the mode off (`restore`) puts the user's own values back.
 enum DictationOnlyDefaults {
+
+  /// Every key `apply` can change. Offline Mode is part of it: `apply` switches it on.
+  private static let snapshotKeys = [
+    UserDefaultsKeys.offlineModeEnabled, UserDefaultsKeys.selectedTranscriptionModel,
+    UserDefaultsKeys.whisperLanguage, UserDefaultsKeys.dictateMode, UserDefaultsKeys.punctuationMode,
+  ]
+  private static let snapshotPresent = "present"
+  private static let snapshotAbsent = "absent"
 
   enum LanguageOutcome: Equatable {
     /// Was Auto-detect; now the Mac's language.
@@ -219,6 +233,7 @@ enum DictationOnlyDefaults {
       return Result(alreadyApplied: true, language: nil, dictateMode: nil)
     }
 
+    saveSnapshot(defaults: defaults)
     switchOfflineOn()
 
     let model = TranscriptionModel.parakeetUltra
@@ -244,6 +259,48 @@ enum DictationOnlyDefaults {
     defaults.set(true, forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
     DebugLogger.log("DICTATION-ONLY: defaults applied (mode=\(mode.rawValue), language=\(language))")
     return Result(alreadyApplied: false, language: language, dictateMode: mode)
+  }
+
+  /// Saves the current value of every key `apply` changes, "absent" kept apart from a value so
+  /// `restore` can remove keys that did not exist. An existing snapshot is never overwritten.
+  private static func saveSnapshot(defaults: UserDefaults) {
+    guard defaults.dictionary(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot) == nil else { return }
+    var present: [String: Any] = [:]
+    var absent: [String] = []
+    for key in snapshotKeys {
+      if let value = defaults.object(forKey: key) { present[key] = value } else { absent.append(key) }
+    }
+    defaults.set(
+      [snapshotPresent: present, snapshotAbsent: absent],
+      forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
+  }
+
+  /// Puts back what `apply` saved: every key exactly as it was (removed when it did not exist),
+  /// Offline Mode last and only when its state differs, so the model reconciler it runs sees the
+  /// restored selections. Then clears the snapshot and the applied flag, so a later opt-in
+  /// applies again. Without a snapshot (the Settings switch never applies) nothing changes.
+  /// Returns whether a snapshot was restored.
+  @MainActor
+  @discardableResult
+  static func restore(
+    defaults: UserDefaults = .standard,
+    switchOffline: @MainActor (Bool) -> Void = { OfflineMode.switchTo($0, reason: "dictation-only restore") }
+  ) -> Bool {
+    guard let snapshot = defaults.dictionary(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot) else {
+      return false
+    }
+    let present = snapshot[snapshotPresent] as? [String: Any] ?? [:]
+    let absent = snapshot[snapshotAbsent] as? [String] ?? []
+    let offlineKey = UserDefaultsKeys.offlineModeEnabled
+    for key in snapshotKeys where key != offlineKey {
+      if let value = present[key] { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+    }
+    let offlineBefore = (present[offlineKey] as? Bool) ?? false
+    defaults.removeObject(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
+    defaults.removeObject(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
+    if defaults.bool(forKey: offlineKey) != offlineBefore { switchOffline(offlineBefore) }
+    DebugLogger.log("DICTATION-ONLY: restored previous settings (\(present.count + absent.count) keys)")
+    return true
   }
 
   private static func applyLanguage(

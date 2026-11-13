@@ -462,7 +462,8 @@ struct WelcomeView: View {
         DictationOnlyMode.setEnabled(
           enabled, meetingActive: activity.meetingActive, recording: activity.recording)
       },
-      applyDefaults: { DictationOnlyDefaults.apply(preferredLanguages: TestProfileOverrides.current.preferredLanguages) })
+      applyDefaults: { DictationOnlyDefaults.apply(preferredLanguages: TestProfileOverrides.current.preferredLanguages) },
+      restoreDefaults: { DictationOnlyDefaults.restore() })
     switch outcome {
     case .refusedWhileBusy:
       modeChoiceRefused = true

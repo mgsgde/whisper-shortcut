@@ -99,6 +99,7 @@ struct DictationOnlyOnboardingTests {
   final class Calls {
     var setMode: [Bool] = []
     var applied = 0
+    var restored = 0
   }
 
   private func commit(
@@ -113,7 +114,8 @@ struct DictationOnlyOnboardingTests {
       applyDefaults: {
         calls.applied += 1
         return DictationOnlyDefaults.Result(alreadyApplied: false, language: .set(.de), dictateMode: .live)
-      })
+      },
+      restoreDefaults: { calls.restored += 1 })
   }
 
   @Test("All features leaves the flag off and applies no defaults")
@@ -130,6 +132,17 @@ struct DictationOnlyOnboardingTests {
     #expect(commit(.allFeatures, modeIsOn: true, calls: calls) == .allFeatures)
     #expect(calls.setMode == [false])
     #expect(calls.applied == 0)
+    #expect(calls.restored == 1)
+  }
+
+  @Test("All features with the mode off restores nothing; a refused switch restores nothing")
+  func allFeaturesRestoresOnlyAfterSwitchOff() {
+    let off = Calls()
+    #expect(commit(.allFeatures, modeIsOn: false, calls: off) == .allFeatures)
+    #expect(off.restored == 0)
+    let busy = Calls()
+    #expect(commit(.allFeatures, modeIsOn: true, setModeSucceeds: false, calls: busy) == .refusedWhileBusy)
+    #expect(busy.restored == 0)
   }
 
   @Test("Dictation only turns the mode on and applies the defaults once")
@@ -162,7 +175,8 @@ struct DictationOnlyOnboardingTests {
     let defaults = makeDefaults()
     let center = NotificationCenter()
     #expect(
-      DictationOnlySettingsSwitch.change(to: true, activity: .idle, defaults: defaults, notificationCenter: center)
+      DictationOnlySettingsSwitch.change(
+        to: true, activity: .idle, defaults: defaults, notificationCenter: center, restoreDefaults: {})
         == .changed)
     #expect(defaults.bool(forKey: UserDefaultsKeys.dictationOnlyMode))
     #expect(defaults.object(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied) == nil)
@@ -170,9 +184,13 @@ struct DictationOnlyOnboardingTests {
     #expect(defaults.object(forKey: UserDefaultsKeys.whisperLanguage) == nil)
     #expect(defaults.object(forKey: UserDefaultsKeys.dictateMode) == nil)
     #expect(defaults.object(forKey: UserDefaultsKeys.punctuationMode) == nil)
+    var restored = 0
     #expect(
-      DictationOnlySettingsSwitch.change(to: false, activity: .idle, defaults: defaults, notificationCenter: center)
+      DictationOnlySettingsSwitch.change(
+        to: false, activity: .idle, defaults: defaults, notificationCenter: center,
+        restoreDefaults: { restored += 1 })
         == .changed)
+    #expect(restored == 1)
     #expect(defaults.dictionaryRepresentation().keys.contains(UserDefaultsKeys.dictationOnlyDefaultsApplied) == false)
   }
 
@@ -181,7 +199,8 @@ struct DictationOnlyOnboardingTests {
     let defaults = makeDefaults()
     let busy = DictationOnlyMode.Activity(meetingActive: false, recording: true)
     #expect(
-      DictationOnlySettingsSwitch.change(to: true, activity: busy, defaults: defaults, notificationCenter: NotificationCenter())
+      DictationOnlySettingsSwitch.change(
+        to: true, activity: busy, defaults: defaults, notificationCenter: NotificationCenter(), restoreDefaults: {})
         == .refusedWhileBusy)
     #expect(defaults.object(forKey: UserDefaultsKeys.dictationOnlyMode) == nil)
   }

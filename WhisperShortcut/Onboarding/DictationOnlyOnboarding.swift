@@ -38,7 +38,8 @@ enum OnboardingModeCommit {
 
   /// "Dictation only" turns the mode on and applies the first-run defaults once
   /// (`apply` is itself idempotent). "All features" never applies anything; it only turns the
-  /// mode off again when a revisited tour finds it on, since that is what the card says.
+  /// mode off again when a revisited tour finds it on (a fresh install that went Back after
+  /// Continue included), restoring what `apply` changed, since that is what the card says.
   /// `setMode` is `DictationOnlyMode.setEnabled` with the current activity; it returns whether
   /// the flag was written.
   @MainActor
@@ -46,14 +47,18 @@ enum OnboardingModeCommit {
     _ choice: OnboardingModeChoice,
     modeIsOn: Bool,
     setMode: (Bool) -> Bool,
-    applyDefaults: () -> DictationOnlyDefaults.Result
+    applyDefaults: () -> DictationOnlyDefaults.Result,
+    restoreDefaults: () -> Void
   ) -> Outcome {
     switch choice {
     case .dictationOnly:
       if !modeIsOn, !setMode(true) { return .refusedWhileBusy }
       return .dictationOnly(defaults: applyDefaults())
     case .allFeatures:
-      if modeIsOn, !setMode(false) { return .refusedWhileBusy }
+      if modeIsOn {
+        if !setMode(false) { return .refusedWhileBusy }
+        restoreDefaults()
+      }
       return .allFeatures
     }
   }
