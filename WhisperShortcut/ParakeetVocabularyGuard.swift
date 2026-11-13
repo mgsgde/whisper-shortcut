@@ -187,7 +187,14 @@ enum ParakeetVocabularyGuard {
     guard wordCount(span) == 1 else { return false }
     let word = GlossaryDocument.fold(span.trimmingCharacters(in: .punctuationCharacters))
     guard !word.isEmpty, word != parts.joined() else { return false }
-    return word.hasPrefix(head) || head.hasPrefix(word)
+    if word.hasPrefix(head) {
+      // A misspelt tail ("Impingementsindrom" for "Impingement-Syndrom") is the whole term
+      // misheard, not its first part: only a rest unlike the term's tail ("Hüfte" / "Hüft-TEP")
+      // counts as a leading part.
+      let rest = String(word.dropFirst(head.count)).replacingOccurrences(of: "-", with: "")
+      return similarity(rest, parts.dropFirst().joined()) < 0.6
+    }
+    return head.hasPrefix(word)
   }
 
   private static let trailingMarks: Set<Character> = [",", ".", "?", "!"]

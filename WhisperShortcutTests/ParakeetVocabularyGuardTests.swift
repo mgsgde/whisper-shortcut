@@ -350,4 +350,22 @@ struct ParakeetVocabularyGuardTests {
         "\(span) -> \(term)")
     }
   }
+
+  @Test("A misspelt tail of a hyphenated term is accepted, a leading part is not")
+  func hyphenatedTermTail() {
+    let terms = ["Impingement-Syndrom", "Hüft-TEP"]
+    for (span, term) in [("Impingementsindrom", "Impingement-Syndrom"), ("Hüft-Tepp", "Hüft-TEP")] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: terms),
+        "\(span) -> \(term)")
+    }
+    for span in ["Hüfte", "Hüften"] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: "Hüft-TEP"), glossaryTerms: terms)
+          == "leading-part-of-compound",
+        "\(span)")
+    }
+  }
 }
