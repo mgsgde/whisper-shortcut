@@ -153,7 +153,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
         forName: .dictationOnlyModeChanged, object: nil, queue: .main
       ) { _ in
         guard !DictationOnlyMode.isEnabled else { return }
-        MCPServer.shared.startIfEnabled()
+        // Not a restart: the server may have kept running, with clients connected.
+        MCPServer.shared.startIfEnabledAndNotRunning()
         MCPProposalWindows.shared.start()
       }
 

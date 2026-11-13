@@ -2934,13 +2934,16 @@ class MenuBarController: NSObject {
     DebugLogger.log("LIVE-DICTATE: Not started (\(reason))")
     let dictationOnly = DictationOnlyMode.isEnabled
     let model = TranscriptionModel.loadSelected().offlineModelType
-    // Shown from the key handlers, always on the main thread.
-    let downloadRunning = MainActor.assumeIsolated {
-      model.map { ModelManager.shared.downloadingModels.contains($0) } ?? false
+    // Normally called from the key handlers on the main thread; hop there when it is not.
+    let show = { [reason] in
+      let downloadRunning = MainActor.assumeIsolated {
+        model.map { ModelManager.shared.downloadingModels.contains($0) } ?? false
+      }
+      PopupNotificationWindow.showInfo(
+        verbatim: reason.message(dictationOnly: dictationOnly, downloadRunning: downloadRunning),
+        title: LiveDictation.Unavailable.popupTitle(dictationOnly: dictationOnly), customDisplayDuration: 6)
     }
-    PopupNotificationWindow.showInfo(
-      verbatim: reason.message(dictationOnly: dictationOnly, downloadRunning: downloadRunning),
-      title: LiveDictation.Unavailable.popupTitle(dictationOnly: dictationOnly), customDisplayDuration: 6)
+    if Thread.isMainThread { show() } else { DispatchQueue.main.async(execute: show) }
   }
 
   @discardableResult
