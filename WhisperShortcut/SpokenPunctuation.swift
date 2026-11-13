@@ -51,7 +51,7 @@ enum SpokenPunctuation {
   /// already called spoken (they are kept before a break), `parenAlways` = "Klammer auf" is
   /// converted even before an article. Index = `(timed ? 2 : 0) + (parenAlways ? 1 : 0)`.
   private static let ruleSets: [[Rule]] = (0..<4).map {
-    makeRules(timed: $0 & 2 != 0, parenAlways: $0 & 1 != 0)
+    makeRules(timed: $0 & 2 != 0, parenAlways: $0 & 1 != 0, dropSplitKomma: true)
   }
   /// Automatic mode: "Klammer zu" is a command only after an unmatched "(" ("um die Klammer zu
   /// entfernen" is a sentence). Spoken-only keeps it unguarded: Dictate Live decodes piece by
@@ -66,7 +66,8 @@ enum SpokenPunctuation {
     #"(?<!\b(?:eine|einer|einen|einem|die|der|den|dem|jede|jeder|jeden|keine|keiner|diese|dieser|ihre|seine|meine|deine|unsere)[ \t])"#
 
   private static func makeRules(
-    timed: Bool, parenAlways: Bool, requiresOpenParen: Bool = false
+    timed: Bool, parenAlways: Bool, requiresOpenParen: Bool = false,
+    dropSplitKomma: Bool = false
   ) -> [Rule] {
     let openingParen = parenAlways ? openingParenPlain : openingParenGuarded
     let openGuard = requiresOpenParen ? openParenBefore : ""
@@ -77,13 +78,14 @@ enum SpokenPunctuation {
     // "Doppel Punkt" and "Doppel-Punkt" are the same command split or hyphenated by Parakeet.
     rule(#"(:[ \t]*\n?[ \t]*)\bdoppel[ \t-]?(?:punkt|gun)\b[ \t,.;:]*"#, "$1"),
     // "Anamnese Doppelpunkt Patient" / "Befund, Doppelpunkt. Inspektion" → "Befund: Inspektion".
+    // The optional "-" is Parakeet gluing "-Doppelpunkt" onto the word before ("Anamnese-Doppelpunkt").
     // Eats the punctuation the ASR put around the words on both sides. Inflections
     // ("Doppelpunkte") stay: the word boundary after "punkt" fails.
-    rule(#"[ \t,.;]*\bdoppel[ \t-]?(?:punkt|gun)\b[ \t,.;:]*"#, ": "),
+    rule(#"[ \t,.;]*-?\bdoppel[ \t-]?(?:punkt|gun)\b[ \t,.;:]*"#, ": "),
     // Parakeet sometimes glues the command onto the next word ("Befund Doppelpunktdruckschmerz").
     // The following word's first letter is upper-cased afterwards (`capitalizeAfterGluedColon`).
     // Inflections of the noun itself ("Doppelpunkte", "-en", "-es", "-s") are left alone.
-    rule(#"[ \t,.;]*\bdoppel[ \t-]?punkt(?!(?:e|en|es|s)\b|setzung|zeichen|taste|symbol)(?=\p{L})"#, ": \u{1}"),
+    rule(#"[ \t,.;]*-?\bdoppel[ \t-]?punkt(?!(?:e|en|es|s)\b|setzung|zeichen|taste|symbol)(?=\p{L})"#, ": \u{1}"),
     // "(" keeps one space before it and none after, except at the start of the text or a line,
     // where there is no space before it either. Stray ASR commas and periods around the words go.
     rule(#"(^|\n)[ \t,.;]*\#(openingParen)[ \t,.;]*"#, "$1("),
@@ -128,7 +130,16 @@ enum SpokenPunctuation {
     // "n" is the plural or a compound ("Zeilenumbrüche"), said literally. "Neue Teile" is a
     // different phrase and does not match.
     rule(#"[ \t,;]*\#(zeile)\bneu(?:e[ \t]*)?zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
-    ]
+    ] + (dropSplitKomma ? [
+      // Parakeet splits a spoken "Komma" before a pause into "," + "ma"
+      // ("Heute ist ein schöner Tag, ma"). Only the bare lowercase word, so "Ma",
+      // "Mama", "man" and "machen" stay. One space when more text follows on the
+      // line; the comma stays at the end of the text or line. Before another mark the
+      // comma goes too, so the later mark wins ("Tag, ma." → "Tag.", "Tag, ma, und" →
+      // "Tag, und"). Spoken rule sets only: automaticRules leaves the word.
+      rule(#",[ \t]*(?-i:ma)\b[ \t]*(?=[.,;:!?])"#, ""),
+      rule(#",[ \t]*(?-i:ma)\b(?:([ \t])[ \t]*(?=[^\s.,;:!?])|[ \t]*(?=$|\n))"#, ",$1"),
+    ] : [])
   }
 
   private static let punktNumberWords =

@@ -71,6 +71,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
     DebugLogger.log("APP-LIFECYCLE: launched pid=\(getpid()) version=\(version) build=\(build)")
 
+    // Test profile only: the start state `scripts/ui-catalogue.sh` asks for (TestProfileOverrides).
+    TestProfileOverrides.applyAtLaunch()
+
     // Silero VAD for the cloud speech gate. Both targets launch through this delegate.
     // Utility priority, and `decide` does not wait: until the model is loaded, chunks upload as before.
     Task.detached(priority: .utility) {
@@ -150,7 +153,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
         forName: .dictationOnlyModeChanged, object: nil, queue: .main
       ) { _ in
         guard !DictationOnlyMode.isEnabled else { return }
-        MCPServer.shared.startIfEnabled()
+        // Not a restart: the server may have kept running, with clients connected.
+        MCPServer.shared.startIfEnabledAndNotRunning()
         MCPProposalWindows.shared.start()
       }
 
@@ -184,6 +188,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     menuBarController = MenuBarController()
     menuBarController?.resumeInterruptedMeetingIfNeeded()
 
+    #if !APP_STORE
+    // Test profile only: Dictate Live from a WAV, after the status item exists. No-op otherwise.
+    TestProfileLiveDictation.startIfRequested()
+    #endif
+
     if let controller = menuBarController {
       selectionServices = SelectionServicesProvider(controller: controller)
       NSApp.servicesProvider = selectionServices
@@ -208,10 +217,16 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           if ApplicationsFolderMove.offerIfNeeded() { return }
           #endif
           let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
-          if !hasCompletedOnboarding {
+          TestProfileOverrides.openRequestedWindow()  // test profile only; no-op otherwise
+          if TestProfileOverrides.current.settingsTab != nil {
+            // Settings is already open on the requested tab.
+          } else if !hasCompletedOnboarding, TestProfileOverrides.current.liveAudioFile == nil {
+            // `--live-audio-file` opens its own text window. The Welcome tour would cover it,
+            // and falling through would open Settings on a fresh profile that has no API key.
             WelcomeWindowController.shared.show()
-          } else if !TranscriptionModel.loadSelected().hasRequiredCredential
-            && !DictationOnlyMode.isEnabled
+          } else if TestProfileOverrides.current.liveAudioFile == nil,
+            !TranscriptionModel.loadSelected().hasRequiredCredential,
+            !DictationOnlyMode.isEnabled
           {
             SettingsManager.shared.showSettings(tab: .accounts)
           }

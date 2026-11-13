@@ -192,4 +192,91 @@ struct DictationOnlyDefaultsTests {
     #expect(apply(intel, appleSilicon: false).dictateMode == .dictate)
     #expect(intel.string(forKey: UserDefaultsKeys.dictateMode) == DictateMode.dictate.rawValue)
   }
+
+  // MARK: - Snapshot and restore
+
+  /// A fake Offline switch that writes the key like `OfflineMode.switchTo` does on `.standard`.
+  private func offlineSwitch(_ defaults: UserDefaults, calls: Counter = Counter()) -> @MainActor (Bool) -> Void {
+    { enabled in
+      calls.count += 1
+      defaults.set(enabled, forKey: UserDefaultsKeys.offlineModeEnabled)
+    }
+  }
+
+  private func applyWithSwitch(_ defaults: UserDefaults, calls: Counter = Counter()) {
+    let toggle = offlineSwitch(defaults, calls: calls)
+    _ = DictationOnlyDefaults.apply(
+      defaults: defaults, preferredLanguages: ["de-DE"], isAppleSilicon: true, isAppStore: false,
+      switchOfflineOn: { toggle(true) })
+  }
+
+  @Test("Apply then restore gives every key back, absent ones removed")
+  func restoreReturnsEveryKey() {
+    let defaults = makeDefaults()
+    defaults.set("gemini", forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    defaults.set(DictateMode.dictate.rawValue, forKey: UserDefaultsKeys.dictateMode)
+    // whisperLanguage, punctuationMode and offlineModeEnabled are absent before.
+    applyWithSwitch(defaults)
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "parakeet-ultra")
+    #expect(defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled))
+
+    let offline = Counter()
+    #expect(DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults, calls: offline)))
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "gemini")
+    #expect(defaults.string(forKey: UserDefaultsKeys.dictateMode) == DictateMode.dictate.rawValue)
+    #expect(defaults.object(forKey: UserDefaultsKeys.whisperLanguage) == nil)
+    #expect(defaults.object(forKey: UserDefaultsKeys.punctuationMode) == nil)
+    #expect(defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) == false)
+    #expect(offline.count == 1)
+    #expect(defaults.object(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot) == nil)
+    #expect(defaults.object(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied) == nil)
+  }
+
+  @Test("Offline Mode already on before is left alone by restore")
+  func restoreKeepsOfflineWhenItWasOn() {
+    let defaults = makeDefaults()
+    defaults.set(true, forKey: UserDefaultsKeys.offlineModeEnabled)
+    applyWithSwitch(defaults)
+    let offline = Counter()
+    DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults, calls: offline))
+    #expect(offline.count == 0)
+    #expect(defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled))
+  }
+
+  @Test("Restore without a snapshot changes nothing")
+  func restoreWithoutSnapshot() {
+    let defaults = makeDefaults()
+    defaults.set("fr", forKey: UserDefaultsKeys.whisperLanguage)
+    defaults.set(true, forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
+    let offline = Counter()
+    #expect(DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults, calls: offline)) == false)
+    #expect(defaults.string(forKey: UserDefaultsKeys.whisperLanguage) == "fr")
+    #expect(defaults.bool(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied))
+    #expect(offline.count == 0)
+  }
+
+  @Test("Applying twice keeps the first snapshot")
+  func secondApplyKeepsFirstSnapshot() {
+    let defaults = makeDefaults()
+    defaults.set("gemini", forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    applyWithSwitch(defaults)
+    // A second apply is a no-op while the flag is set; even with the flag cleared by hand the
+    // existing snapshot must survive.
+    defaults.removeObject(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
+    applyWithSwitch(defaults)
+    DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults))
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "gemini")
+  }
+
+  @Test("After a restore, apply applies again")
+  func applyAgainAfterRestore() {
+    let defaults = makeDefaults()
+    applyWithSwitch(defaults)
+    DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults))
+    let offline = Counter()
+    applyWithSwitch(defaults, calls: offline)
+    #expect(offline.count == 1)
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "parakeet-ultra")
+    #expect(defaults.bool(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied))
+  }
 }

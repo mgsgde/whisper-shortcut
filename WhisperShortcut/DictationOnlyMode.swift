@@ -115,13 +115,84 @@ enum DictationOnlyMode {
     DebugLogger.log("DICTATION-ONLY: \(feature) ignored, mode is on")
     return true
   }
+
+  /// Where a "go to Settings → X" link lands. A hidden tab is never opened: a missing key or
+  /// credential (Accounts) is a dictation problem here, so it goes to Dictate; anything else that
+  /// is hidden goes to General.
+  static func reachableTab(_ tab: SettingsTab, enabled: Bool) -> SettingsTab {
+    if visibleTabs([tab], enabled: enabled).contains(tab) { return tab }
+    return tab == .accounts ? .speechToText : .general
+  }
+
+  // MARK: - Download not finished
+
+  /// What a dictation key press says while the one-time download is not done. One text for every
+  /// path (Fn and Live, the Dictate shortcut, the menu): no model name, no "Dictate Live".
+  static func downloadPendingMessage(downloadRunning: Bool) -> String {
+    downloadRunning
+      ? String(localized: "The download is still running. You can dictate as soon as it has finished.")
+      : String(localized: "Dictation needs a one-time download first. Start it in Settings → Dictate.")
+  }
+
+  // MARK: - What is running
+
+  /// What the Settings switch and the onboarding card need to know before they flip the flag.
+  struct Activity: Equatable {
+    var meetingActive: Bool
+    var recording: Bool
+    static let idle = Activity(meetingActive: false, recording: false)
+  }
+
+  /// Set by `MenuBarController`, which owns the app state. Nil (tests, early launch) reads idle.
+  nonisolated(unsafe) static var activityProvider: (() -> Activity)?
+
+  static var currentActivity: Activity {
+    // Test profile only (`TestProfileOverrides`, `--recording-running`).
+    if TestProfileOverrides.current.recordingRunning { return Activity(meetingActive: false, recording: true) }
+    return activityProvider?() ?? .idle
+  }
+}
+
+/// The Settings → General switch. It only writes the flag through `DictationOnlyMode.setEnabled`;
+/// it never calls `DictationOnlyDefaults.apply` (spec decision 4), so switching the mode on in
+/// Settings changes no model, language or Offline Mode. Switching off restores what the
+/// onboarding card changed, if it did.
+enum DictationOnlySettingsSwitch {
+  enum Outcome: Equatable {
+    case changed
+    /// A meeting or recording is running; nothing was written.
+    case refusedWhileBusy
+  }
+
+  @MainActor
+  static func change(
+    to enabled: Bool, activity: DictationOnlyMode.Activity,
+    defaults: UserDefaults = .standard, notificationCenter: NotificationCenter = .default,
+    restoreDefaults: @MainActor () -> Void = { DictationOnlyDefaults.restore() }
+  ) -> Outcome {
+    let changed = DictationOnlyMode.setEnabled(
+      enabled, meetingActive: activity.meetingActive, recording: activity.recording,
+      defaults: defaults, notificationCenter: notificationCenter)
+    // Switching off gives back what the onboarding card changed (a no-op when it never did).
+    if changed, !enabled { restoreDefaults() }
+    return changed ? .changed : .refusedWhileBusy
+  }
 }
 
 // MARK: - First-run defaults
 
 /// The defaults the "Dictation only" onboarding card applies, once. Nothing calls this at launch
-/// and the Settings switch never does: the switch only hides and shows.
+/// and the Settings switch never does: the switch only hides and shows. What `apply` is about to
+/// change is saved first, so turning the mode off (`restore`) puts the user's own values back.
 enum DictationOnlyDefaults {
+
+  /// Every key `apply` can change. Offline Mode is part of it: `apply` switches it on.
+  private static let snapshotKeys = [
+    UserDefaultsKeys.offlineModeEnabled, UserDefaultsKeys.selectedTranscriptionModel,
+    UserDefaultsKeys.whisperLanguage, UserDefaultsKeys.dictateMode, UserDefaultsKeys.punctuationMode,
+  ]
+  private static let snapshotPresent = "present"
+  private static let snapshotAbsent = "absent"
 
   enum LanguageOutcome: Equatable {
     /// Was Auto-detect; now the Mac's language.
@@ -131,6 +202,14 @@ enum DictationOnlyDefaults {
     /// The Mac's language is not one the model transcribes. Language is still Auto-detect and
     /// the caller has to ask for an explicit pick.
     case needsExplicitPick
+
+    /// The language now stored, nil while the user still has to pick one.
+    var language: WhisperLanguage? {
+      switch self {
+      case .set(let language), .kept(let language): return language
+      case .needsExplicitPick: return nil
+      }
+    }
   }
 
   struct Result: Equatable {
@@ -154,6 +233,7 @@ enum DictationOnlyDefaults {
       return Result(alreadyApplied: true, language: nil, dictateMode: nil)
     }
 
+    saveSnapshot(defaults: defaults)
     switchOfflineOn()
 
     let model = TranscriptionModel.parakeetUltra
@@ -168,11 +248,59 @@ enum DictationOnlyDefaults {
     let mode: DictateMode = (!isAppStore && isAppleSilicon) ? .live : .dictate
     defaults.set(mode.rawValue, forKey: UserDefaultsKeys.dictateMode)
 
-    defaults.set(PunctuationMode.spokenOnly.rawValue, forKey: UserDefaultsKeys.punctuationMode)
+    // Spoken marks ("Komma", "Punkt") are recognised in German only. Anywhere else "Only when
+    // spoken" would leave the text without any punctuation, so the model's own stays on. With no
+    // language yet (`.needsExplicitPick`) nothing is written; the onboarding language step sets
+    // it once the user picked (`punctuation(for:)`).
+    if let picked = language.language {
+      defaults.set(punctuation(for: picked).rawValue, forKey: UserDefaultsKeys.punctuationMode)
+    }
 
     defaults.set(true, forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
     DebugLogger.log("DICTATION-ONLY: defaults applied (mode=\(mode.rawValue), language=\(language))")
     return Result(alreadyApplied: false, language: language, dictateMode: mode)
+  }
+
+  /// Saves the current value of every key `apply` changes, "absent" kept apart from a value so
+  /// `restore` can remove keys that did not exist. An existing snapshot is never overwritten.
+  private static func saveSnapshot(defaults: UserDefaults) {
+    guard defaults.dictionary(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot) == nil else { return }
+    var present: [String: Any] = [:]
+    var absent: [String] = []
+    for key in snapshotKeys {
+      if let value = defaults.object(forKey: key) { present[key] = value } else { absent.append(key) }
+    }
+    defaults.set(
+      [snapshotPresent: present, snapshotAbsent: absent],
+      forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
+  }
+
+  /// Puts back what `apply` saved: every key exactly as it was (removed when it did not exist),
+  /// Offline Mode last and only when its state differs, so the model reconciler it runs sees the
+  /// restored selections. Then clears the snapshot and the applied flag, so a later opt-in
+  /// applies again. Without a snapshot (the Settings switch never applies) nothing changes.
+  /// Returns whether a snapshot was restored.
+  @MainActor
+  @discardableResult
+  static func restore(
+    defaults: UserDefaults = .standard,
+    switchOffline: @MainActor (Bool) -> Void = { OfflineMode.switchTo($0, reason: "dictation-only restore") }
+  ) -> Bool {
+    guard let snapshot = defaults.dictionary(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot) else {
+      return false
+    }
+    let present = snapshot[snapshotPresent] as? [String: Any] ?? [:]
+    let absent = snapshot[snapshotAbsent] as? [String] ?? []
+    let offlineKey = UserDefaultsKeys.offlineModeEnabled
+    for key in snapshotKeys where key != offlineKey {
+      if let value = present[key] { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+    }
+    let offlineBefore = (present[offlineKey] as? Bool) ?? false
+    defaults.removeObject(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
+    defaults.removeObject(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
+    if defaults.bool(forKey: offlineKey) != offlineBefore { switchOffline(offlineBefore) }
+    DebugLogger.log("DICTATION-ONLY: restored previous settings (\(present.count + absent.count) keys)")
+    return true
   }
 
   private static func applyLanguage(
@@ -188,6 +316,12 @@ enum DictationOnlyDefaults {
     else { return .needsExplicitPick }
     defaults.set(language.rawValue, forKey: UserDefaultsKeys.whisperLanguage)
     return .set(language)
+  }
+
+  /// The punctuation this mode starts with for a dictation language: spoken marks where the app
+  /// understands them (German), the model's own punctuation everywhere else.
+  static func punctuation(for language: WhisperLanguage) -> PunctuationMode {
+    language == .de ? .spokenOnly : .automatic
   }
 
   static var isAppStoreBuild: Bool {

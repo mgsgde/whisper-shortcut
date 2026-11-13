@@ -30,6 +30,19 @@ enum LiveDictation {
         return String(localized: "Download Parakeet Ultra in Settings → Dictate to use Dictate Live.")
       }
     }
+
+    /// The popup line for the person who pressed the dictation key. "Dictation only" never names
+    /// a model or "Dictate Live": there the key simply dictates, so a missing model is the one-time
+    /// download, still running or not yet started.
+    func message(dictationOnly: Bool, downloadRunning: Bool) -> String {
+      guard dictationOnly, self == .notDownloaded else { return message }
+      return DictationOnlyMode.downloadPendingMessage(downloadRunning: downloadRunning)
+    }
+
+    /// The popup title. "Dictation only" calls it what the person did: dictate.
+    static func popupTitle(dictationOnly: Bool) -> LocalizedStringResource {
+      dictationOnly ? "Dictation" : "Dictate Live"
+    }
   }
 
   enum StartDecision: Equatable {
@@ -39,6 +52,8 @@ enum LiveDictation {
   }
 
   static var isAppleSilicon: Bool {
+    // Test profile only (`TestProfileOverrides`, `--intel`).
+    if TestProfileOverrides.current.intelMac { return false }
     #if arch(arm64)
     return true
     #else
@@ -89,14 +104,68 @@ enum LiveDictation {
   /// "drei Pünktchen" is already "…" and "zwei Komma fünf" already "2,5" when it runs.
   static func finishPiece(_ text: String, mode: PunctuationMode, timedMarks: Bool = false) -> String {
     let withoutFillers = removingFillers(text)
+    let unglued = mode == .spokenOnly ? splittingGluedTrailingPunkt(withoutFillers) : withoutFillers
     let source =
       mode == .spokenOnly
-      ? SpokenPunctuation.stripModelPunctuation(from: withoutFillers, timedMarks: timedMarks)
-      : withoutFillers
+      ? SpokenPunctuation.stripModelPunctuation(from: unglued, timedMarks: timedMarks)
+      : unglued
     let punctuated = SpokenPunctuation.apply(
       to: source, mode: mode, keepsEdgeBreaks: true, timedMarks: timedMarks)
     return GermanNumberWords.digitizingQuantities(in: punctuated)
   }
+
+  /// Parakeet glues a spoken "Punkt" before a pause onto the last word of the piece
+  /// («Die Haut ist trockenpunkt»), so the spoken-punctuation rules never see the command. This
+  /// splits it back to «trocken Punkt». Only the piece's last word is looked at (in ~20 live
+  /// samples the glue was always on the last word, never mid-piece). Real "-punkt" compounds
+  /// ("Triggerpunkt", "Zeitpunkt") stay via `realPunktCompounds` (last word equal to an entry; an
+  /// explicit allow-list is used because Apple's spell checker calls "Kniepunkt" correct and
+  /// "Triggerpunkt" wrong). Not a suffix match: a glued "stechend"/"Blutdruck"/"Fleck" + "punkt"
+  /// would end in a listed word ("endpunkt", "druckpunkt", "eckpunkt") and stay unsplit.
+  /// Kill switch: UserDefaults bool `liveDisableGluedPunktSplit` (default false = step active).
+  static func splittingGluedTrailingPunkt(_ text: String) -> String {
+    if UserDefaults.standard.bool(forKey: "liveDisableGluedPunktSplit") { return text }
+    let range = NSRange(text.startIndex..., in: text)
+    guard let match = gluedPunktRegex.firstMatch(in: text, range: range),
+      let wordRange = Range(match.range(at: 1), in: text),
+      let stemRange = Range(match.range(at: 2), in: text)
+    else { return text }
+    let word = String(text[wordRange])
+    let lower = word.lowercased()
+    if lower == "punkt" || lower == "doppelpunkt" || lower == "strichpunkt" { return text }
+    if realPunktCompounds.contains(lower) { return text }
+    let stem = String(text[stemRange])
+    DebugLogger.log("LIVE-PUNKT: split glued «\(word)»")
+    return text.replacingCharacters(in: wordRange, with: stem + " Punkt")
+  }
+
+  // swiftlint:disable:next force_try
+  private static let gluedPunktRegex = try! NSRegularExpression(
+    pattern: #"((\p{L}{2,})punkt)[.,;:!?…]*\s*$"#, options: [.caseInsensitive])
+
+  /// Lowercase real German words ending in "punkt" (plus the Dictate-relevant medical ones); a last
+  /// word equal to one of these is not split (exact match, not suffix; see
+  /// `splittingGluedTrailingPunkt`). "ruhepunkt" is left out on purpose: in dictation "in Ruhe
+  /// Punkt" is far likelier than the word.
+  static let realPunktCompounds: Set<String> = [
+    "zeitpunkt", "schwerpunkt", "standpunkt", "mittelpunkt", "höhepunkt", "treffpunkt",
+    "ausgangspunkt", "druckpunkt", "triggerpunkt", "tenderpunkt", "akupunkturpunkt",
+    "akupressurpunkt", "schmerzpunkt", "messpunkt", "tiefpunkt", "wendepunkt", "knotenpunkt",
+    "endpunkt", "startpunkt", "nullpunkt", "siedepunkt", "gefrierpunkt", "schmelzpunkt",
+    "blickpunkt", "brennpunkt", "gesichtspunkt", "anhaltspunkt", "kernpunkt", "hauptpunkt",
+    "kritikpunkt", "programmpunkt", "tagesordnungspunkt", "pluspunkt", "minuspunkt",
+    "streitpunkt", "knackpunkt", "schnittpunkt", "bezugspunkt", "fixpunkt", "haltepunkt",
+    "sammelpunkt", "stützpunkt", "ankerpunkt", "kontrollpunkt", "umkehrpunkt", "scheitelpunkt",
+    "drehpunkt", "angelpunkt", "aussichtspunkt", "berührungspunkt", "eckpunkt", "fluchtpunkt",
+    "gipfelpunkt", "grenzpunkt", "kontaktpunkt", "sternpunkt", "zielpunkt", "zugangspunkt",
+    "einstichpunkt", "insertionspunkt", "ansatzpunkt", "auslösepunkt",
+    "maximalpunkt", "sattelpunkt", "lotpunkt", "fußpunkt", "reizpunkt", "druckschmerzpunkt",
+    "knickpunkt", "taupunkt",
+    "schwachpunkt", "schlusspunkt", "kontrapunkt", "diskussionspunkt", "anknüpfungspunkt",
+    "prüfpunkt", "hochpunkt", "lichtpunkt", "einstiegspunkt", "verbindungspunkt",
+    "orientierungspunkt", "höchstpunkt", "gesprächspunkt", "verhandlungspunkt", "abschlusspunkt",
+    "wiedereinstiegspunkt", "kreuzungspunkt",
+  ]
 
   /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
   /// one comma, period or semicolon glued on, and the spaces around them. "Um", "ah", "aha",

@@ -5,6 +5,9 @@ import SwiftUI
 /// permission-error path routes to, and the same overview shown during onboarding.
 struct PermissionsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
+  /// "Dictation only" hides Usage Data: it exists so the Chat or a connected AI app can read
+  /// what went wrong, and neither is there in this mode.
+  @AppStorage(UserDefaultsKeys.dictationOnlyMode) private var dictationOnly = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -30,9 +33,11 @@ struct PermissionsTab: View {
 
       UsageStatisticsSection()
 
-      Spacer().frame(height: SettingsConstants.sectionSpacing)
+      if !dictationOnly {
+        Spacer().frame(height: SettingsConstants.sectionSpacing)
 
-      UsageDataSection(viewModel: viewModel)
+        UsageDataSection(viewModel: viewModel)
+      }
 
       SpacedSectionDivider()
 

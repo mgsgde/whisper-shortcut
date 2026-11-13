@@ -15,7 +15,10 @@ class SettingsManager {
     settingsWindowController?.showWindow()
   }
 
-  func showSettings(tab: SettingsTab) {
+  /// "Dictation only" never opens a tab it hides: `DictationOnlyMode.reachableTab` picks the
+  /// visible one (Accounts → Dictate, anything else → General).
+  func showSettings(tab requested: SettingsTab) {
+    let tab = DictationOnlyMode.reachableTab(requested, enabled: DictationOnlyMode.isEnabled)
     UserDefaults.standard.set(tab.rawValue, forKey: UserDefaultsKeys.settingsSelectedTab)
     showSettings()
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {

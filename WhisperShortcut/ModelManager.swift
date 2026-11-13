@@ -232,7 +232,11 @@ final class ModelManager: ModelStore<OfflineModelType> {
 
   /// Returns true only when the model folder exists and contains required WhisperKit files
   /// (e.g. AudioEncoder.mlmodelc). Avoids showing incomplete downloads as "available".
+  override nonisolated var usesTestProfileDownloadStub: Bool { true }
+
   override nonisolated func isModelAvailable(_ type: OfflineModelType) -> Bool {
+    // Test profile with `--download`: what the pretend download says, never the disk.
+    if let stubbed = TestProfileOverrides.stubbedModelAvailability() { return stubbed }
     if type.engine == .parakeet {
       return ParakeetBackend.isDownloaded
     }

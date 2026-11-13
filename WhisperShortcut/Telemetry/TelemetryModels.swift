@@ -191,6 +191,17 @@ enum TelemetryMilestone: String, CaseIterable, Codable {
     case .done: self = .onboardingDone
     }
   }
+
+  /// "Dictation only" reports onto the same funnel, so both paths stay in one comparison:
+  /// setting up dictation, permissions, the first try, done.
+  init(dictationStep: DictationOnlyStep) {
+    switch dictationStep {
+    case .globeKey, .language, .download: self = .onboardingAPIKeys
+    case .permissions: self = .onboardingPermissions
+    case .test, .glossary: self = .onboardingTryIt
+    case .done: self = .onboardingDone
+    }
+  }
 }
 
 /// Which model list a model count belongs to.

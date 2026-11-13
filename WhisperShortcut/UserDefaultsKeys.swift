@@ -196,6 +196,9 @@ enum UserDefaultsKeys {
   static let dictationOnlyMode = "dictationOnlyMode"
   /// Set once `DictationOnlyDefaults.apply` ran, so it never runs twice.
   static let dictationOnlyDefaultsApplied = "dictationOnlyDefaultsApplied"
+  /// What `DictationOnlyDefaults.apply` found before it changed anything (a dictionary of the
+  /// present values and the absent keys); `restore` puts it back and removes it.
+  static let dictationOnlyDefaultsSnapshot = "dictationOnlyDefaultsSnapshot"
 
   // MARK: - Opt-in usage statistics (TelemetryService)
   /// The user's "Share anonymous usage statistics" choice. Off unless set.

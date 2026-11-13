@@ -27,6 +27,10 @@ enum PermissionKind {
 enum PermissionStatusChecker {
 
   static func status(for kind: PermissionKind) -> PermissionStatus {
+    // Test profile only (`TestProfileOverrides`): the state the catalogue asks for.
+    let overrides = TestProfileOverrides.current
+    if kind == .microphone, let overridden = overrides.microphone { return overridden }
+    if kind == .accessibility, let overridden = overrides.accessibility { return overridden }
     switch kind {
     case .microphone:
       switch AVCaptureDevice.authorizationStatus(for: .audio) {

@@ -26,6 +26,8 @@ enum GlobeKeyUsage: Equatable {
   /// The setting on this Mac. The App Store build never reads another process's preferences;
   /// Fn dictation is off there regardless.
   static var current: GlobeKeyUsage {
+    // Test profile only (`TestProfileOverrides`): the 🌐 state the catalogue asks for.
+    if let overridden = TestProfileOverrides.current.globeKey { return overridden }
     #if APP_STORE
       return .unknown
     #else

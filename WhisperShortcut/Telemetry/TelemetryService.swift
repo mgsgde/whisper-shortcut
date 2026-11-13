@@ -168,6 +168,10 @@ final class TelemetryService: @unchecked Sendable {
     milestone(TelemetryMilestone(step: step))
   }
 
+  func onboardingStepReached(_ step: DictationOnlyStep) {
+    milestone(TelemetryMilestone(dictationStep: step))
+  }
+
   /// Queues a once-per-install milestone and sends it right away.
   func milestone(_ milestone: TelemetryMilestone, errorClass: TelemetryErrorClass? = nil) {
     guard isEnabled else {

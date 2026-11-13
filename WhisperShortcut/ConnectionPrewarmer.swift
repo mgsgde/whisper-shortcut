@@ -12,7 +12,7 @@ enum ConnectionPrewarmer {
   /// endpoints stay a no-op (unknown host, nothing worth warming).
   static func prewarm(for model: TranscriptionModel) {
     if let offlineType = model.offlineModelType {
-      warmOfflineWhisper(offlineType)
+      warmOfflineModel(offlineType)
       return
     }
     prewarm(endpoint: model.apiEndpoint)
@@ -34,7 +34,7 @@ enum ConnectionPrewarmer {
       // *transcription* model before the local LLM sees anything, so that request is step one of
       // the critical path, not a parallel extra like it is on the cloud paths. Warming only the
       // prompt model would leave the step the user actually waits on first cold. For offline
-      // Whisper this loads the weights (see `warmOfflineWhisper`), not a connection.
+      // Whisper this loads the weights (see `warmOfflineModel`), not a connection.
       prewarm(for: TranscriptionModel.loadSelected())
       warmLocalModel()
     case .localMLX:
@@ -137,7 +137,7 @@ enum ConnectionPrewarmer {
   /// load — correct when the user is waiting for a dictation, far too destructive for a
   /// speculative warm-up. Nothing here touches the network, which is the property Offline Mode
   /// has to be able to keep.
-  private static func warmOfflineWhisper(_ type: OfflineModelType) {
+  static func warmOfflineModel(_ type: OfflineModelType) {
     Task { @MainActor in
       guard ModelManager.shared.isModelAvailable(type) else {
         DebugLogger.log(

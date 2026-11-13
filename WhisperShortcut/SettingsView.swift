@@ -7,6 +7,9 @@ struct SettingsView: View {
     SettingsTab.general.rawValue
   @Environment(\.dismiss) private var dismiss
   @FocusState private var focusedField: SettingsFocusField?
+  /// Bumped when "Dictation only" changes, so the sidebar list is rebuilt with the new tab set
+  /// (same idea as `KeyboardShortcutsSection.modeRevision`).
+  @State private var modeRevision = 0
 
   /// A stored or requested tab that "Dictation only" hides falls back to General; the stored
   /// raw value is left as it is, so the full app returns to the tab the user had.
@@ -36,16 +39,16 @@ struct SettingsView: View {
       setupWindow()
     }
     .onReceive(NotificationCenter.default.publisher(for: .dictationOnlyModeChanged)) { _ in
-      // The sidebar and the selected tab read the flag when the body runs; a changed
-      // `@AppStorage` value forces that.
-      selectedTabRaw = selectedTab.rawValue
+      // The sidebar and the selected tab read the flag when the body runs; the revision
+      // forces that and `.id` rebuilds the sidebar list.
+      modeRevision += 1
     }
     .onReceive(NotificationCenter.default.publisher(for: .openPrivacyPermissionsTab)) { _ in
       selectedTabRaw = SettingsTab.permissions.rawValue
     }
     .onReceive(NotificationCenter.default.publisher(for: .openSettingsTab)) { note in
-      if let raw = note.object as? String, SettingsTab(rawValue: raw) != nil {
-        selectedTabRaw = raw
+      if let raw = note.object as? String, let tab = SettingsTab(rawValue: raw) {
+        selectedTabRaw = DictationOnlyMode.reachableTab(tab, enabled: DictationOnlyMode.isEnabled).rawValue
       }
     }
   }
@@ -67,6 +70,7 @@ struct SettingsView: View {
         }
       }
     }
+    .id(modeRevision)
     .listStyle(.sidebar)
     .frame(minWidth: 270, idealWidth: 270, maxWidth: 300)
   }

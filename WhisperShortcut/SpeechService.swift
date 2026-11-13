@@ -698,7 +698,7 @@ class SpeechService {
       // and sent them to Settings to press a button.
       if await !LocalSpeechService.shared.isLoaded(modelType: offlineModelType) {
         // The weights were cold although the recording is already over, so every millisecond
-        // spent here is wait the user sees. `ConnectionPrewarmer.warmOfflineWhisper` exists to
+        // spent here is wait the user sees. `ConnectionPrewarmer.warmOfflineModel` exists to
         // make this branch never run; this log is how we find out whether it worked.
         //
         // Unless this *is* a streaming chunk (`reportsProgress: false`), in which case the

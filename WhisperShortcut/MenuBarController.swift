@@ -1056,6 +1056,14 @@ class MenuBarController: NSObject {
   }
 
   private func setupNotifications() {
+    // The "Dictation only" switch is refused while something runs (`DictationOnlyMode.setEnabled`);
+    // Settings and onboarding ask here. Read on the main thread, where `appState` lives.
+    DictationOnlyMode.activityProvider = { [weak self] in
+      guard let self else { return .idle }
+      return DictationOnlyMode.Activity(
+        meetingActive: self.isLiveMeetingActive, recording: self.appState.isRecording)
+    }
+
     // "Dictation only" switched: show and hide the status-menu rows without rebuilding the menu.
     NotificationCenter.default.addObserver(
       forName: .dictationOnlyModeChanged, object: nil, queue: .main
@@ -1754,6 +1762,15 @@ class MenuBarController: NSObject {
       PopupNotificationWindow.showInfo("Busy – wait for the current run to finish.", title: "Busy")
     case .missingCredential(.transcription):
       let model = TranscriptionModel.loadSelected()
+      if DictationOnlyMode.isEnabled, model.needsOfflineModelDownload {
+        let downloadRunning = MainActor.assumeIsolated {
+          model.offlineModelType.map { ModelManager.shared.downloadingModels.contains($0) } ?? false
+        }
+        PopupNotificationWindow.showInfo(
+          verbatim: DictationOnlyMode.downloadPendingMessage(downloadRunning: downloadRunning),
+          title: LiveDictation.Unavailable.popupTitle(dictationOnly: true), customDisplayDuration: 6)
+        return
+      }
       PopupNotificationWindow.showError(verbatim: model.apiKeyRequiredMessage, title: .verbatim(model.credentialRequiredTitle))
     case .missingCredential(.meeting):
       let model = TranscriptionModel.loadSelectedForMeeting()
@@ -2915,7 +2932,18 @@ class MenuBarController: NSObject {
 
   private func presentLiveUnavailable(_ reason: LiveDictation.Unavailable) {
     DebugLogger.log("LIVE-DICTATE: Not started (\(reason))")
-    PopupNotificationWindow.showInfo(verbatim: reason.message, title: "Dictate Live", customDisplayDuration: 6)
+    let dictationOnly = DictationOnlyMode.isEnabled
+    let model = TranscriptionModel.loadSelected().offlineModelType
+    // Normally called from the key handlers on the main thread; hop there when it is not.
+    let show = { [reason] in
+      let downloadRunning = MainActor.assumeIsolated {
+        model.map { ModelManager.shared.downloadingModels.contains($0) } ?? false
+      }
+      PopupNotificationWindow.showInfo(
+        verbatim: reason.message(dictationOnly: dictationOnly, downloadRunning: downloadRunning),
+        title: LiveDictation.Unavailable.popupTitle(dictationOnly: dictationOnly), customDisplayDuration: 6)
+    }
+    if Thread.isMainThread { show() } else { DispatchQueue.main.async(execute: show) }
   }
 
   @discardableResult
@@ -3018,7 +3046,9 @@ class MenuBarController: NSObject {
 
   /// One piece through the normal offline path — Parakeet with the Glossary, the glossary-echo
   /// check, then the spoken layout commands. "" when the piece held no speech.
-  private static func decodeLivePiece(
+  /// Internal so the test-profile WAV harness runs this function unchanged. `transcribe` is given
+  /// the URL as-is; the caller passes a copy when the file must survive.
+  static func decodeLivePiece(
     _ url: URL, speechService: SpeechService, punctuationMode: PunctuationMode
   ) async throws -> String {
     do {

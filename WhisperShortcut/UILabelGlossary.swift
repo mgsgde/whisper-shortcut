@@ -21,6 +21,7 @@ enum UILabelGlossary {
       ("Privacy & Permissions", String(localized: "Permissions & Privacy", comment: "Settings tab")),
       ("About", String(localized: "About", comment: "Settings tab")),
       ("Offline Mode", String(localized: "Offline Mode")),
+      ("Dictation only", String(localized: "Dictation only")),
       ("Glossary", String(localized: "Glossary", comment: "Dictation term list")),
       ("Auto-paste", String(localized: "Auto-paste")),
       ("Save usage data", String(localized: "Save usage data")),

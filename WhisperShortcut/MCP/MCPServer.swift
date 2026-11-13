@@ -161,6 +161,13 @@ final class MCPServer: ObservableObject {
     if isEnabled { start() }
   }
 
+  /// Like `startIfEnabled`, but leaves a server that is already listening alone: `start()` stops
+  /// and rebinds, which drops connected clients. Main thread, like `status`.
+  func startIfEnabledAndNotRunning() {
+    if case .running = status { return }
+    startIfEnabled()
+  }
+
   private func start() {
     // Also reached from the `isEnabled` setter: a sidecar must never take the user's MCP port.
     guard !AppConstants.isSidecarInstance else {

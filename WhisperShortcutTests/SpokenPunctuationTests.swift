@@ -28,6 +28,36 @@ struct SpokenPunctuationTests {
         == "Erste Zeile\nZweite Zeile")
   }
 
+  /// Parakeet with token timing keeps the comma it already wrote, then the spoken commands run.
+  /// Without timings, stripping would delete that comma and the ", ma" leftover would never
+  /// reach the rule.
+  private func spokenOnly(_ text: String) -> String {
+    SpokenPunctuation.apply(
+      to: SpokenPunctuation.stripModelPunctuation(from: text, timedMarks: true),
+      mode: .spokenOnly, timedMarks: true)
+  }
+
+  @Test("A spoken Komma before a pause comes back as \", ma\"; the leftover word goes")
+  func splitKommaBeforePause() {
+    #expect(spokenOnly("Heute ist ein schöner Tag, ma") == "Heute ist ein schöner Tag,")
+    #expect(spokenOnly("Tag, ma und ich probiere") == "Tag, und ich probiere")
+    let withPeriod = spokenOnly("Tag, ma.")
+    #expect(!withPeriod.contains("ma"))
+    #expect(withPeriod == "Tag.")
+    // Another mark after the stray "ma": the later mark wins, the comma goes.
+    #expect(spokenOnly("Heute ist ein schöner Tag, ma.") == "Heute ist ein schöner Tag.")
+    #expect(spokenOnly("Tag, ma, und") == "Tag, und")
+    #expect(spokenOnly("Tag, ma ?") == "Tag?")
+    #expect(spokenOnly("Komm, Mama kommt") == "Komm, Mama kommt")
+    #expect(spokenOnly("Er sagt, man kann") == "Er sagt, man kann")
+    #expect(spokenOnly("Ich will, mal sehen") == "Ich will, mal sehen")
+    #expect(spokenOnly("Tag, machen wir") == "Tag, machen wir")
+    #expect(spokenOnly("Tag, Ma kommt") == "Tag, Ma kommt")
+    #expect(
+      SpokenPunctuation.apply(to: "Heute ist ein schöner Tag, ma")
+        == "Heute ist ein schöner Tag, ma")
+  }
+
   @Test("A full note: colons and paragraphs together")
   func fullNote() {
     let spoken =
@@ -58,6 +88,21 @@ struct SpokenColonMishearingTests {
     #expect(LiveDictation.finishPiece("Oh, das ist gut.", mode: .spokenOnly) == "Oh das ist gut.")
     #expect(SpokenPunctuation.apply(to: "Der Doppelgänger kam") == "Der Doppelgänger kam")
     #expect(SpokenPunctuation.apply(to: "Die Doppelpunkte fehlen") == "Die Doppelpunkte fehlen")
+  }
+}
+
+@Suite("Spoken colon, hyphen glued before the command")
+struct SpokenColonHyphenTests {
+  @Test("Parakeet writes \"Anamnese-Doppelpunkt\"; the hyphen goes with the command")
+  func hyphenBeforeColon() {
+    #expect(LiveDictation.finishPiece("An amnese-Doppelpunkt", mode: .spokenOnly) == "An amnese:")
+    #expect(SpokenPunctuation.apply(to: "Anamnese-Doppelpunkt seit drei Tagen") == "Anamnese: seit drei Tagen")
+    #expect(SpokenPunctuation.apply(to: "Befund-Doppelpunktdruckschmerz") == "Befund: Druckschmerz")
+  }
+
+  @Test("A real hyphen not followed by the command stays")
+  func realHyphenStays() {
+    #expect(SpokenPunctuation.apply(to: "Röntgen-Thorax") == "Röntgen-Thorax")
   }
 }
 
