@@ -13,6 +13,7 @@ model gets real audio like it would from the user) and a scorer that checks the 
 
     python3 scripts/benchmark-dictate-prompt.py
     python3 scripts/benchmark-dictate-prompt.py --models gpt-audio,gpt-audio-1.5 --rounds 3
+    python3 scripts/benchmark-dictate-prompt.py --system-prompt-file path/to/system-prompts.md
 
 Scoring is deliberately conservative: a case only counts as failed when the rule is
 unambiguously broken, so a low score means something real rather than a strict grader.
@@ -50,13 +51,20 @@ PROMPT_MODE_OUTPUT_RULE = (
     "directly.")
 
 
-def system_prompt():
-    """The user's Dictate Prompt system prompt, or the snapshot the transcription benchmark keeps."""
-    for path in (
-        os.path.expanduser("~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/"
-                           "Application Support/WhisperShortcut/UserContext/system-prompts.md"),
-        os.path.join(REPO, "build", "benchmark-fixtures", "system-prompts-snapshot.md"),
-    ):
+def system_prompt(path=None):
+    """The user's Dictate Prompt system prompt, or the snapshot the transcription benchmark keeps.
+
+    When `path` is set, read the `=== Dictate Prompt ===` section from that file only.
+    """
+    if path:
+        candidates = (path,)
+    else:
+        candidates = (
+            os.path.expanduser("~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/"
+                               "Application Support/WhisperShortcut/UserContext/system-prompts.md"),
+            os.path.join(REPO, "build", "benchmark-fixtures", "system-prompts-snapshot.md"),
+        )
+    for path in candidates:
         try:
             text = open(path, encoding="utf-8").read()
         except OSError:
@@ -288,6 +296,8 @@ def main():
     ap.add_argument("--models", default=",".join(DEFAULT_MODELS))
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--cases", help="comma-separated case ids to run (default: all)")
+    ap.add_argument("--system-prompt-file", metavar="PATH",
+                    help="read the === Dictate Prompt === section from this file")
     args = ap.parse_args()
     selected_cases = set(args.cases.split(",")) if args.cases else None
     load_env()
@@ -295,7 +305,7 @@ def main():
         sys.exit("missing OPENAI_API_KEY in .env")
 
     models = args.models.split(",")
-    sys_prompt, source = system_prompt()
+    sys_prompt, source = system_prompt(args.system_prompt_file)
     print(f"# Dictate Prompt benchmark\n\nmodels: {', '.join(models)}\n"
           f"system prompt source: {source} ({len(sys_prompt)} chars)\n"
           f"rounds: {args.rounds} per case\n")

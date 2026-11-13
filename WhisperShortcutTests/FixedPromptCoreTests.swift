@@ -102,7 +102,7 @@ struct FixedPromptCoreTests {
     #expect(owned.store.loadDictationAdditions() == "")
 
     var coreLines = AppConstants.defaultPromptModeSystemPrompt.components(separatedBy: "\n")
-    if let index = coreLines.firstIndex(where: { $0.hasPrefix("Guardrails:") }) {
+    if let index = coreLines.firstIndex(where: { $0.hasPrefix("Facts:") }) {
       coreLines.remove(at: index)
     }
     let damaged = coreLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
