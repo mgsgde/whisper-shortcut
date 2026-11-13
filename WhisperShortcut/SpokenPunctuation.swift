@@ -134,11 +134,11 @@ enum SpokenPunctuation {
       // Parakeet splits a spoken "Komma" before a pause into "," + "ma"
       // ("Heute ist ein schöner Tag, ma"). Only the bare lowercase word, so "Ma",
       // "Mama", "man" and "machen" stay. One space when more text follows on the
-      // line; nothing at the end, before a line break, or before another mark.
-      // Spoken rule sets only: automaticRules leaves the word.
-      rule(
-        #",[ \t]*(?-i:ma)\b(?:([ \t])[ \t]*(?=[^\s.,;:!?])|[ \t]*(?=$|\n|[.,;:!?]))"#,
-        ",$1"),
+      // line; the comma stays at the end of the text or line. Before another mark the
+      // comma goes too, so the later mark wins ("Tag, ma." → "Tag.", "Tag, ma, und" →
+      // "Tag, und"). Spoken rule sets only: automaticRules leaves the word.
+      rule(#",[ \t]*(?-i:ma)\b[ \t]*(?=[.,;:!?])"#, ""),
+      rule(#",[ \t]*(?-i:ma)\b(?:([ \t])[ \t]*(?=[^\s.,;:!?])|[ \t]*(?=$|\n))"#, ",$1"),
     ] : [])
   }
 

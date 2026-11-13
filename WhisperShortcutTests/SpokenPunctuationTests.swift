@@ -43,7 +43,11 @@ struct SpokenPunctuationTests {
     #expect(spokenOnly("Tag, ma und ich probiere") == "Tag, und ich probiere")
     let withPeriod = spokenOnly("Tag, ma.")
     #expect(!withPeriod.contains("ma"))
-    #expect(withPeriod == "Tag,.")
+    #expect(withPeriod == "Tag.")
+    // Another mark after the stray "ma": the later mark wins, the comma goes.
+    #expect(spokenOnly("Heute ist ein schöner Tag, ma.") == "Heute ist ein schöner Tag.")
+    #expect(spokenOnly("Tag, ma, und") == "Tag, und")
+    #expect(spokenOnly("Tag, ma ?") == "Tag?")
     #expect(spokenOnly("Komm, Mama kommt") == "Komm, Mama kommt")
     #expect(spokenOnly("Er sagt, man kann") == "Er sagt, man kann")
     #expect(spokenOnly("Ich will, mal sehen") == "Ich will, mal sehen")
