@@ -26,11 +26,12 @@ struct OnboardingTryItPanel: View {
     self.onSuccess = onSuccess
   }
 
-  /// The instruction is for before and during the recording; next to a result it was stale.
+  /// The instruction is for before and during the recording; once it has stopped ("click Stop
+  /// when you're done" over the model preparation, or next to a result) it is stale.
   private var showsCaption: Bool {
     switch controller.phase {
-    case .success, .failure: return false
-    default: return true
+    case .idle, .recording: return true
+    case .preparing, .transcribing, .success, .failure: return false
     }
   }
 
@@ -63,6 +64,20 @@ struct OnboardingTryItPanel: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .pointerCursorOnHover()
+        }
+      case .preparing:
+        // The first load of an offline model compiles it for this Mac (~30 s for Parakeet). A
+        // bare "Transcribing…" for that long reads as a hang on the one screen meant to build trust.
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          ProgressView().controlSize(.small)
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Preparing speech recognition…")
+              .font(.caption)
+            Text("Only the first time. This can take up to a minute.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
       case .transcribing:
         HStack(spacing: 8) {
@@ -120,6 +135,8 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
   enum Phase: Equatable {
     case idle
     case recording(remaining: Int)
+    /// The offline model is not in memory yet; its first load (a one-time compile) runs first.
+    case preparing
     case transcribing
     case success(String)
     case failure(String, SettingsTab)
@@ -236,6 +253,7 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
       guard let self else { return }
       do {
         let model = TranscriptionModel.loadSelected()
+        try await self.waitForOfflineModel(model)
         let punctuation = PunctuationMode.effective(
           stored: .current, isOffline: model.isOffline, duringMeeting: false)
         let raw = try await self.speechService.transcribe(
@@ -259,6 +277,22 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
       try? FileManager.default.removeItem(at: audioURL)
       self.recorder = nil
     }
+  }
+
+  /// Loads a downloaded offline model that is not in memory yet under its own phase, so the wait
+  /// is explained instead of hidden in "Transcribing…". Joins the onboarding's warm-up if that is
+  /// still running (`initializeModel` is single-flight).
+  private func waitForOfflineModel(_ model: TranscriptionModel) async throws {
+    guard let offline = model.offlineModelType,
+      ModelManager.shared.isModelAvailable(offline),
+      !(await LocalSpeechService.shared.isLoaded(modelType: offline))
+    else { return }
+    phase = .preparing
+    let start = Date()
+    try await LocalSpeechService.shared.initializeModel(offline)
+    DebugLogger.log(
+      "ONBOARDING: try-it waited \(Int(Date().timeIntervalSince(start) * 1000)) ms for \(offline.displayName)")
+    phase = .transcribing
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {

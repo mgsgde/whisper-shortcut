@@ -543,6 +543,10 @@ catalogue_dictation_only() {
   place_audio "$audio" >/dev/null
   shot_window test-ready "Test" "ready to start"
   click_nth 1   # Try dictation
+  # Fresh profile: the first load compiles the model, so the panel shows its preparing state.
+  if wait_for_text "$(t "Preparing speech recognition…")" 30; then
+    shot_window test-preparing "Test" "first model load (one-time compile)"
+  fi
   wait_for_text "$(t "It works")" 90
   sleep 0.5
   shot_window test-result "Test" "result of a test dictation (audio file)"

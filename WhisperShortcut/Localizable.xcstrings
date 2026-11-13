@@ -141,6 +141,26 @@
         }
       }
     },
+    "Only the first time. This can take up to a minute." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur beim ersten Mal. Das kann bis zu einer Minute dauern."
+          }
+        }
+      }
+    },
+    "Preparing speech recognition…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spracherkennung wird vorbereitet …"
+          }
+        }
+      }
+    },
     "Removed from %@'s settings. %@" : {
       "localizations" : {
         "de" : {
