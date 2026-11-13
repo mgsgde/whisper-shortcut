@@ -100,6 +100,8 @@ enum LiveDictation {
   /// (`ParakeetPunctuationTiming`, done in the decode for "Only when spoken"). Strip then removes
   /// only semicolons; a "?" or "!" the timing kept stays. Without timings, model "?" and "!" are
   /// still dropped.
+  /// Last, quantity number words become digits (`GermanNumberWords`): after the spoken commands, so
+  /// "drei Pünktchen" is already "…" and "zwei Komma fünf" already "2,5" when it runs.
   static func finishPiece(_ text: String, mode: PunctuationMode, timedMarks: Bool = false) -> String {
     let withoutFillers = removingFillers(text)
     let unglued = mode == .spokenOnly ? splittingGluedTrailingPunkt(withoutFillers) : withoutFillers
@@ -107,8 +109,9 @@ enum LiveDictation {
       mode == .spokenOnly
       ? SpokenPunctuation.stripModelPunctuation(from: unglued, timedMarks: timedMarks)
       : unglued
-    return SpokenPunctuation.apply(
+    let punctuated = SpokenPunctuation.apply(
       to: source, mode: mode, keepsEdgeBreaks: true, timedMarks: timedMarks)
+    return GermanNumberWords.digitizingQuantities(in: punctuated)
   }
 
   /// Parakeet glues a spoken "Punkt" before a pause onto the last word of the piece

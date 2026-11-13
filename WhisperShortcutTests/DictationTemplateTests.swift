@@ -6,8 +6,8 @@ import Testing
 
 /// Dictation templates replace the Dictate Prompt system prompt for one compose turn, started by
 /// the template's own shortcut. With none saved, Dictate Prompt is unchanged — these tests never
-/// write a prompt file except the update-survival case, which checks a custom prompt is left
-/// byte-for-byte alone.
+/// write a prompt file except the update-survival case, which checks a custom prompt survives
+/// as legacy text.
 @Suite("Dictation templates", .serialized)
 struct DictationTemplateTests {
 
@@ -16,10 +16,17 @@ struct DictationTemplateTests {
     Gesprochenes "Doppelpunkt" wird zu ":".
     """
 
+  /// Pre-additions file. The additions headers are omitted so the first read still migrates.
   private func fileContent(sections: [SystemPromptSection: String]) -> String {
-    SystemPromptSection.allCases.map { section in
+    let order: [SystemPromptSection] = [.dictation, .whisperGlossary, .promptMode, .chat, .readAloudRewrite]
+    return order.map { section in
       section.fileHeader + "\n\n" + (sections[section] ?? SystemPromptDefaultsHistory.currentDefault(for: section))
     }.joined(separator: "\n\n")
+  }
+
+  private func trimmedDefault(_ section: SystemPromptSection) -> String {
+    SystemPromptDefaultsHistory.currentDefault(for: section)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   /// UserDefaults is process-wide; put back whatever this test found.
@@ -211,22 +218,25 @@ struct DictationTemplateTests {
     #expect(fromMissing.shortcut == nil)
   }
 
-  /// Pins the exact Dictate Prompt system prompt. A later split of template turns must not move
-  /// these strings: a custom `system-prompts.md`, the built-in default, and screenshot selection
-  /// stay byte-for-byte what they are today, with or without a writing-style block.
-  @Test("Dictate Prompt system prompt is the stored prompt, the default, or the screenshot prompt")
+  /// Pins the exact Dictate Prompt system prompt. Stored text is additional instructions after
+  /// the fixed core. Empty additions leave the core. Screenshot selection stays its own prompt.
+  /// A writing-style block still sits between the base and the output rule.
+  @Test("Dictate Prompt system prompt is the core plus additions, or the screenshot prompt")
   func dictatePromptSystemPromptGolden() {
     let stored = "Custom prompt the user wrote"
     let style = "\n\nLearned writing style."
     let outputRule = AppConstants.promptModeOutputRule
+    let composed = AppConstants.withUserAdditions(
+      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored,
+      taskReminder: AppConstants.dictatePromptTaskReminder)
 
     func prompt(screenshot: Bool, styleBlock: String, stored: String) -> String {
       SpeechService.buildDictatePromptSystemPrompt(
         usesScreenshotSelection: screenshot, styleBlock: styleBlock, template: nil, stored: stored)
     }
 
-    #expect(prompt(screenshot: false, styleBlock: "", stored: stored) == stored + outputRule)
-    #expect(prompt(screenshot: false, styleBlock: style, stored: stored) == stored + style + outputRule)
+    #expect(prompt(screenshot: false, styleBlock: "", stored: stored) == composed + outputRule)
+    #expect(prompt(screenshot: false, styleBlock: style, stored: stored) == composed + style + outputRule)
     #expect(
       prompt(screenshot: false, styleBlock: "", stored: "")
         == AppConstants.defaultPromptModeSystemPrompt + outputRule)
@@ -239,25 +249,33 @@ struct DictationTemplateTests {
       prompt(screenshot: true, styleBlock: style, stored: stored) == screenshotBase + style + outputRule)
   }
 
-  @Test("A template replaces the stored prompt; a blank one leaves it")
+  @Test("A template replaces the base; stored text is additional instructions on the core")
   func dictatePromptBase() {
     let stored = "Custom prompt the user wrote"
     let template = "Practice note format"
+    let composed = AppConstants.withUserAdditions(
+      core: AppConstants.defaultPromptModeSystemPrompt, additions: stored,
+      taskReminder: AppConstants.dictatePromptTaskReminder)
     #expect(SpeechService.dictatePromptBase(stored: stored, template: template) == template)
-    #expect(SpeechService.dictatePromptBase(stored: stored, template: nil) == stored)
-    #expect(SpeechService.dictatePromptBase(stored: stored, template: "") == stored)
-    #expect(SpeechService.dictatePromptBase(stored: stored, template: "  \n") == stored)
+    #expect(SpeechService.dictatePromptBase(stored: stored, template: nil) == composed)
+    #expect(SpeechService.dictatePromptBase(stored: stored, template: "") == composed)
+    #expect(SpeechService.dictatePromptBase(stored: stored, template: "  \n") == composed)
     #expect(SpeechService.dictatePromptBase(stored: "  ", template: nil) == AppConstants.defaultPromptModeSystemPrompt)
     #expect(SpeechService.dictatePromptBase(stored: "", template: nil) == AppConstants.defaultPromptModeSystemPrompt)
-    // Moving a system prompt into a template hands the model the identical base.
+    // A template replaces the base for this turn. The same text stored as additions does not.
+    #expect(SpeechService.dictatePromptBase(stored: "", template: customPrompt) == customPrompt)
     #expect(
-      SpeechService.dictatePromptBase(stored: "", template: customPrompt)
-        == SpeechService.dictatePromptBase(stored: customPrompt, template: nil))
+      SpeechService.dictatePromptBase(stored: customPrompt, template: nil)
+        == AppConstants.withUserAdditions(
+          core: AppConstants.defaultPromptModeSystemPrompt, additions: customPrompt,
+          taskReminder: AppConstants.dictatePromptTaskReminder))
   }
 
   /// Regression: a custom prompt vanished after an update on 2026-10-19. A fresh store is the
-  /// first launch after that update; its first read runs `liftUnchangedDefaultsOnce`. Saving a
-  /// template list must not touch the prompt file.
+  /// first launch after that update; its first read lifts untouched defaults and migrates a
+  /// pre-additions file. Saving a template list must not touch the prompt file. The custom
+  /// legacy text stays, and every other section body stays with it. The additions headers
+  /// are new, so the file is no longer byte-identical.
   @Test("A custom Dictate Prompt survives an update while templates are saved")
   func customPromptSurvivesUpdateWithTemplates() throws {
     try restoringTemplates {
@@ -267,24 +285,39 @@ struct DictationTemplateTests {
       defer { try? FileManager.default.removeItem(at: dir) }
 
       let fileURL = dir.appendingPathComponent(SystemPromptsStore.fileName)
-      let original = fileContent(sections: [.promptMode: customPrompt])
+      let customDictation = "Keep ward names exactly as spoken."
+      let original = fileContent(sections: [
+        .dictation: customDictation,
+        .promptMode: customPrompt,
+      ])
       try original.write(to: fileURL, atomically: true, encoding: .utf8)
       let before = try Data(contentsOf: fileURL)
 
       DictationTemplateStore.save([
         DictationTemplate(name: "Praxis", instructions: customPrompt)
       ])
+      #expect(try Data(contentsOf: fileURL) == before)
 
       let store = SystemPromptsStore(contextDirectoryURL: dir)
-      let loaded = store.loadDictatePromptSystemPrompt()
+      let loaded = store.loadLegacyDictatePrompt()
       #expect(loaded == customPrompt)
-      #expect(try Data(contentsOf: fileURL) == before)
+      #expect(store.loadLegacyDictationPrompt() == customDictation)
+      #expect(store.loadDictationAdditions() == "")
+      #expect(store.loadDictatePromptAdditions() == "")
+      #expect(store.loadSection(.chat) == trimmedDefault(.chat))
+      #expect(store.loadSection(.whisperGlossary) == trimmedDefault(.whisperGlossary))
+      #expect(store.loadSection(.readAloudRewrite) == trimmedDefault(.readAloudRewrite))
+      let migratedText = try String(contentsOf: fileURL, encoding: .utf8)
+      #expect(migratedText.contains("=== Dictation Additions ==="))
+      #expect(migratedText.contains("=== Dictate Prompt Additions ==="))
       #expect(!FileManager.default.fileExists(atPath: store.backupFileURL.path))
-      #expect(SpeechService.dictatePromptBase(stored: loaded, template: nil) == customPrompt)
+      #expect(SpeechService.dictatePromptBase(stored: "", template: nil, legacy: loaded) == customPrompt)
 
+      let migrated = try Data(contentsOf: fileURL)
       let second = SystemPromptsStore(contextDirectoryURL: dir)
-      #expect(second.loadDictatePromptSystemPrompt() == customPrompt)
-      #expect(try Data(contentsOf: fileURL) == before)
+      #expect(second.loadLegacyDictationPrompt() == customDictation)
+      #expect(second.loadLegacyDictatePrompt() == customPrompt)
+      #expect(try Data(contentsOf: fileURL) == migrated)
       #expect(!FileManager.default.fileExists(atPath: second.backupFileURL.path))
     }
   }

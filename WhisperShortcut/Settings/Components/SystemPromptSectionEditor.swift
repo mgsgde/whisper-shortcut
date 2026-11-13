@@ -13,20 +13,31 @@ struct SystemPromptSectionEditor: View {
   let subtitle: LocalizedStringResource
   let section: SystemPromptSection
   let defaultContent: String
+  /// Set for the additions sections (Dictation, Dictate Prompt): the fixed instructions the text
+  /// is appended to. Turns on the additions UI — placeholder, warnings, the read-only core and
+  /// the legacy full prompt row. Nil for sections the user edits as a whole.
+  let builtInCore: String?
+  let placeholder: LocalizedStringResource?
 
   init(
     title: LocalizedStringResource,
     systemImage: String? = nil,
     subtitle: LocalizedStringResource,
     section: SystemPromptSection,
-    defaultContent: String
+    defaultContent: String,
+    builtInCore: String? = nil,
+    placeholder: LocalizedStringResource? = nil
   ) {
     self.title = title
     self.systemImage = systemImage
     self.subtitle = subtitle
     self.section = section
     self.defaultContent = defaultContent
+    self.builtInCore = builtInCore
+    self.placeholder = placeholder
   }
+
+  private var isAdditions: Bool { builtInCore != nil }
 
   /// Long enough not to rewrite the file on every keystroke, short enough that closing Settings
   /// right after typing is already covered before the window-close flush runs.
@@ -39,6 +50,11 @@ struct SystemPromptSectionEditor: View {
   @State private var autosaveTask: Task<Void, Never>?
   @State private var saveFailed = false
   @State private var unreadableReason: String?
+  /// A full prompt from before additions existed, still replacing the built-in instructions.
+  @State private var legacyPrompt: String?
+  @State private var showsLegacyPrompt = false
+  @State private var showsBuiltInCore = false
+  @State private var convertFailed = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -48,15 +64,33 @@ struct SystemPromptSectionEditor: View {
         unreadableBanner(reason: unreadableReason)
       }
 
+      if isAdditions, let legacyPrompt, unreadableReason == nil {
+        legacyPromptRow(legacyPrompt)
+      }
+
       TextEditor(text: $text)
         .font(.system(.body, design: .monospaced))
-        .frame(minHeight: 200, maxHeight: 400)
+        .frame(minHeight: isAdditions ? 110 : 200, maxHeight: 400)
         .padding(8)
         .background(Color(nsColor: .textBackgroundColor))
+        .overlay(alignment: .topLeading) {
+          if let placeholder, text.isEmpty {
+            Text(placeholder)
+              .font(.system(.body, design: .monospaced))
+              .foregroundStyle(.tertiary)
+              .padding(.horizontal, 13)
+              .padding(.vertical, 8)
+              .allowsHitTesting(false)
+          }
+        }
         .cornerRadius(SettingsConstants.cornerRadius)
         // Edits could not be saved while the file is unreadable, so typing would only look like it worked.
         .disabled(unreadableReason != nil)
         .onChange(of: text) { _, _ in scheduleAutosave() }
+
+      if isAdditions {
+        warningsList
+      }
 
       HStack(alignment: .center, spacing: 12) {
         Button(action: revert) {
@@ -76,14 +110,25 @@ struct SystemPromptSectionEditor: View {
         .help("Open system-prompts.md in the default app")
         .pointerCursorOnHover()
 
-        Button("Reset to default") {
-          text = defaultContent
+        if isAdditions {
+          Button("Clear") {
+            text = defaultContent
+          }
+          .buttonStyle(.bordered)
+          .font(.callout)
+          .disabled(text == defaultContent || unreadableReason != nil)
+          .help("Remove your additional instructions. The previous version is kept in system-prompts.md.bak.")
+          .pointerCursorOnHover()
+        } else {
+          Button("Reset to default") {
+            text = defaultContent
+          }
+          .buttonStyle(.bordered)
+          .font(.callout)
+          .disabled(text == defaultContent || unreadableReason != nil)
+          .help("Replace with the app default prompt. The previous version is kept in system-prompts.md.bak.")
+          .pointerCursorOnHover()
         }
-        .buttonStyle(.bordered)
-        .font(.callout)
-        .disabled(text == defaultContent || unreadableReason != nil)
-        .help("Replace with the app default prompt. The previous version is kept in system-prompts.md.bak.")
-        .pointerCursorOnHover()
 
         Spacer(minLength: 0)
 
@@ -108,6 +153,17 @@ struct SystemPromptSectionEditor: View {
             .pointerCursorOnHover()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+      }
+
+      if let builtInCore {
+        DisclosureGroup(isExpanded: $showsBuiltInCore) {
+          readOnlyText(builtInCore)
+            .padding(.top, 6)
+        } label: {
+          Text("Built-in instructions (always applied)")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
       }
     }
     .onAppear { load(resetBaseline: true) }
@@ -138,6 +194,79 @@ struct SystemPromptSectionEditor: View {
         .foregroundStyle(.secondary)
         .help("Changes are saved automatically")
     }
+  }
+
+  /// A full prompt written before additions existed still replaces the built-in instructions.
+  /// It keeps working, so this is a quiet row, not an error: one click converts it.
+  @ViewBuilder
+  private func legacyPromptRow(_ prompt: String) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      SettingsCallout(
+        symbol: "arrow.triangle.2.circlepath",
+        title: "Your own full prompt replaces the built-in instructions",
+        detail: "Improvements to the built-in instructions don’t reach it, and the additions below take effect only after you convert it."
+      ) {
+        Button(showsLegacyPrompt ? "Hide" : "Show") { showsLegacyPrompt.toggle() }
+          .buttonStyle(.bordered)
+          .pointerCursorOnHover()
+        Button("Convert") { convertLegacyPrompt() }
+          .buttonStyle(.borderedProminent)
+          .help("Keeps only what goes beyond the built-in instructions, as additions. The previous version is kept in system-prompts.md.bak.")
+          .pointerCursorOnHover()
+      }
+      if showsLegacyPrompt {
+        readOnlyText(prompt)
+      }
+      if convertFailed {
+        Label("Could not convert. Your prompt is unchanged; details are in the log.", systemImage: "exclamationmark.triangle.fill")
+          .font(.footnote)
+          .foregroundStyle(.red)
+      }
+    }
+  }
+
+  /// Hints from `SystemPromptSectionGuide` for the text being typed. The guide's sentences are
+  /// English (AI apps read them too); the catalog carries their translations.
+  @ViewBuilder
+  private var warningsList: some View {
+    let warnings = SystemPromptSectionGuide.warnings(for: section, text: text, legacyActive: false)
+    if !warnings.isEmpty {
+      VStack(alignment: .leading, spacing: 4) {
+        ForEach(warnings, id: \.self) { warning in
+          Label {
+            Text(Bundle.main.localizedString(forKey: warning, value: warning, table: nil))
+              .fixedSize(horizontal: false, vertical: true)
+          } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundStyle(.orange)
+          }
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func readOnlyText(_ content: String) -> some View {
+    ScrollView {
+      Text(content)
+        .font(.system(.footnote, design: .monospaced))
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+    }
+    .frame(maxHeight: 220)
+    .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+    .cornerRadius(SettingsConstants.cornerRadius)
+  }
+
+  private func convertLegacyPrompt() {
+    flush()
+    convertFailed = !SystemPromptsStore.shared.convertLegacyToAdditions(section)
+    showsLegacyPrompt = false
+    load(resetBaseline: true)
   }
 
   private func unreadableBanner(reason: String) -> some View {
@@ -171,13 +300,13 @@ struct SystemPromptSectionEditor: View {
   /// than not advertising it.
   private var chatEditingHint: String? {
     switch section {
-    case .promptMode:
+    case .promptMode, .promptModeAdditions:
       return String(localized: "You can also change this by asking in Chat — e.g. “when I say correct, never translate”. Edits made there land in this text.")
     case .whisperGlossary:
       // "Dictation only" hides Chat; pointing to it would open a feature the person switched off.
       if DictationOnlyMode.isEnabled { return nil }
       return String(localized: "You can also add terms by asking in Chat — e.g. “Kimi is spelled with one m”.")
-    case .dictation, .chat, .readAloudRewrite:
+    case .dictation, .chat, .readAloudRewrite, .dictationAdditions:
       return nil
     }
   }
@@ -211,6 +340,7 @@ struct SystemPromptSectionEditor: View {
     let saved = SystemPromptsStore.shared.loadSection(section)?
       .trimmingCharacters(in: .whitespacesAndNewlines)
     unreadableReason = SystemPromptsStore.shared.unreadableReason
+    if isAdditions { legacyPrompt = SystemPromptsStore.shared.legacyFullPrompt(for: section) }
     let content = (saved?.isEmpty ?? true) ? defaultContent : saved!
     if !resetBaseline
       && (text != lastSavedText

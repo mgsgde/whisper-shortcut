@@ -121,6 +121,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     migrateNotificationPositionDefault()
     migrateSettingsCloseOnFocusLossToOff()
+    migrateChatFollowNewContentToOn()
 
     // The activation policy is not persisted by macOS, so the optional Dock icon has to be
     // re-applied on every launch.
@@ -371,6 +372,25 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       defaults.set(false, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
       DebugLogger.log(
         "MIGRATION: settingsCloseOnFocusLoss true → false (window no longer closes on outside click)")
+    }
+  }
+
+  /// One-shot migration (2026-11): the `chatFollowNewContent` default moved false → true
+  /// ("the chat should scroll along with new text"), but builds before that had already
+  /// written `false` out explicitly — `SettingsViewModel.save()` persists every slot on any
+  /// settings change. Those installs therefore never saw the new default and the chat stayed
+  /// put. This flips the stored value once; the toggle stays, so anyone who wants the old
+  /// behaviour can turn it back off in Settings → Chat → Appearance.
+  private func migrateChatFollowNewContentToOn() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateChatFollowNewContentToOn)
+    else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateChatFollowNewContentToOn)
+    if defaults.object(forKey: UserDefaultsKeys.chatFollowNewContent) != nil
+      && !defaults.bool(forKey: UserDefaultsKeys.chatFollowNewContent) {
+      defaults.set(true, forKey: UserDefaultsKeys.chatFollowNewContent)
+      DebugLogger.log(
+        "MIGRATION: chatFollowNewContent false → true (chat scrolls along with new text by default)")
     }
   }
 

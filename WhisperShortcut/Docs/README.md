@@ -47,6 +47,17 @@ The welcome tour on first launch walks you through permissions, picking a provid
 
 Every feature, setting and model is described in the **[User Guide](docs/guide.md)**.
 
+## Your own instructions
+
+Dictate and Dictate Prompt have built-in instructions that always apply, because they define how the mode works: Dictate writes down what you said, Dictate Prompt applies what you say to the selected text, or writes it as finished text when nothing is selected. In Settings you add **additional instructions** on top, for you or for an AI app that tunes WhisperShortcut over MCP:
+
+- **Belongs there**: who you are and your field ("I work in hospital IT"), tone per app ("Teams messages short and informal"), spelling and list style ("no em dashes").
+- **Does not belong there**: a whole prompt. Don't start with "You are…" or "Your task…", and don't paste a dictation prompt into Dictate Prompt. The mode stays the same; only the result changes.
+- **Single names and terms** go in the Glossary.
+- **A different output format** for one job, such as a clinical note, goes in a Template. A template replaces the instructions for that one recording.
+
+Settings, Chat and connected AI apps show a warning when the additions read like a whole prompt. Full prompts from earlier versions that replace the built-in instructions keep working and show a button to convert them.
+
 ## Shortcuts
 
 | Action | Default shortcut |

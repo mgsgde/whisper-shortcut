@@ -124,6 +124,26 @@ struct LiveDictationTests {
         == "Ah stimmt, aha und achso oh")
   }
 
+  @Test("Quantity number words become digits in a finished piece, prose numbers stay")
+  func numberWordsInPiece() {
+    for mode in [PunctuationMode.spokenOnly, .automatic] {
+      #expect(LiveDictation.finishPiece("Blutdruck 140 zu neunzig", mode: mode, timedMarks: true)
+        == "Blutdruck 140 zu 90")
+      #expect(LiveDictation.finishPiece("Einzel GdB Psyche zwanzig.", mode: mode, timedMarks: true)
+        == "Einzel GdB Psyche 20.")
+      #expect(LiveDictation.finishPiece("Um zehn Uhr kam die Patientin", mode: mode, timedMarks: true)
+        == "Um zehn Uhr kam die Patientin")
+      #expect(LiveDictation.finishPiece("Gesamt GdB drei Pünktchen und dann weiter", mode: mode,
+        timedMarks: true).contains("drei") == (mode == .automatic))
+    }
+    #expect(LiveDictation.finishPiece("Sie hat drei Punkte erreicht Punkt", mode: .spokenOnly, timedMarks: true)
+      == "Sie hat drei Punkte erreicht.")
+    #expect(LiveDictation.finishPiece("Gesamt GdB fünfzig Komma Merkzeichen G", mode: .spokenOnly, timedMarks: true)
+      == "Gesamt GdB 50, Merkzeichen G")
+    #expect(LiveDictation.finishPiece("Ramipril zwei Komma fünf mg", mode: .spokenOnly, timedMarks: true)
+      == "Ramipril 2,5 mg")
+  }
+
   @Test("With periods held, a capital at a piece start stays")
   func heldPeriodsKeepPieceStartCapital() {
     var joiner = LiveChunkJoiner()

@@ -2403,8 +2403,8 @@ struct SettingsDefaults {
   /// Prose typeface of the chat transcript. `.sans` (San Francisco) is what the chat has always
   /// used; serif and rounded are opt-in choices in Settings → Chat → Appearance.
   static let chatFontDesign: ChatFontDesign = .sans
-  /// Off by default: the chat never scrolls on its own unless the user opts in.
-  static let chatFollowNewContent = false
+  /// On by default: the chat scrolls along with new text. Turn it off in Settings → Chat → Appearance.
+  static let chatFollowNewContent = true
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
   static let settingsCloseOnFocusLoss = false

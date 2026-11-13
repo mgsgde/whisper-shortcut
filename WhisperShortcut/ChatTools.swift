@@ -216,7 +216,7 @@ enum ChatToolRegistry {
   /// before/after text. Reads the store, never writes, so the approval card can show the exact
   /// diff the executor will apply.
   enum InstructionsEditPlan {
-    case read(sectionKey: String, current: String)
+    case read(section: SystemPromptSection, sectionKey: String, current: String)
     case edit(section: SystemPromptSection, sectionKey: String, action: String, current: String, updated: String)
     case refused([String: Any])
   }
@@ -237,8 +237,9 @@ enum ChatToolRegistry {
     let stored = isGlossary
       ? SystemPromptsStore.shared.loadWhisperGlossary()
       : SystemPromptsStore.shared.loadSection(section) ?? ""
-    // An emptied prompt section runs on the built-in default; a rule appended to "" would
-    // silently replace that whole default with one line.
+    // An emptied Chat section still runs on its built-in default, so a rule appended to "" is
+    // appended to that default. Dictation and Dictate Prompt defaults are empty additions: the
+    // fixed core stays in code, and a rule appended to "" is just that rule.
     let current = !isGlossary && stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       ? MCPProposalWindows.defaultText(for: section) : stored
     let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -246,7 +247,7 @@ enum ChatToolRegistry {
     // `read` is the documented first step: it hands the model the current rules so it can spot
     // a contradiction instead of stacking a second, conflicting rule on top of an existing one.
     if action == "read" {
-      return .read(sectionKey: sectionKey, current: current)
+      return .read(section: section, sectionKey: sectionKey, current: current)
     }
 
     guard !text.isEmpty else {
@@ -306,6 +307,23 @@ enum ChatToolRegistry {
       ])
     }
     return .edit(section: section, sectionKey: sectionKey, action: action, current: current, updated: updated)
+  }
+
+  /// Read payload: current text, purpose, warnings, and the legacy full prompt when one is active.
+  static func instructionsReadResult(
+    section: SystemPromptSection, sectionKey: String, current: String
+  ) -> [String: Any] {
+    var result: [String: Any] = [
+      "ok": true, "section": sectionKey, "instructions": current,
+      "purpose": SystemPromptSectionGuide.purpose(for: section),
+    ]
+    if let legacy = SystemPromptsStore.shared.legacyFullPrompt(for: section) {
+      result["legacy_full_prompt"] = legacy
+    }
+    let warnings = SystemPromptSectionGuide.warnings(
+      for: section, text: current, legacyActive: result["legacy_full_prompt"] != nil)
+    if !warnings.isEmpty { result["warnings"] = warnings }
+    return result
   }
 
   /// Before/after for the approval card; nil for everything that is not a concrete instructions edit.
@@ -480,8 +498,13 @@ enum ChatToolRegistry {
   static let instructionsSectionHeadroomChars = 2_000
 
   static func instructionsSectionLimit(for section: SystemPromptSection) -> Int {
-    max(instructionsSectionLimitChars,
+    switch section {
+    case .dictationAdditions, .promptModeAdditions:
+      return 2_000
+    default:
+      return max(instructionsSectionLimitChars,
         MCPProposalWindows.defaultText(for: section).count + instructionsSectionHeadroomChars)
+    }
   }
 
   /// Sections the chat may edit, mapped from the model-facing enum values. Same names as MCP
@@ -494,8 +517,8 @@ enum ChatToolRegistry {
   /// the model and that loop now. `whisper_glossary` only ever grows unless the user asks for a
   /// removal: `append` merges additively and `replace` is refused when it would drop an entry.
   static let editableInstructionSections: [String: SystemPromptSection] = [
-    "dictate_prompt": .promptMode,
-    "dictation": .dictation,
+    "dictate_prompt": .promptModeAdditions,
+    "dictation": .dictationAdditions,
     "chat": .chat,
     "whisper_glossary": .whisperGlossary,
   ]
@@ -506,9 +529,9 @@ enum ChatToolRegistry {
   /// Built apart from the declaration literal: concatenation inside a large `[String: Any]`
   /// literal is a known way to make the type checker give up.
   private static let instructionsToolDescription: String =
-        "Reads and edits WhisperShortcut's own instructions, so the user can tune how the app behaves by asking instead of editing Settings. Sections: 'dictation' (the Dictate prompt: how speech becomes text), 'whisper_glossary' (names and terms the recognizer should spell right, one per line, optionally Term (not \"wrong\", \"wrong2\")), 'dictate_prompt' (Dictate Prompt: rewriting selected text from a voice instruction), 'chat' (your own system prompt in this chat). Call it when the user states a lasting preference about how a mode should behave, or asks you to fix a recurring mistake. "
+        "Reads and edits WhisperShortcut's own instructions, so the user can tune how the app behaves by asking instead of editing Settings. Sections: 'dictation' (additional instructions only, on top of a fixed built-in prompt that cannot be changed: context, vocabulary, style for how speech becomes text; never restate the task or write a whole prompt), 'whisper_glossary' (names and terms the recognizer should spell right, one per line, optionally Term (not \"wrong\", \"wrong2\")), 'dictate_prompt' (additional instructions only, on top of a fixed built-in prompt that cannot be changed: context, vocabulary, style for rewriting selected text; never restate the task or write a whole prompt), 'chat' (your own system prompt in this chat). Call it when the user states a lasting preference about how a mode should behave, or asks you to fix a recurring mistake. "
         + InteractionLogTool.tuningRules
-        + " To find the mistake, call read_recent_interactions (when available); before adding a term or rule, call read_config_history so a term the user removed on purpose is not re-added. ALWAYS call action='read' on the section first and check whether an existing rule already covers or contradicts the request: then 'replace' or 'remove' that rule rather than appending a second, conflicting one. Use 'append' for one genuinely new rule or glossary term. 'remove' on whisper_glossary only when the user asked to drop that entry. Every change is shown to the user for approval. For a single dictation term, remember_dictation_term also works; for facts about the user use remember_about_user."
+        + " To find the mistake, call read_recent_interactions (when available); before adding a term or rule, call read_config_history so a term the user removed on purpose is not re-added. ALWAYS call action='read' on the section first and check whether an existing rule already covers or contradicts the request: then 'replace' or 'remove' that rule rather than appending a second, conflicting one. A read includes the section's purpose and any warnings, and the legacy full prompt when one replaces the built-in; heed the warnings before adding a rule. Use 'append' for one genuinely new rule or glossary term. 'remove' on whisper_glossary only when the user asked to drop that entry. Every change is shown to the user for approval. For a single dictation term, remember_dictation_term also works; for facts about the user use remember_about_user."
 
   /// Read-only history of changes to the instructions and glossary. Declared with the instructions
   /// tool (it does not depend on "Save usage data": it is the app's own configuration, not usage).
@@ -1630,19 +1653,24 @@ enum ChatToolRegistry {
       switch planInstructionsEdit(args: args) {
       case .refused(let response):
         return response
-      case .read(let sectionKey, let current):
-        return ["ok": true, "section": sectionKey, "instructions": current]
+      case .read(let section, let sectionKey, let current):
+        return instructionsReadResult(section: section, sectionKey: sectionKey, current: current)
       case .edit(let section, let sectionKey, let action, let current, let updated):
         // The store appends the history row (source: chat), so a chat-made change is reviewable
         // and reversible: without it the app's behavior could drift with no trace of who changed what.
         SystemPromptsStore.shared.updateSection(section, content: updated, source: .chat)
         DebugLogger.log(
           "INSTRUCTIONS-EDIT: chat \(action) on \(sectionKey) (\(current.count) → \(updated.count) chars)")
-        return [
+        var result: [String: Any] = [
           "ok": true, "status": action, "section": sectionKey,
           "instructions": updated,
           "note": "Applied. Tell the user briefly what changed; it is editable in Settings and recorded in the prompt history.",
         ]
+        let legacyActive = SystemPromptsStore.shared.legacyFullPrompt(for: section) != nil
+        let warnings = SystemPromptSectionGuide.warnings(
+          for: section, text: updated, legacyActive: legacyActive)
+        if !warnings.isEmpty { result["warnings"] = warnings }
+        return result
       }
 
     case readRecentInteractionsToolName:

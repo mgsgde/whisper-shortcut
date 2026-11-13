@@ -224,7 +224,7 @@ longer than 3 days every Monday and closes those open 14 days, branch kept. It n
   Scout/meta loops may propose adjusting them; they may never propose removing the plan
   step or the review step, and they may never put Cursor on a propose/plan/judge job.
   The *interactive* counterpart — Opus 5.5 plans and judges, Grok (or Sonnet over
-  the cap) types — is `AGENTS.md` → "Model tiering". No Fable anywhere (Magnus, 2026-09-28).
+  the cap) types — is `AGENTS.md` → "Model tiering". Fable 5.2 only on Magnus's word or an accepted proposal (2026-11-13).
 - **Measurable-on-ship-day, on ONE user's logs.** A row whose falsifier cannot be measured when
   it ships is not eligible; the build must add the instrumentation in the same branch, or the
   proposal goes to `plans/instrumentation-gaps.md` first. And the only person this repo

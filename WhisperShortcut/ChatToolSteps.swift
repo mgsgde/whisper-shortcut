@@ -80,7 +80,7 @@ final class ToolStepsBuffer: ObservableObject {
 // MARK: - Inline approval
 
 enum ToolApprovalDecision: Equatable {
-  case allow, allowForChat, deny
+  case allow, allowForChat, alwaysAllow, deny
 }
 
 /// A tool call waiting for the user's answer on the inline approval card. Exactly one per session

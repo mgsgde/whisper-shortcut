@@ -28,8 +28,8 @@ struct ConfigHistoryQuery: Equatable {
 
   static func section(named raw: String) -> SystemPromptSection? {
     switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
-    case "dictation": return .dictation
-    case "dictate_prompt": return .promptMode
+    case "dictation": return .dictationAdditions
+    case "dictate_prompt": return .promptModeAdditions
     case "chat": return .chat
     case "whisper_glossary": return .whisperGlossary
     case "read_aloud_rewrite": return .readAloudRewrite
@@ -38,14 +38,29 @@ struct ConfigHistoryQuery: Equatable {
   }
 
   /// The model-facing name of a stored `section` raw value; the raw value itself when unknown.
+  /// Legacy full-prompt rows share the name of the additions section they belong to.
   static func name(forStoredSection raw: String) -> String {
     switch SystemPromptSection(rawValue: raw) {
-    case .dictation: return "dictation"
-    case .promptMode: return "dictate_prompt"
+    case .dictation, .dictationAdditions: return "dictation"
+    case .promptMode, .promptModeAdditions: return "dictate_prompt"
     case .chat: return "chat"
     case .whisperGlossary: return "whisper_glossary"
     case .readAloudRewrite: return "read_aloud_rewrite"
     case nil: return raw
+    }
+  }
+
+  /// History rows written before additions had their own section still use the legacy raw value.
+  static func matchesStoredSection(_ stored: String, section: SystemPromptSection) -> Bool {
+    switch section {
+    case .dictation, .dictationAdditions:
+      return stored == SystemPromptSection.dictation.rawValue
+        || stored == SystemPromptSection.dictationAdditions.rawValue
+    case .promptMode, .promptModeAdditions:
+      return stored == SystemPromptSection.promptMode.rawValue
+        || stored == SystemPromptSection.promptModeAdditions.rawValue
+    default:
+      return stored == section.rawValue
     }
   }
 
@@ -110,7 +125,9 @@ enum ConfigHistoryReader {
       previousContent[row.section] = row.content
     }
     let matching = annotated.reversed().filter { entry in
-      if let section = query.section, entry.row.section != section.rawValue { return false }
+      if let section = query.section, !ConfigHistoryQuery.matchesStoredSection(entry.row.section, section: section) {
+        return false
+      }
       if let since = query.since {
         guard let date = UserContextLog.timestamp(entry.row.ts), date >= since else { return false }
       }
