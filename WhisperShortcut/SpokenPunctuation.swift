@@ -78,13 +78,14 @@ enum SpokenPunctuation {
     // "Doppel Punkt" and "Doppel-Punkt" are the same command split or hyphenated by Parakeet.
     rule(#"(:[ \t]*\n?[ \t]*)\bdoppel[ \t-]?(?:punkt|gun)\b[ \t,.;:]*"#, "$1"),
     // "Anamnese Doppelpunkt Patient" / "Befund, Doppelpunkt. Inspektion" → "Befund: Inspektion".
+    // The optional "-" is Parakeet gluing "-Doppelpunkt" onto the word before ("Anamnese-Doppelpunkt").
     // Eats the punctuation the ASR put around the words on both sides. Inflections
     // ("Doppelpunkte") stay: the word boundary after "punkt" fails.
-    rule(#"[ \t,.;]*\bdoppel[ \t-]?(?:punkt|gun)\b[ \t,.;:]*"#, ": "),
+    rule(#"[ \t,.;]*-?\bdoppel[ \t-]?(?:punkt|gun)\b[ \t,.;:]*"#, ": "),
     // Parakeet sometimes glues the command onto the next word ("Befund Doppelpunktdruckschmerz").
     // The following word's first letter is upper-cased afterwards (`capitalizeAfterGluedColon`).
     // Inflections of the noun itself ("Doppelpunkte", "-en", "-es", "-s") are left alone.
-    rule(#"[ \t,.;]*\bdoppel[ \t-]?punkt(?!(?:e|en|es|s)\b|setzung|zeichen|taste|symbol)(?=\p{L})"#, ": \u{1}"),
+    rule(#"[ \t,.;]*-?\bdoppel[ \t-]?punkt(?!(?:e|en|es|s)\b|setzung|zeichen|taste|symbol)(?=\p{L})"#, ": \u{1}"),
     // "(" keeps one space before it and none after, except at the start of the text or a line,
     // where there is no space before it either. Stray ASR commas and periods around the words go.
     rule(#"(^|\n)[ \t,.;]*\#(openingParen)[ \t,.;]*"#, "$1("),

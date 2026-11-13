@@ -87,6 +87,21 @@ struct SpokenColonMishearingTests {
   }
 }
 
+@Suite("Spoken colon, hyphen glued before the command")
+struct SpokenColonHyphenTests {
+  @Test("Parakeet writes \"Anamnese-Doppelpunkt\"; the hyphen goes with the command")
+  func hyphenBeforeColon() {
+    #expect(LiveDictation.finishPiece("An amnese-Doppelpunkt", mode: .spokenOnly) == "An amnese:")
+    #expect(SpokenPunctuation.apply(to: "Anamnese-Doppelpunkt seit drei Tagen") == "Anamnese: seit drei Tagen")
+    #expect(SpokenPunctuation.apply(to: "Befund-Doppelpunktdruckschmerz") == "Befund: Druckschmerz")
+  }
+
+  @Test("A real hyphen not followed by the command stays")
+  func realHyphenStays() {
+    #expect(SpokenPunctuation.apply(to: "Röntgen-Thorax") == "Röntgen-Thorax")
+  }
+}
+
 /// Cases carried over from the parallel implementation in PR #109.
 @Suite("Spoken punctuation — additional cases")
 struct SpokenPunctuationExtraTests {
