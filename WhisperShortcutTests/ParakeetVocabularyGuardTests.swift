@@ -331,4 +331,23 @@ struct ParakeetVocabularyGuardTests {
         "\(span) -> \(term)")
     }
   }
+
+  @Test("A short abbreviation needs an exact spelling")
+  func rejectsInexactShortTerm() {
+    let terms = ["MdE", "ADL", "GdB", "ACE", "B12"]
+    for (span, term) in [("Mode", "MdE"), ("Adel", "ADL")] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: term), glossaryTerms: terms) == "short-term-not-exact",
+        "\(span) -> \(term)")
+    }
+    for (span, term) in [
+      ("GDB", "GdB"), ("G d B", "GdB"), ("A D L", "ADL"), ("Ace", "ACE"), ("B 12", "B12"),
+    ] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: terms),
+        "\(span) -> \(term)")
+    }
+  }
 }

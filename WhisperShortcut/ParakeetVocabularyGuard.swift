@@ -27,6 +27,8 @@ enum ParakeetVocabularyGuard {
   ///     "Metotrexat" → "Methotrexat" 0.91, "Vers Med V" → "VersMedV" 1.0 pass), and a
   ///     multi-word span that already contains the term as a word is not collapsed onto it
   ///     ("im ADL" → "ADL" would swallow "im"),
+  /// (k) a term of at most four letters/digits needs an exact spelling (casing and spacing
+  ///     aside): "Mode" → "MdE" and "Adel" → "ADL" are different words.
   /// (e) no word of the span is a spoken-punctuation command word
   ///     (`SpokenPunctuation.commandWords`): "Komma" is never rewritten into "Kizomba".
   /// (f) unless the folded span (punctuation stripped) equals the folded term, not every
@@ -64,6 +66,9 @@ enum ParakeetVocabularyGuard {
     let score = similarity(original, term)
     if score < minimumSimilarity {
       return "similarity \(String(format: "%.2f", score))<\(String(format: "%.2f", minimumSimilarity))"
+    }
+    if squashed(term).count <= 4, squashed(original) != squashed(term) {
+      return "short-term-not-exact"
     }
     if hasOppositePrefix(original, term: term) { return "opposite-prefix" }
     if isLongRealWordWithOtherStart(original, term: term) { return "long-real-word-other-start" }
