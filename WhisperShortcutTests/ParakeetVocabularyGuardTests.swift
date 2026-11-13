@@ -314,4 +314,21 @@ struct ParakeetVocabularyGuardTests {
       ParakeetVocabularyGuard.accepts(
         .init(originalSpan: "Metoprollol", term: "Metoprolol"), glossaryTerms: terms))
   }
+
+  @Test("Opposite-meaning prefix swaps are rejected")
+  func rejectsOppositePrefix() {
+    let terms = ["Hypertonie", "Adduktion", "Hypnotherapie"]
+    for (span, term) in [("Hypotonie", "Hypertonie"), ("Abduktion", "Adduktion")] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: term), glossaryTerms: terms) == "opposite-prefix",
+        "\(span) -> \(term)")
+    }
+    for (span, term) in [("Hypnoterapie", "Hypnotherapie"), ("Hypertonje", "Hypertonie")] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: terms),
+        "\(span) -> \(term)")
+    }
+  }
 }

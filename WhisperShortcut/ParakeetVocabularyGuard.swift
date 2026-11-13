@@ -65,6 +65,7 @@ enum ParakeetVocabularyGuard {
     if score < minimumSimilarity {
       return "similarity \(String(format: "%.2f", score))<\(String(format: "%.2f", minimumSimilarity))"
     }
+    if hasOppositePrefix(original, term: term) { return "opposite-prefix" }
     if isLongRealWordWithOtherStart(original, term: term) { return "long-real-word-other-start" }
     let words = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
     if words.count > wordCount(term),
@@ -95,6 +96,30 @@ enum ParakeetVocabularyGuard {
   }
 
   private static let minimumSimilarity = 0.6
+
+  /// Prefix pairs that flip the meaning ("pra" is "prä" folded).
+  private static let oppositePrefixes: [(String, String)] = [
+    ("hypo", "hyper"), ("ab", "ad"), ("inter", "intra"), ("pra", "post"), ("sub", "supra"),
+  ]
+
+  /// (j) The span and the term start with the two halves of an opposite pair and the rest is the
+  /// same or nearly: "Hypotonie" → "Hypertonie", "Abduktion" → "Adduktion" are not misspellings.
+  private static func hasOppositePrefix(_ span: String, term: String) -> Bool {
+    let a = String(squashed(span))
+    let b = String(squashed(term))
+    for (first, second) in oppositePrefixes {
+      for (p, q) in [(first, second), (second, first)] where a.hasPrefix(p) && b.hasPrefix(q) {
+        let restA = Array(a.dropFirst(p.count))
+        let restB = Array(b.dropFirst(q.count))
+        if restA == restB { return true }
+        let longest = max(restA.count, restB.count)
+        if longest > 0, 1 - Double(editDistance(restA, restB)) / Double(longest) >= 0.8 {
+          return true
+        }
+      }
+    }
+    return false
+  }
 
   /// True when any contiguous run of words of `span`, squashed (punctuation and whitespace
   /// removed, folded), is another glossary term: "weiter Bisoprolol", "Epicondylitis humeri
