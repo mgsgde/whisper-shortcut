@@ -158,8 +158,9 @@ class SpeechService {
   }
 
   // MARK: - Prompt Building
-  /// Dictation system prompt. A non-empty legacy section replaces the built-in core. Otherwise
-  /// the core plus the user's additions. The glossary hint is appended by the caller, after this.
+  /// Dictation system prompt. The user's own legacy section replaces the built-in core.
+  /// A shipped default counts as empty, and then the core plus the user's additions apply.
+  /// The glossary hint is appended by the caller, after this.
   private func buildDictationPrompt() -> String {
     Self.dictationBase(
       additions: SystemPromptsStore.shared.loadDictationAdditions(),
@@ -167,10 +168,23 @@ class SpeechService {
     ).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// Pure dictation base: a non-empty legacy prompt wins; otherwise the core plus additions.
+  /// A legacy full prompt replaces the built-in core only when it is the user's own text.
+  /// Blank text and any wording this app has shipped, including a copy that differs only by
+  /// surrounding whitespace, count as empty so the core and the additions apply.
+  private static func legacyReplacesBuiltIn(_ legacy: String, section: SystemPromptSection) -> Bool {
+    let trimmed = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return false }
+    if SystemPromptDefaultsHistory.isShippedDefault(legacy, for: section) { return false }
+    if SystemPromptDefaultsHistory.isShippedDefault(trimmed, for: section) { return false }
+    return true
+  }
+
+  /// Pure dictation base: the user's own legacy prompt wins. A shipped default counts as empty,
+  /// and then the core plus additions apply.
   static func dictationBase(additions: String, legacy: String) -> String {
-    let trimmedLegacy = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmedLegacy.isEmpty { return trimmedLegacy }
+    if Self.legacyReplacesBuiltIn(legacy, section: .dictation) {
+      return legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     return AppConstants.withUserAdditions(
       core: AppConstants.defaultTranscriptionSystemPrompt,
       additions: additions,
@@ -1230,7 +1244,7 @@ class SpeechService {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty {
       DebugLogger.log("\(logPrefix): Using dictation template")
-    } else if !legacy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    } else if Self.legacyReplacesBuiltIn(legacy, section: .promptMode) {
       DebugLogger.log("\(logPrefix): Using legacy full prompt")
     } else if stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       DebugLogger.log("\(logPrefix): Using base system prompt")
@@ -1258,13 +1272,15 @@ class SpeechService {
   }
 
   /// The base of the Dictate Prompt system prompt. A non-empty template replaces the base for
-  /// this turn. Otherwise a non-empty legacy prompt replaces the built-in core. Otherwise the
-  /// core plus the user's additions (`stored`). Pure, so tests can feed it what a store read.
+  /// this turn. Otherwise the user's own legacy prompt replaces the built-in core. A shipped
+  /// default counts as empty, and then the core plus the user's additions (`stored`) apply.
+  /// Pure, so tests can feed it what a store read.
   static func dictatePromptBase(stored: String, template: String?, legacy: String = "") -> String {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty { return trimmedTemplate }
-    let trimmedLegacy = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmedLegacy.isEmpty { return trimmedLegacy }
+    if Self.legacyReplacesBuiltIn(legacy, section: .promptMode) {
+      return legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     return AppConstants.withUserAdditions(
       core: AppConstants.defaultPromptModeSystemPrompt,
       additions: stored,

@@ -44,7 +44,11 @@ enum SystemPromptSectionGuide {
       result.append(
         "Starts like a whole prompt. The built-in instructions already set the role and task; keep only context, vocabulary and style.")
     }
-    let taskPhrases = ["your task", "deine aufgabe", "your only job", "ignore the", "ignoriere die"]
+    let taskPhrases = [
+      "your task", "deine aufgabe", "your only job",
+      "ignore the selected", "ignore the user", "ignore previous",
+      "ignoriere den markierten", "ignoriere die anweisung", "ignoriere vorherige",
+    ]
     if taskPhrases.contains(where: { folded.contains($0) }) {
       result.append(
         "Redefines the task. Additions cannot change the task; keep only context, vocabulary and style.")

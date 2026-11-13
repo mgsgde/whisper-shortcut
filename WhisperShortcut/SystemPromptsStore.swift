@@ -86,6 +86,15 @@ enum SystemPromptSection: String, CaseIterable {
   static func isRemovedHeader(_ line: String) -> Bool {
     removedHeaders.contains(line.trimmingCharacters(in: .whitespacesAndNewlines))
   }
+
+  /// A header line `=== Name ===`, including sections this build does not know.
+  /// Body scans stop here so an unknown section is not swallowed into the previous one.
+  static func isHeaderLine(_ line: String) -> Bool {
+    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.hasPrefix("=== "), trimmed.hasSuffix(" ===") else { return false }
+    let name = trimmed.dropFirst(4).dropLast(4).trimmingCharacters(in: .whitespacesAndNewlines)
+    return !name.isEmpty
+  }
 }
 
 /// Reads and writes the single system-prompts.md file in UserContext.
@@ -173,8 +182,9 @@ final class SystemPromptsStore {
   }
 
   /// Turns a legacy full prompt into additions. Strips a shipped core when every line of some
-  /// version is still present; otherwise the whole legacy text becomes the additions. The legacy
-  /// section is cleared either way. History source is `.settings`.
+  /// version is still present; otherwise the whole legacy text becomes the additions. Additions
+  /// already stored are kept after the moved text. The legacy section is cleared either way.
+  /// History source is `.settings`.
   @discardableResult
   func convertLegacyToAdditions(_ section: SystemPromptSection) -> Bool {
     guard let pair = section.promptPair else { return false }
@@ -187,8 +197,9 @@ final class SystemPromptsStore {
     guard !legacyText.isEmpty else { return false }
     let sets = SystemPromptDefaultsHistory.shippedLineSets[pair.legacy] ?? []
     let moved = Self.strippingShippedCore(legacyText, lineSets: sets) ?? legacyText
+    let existing = (parsed[pair.additions] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     parsed[pair.legacy] = ""
-    parsed[pair.additions] = moved
+    parsed[pair.additions] = existing.isEmpty ? moved : moved + "\n\n" + existing
     guard write(formatContent(parsed), reason: "convert legacy \(pair.legacy.rawValue) to additions") else { return false }
     recordChanges(from: before, source: .settings)
     NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
@@ -436,33 +447,57 @@ final class SystemPromptsStore {
     }
   }
 
+  /// Serialises the one-time lift and additions migration. `loadSection` runs on the main
+  /// thread and on the loopback server queue; without this, both can pass the flags and a
+  /// write can land between the read and the migration write. `write` takes the same lock.
+  /// Not held while declining proposals or posting `contextFileDidUpdate` (observers call
+  /// back into the store).
+  private let migrationLock = NSLock()
   private var didLiftUnchangedDefaults = false
   private var didMigrateAdditions = false
 
+  /// Outcome of one additions migration pass. `wrote` is true only when the file changed.
+  private struct AdditionsMigrationResult {
+    var wrote = false
+    var superseded = Set<SystemPromptSection>()
+  }
+
   /// Lift unchanged shipped defaults, then migrate legacy full prompts into additions.
   /// Migration runs after the lift so a section that is still a shipped default is on the
-  /// current wording before it is classified.
+  /// current wording before it is classified. The whole pass, including its writes, holds
+  /// `migrationLock` so it runs once and no other write interleaves. Proposal decline is
+  /// scheduled on the main queue after the lock is released, never via `main.sync`.
   private func prepareFile() {
-    liftUnchangedDefaultsOnce()
-    migrateAdditionsOnce()
+    migrationLock.lock()
+    let liftWrote = liftUnchangedDefaultsOnce()
+    let migration = migrateAdditionsOnce()
+    migrationLock.unlock()
+    if liftWrote || migration.wrote {
+      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    }
+    guard !migration.superseded.isEmpty else { return }
+    let sections = migration.superseded
+    let decline = declineLegacyProposals
+    DispatchQueue.main.async {
+      decline?(sections)
+    }
   }
 
   /// Once per launch: sections the user never edited — still equal to some default this app has
   /// shipped before — are rewritten to the current default. Without this, a default that changes
   /// in an update stays frozen at whatever wording was materialised on first launch (see
   /// `SystemPromptDefaultsHistory`). Edited sections are never touched.
-  private func liftUnchangedDefaultsOnce() {
-    guard !didLiftUnchangedDefaults else { return }
-    guard case .contents(let content) = readFile() else { return }
+  /// Caller holds `migrationLock`. Returns whether the file was written.
+  private func liftUnchangedDefaultsOnce() -> Bool {
+    guard !didLiftUnchangedDefaults else { return false }
+    guard case .contents(let content) = readFile() else { return false }
     didLiftUnchangedDefaults = true
     var parsed = parseSections(from: content)
     let upgrades = SystemPromptDefaultsHistory.upgrades(for: parsed)
-    guard !upgrades.isEmpty else { return }
+    guard !upgrades.isEmpty else { return false }
     for (section, current) in upgrades { parsed[section] = current }
     let names = upgrades.keys.map(\.rawValue).sorted().joined(separator: ", ")
-    if write(formatContent(parsed), reason: "lift unedited default(s): \(names)") {
-      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
-    }
+    return writeAssumingLockHeld(formatContent(parsed), reason: "lift unedited default(s): \(names)")
   }
 
   /// Outcome of classifying one legacy full prompt. `legacy` and `additions` are what to store.
@@ -547,9 +582,10 @@ final class SystemPromptsStore {
   /// the user's extra lines, case 3 leaves the text as a full replacement. Writing the additions
   /// header, even with an empty body, marks that section done. One log line per section, counts
   /// only. Cases 1 and 2 decline pending proposals that still target the legacy section.
-  private func migrateAdditionsOnce() {
-    guard !didMigrateAdditions else { return }
-    guard case .contents(let content) = readFile() else { return }
+  /// Caller holds `migrationLock`. Does not decline proposals or post notifications.
+  private func migrateAdditionsOnce() -> AdditionsMigrationResult {
+    guard !didMigrateAdditions else { return AdditionsMigrationResult() }
+    guard case .contents(let content) = readFile() else { return AdditionsMigrationResult() }
     didMigrateAdditions = true
     var parsed = parseSections(from: content)
     let pairs: [(SystemPromptSection, SystemPromptSection)] = [
@@ -572,14 +608,13 @@ final class SystemPromptsStore {
         superseded.insert(legacy)
       }
     }
-    guard changed else { return }
+    guard changed else { return AdditionsMigrationResult() }
     let before = parseSections(from: content)
-    guard write(formatContent(parsed), reason: "migrate prompt additions") else { return }
-    recordChanges(from: before, source: .migration)
-    if !superseded.isEmpty {
-      declineLegacyProposals?(superseded)
+    guard writeAssumingLockHeld(formatContent(parsed), reason: "migrate prompt additions") else {
+      return AdditionsMigrationResult()
     }
-    NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    recordChanges(from: before, source: .migration)
+    return AdditionsMigrationResult(wrote: true, superseded: superseded)
   }
 
   // MARK: - Change history
@@ -750,9 +785,20 @@ final class SystemPromptsStore {
 
   /// Writes the whole file. If the write changes a section the user customized, the current file is
   /// first copied to `system-prompts.md.bak`; when that copy fails the write is abandoned.
+  /// Takes `migrationLock` so the write cannot land in the middle of lift or migration.
   @discardableResult
   private func write(_ content: String, reason: String) -> Bool {
+    migrationLock.lock()
+    defer { migrationLock.unlock() }
+    return writeAssumingLockHeld(content, reason: reason)
+  }
+
+  /// Caller holds `migrationLock`. Copies forward any `=== Name ===` block this build does not
+  /// know, so a newer app's section is not dropped when this build rewrites the file.
+  private func writeAssumingLockHeld(_ content: String, reason: String) -> Bool {
+    var content = content
     if case .contents(let existing) = readFile() {
+      content = preservingUnknownSections(from: existing, into: content)
       if existing == content { return true }
       if changesCustomizedSection(from: existing, to: content), !backupIsFromCurrentEditBurst() {
         do {
@@ -770,6 +816,48 @@ final class SystemPromptsStore {
     } catch {
       DebugLogger.logError("SYSTEM-PROMPTS: Failed to write (\(reason)): \(error.logDescription)")
       return false
+    }
+  }
+
+  /// Header plus body, up to the next header, for every `=== Name ===` block that is neither a
+  /// known section nor a removed header and that the new content does not already contain.
+  private func preservingUnknownSections(from existing: String, into content: String) -> String {
+    let lines = existing.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    var preserved: [String] = []
+    var index = 0
+    while index < lines.count {
+      let trimmed = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+      guard SystemPromptSection.isHeaderLine(lines[index]) else {
+        index += 1
+        continue
+      }
+      let start = index
+      index += 1
+      while index < lines.count, !SystemPromptSection.isHeaderLine(lines[index]) {
+        index += 1
+      }
+      let unknown = SystemPromptSection.section(forHeader: trimmed) == nil
+        && !SystemPromptSection.isRemovedHeader(trimmed)
+      guard unknown, !Self.containsHeader(trimmed, in: content) else { continue }
+      preserved.append(lines[start..<index].joined(separator: "\n"))
+    }
+    guard !preserved.isEmpty else { return content }
+    var result = content
+    for block in preserved {
+      if result.hasSuffix("\n\n") {
+        result += block
+      } else if result.hasSuffix("\n") {
+        result += "\n" + block
+      } else {
+        result += "\n\n" + block
+      }
+    }
+    return result
+  }
+
+  private static func containsHeader(_ header: String, in content: String) -> Bool {
+    content.split(separator: "\n", omittingEmptySubsequences: false).contains {
+      $0.trimmingCharacters(in: .whitespacesAndNewlines) == header
     }
   }
 
@@ -819,7 +907,7 @@ final class SystemPromptsStore {
         var bodyLines: [String] = []
         i += 1
         while i < lines.count {
-          if SystemPromptSection.section(forHeader: lines[i]) != nil || SystemPromptSection.isRemovedHeader(lines[i]) { break }
+          if SystemPromptSection.isHeaderLine(lines[i]) { break }
           bodyLines.append(lines[i])
           i += 1
         }
@@ -828,7 +916,7 @@ final class SystemPromptsStore {
       } else if SystemPromptSection.isRemovedHeader(line) {
         i += 1
         while i < lines.count {
-          if SystemPromptSection.section(forHeader: lines[i]) != nil || SystemPromptSection.isRemovedHeader(lines[i]) { break }
+          if SystemPromptSection.isHeaderLine(lines[i]) { break }
           i += 1
         }
       } else {

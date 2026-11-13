@@ -244,7 +244,7 @@ struct MCPConfigTools {
     [
       "name": "report_problem",
       "description":
-        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Before calling, read get_configuration; if a section's warnings explain the problem, fix the configuration instead. Saves a report the user reviews in WhisperShortcut; nothing is sent unless they open it as a GitHub issue themselves. Remove names, patient, customer and other private data from the examples.",
+        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Before calling, read get_configuration; if a section's warnings explain the problem, fix the configuration instead. Saves a report the user reviews in WhisperShortcut; nothing is sent unless they open it as a GitHub issue themselves. Remove names, patient, customer and other private data from the examples. The user's prompt configuration is attached automatically; point out names of patients, clients or other personal data in it so the user removes them in the review window before sending.",
       "inputSchema": [
         "type": "object",
         "properties": [

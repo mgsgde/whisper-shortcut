@@ -177,6 +177,7 @@ struct FixedPromptCoreTests {
       kind: .systemPrompt, section: SystemPromptSection.dictation.rawValue,
       proposedContent: "A new rule.", rationale: "because")
     #expect(env.systemPrompts.loadLegacyDictationPrompt() == "")
+    flushMainQueue()
     let resolved = env.proposals.status(of: proposal.id)
     #expect(resolved?.status == .declined)
     #expect(resolved?.resolutionReason == SystemPromptsStore.migrationProposalReason)
@@ -192,6 +193,7 @@ struct FixedPromptCoreTests {
       kind: .systemPrompt, section: SystemPromptSection.promptMode.rawValue,
       proposedContent: "Another.", rationale: "because")
     #expect(env3.systemPrompts.loadLegacyDictatePrompt() == own)
+    flushMainQueue()
     #expect(env3.proposals.status(of: kept.id)?.status == .pending)
   }
 
@@ -290,7 +292,129 @@ struct FixedPromptCoreTests {
     #expect(config != nil && version != nil && config!.lowerBound < version!.lowerBound)
   }
 
+  @Test("convertLegacyToAdditions keeps additions that are already there")
+  func convertMergesExistingAdditions() throws {
+    let dir = try makeDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = SystemPromptsStore(contextDirectoryURL: dir)
+    let legacy = "X custom line"
+    let existing = "Keep me"
+    let text = SystemPromptSection.allCases.map { section -> String in
+      let body: String
+      switch section {
+      case .dictation: body = legacy
+      case .dictationAdditions: body = existing
+      default: body = ""
+      }
+      return section.fileHeader + "\n\n" + body
+    }.joined(separator: "\n\n")
+    try text.write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
+
+    #expect(store.convertLegacyToAdditions(.dictation))
+    #expect(store.loadLegacyDictationPrompt() == "")
+    let additions = store.loadDictationAdditions()
+    #expect(additions.contains(legacy))
+    #expect(additions.contains(existing))
+    #expect(additions == legacy + "\n\n" + existing)
+  }
+
+  @Test("An unknown section survives a rewrite of a known section")
+  func unknownSectionSurvivesWrite() throws {
+    let dir = try makeDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = SystemPromptsStore(contextDirectoryURL: dir)
+    let withFuture = legacyFile(sections: [.chat: "Old chat"]) + "\n\n=== Future Section ===\n\nhello"
+    try withFuture.write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
+
+    #expect(store.updateSection(.chat, content: "Updated chat", source: .settings))
+    let text = try String(contentsOf: store.systemPromptsFileURL, encoding: .utf8)
+    #expect(text.contains("=== Future Section ===\n\nhello"))
+    #expect(store.loadSection(.chat) == "Updated chat")
+    #expect(store.loadSection(.readAloudRewrite)?.contains("hello") != true)
+  }
+
+  @Test("A legacy section that only repeats a shipped default counts as empty")
+  func shippedDefaultLegacyCountsAsEmpty() {
+    let additions = "Be brief."
+    let dictationSandwich = AppConstants.withUserAdditions(
+      core: AppConstants.defaultTranscriptionSystemPrompt, additions: additions,
+      taskReminder: AppConstants.dictationTaskReminder)
+    let shippedDictation = AppConstants.defaultTranscriptionSystemPrompt
+    #expect(SpeechService.dictationBase(additions: additions, legacy: shippedDictation) == dictationSandwich)
+    #expect(
+      SpeechService.dictationBase(additions: additions, legacy: "\n" + shippedDictation + "\n")
+        == dictationSandwich)
+
+    let promptSandwich = AppConstants.withUserAdditions(
+      core: AppConstants.defaultPromptModeSystemPrompt, additions: additions,
+      taskReminder: AppConstants.dictatePromptTaskReminder)
+    let shippedPrompt = AppConstants.defaultPromptModeSystemPrompt
+    #expect(
+      SpeechService.dictatePromptBase(stored: additions, template: nil, legacy: shippedPrompt) == promptSandwich)
+    #expect(
+      SpeechService.dictatePromptBase(stored: additions, template: "  ", legacy: "  \(shippedPrompt)  ")
+        == promptSandwich)
+    #expect(
+      SpeechService.dictatePromptBase(stored: additions, template: "TEMPLATE", legacy: shippedPrompt) == "TEMPLATE")
+  }
+
+  @Test("Ordinary ignore wording is not a task warning")
+  func ignoreWordingIsNotATaskWarning() {
+    #expect(
+      SystemPromptSectionGuide.warnings(
+        for: .dictationAdditions, text: "Ignore the background noise", legacyActive: false
+      ).isEmpty)
+    #expect(
+      SystemPromptSectionGuide.warnings(
+        for: .dictationAdditions, text: "Ignoriere die Füllwörter", legacyActive: false
+      ).isEmpty)
+    let selected = SystemPromptSectionGuide.warnings(
+      for: .dictationAdditions, text: "Ignore the selected text", legacyActive: false)
+    #expect(selected.contains { $0.hasPrefix("Redefines the task") })
+  }
+
+  @Test("A transcript that echoes the additions wrapper is a prompt leak")
+  func preferencesWrapperIsPromptLeak() {
+    #expect(throws: TranscriptionError.promptLeakDetected) {
+      try TextProcessingUtility.validateSpeechText(
+        "Note <user_preferences> be brief", mode: "TRANSCRIPTION-MODE")
+    }
+  }
+
+  @Test("The tune recipe says migration rows are not user removals")
+  func tuneRecipeMentionsMigrationRows() {
+    #expect(
+      MCPTuneRecipe.base.contains(
+        "Rows with source migration come from the app splitting the prompt into built-in instructions and additions; they are not removals by the user."
+      ))
+  }
+
+  @Test("report_problem says the prompt configuration is attached")
+  func reportProblemMentionsAttachedPrompts() {
+    let env = MCPTestEnv(level: .apply)
+    let defs = env.tools().toolDefinitions(access: .write)
+    let description = defs.first { ($0["name"] as? String) == "report_problem" }?["description"] as? String
+    #expect(description?.contains("prompt configuration is attached automatically") == true)
+    #expect(description?.contains("patients, clients") == true)
+    #expect(description?.contains("review window") == true)
+  }
+
   // MARK: - Helpers
+
+  /// Migration declines proposals on the main queue after it releases its lock.
+  private func flushMainQueue() {
+    let done = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async { done.signal() }
+    if Thread.isMainThread {
+      let deadline = Date().addingTimeInterval(2)
+      while done.wait(timeout: .now()) == .timedOut, Date() < deadline {
+        RunLoop.current.run(mode: .common, before: Date().addingTimeInterval(0.02))
+      }
+    } else {
+      done.wait()
+    }
+  }
+
 
   private struct Migrated {
     var dir: URL

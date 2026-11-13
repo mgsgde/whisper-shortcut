@@ -6,8 +6,8 @@ import Testing
 
 /// Dictation templates replace the Dictate Prompt system prompt for one compose turn, started by
 /// the template's own shortcut. With none saved, Dictate Prompt is unchanged — these tests never
-/// write a prompt file except the update-survival case, which checks a custom prompt is left
-/// byte-for-byte alone.
+/// write a prompt file except the update-survival case, which checks a custom prompt survives
+/// as legacy text.
 @Suite("Dictation templates", .serialized)
 struct DictationTemplateTests {
 
@@ -16,10 +16,17 @@ struct DictationTemplateTests {
     Gesprochenes "Doppelpunkt" wird zu ":".
     """
 
+  /// Pre-additions file. The additions headers are omitted so the first read still migrates.
   private func fileContent(sections: [SystemPromptSection: String]) -> String {
-    SystemPromptSection.allCases.map { section in
+    let order: [SystemPromptSection] = [.dictation, .whisperGlossary, .promptMode, .chat, .readAloudRewrite]
+    return order.map { section in
       section.fileHeader + "\n\n" + (sections[section] ?? SystemPromptDefaultsHistory.currentDefault(for: section))
     }.joined(separator: "\n\n")
+  }
+
+  private func trimmedDefault(_ section: SystemPromptSection) -> String {
+    SystemPromptDefaultsHistory.currentDefault(for: section)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   /// UserDefaults is process-wide; put back whatever this test found.
@@ -265,8 +272,10 @@ struct DictationTemplateTests {
   }
 
   /// Regression: a custom prompt vanished after an update on 2026-10-19. A fresh store is the
-  /// first launch after that update; its first read runs `liftUnchangedDefaultsOnce`. Saving a
-  /// template list must not touch the prompt file.
+  /// first launch after that update; its first read lifts untouched defaults and migrates a
+  /// pre-additions file. Saving a template list must not touch the prompt file. The custom
+  /// legacy text stays, and every other section body stays with it. The additions headers
+  /// are new, so the file is no longer byte-identical.
   @Test("A custom Dictate Prompt survives an update while templates are saved")
   func customPromptSurvivesUpdateWithTemplates() throws {
     try restoringTemplates {
@@ -276,25 +285,39 @@ struct DictationTemplateTests {
       defer { try? FileManager.default.removeItem(at: dir) }
 
       let fileURL = dir.appendingPathComponent(SystemPromptsStore.fileName)
-      let original = fileContent(sections: [.promptMode: customPrompt])
+      let customDictation = "Keep ward names exactly as spoken."
+      let original = fileContent(sections: [
+        .dictation: customDictation,
+        .promptMode: customPrompt,
+      ])
       try original.write(to: fileURL, atomically: true, encoding: .utf8)
       let before = try Data(contentsOf: fileURL)
 
       DictationTemplateStore.save([
         DictationTemplate(name: "Praxis", instructions: customPrompt)
       ])
+      #expect(try Data(contentsOf: fileURL) == before)
 
       let store = SystemPromptsStore(contextDirectoryURL: dir)
       let loaded = store.loadLegacyDictatePrompt()
       #expect(loaded == customPrompt)
+      #expect(store.loadLegacyDictationPrompt() == customDictation)
+      #expect(store.loadDictationAdditions() == "")
       #expect(store.loadDictatePromptAdditions() == "")
-      #expect(try Data(contentsOf: fileURL) == before)
+      #expect(store.loadSection(.chat) == trimmedDefault(.chat))
+      #expect(store.loadSection(.whisperGlossary) == trimmedDefault(.whisperGlossary))
+      #expect(store.loadSection(.readAloudRewrite) == trimmedDefault(.readAloudRewrite))
+      let migratedText = try String(contentsOf: fileURL, encoding: .utf8)
+      #expect(migratedText.contains("=== Dictation Additions ==="))
+      #expect(migratedText.contains("=== Dictate Prompt Additions ==="))
       #expect(!FileManager.default.fileExists(atPath: store.backupFileURL.path))
       #expect(SpeechService.dictatePromptBase(stored: "", template: nil, legacy: loaded) == customPrompt)
 
+      let migrated = try Data(contentsOf: fileURL)
       let second = SystemPromptsStore(contextDirectoryURL: dir)
+      #expect(second.loadLegacyDictationPrompt() == customDictation)
       #expect(second.loadLegacyDictatePrompt() == customPrompt)
-      #expect(try Data(contentsOf: fileURL) == before)
+      #expect(try Data(contentsOf: fileURL) == migrated)
       #expect(!FileManager.default.fileExists(atPath: second.backupFileURL.path))
     }
   }

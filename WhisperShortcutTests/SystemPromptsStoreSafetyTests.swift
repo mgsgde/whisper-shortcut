@@ -21,10 +21,17 @@ struct SystemPromptsStoreSafetyTests {
     return dir
   }
 
+  /// Pre-additions file. The additions headers are omitted so the first read still migrates.
   private func fileContent(sections: [SystemPromptSection: String]) -> String {
-    SystemPromptSection.allCases.map { section in
+    let order: [SystemPromptSection] = [.dictation, .whisperGlossary, .promptMode, .chat, .readAloudRewrite]
+    return order.map { section in
       section.fileHeader + "\n\n" + (sections[section] ?? SystemPromptDefaultsHistory.currentDefault(for: section))
     }.joined(separator: "\n\n")
+  }
+
+  private func trimmedDefault(_ section: SystemPromptSection) -> String {
+    SystemPromptDefaultsHistory.currentDefault(for: section)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private func read(_ url: URL) -> String? { try? String(contentsOf: url, encoding: .utf8) }
@@ -39,18 +46,31 @@ struct SystemPromptsStoreSafetyTests {
     #expect(store.unreadableReason == nil)
   }
 
-  @Test("An existing custom file is read as is, never replaced by defaults")
+  @Test("An existing custom file keeps its prompt through the additions migration")
   func existingCustomFileSurvives() throws {
     let dir = try makeDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
     let store = SystemPromptsStore(contextDirectoryURL: dir)
-    let original = fileContent(sections: [.promptMode: customPrompt])
+    let customDictation = "Keep ward names exactly as spoken."
+    let original = fileContent(sections: [
+      .dictation: customDictation,
+      .promptMode: customPrompt,
+    ])
     try original.write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
 
     #expect(store.loadSection(.promptMode) == customPrompt)
     #expect(store.loadLegacyDictatePrompt() == customPrompt)
+    #expect(store.loadLegacyDictationPrompt() == customDictation)
+    #expect(store.loadDictationAdditions() == "")
     #expect(store.loadDictatePromptAdditions() == "")
-    #expect(read(store.systemPromptsFileURL)?.contains(customPrompt) == true)
+    #expect(store.loadSection(.chat) == trimmedDefault(.chat))
+    #expect(store.loadSection(.whisperGlossary) == trimmedDefault(.whisperGlossary))
+    #expect(store.loadSection(.readAloudRewrite) == trimmedDefault(.readAloudRewrite))
+    let text = read(store.systemPromptsFileURL) ?? ""
+    #expect(text.contains(customPrompt))
+    #expect(text.contains(customDictation))
+    #expect(text.contains("=== Dictation Additions ==="))
+    #expect(text.contains("=== Dictate Prompt Additions ==="))
     #expect(!FileManager.default.fileExists(atPath: store.backupFileURL.path), "reading must not write a backup")
   }
 
