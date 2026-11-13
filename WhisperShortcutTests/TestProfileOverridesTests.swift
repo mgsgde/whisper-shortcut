@@ -70,6 +70,16 @@ struct TestProfileOverridesTests {
     #expect(parsed.liveAudioFile == nil)
   }
 
+  @Test("--glossary-terms splits on semicolons, trims and drops empties; a normal launch ignores it")
+  func glossaryTerms() {
+    let parsed = TestProfileOverrides.parse(
+      arguments: ["--glossary-terms", "a; b;c;; "], profileActive: true)
+    #expect(parsed.glossaryTerms == ["a", "b", "c"])
+    let normal = TestProfileOverrides.parse(
+      arguments: ["--glossary-terms", "a;b"], profileActive: false)
+    #expect(normal.glossaryTerms == nil)
+  }
+
   @Test("An absolute --live-audio-file is kept, a relative one and a normal launch are not")
   func liveAudioFile() {
     let kept = TestProfileOverrides.parse(

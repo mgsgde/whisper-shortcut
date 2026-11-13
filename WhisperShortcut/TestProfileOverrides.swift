@@ -25,6 +25,7 @@
 //    --audio-file <path>         the try-it panel transcribes this WAV instead of recording.
 //    --live-audio-file <path>    Dictate Live runs from this WAV into a text view (no microphone,
 //                                no Accessibility). Absolute path only, same rule as --audio-file.
+//    --glossary-terms "<a;b;c>"  the Glossary at launch: these terms, separated by `;`, one per line.
 //
 
 import Foundation
@@ -58,6 +59,8 @@ struct TestProfileOverrides: Equatable {
   var audioFile: String?
   /// Absolute path of a WAV Dictate Live should play, or nil. Ignored outside a test profile.
   var liveAudioFile: String?
+  /// Terms the Glossary starts with (trimmed, empties dropped), or nil. Ignored outside a test profile.
+  var glossaryTerms: [String]?
 
   static let none = TestProfileOverrides()
 
@@ -111,7 +114,13 @@ struct TestProfileOverrides: Equatable {
     result.recordingRunning = arguments.contains("--recording-running")
     result.audioFile = value("--audio-file").flatMap { $0.hasPrefix("/") ? $0 : nil }
     result.liveAudioFile = value("--live-audio-file").flatMap { $0.hasPrefix("/") ? $0 : nil }
+    result.glossaryTerms = value("--glossary-terms").map(glossaryTerms)
     return result
+  }
+
+  /// `"a; b;c"` → `["a","b","c"]`.
+  static func glossaryTerms(_ raw: String) -> [String] {
+    raw.split(separator: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
   }
 
   private static func permission(_ raw: String?) -> PermissionStatus? {
@@ -186,6 +195,11 @@ struct TestProfileOverrides: Equatable {
         }
         defaults.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
       }
+    }
+    if let terms = overrides.glossaryTerms {
+      SystemPromptsStore.shared.updateSection(
+        .whisperGlossary, content: terms.joined(separator: "\n"), source: .settings)
+      DebugLogger.log("TEST-PROFILE: glossary set (\(terms.count) terms)")
     }
     DebugLogger.log("TEST-PROFILE: overrides applied \(overrides)")
   }

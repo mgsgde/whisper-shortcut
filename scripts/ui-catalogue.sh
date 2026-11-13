@@ -5,6 +5,7 @@
 #
 #   bash scripts/ui-catalogue.sh dictation-only [--out DIR] [--langs "en de"] [--no-build]
 #                                               [--audio-de WAV] [--audio-en WAV] [--audio-live-de WAV]
+#                                               [--glossary-terms "a;b;c"]
 #                                               [--only SLUG[,SLUG…]]
 #
 # --only captures just those shot slugs (empty: every shot, as before). The block from one
@@ -17,7 +18,8 @@
 # microphone (--audio-file); without --audio-<lang> the script makes one with `say`. A given WAV is
 # copied into the profile's own container at run time only. The German Dictate Live shot
 # (slug live-result) uses --audio-live-de, or a `say` WAV with real pauses, copied the same way
-# after launch because --fresh wipes the container.
+# after launch because --fresh wipes the container. --glossary-terms seeds the Glossary of that
+# live launch only (terms separated by `;`), to benchmark Dictate Live with and without terms.
 #
 # Needs Accessibility and Screen Recording for the terminal (see the run-whisper-shortcut skill).
 # A macOS permission dialog of the profile app itself is photographed, never answered.
@@ -36,6 +38,7 @@ BUILD=true
 AUDIO_DE=""
 AUDIO_EN=""
 AUDIO_LIVE_DE=""
+GLOSSARY_TERMS=""
 ONLY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     --audio-de) AUDIO_DE="$2"; shift ;;
     --audio-en) AUDIO_EN="$2"; shift ;;
     --audio-live-de) AUDIO_LIVE_DE="$2"; shift ;;
+    --glossary-terms) GLOSSARY_TERMS="$2"; shift ;;
     --only) ONLY="${2//[[:space:]]/}"; shift ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
@@ -559,7 +563,9 @@ catalogue_dictation_only() {
     if shot_wanted live-result; then
       live_src="$(live_audio_source)" || exit 1
     fi
-    launch --live-audio-file "$(live_audio_path)"
+    local live_args=(--live-audio-file "$(live_audio_path)")
+    [[ -n "$GLOSSARY_TERMS" ]] && live_args+=(--glossary-terms "$GLOSSARY_TERMS")
+    launch "${live_args[@]}"
     place_live_audio "$live_src" || exit 1
     wait_live_window
     wait_live_result
