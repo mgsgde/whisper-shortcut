@@ -498,7 +498,10 @@ struct DictationOnlyDownloadStep: View {
             .pointerCursorOnHover()
         }
       } else {
-        OfflineModelDownloadCard(modelType: Self.model, startsDownloadOnAppear: true, plainCopy: true)
+        OfflineModelDownloadCard(
+          modelType: Self.model,
+          onReady: { DictationOnlyFlow.warmModel(reason: "download step: model ready") },
+          startsDownloadOnAppear: true, plainCopy: true)
         // Only while something downloads: under a failed or not-started download it was untrue.
         if modelManager.downloadingModels.contains(Self.model) {
           Text("You can continue while it downloads.")
@@ -595,12 +598,20 @@ struct DictationOnlyTestStep: View {
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
         OfflineModelDownloadCard(
-          modelType: DictationOnlyDownloadStep.model, startsDownloadOnAppear: true, plainCopy: true)
+          modelType: DictationOnlyDownloadStep.model,
+          onReady: { DictationOnlyFlow.warmModel(reason: "test step download finished") },
+          startsDownloadOnAppear: true, plainCopy: true)
       }
 
       Spacer(minLength: 0)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .onAppear {
+      if modelReady { DictationOnlyFlow.warmModel(reason: "test step appeared, model on disk") }
+    }
+    .onChange(of: modelReady) { _, ready in
+      if ready { DictationOnlyFlow.warmModel(reason: "test step: model became ready") }
+    }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       micStatus = PermissionStatusChecker.status(for: .microphone)
     }
@@ -771,7 +782,9 @@ struct DictationOnlyDoneStep: View {
             .font(DictationOnlyFont.note)
             .foregroundStyle(.secondary)
           OfflineModelDownloadCard(
-            modelType: DictationOnlyDownloadStep.model, startsDownloadOnAppear: true, plainCopy: true)
+            modelType: DictationOnlyDownloadStep.model,
+            onReady: { DictationOnlyFlow.warmModel(reason: "done step download finished") },
+            startsDownloadOnAppear: true, plainCopy: true)
         }
         .frame(maxWidth: 580, alignment: .leading)
       }

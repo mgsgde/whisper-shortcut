@@ -288,7 +288,7 @@ actor LocalSpeechService {
       // Machine-readable twin of the line above, greppable next to the transcription numbers.
       // On a cold model this load is the single biggest item in front of the transcript, and the
       // only question that matters is whether it lands inside the recording window
-      // (`ConnectionPrewarmer.warmOfflineWhisper`) or after Stop, where the user waits on it.
+      // (`ConnectionPrewarmer.warmOfflineModel`) or after Stop, where the user waits on it.
       DebugLogger.logSpeech(
         "SPEED: LOCAL-SPEECH load model=\(modelType.rawValue) "
           + "loadMs=\(String(format: "%.0f", elapsed * 1000))")
