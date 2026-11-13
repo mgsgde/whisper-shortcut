@@ -3043,7 +3043,9 @@ class MenuBarController: NSObject {
 
   /// One piece through the normal offline path — Parakeet with the Glossary, the glossary-echo
   /// check, then the spoken layout commands. "" when the piece held no speech.
-  private static func decodeLivePiece(
+  /// Internal so the test-profile WAV harness runs this function unchanged. `transcribe` is given
+  /// the URL as-is; the caller passes a copy when the file must survive.
+  static func decodeLivePiece(
     _ url: URL, speechService: SpeechService, punctuationMode: PunctuationMode
   ) async throws -> String {
     do {

@@ -12178,6 +12178,17 @@
         }
       }
     },
+    "Live dictation test" : {
+      "comment" : "Test profile window: Dictate Live fed from a WAV file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test für Live diktieren"
+          }
+        }
+      }
+    },
     "Live meeting" : {
       "localizations" : {
         "de" : {

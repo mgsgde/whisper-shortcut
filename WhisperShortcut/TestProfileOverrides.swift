@@ -23,6 +23,8 @@
 //    --intel                     Live is unavailable (Intel Mac).
 //    --recording-running         a recording is running: switching the mode is refused.
 //    --audio-file <path>         the try-it panel transcribes this WAV instead of recording.
+//    --live-audio-file <path>    Dictate Live runs from this WAV into a text view (no microphone,
+//                                no Accessibility). Absolute path only, same rule as --audio-file.
 //
 
 import Foundation
@@ -54,6 +56,8 @@ struct TestProfileOverrides: Equatable {
   var intelMac = false
   var recordingRunning = false
   var audioFile: String?
+  /// Absolute path of a WAV Dictate Live should play, or nil. Ignored outside a test profile.
+  var liveAudioFile: String?
 
   static let none = TestProfileOverrides()
 
@@ -106,6 +110,7 @@ struct TestProfileOverrides: Equatable {
     result.intelMac = arguments.contains("--intel")
     result.recordingRunning = arguments.contains("--recording-running")
     result.audioFile = value("--audio-file").flatMap { $0.hasPrefix("/") ? $0 : nil }
+    result.liveAudioFile = value("--live-audio-file").flatMap { $0.hasPrefix("/") ? $0 : nil }
     return result
   }
 

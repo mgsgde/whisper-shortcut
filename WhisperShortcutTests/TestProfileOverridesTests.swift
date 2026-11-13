@@ -21,6 +21,7 @@ struct TestProfileOverridesTests {
     "--intel",
     "--recording-running",
     "--audio-file", "/tmp/sample.wav",
+    "--live-audio-file", "/tmp/live.wav",
   ]
 
   @Test("A normal launch ignores every override argument")
@@ -53,15 +54,34 @@ struct TestProfileOverridesTests {
     #expect(parsed.intelMac)
     #expect(parsed.recordingRunning)
     #expect(parsed.audioFile == "/tmp/sample.wav")
+    #expect(parsed.liveAudioFile == "/tmp/live.wav")
     #expect(parsed.preferredLanguages == ["ja-JP"])
   }
 
   @Test("Unknown values and relative audio paths are dropped")
   func unknownValuesDropped() {
     let parsed = TestProfileOverrides.parse(
-      arguments: ["--onboarding-step", "nope", "--globe", "x", "--download", "running:abc", "--audio-file", "rel.wav"],
+      arguments: [
+        "--onboarding-step", "nope", "--globe", "x", "--download", "running:abc",
+        "--audio-file", "rel.wav", "--live-audio-file", "rel.wav",
+      ],
       profileActive: true)
     #expect(parsed == .none)
+    #expect(parsed.liveAudioFile == nil)
+  }
+
+  @Test("An absolute --live-audio-file is kept, a relative one and a normal launch are not")
+  func liveAudioFile() {
+    let kept = TestProfileOverrides.parse(
+      arguments: ["--live-audio-file", "/tmp/live.wav"], profileActive: true)
+    #expect(kept.liveAudioFile == "/tmp/live.wav")
+    let relative = TestProfileOverrides.parse(
+      arguments: ["--live-audio-file", "live.wav"], profileActive: true)
+    #expect(relative.liveAudioFile == nil)
+    #expect(relative == .none)
+    let ignored = TestProfileOverrides.parse(
+      arguments: ["--live-audio-file", "/tmp/live.wav"], profileActive: false)
+    #expect(ignored == .none)
   }
 
   @Test("Full-path steps and download states parse")

@@ -186,6 +186,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     menuBarController = MenuBarController()
     menuBarController?.resumeInterruptedMeetingIfNeeded()
 
+    #if !APP_STORE
+    // Test profile only: Dictate Live from a WAV, after the status item exists. No-op otherwise.
+    TestProfileLiveDictation.startIfRequested()
+    #endif
+
     if let controller = menuBarController {
       selectionServices = SelectionServicesProvider(controller: controller)
       NSApp.servicesProvider = selectionServices
@@ -213,10 +218,13 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           TestProfileOverrides.openRequestedWindow()  // test profile only; no-op otherwise
           if TestProfileOverrides.current.settingsTab != nil {
             // Settings is already open on the requested tab.
-          } else if !hasCompletedOnboarding {
+          } else if !hasCompletedOnboarding, TestProfileOverrides.current.liveAudioFile == nil {
+            // `--live-audio-file` opens its own text window. The Welcome tour would cover it,
+            // and falling through would open Settings on a fresh profile that has no API key.
             WelcomeWindowController.shared.show()
-          } else if !TranscriptionModel.loadSelected().hasRequiredCredential
-            && !DictationOnlyMode.isEnabled
+          } else if TestProfileOverrides.current.liveAudioFile == nil,
+            !TranscriptionModel.loadSelected().hasRequiredCredential,
+            !DictationOnlyMode.isEnabled
           {
             SettingsManager.shared.showSettings(tab: .accounts)
           }
