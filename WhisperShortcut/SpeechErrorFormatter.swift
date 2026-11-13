@@ -526,12 +526,4 @@ struct SpeechErrorFormatter {
     return trimmedFormatted
   }
 
-  /// Returns (shortTitle, body) for popup display for any error.
-  static func titleAndBodyForPopupForUser(_ error: Error) -> (shortTitle: String, body: String) {
-    if let te = error as? TranscriptionError {
-      return titleAndBodyForPopup(te)
-    }
-    return (shortStatusForUser(error), formatForUser(error))
-  }
-
 }

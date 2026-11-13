@@ -168,9 +168,9 @@ struct ChatToolHardeningTests {
   }
 
   @Test func gmailMessageIdsArePathEncoded() {
-    #expect(GmailAPIClient.encodedPathComponent("18c5f3a1b2") == "18c5f3a1b2")
-    #expect(GmailAPIClient.encodedPathComponent("abc/../x") == "abc%2F..%2Fx")
-    #expect(GmailAPIClient.encodedPathComponent("id?x=1#frag") == "id%3Fx%3D1%23frag")
+    #expect("18c5f3a1b2".encodedPathSegment == "18c5f3a1b2")
+    #expect("abc/../x".encodedPathSegment == "abc%2F..%2Fx")
+    #expect("id?x=1#frag".encodedPathSegment == "id%3Fx%3D1%23frag")
   }
 
   @Test func googleTasksErrorLogKeepsKeysNotTitles() throws {

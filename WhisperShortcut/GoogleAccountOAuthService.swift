@@ -1,5 +1,4 @@
 import AuthenticationServices
-import CryptoKit
 import Foundation
 
 @MainActor
@@ -18,26 +17,6 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     isConnected = KeychainManager.shared.has(.googleCalendarRefreshToken)
   }
 
-  // MARK: - PKCE
-
-  private func generateCodeVerifier() -> String {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    return Data(bytes).base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-
-  private func codeChallengeS256(verifier: String) -> String {
-    let data = Data(verifier.utf8)
-    let hash = SHA256.hash(data: data)
-    return Data(hash).base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-
   // MARK: - Authorization
 
   func startAuthorization() async throws {
@@ -45,8 +24,8 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       throw OAuthError.authorizationInProgress
     }
 
-    let verifier = generateCodeVerifier()
-    let challenge = codeChallengeS256(verifier: verifier)
+    let verifier = OAuthCSRF.makeState()
+    let challenge = OAuthCSRF.codeChallengeS256(verifier: verifier)
     let state = OAuthCSRF.makeState()
 
     var components = URLComponents(url: GoogleAccountOAuthConfig.authorizationEndpoint, resolvingAgainstBaseURL: false)!

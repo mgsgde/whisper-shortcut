@@ -199,10 +199,6 @@ struct PrivacySection: View {
 }
 
 extension Notification.Name {
-  /// Posted by failure-path dialogs (AccessibilityPermissionManager, screen-capture failure in
-  /// ChatView, the screenshot popup) to open the Settings window and switch to the Permissions
-  /// tab — the single hub. `SettingsView` observes this and updates `selectedTab`.
-  static let openPrivacyPermissionsTab = Notification.Name("WhisperShortcut.openPrivacyPermissionsTab")
   /// Posted with a `SettingsTab.rawValue` object to switch the Settings sidebar.
   static let openSettingsTab = Notification.Name("WhisperShortcut.openSettingsTab")
   /// Posted when onboarding is finished so the menu bar can hide "Finish setup…".

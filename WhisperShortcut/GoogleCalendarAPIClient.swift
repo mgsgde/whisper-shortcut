@@ -178,7 +178,7 @@ actor GoogleCalendarAPIClient {
       summary: summary, startISO: startISO, endISO: endISO, timeZone: timeZone,
       location: location, description: description, recurrence: recurrence, allDay: allDay)
 
-    let encoded = encodedPathComponent(eventId)
+    let encoded = eventId.encodedPathSegment
     guard let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)") else {
       throw CalendarAPIError.invalidResponse
     }
@@ -230,7 +230,7 @@ actor GoogleCalendarAPIClient {
 
   func deleteEvent(eventId: String) async throws -> [String: Any] {
     DebugLogger.logNetwork("GOOGLE-CALENDAR: deleteEvent id=\(eventId)")
-    let encoded = encodedPathComponent(eventId)
+    let encoded = eventId.encodedPathSegment
     guard let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)") else {
       throw CalendarAPIError.invalidResponse
     }
@@ -432,12 +432,6 @@ actor GoogleCalendarAPIClient {
       }
       return "RRULE:\(trimmed)"
     }
-  }
-
-  private func encodedPathComponent(_ value: String) -> String {
-    var allowed = CharacterSet.urlPathAllowed
-    allowed.remove(charactersIn: "/?#[]@!$&'()*+,;=")
-    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
   }
 
   // MARK: - Errors

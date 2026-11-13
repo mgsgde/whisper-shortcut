@@ -596,20 +596,6 @@ class ChatSessionStore {
     loadFile().sessions.sorted { $0.lastUpdated > $1.lastUpdated }
   }
 
-  func pinSession(id: UUID) {
-    var file = loadFile()
-    guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
-    file.sessions[idx].pinned = true
-    saveSessionsFile(file)
-  }
-
-  func unpinSession(id: UUID) {
-    var file = loadFile()
-    guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }
-    file.sessions[idx].pinned = false
-    saveSessionsFile(file)
-  }
-
   func markSessionAsMeeting(id: UUID, stem: String? = nil) {
     var file = loadFile()
     guard let idx = file.sessions.firstIndex(where: { $0.id == id }) else { return }

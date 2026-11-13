@@ -44,7 +44,7 @@ actor TrelloAPIClient {
 
   func listLists(boardId: String) async throws -> [[String: Any]] {
     DebugLogger.logNetwork("TRELLO: listLists boardId=\(boardId)")
-    let path = "\(baseURL)/boards/\(encodedPathComponent(boardId))/lists"
+    let path = "\(baseURL)/boards/\(boardId.encodedPathSegment)/lists"
     var components = URLComponents(string: path)!
     components.setQueryItemsStrictly([
       URLQueryItem(name: "filter", value: "open"),
@@ -72,9 +72,9 @@ actor TrelloAPIClient {
     DebugLogger.logNetwork("TRELLO: listCards listId=\(listId ?? "-") boardId=\(boardId ?? "-")")
     let path: String
     if let listId {
-      path = "\(baseURL)/lists/\(encodedPathComponent(listId))/cards"
+      path = "\(baseURL)/lists/\(listId.encodedPathSegment)/cards"
     } else if let boardId {
-      path = "\(baseURL)/boards/\(encodedPathComponent(boardId))/cards"
+      path = "\(baseURL)/boards/\(boardId.encodedPathSegment)/cards"
     } else {
       throw TrelloAPIError.invalidRequest("Either list_id or board_id is required")
     }
@@ -148,7 +148,7 @@ actor TrelloAPIClient {
 
   func moveCard(cardId: String, listId: String) async throws -> [String: Any] {
     DebugLogger.logNetwork("TRELLO: moveCard id=\(cardId) listId=\(listId)")
-    var components = URLComponents(string: "\(baseURL)/cards/\(encodedPathComponent(cardId))")!
+    var components = URLComponents(string: "\(baseURL)/cards/\(cardId.encodedPathSegment)")!
     components.setQueryItemsStrictly([URLQueryItem(name: "idList", value: listId)])
     let data = try await authorizedRequest(components: components, httpMethod: "PUT")
     let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
@@ -162,7 +162,7 @@ actor TrelloAPIClient {
 
   func updateCard(cardId: String, name: String? = nil, description: String? = nil, due: String? = nil) async throws -> [String: Any] {
     DebugLogger.logNetwork("TRELLO: updateCard id=\(cardId)")
-    var components = URLComponents(string: "\(baseURL)/cards/\(encodedPathComponent(cardId))")!
+    var components = URLComponents(string: "\(baseURL)/cards/\(cardId.encodedPathSegment)")!
     var items: [URLQueryItem] = []
     if let name { items.append(URLQueryItem(name: "name", value: name)) }
     if let description { items.append(URLQueryItem(name: "desc", value: description)) }
@@ -189,7 +189,7 @@ actor TrelloAPIClient {
   /// is the standard "done with this card" action and is reversible.
   func archiveCard(cardId: String) async throws -> [String: Any] {
     DebugLogger.logNetwork("TRELLO: archiveCard id=\(cardId)")
-    var components = URLComponents(string: "\(baseURL)/cards/\(encodedPathComponent(cardId))")!
+    var components = URLComponents(string: "\(baseURL)/cards/\(cardId.encodedPathSegment)")!
     components.setQueryItemsStrictly([URLQueryItem(name: "closed", value: "true")])
     _ = try await authorizedRequest(components: components, httpMethod: "PUT")
     DebugLogger.logSuccess("TRELLO: archiveCard ok id=\(cardId)")
@@ -261,12 +261,6 @@ actor TrelloAPIClient {
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
     let range = NSRange(text.startIndex..., in: text)
     return regex.stringByReplacingMatches(in: text, range: range, withTemplate: template)
-  }
-
-  private func encodedPathComponent(_ value: String) -> String {
-    var allowed = CharacterSet.urlPathAllowed
-    allowed.remove(charactersIn: "/?#[]@!$&'()*+,;=")
-    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
   }
 
   // MARK: - Errors

@@ -197,10 +197,6 @@ class ChatViewModel: ObservableObject {
     pastedBlocks.append(PastedBlock(content: text, kind: kind))
   }
 
-  func removePastedBlock(id: UUID) {
-    pastedBlocks.removeAll { $0.id == id }
-  }
-
   @Published private(set) var recentSessions: [ChatSession] = []
   @Published private(set) var allSessionsList: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
@@ -760,26 +756,6 @@ class ChatViewModel: ObservableObject {
         DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil; Screen Recording is off")
       }
     }
-  }
-
-  func removePendingScreenshot(at index: Int) {
-    guard index >= 0, index < pendingScreenshots.count else { return }
-    pendingScreenshots.remove(at: index)
-  }
-
-  func clearPendingScreenshots() {
-    pendingScreenshots = []
-  }
-
-  func clearPendingFiles() {
-    pendingFileAttachments = []
-  }
-
-  /// Clears typed text, paste blocks, and file attachments. Pending screenshots are kept.
-  func resetPendingComposerContent() {
-    pastedBlocks = []
-    pendingFileAttachments = []
-    inputText = ""
   }
 
   /// Maximum number of file attachments (images, PDFs, etc.) per message. Self-imposed, not a
