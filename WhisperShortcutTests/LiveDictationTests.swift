@@ -512,3 +512,58 @@ struct LiveDictationTests {
     #expect(LiveDictation.startDecision(mode: mode, unavailable: unavailable) == expected, "\(label)")
   }
 }
+
+@Suite("Dictate Live — glued trailing Punkt")
+struct LiveGluedPunktTests {
+  private static let key = "liveDisableGluedPunktSplit"
+
+  private func spoken(_ text: String) -> String {
+    LiveDictation.finishPiece(text, mode: .spokenOnly)
+  }
+
+  @Test("A glued Punkt on the last word becomes a period")
+  func splitsGlued() {
+    #expect(spoken("Die Haut ist trockenpunkt") == spoken("Die Haut ist trocken Punkt"))
+    #expect(spoken("Die Haut ist trockenpunkt") == "Die Haut ist trocken.")
+    for (glued, apart) in [
+      ("Kein Juckreizpunkt", "Kein Juckreiz Punkt"),
+      ("Der Schmerz ist stechendpunkt", "Der Schmerz ist stechend Punkt"),
+      ("Blutdruckpunkt", "Blutdruck Punkt"),
+      ("Ein roter Fleckpunkt", "Ein roter Fleck Punkt"),
+      ("Schmerzen in Ruhepunkt", "Schmerzen in Ruhe Punkt"),
+      ("Die Schmerzen sitzen im Kniepunkt", "Die Schmerzen sitzen im Knie Punkt"),
+      ("Dann der zweite Satzpunkt", "Dann der zweite Satz Punkt"),
+    ] {
+      #expect(spoken(glued) == spoken(apart), "\(glued)")
+    }
+  }
+
+  @Test("Real compounds and the bare command stay untouched")
+  func keepsRealWords() {
+    for text in [
+      "Im Nacken gibt es einen Triggerpunkt", "Es besteht ein Druckpunkt",
+      "Ein Druckschmerzpunkt", "Zu diesem Zeitpunkt", "Punkt", "Befund Doppelpunkt",
+    ] {
+      #expect(LiveDictation.splittingGluedTrailingPunkt(text) == text, "\(text)")
+    }
+  }
+
+  @Test("Only the last word is looked at")
+  func midPieceUntouched() {
+    #expect(LiveDictation.splittingGluedTrailingPunkt("Kniepunkt und Hüfte") == "Kniepunkt und Hüfte")
+    #expect(spoken("Kniepunkt und Hüfte").contains("Kniepunkt"))
+  }
+
+  @Test("Automatic mode is not touched by the split")
+  func automaticUnchanged() {
+    let text = "Die Haut ist trockenpunkt"
+    #expect(LiveDictation.finishPiece(text, mode: .automatic).contains("trockenpunkt"))
+  }
+
+  @Test("Kill switch turns the split off")
+  func killSwitch() {
+    UserDefaults.standard.set(true, forKey: Self.key)
+    defer { UserDefaults.standard.removeObject(forKey: Self.key) }
+    #expect(LiveDictation.splittingGluedTrailingPunkt("Die Haut ist trockenpunkt") == "Die Haut ist trockenpunkt")
+  }
+}
