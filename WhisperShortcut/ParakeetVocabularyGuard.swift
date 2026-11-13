@@ -27,8 +27,9 @@ enum ParakeetVocabularyGuard {
   ///     "Metotrexat" → "Methotrexat" 0.91, "Vers Med V" → "VersMedV" 1.0 pass), and a
   ///     multi-word span that already contains the term as a word is not collapsed onto it
   ///     ("im ADL" → "ADL" would swallow "im"),
-  /// (k) a term of at most four letters/digits needs an exact spelling (casing and spacing
-  ///     aside): "Mode" → "MdE" and "Adel" → "ADL" are different words.
+  /// (k) a term of at most four letters/digits keeps its length: "Mode" → "MdE" and "Adel" →
+  ///     "ADL" insert or drop a letter, a different word. A single wrong letter ("PMP" → "PNP")
+  ///     is the misrecognition the booster exists for, so a same-length span still passes.
   /// (e) no word of the span is a spoken-punctuation command word
   ///     (`SpokenPunctuation.commandWords`): "Komma" is never rewritten into "Kizomba".
   /// (f) unless the folded span (punctuation stripped) equals the folded term, not every
@@ -67,7 +68,7 @@ enum ParakeetVocabularyGuard {
     if score < minimumSimilarity {
       return "similarity \(String(format: "%.2f", score))<\(String(format: "%.2f", minimumSimilarity))"
     }
-    if squashed(term).count <= 4, squashed(original) != squashed(term) {
+    if squashed(term).count <= 4, squashed(original).count != squashed(term).count {
       return "short-term-not-exact"
     }
     if isInflectedForm(original, term: term) { return "inflected-form" }
