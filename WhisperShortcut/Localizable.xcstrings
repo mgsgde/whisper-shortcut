@@ -27989,6 +27989,106 @@
           }
         }
       }
+    },
+    "Orthopedics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orthopädie"
+          }
+        }
+      }
+    },
+    "Psychiatry & Psychotherapy" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Psychiatrie & Psychotherapie"
+          }
+        }
+      }
+    },
+    "Expert Reports" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gutachten"
+          }
+        }
+      }
+    },
+    "Glossary Starter List" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fachglossar"
+          }
+        }
+      }
+    },
+    "Add Specialist Terms" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fachbegriffe hinzufügen"
+          }
+        }
+      }
+    },
+    "Added %lld terms." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Begriffe hinzugefügt."
+          }
+        }
+      }
+    },
+    "%lld already there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld waren schon da."
+          }
+        }
+      }
+    },
+    "%lld did not fit: the Glossary is full." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld passten nicht mehr, das Glossar ist voll."
+          }
+        }
+      }
+    },
+    "All terms are already in the Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Begriffe stehen schon im Glossar."
+          }
+        }
+      }
+    },
+    "Starter lists of German specialist terms. Remove what you never say." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fachbegriffe als Startpunkt. Löschen Sie, was Sie nie diktieren."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
