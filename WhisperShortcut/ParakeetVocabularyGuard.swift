@@ -87,7 +87,7 @@ enum ParakeetVocabularyGuard {
       if SpokenPunctuation.commandWords.contains(stripped) { return "command-word" }
     }
 
-    if GlossaryDocument.fold(strippingPunctuation(original)) != foldedTerm {
+    if !spelledOut {
       let spanWords = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).compactMap {
         piece -> String? in
         let cleaned = strippingPunctuation(String(piece))

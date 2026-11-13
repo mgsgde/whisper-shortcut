@@ -368,4 +368,11 @@ struct ParakeetVocabularyGuardTests {
         "\(span)")
     }
   }
+
+  @Test("A compound split into two common words is accepted")
+  func acceptsSplitCompound() {
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Hand Gelenk", term: "Handgelenk"), glossaryTerms: ["Handgelenk"]))
+  }
 }
