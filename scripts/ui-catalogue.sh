@@ -64,76 +64,11 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 # SwiftUI buttons here expose no title to Accessibility, so buttons are found by their order in
-# the window's content (depth first), always inside the profile's own process (by pid).
-cat >"$WORK/ax.applescript" <<'APPLESCRIPT'
--- ax <pid> dump | click-button <n, negative from the end> | click-role <AXRole> | set-field <text>
-property hits : {}
-property dumped : {}
-
-on run argv
-  set thePid to (item 1 of argv) as integer
-  set theAct to item 2 of argv
-  set theArg to ""
-  if (count of argv) > 2 then set theArg to item 3 of argv
-  tell application "System Events"
-    set w to window 1 of (first process whose unix id is thePid)
-  end tell
-  set theRole to "AXButton"
-  if theAct is "click-role" then set theRole to theArg
-  if theAct is "set-field" then set theRole to "AXTextField"
-  collect(w, theRole, 0)
-  if theAct is "dump" then
-    set AppleScript's text item delimiters to linefeed
-    return dumped as text
-  end if
-  if (count of hits) is 0 then return "missing"
-  set idx to 1
-  if theAct is "click-button" then set idx to theArg as integer
-  if idx < 0 then set idx to (count of hits) + idx + 1
-  if idx < 1 or idx > (count of hits) then return "missing"
-  set el to item idx of hits
-  tell application "System Events"
-    if theAct is "set-field" then
-      set focused of el to true
-      set value of el to theArg
-    else
-      click el
-    end if
-  end tell
-  return "ok"
-end run
-
-on collect(el, theRole, depth)
-  if depth > 16 then return
-  tell application "System Events"
-    set kids to {}
-    try
-      set kids to UI elements of el
-    end try
-    repeat with c in kids
-      set r to ""
-      try
-        set r to role of c
-      end try
-      set n to ""
-      try
-        set n to (value of attribute "AXTitle" of c) as text
-      end try
-      try
-        if n is "" or n is "missing value" then set n to (name of c) as text
-      end try
-      set end of my dumped to (r & " | " & n)
-      -- Skip the title bar buttons (close, zoom, minimize): they have a subrole.
-      set sr to ""
-      try
-        set sr to (subrole of c) as text
-      end try
-      if r is theRole and sr is not "AXCloseButton" and sr is not "AXZoomButton" and sr is not "AXMinimizeButton" and sr is not "AXFullScreenButton" then set end of my hits to (contents of c)
-      my collect(c, theRole, depth + 1)
-    end repeat
-  end tell
-end collect
-APPLESCRIPT
+# the window's content (depth first), always inside the profile's own process (by pid). The walker
+# is a small Swift helper (AXUIElementCreateApplication(pid)): System Events addresses processes by
+# NAME, and the profile copy is named like the user's daily "WhisperShortcut Dev".
+AXWALK="$WORK/ax-walk"
+swiftc -O "$SCRIPT_DIR/lib/ax-walk.swift" -o "$AXWALK" 2>&1 | tail -n 5 >&2 || true
 
 N=0
 PROFILE=""
@@ -407,7 +342,7 @@ click menu item \"$1\" of menu 1 of menu bar item 1 of menu bar 2" >/dev/null
 # ax_walk dump | click-button <n, negative counts from the end> | click-role <AXRole> | set-field <text>
 ax_walk() {
   [[ "$SKIP_BLOCK" == true ]] && return 0
-  osascript "$WORK/ax.applescript" "$PID" "$@" 2>&1
+  "$AXWALK" "$PID" "$@" 2>&1
 }
 
 click_nth() {
