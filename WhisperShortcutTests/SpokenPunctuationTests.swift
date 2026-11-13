@@ -28,6 +28,32 @@ struct SpokenPunctuationTests {
         == "Erste Zeile\nZweite Zeile")
   }
 
+  /// Parakeet with token timing keeps the comma it already wrote, then the spoken commands run.
+  /// Without timings, stripping would delete that comma and the ", ma" leftover would never
+  /// reach the rule.
+  private func spokenOnly(_ text: String) -> String {
+    SpokenPunctuation.apply(
+      to: SpokenPunctuation.stripModelPunctuation(from: text, timedMarks: true),
+      mode: .spokenOnly, timedMarks: true)
+  }
+
+  @Test("A spoken Komma before a pause comes back as \", ma\"; the leftover word goes")
+  func splitKommaBeforePause() {
+    #expect(spokenOnly("Heute ist ein schöner Tag, ma") == "Heute ist ein schöner Tag,")
+    #expect(spokenOnly("Tag, ma und ich probiere") == "Tag, und ich probiere")
+    let withPeriod = spokenOnly("Tag, ma.")
+    #expect(!withPeriod.contains("ma"))
+    #expect(withPeriod == "Tag,.")
+    #expect(spokenOnly("Komm, Mama kommt") == "Komm, Mama kommt")
+    #expect(spokenOnly("Er sagt, man kann") == "Er sagt, man kann")
+    #expect(spokenOnly("Ich will, mal sehen") == "Ich will, mal sehen")
+    #expect(spokenOnly("Tag, machen wir") == "Tag, machen wir")
+    #expect(spokenOnly("Tag, Ma kommt") == "Tag, Ma kommt")
+    #expect(
+      SpokenPunctuation.apply(to: "Heute ist ein schöner Tag, ma")
+        == "Heute ist ein schöner Tag, ma")
+  }
+
   @Test("A full note: colons and paragraphs together")
   func fullNote() {
     let spoken =

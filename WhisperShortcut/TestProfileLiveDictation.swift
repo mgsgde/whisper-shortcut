@@ -65,6 +65,19 @@ enum TestProfileLiveDictation {
           let copy = FileManager.default.temporaryDirectory
             .appendingPathComponent("live-decode-\(UUID().uuidString).wav")
           try FileManager.default.copyItem(at: url, to: copy)
+          // Second copy: Parakeet's own text, before spoken-mark layout. Also consumed.
+          let copy2 = FileManager.default.temporaryDirectory
+            .appendingPathComponent("live-raw-\(UUID().uuidString).wav")
+          try FileManager.default.copyItem(at: url, to: copy2)
+          let raw: String
+          do {
+            raw = try await speechService.transcribe(
+              audioURL: copy2, cancellable: false, reportsProgress: false,
+              punctuationMode: punctuationMode)
+          } catch TranscriptionError.noSpeechDetected {
+            raw = ""
+          }
+          DebugLogger.log("LIVE-FILE: raw piece=\(url.lastPathComponent) «\(raw)»")
           return try await MenuBarController.decodeLivePiece(
             copy, speechService: speechService, punctuationMode: punctuationMode)
         },

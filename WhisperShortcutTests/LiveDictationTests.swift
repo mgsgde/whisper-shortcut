@@ -54,6 +54,14 @@ struct LiveDictationTests {
     #expect(LiveDictation.finishPiece("befund Punkt", mode: .spokenOnly).hasSuffix("."))
   }
 
+  @Test("Only when spoken: Parakeet's leftover \"ma\" after a spoken Komma goes")
+  func spokenOnlyDropsSplitKomma() {
+    let piece = LiveDictation.finishPiece(
+      "Heute ist ein schöner Tag, ma", mode: .spokenOnly, timedMarks: true)
+    #expect(piece == "Heute ist ein schöner Tag,")
+    #expect(!piece.contains("ma"))
+  }
+
   @Test("Only when spoken: the model's period is kept, its comma is stripped, automatic keeps both")
   func spokenOnlyKeepsModelPeriod() {
     #expect(LiveDictation.finishPiece("Der Befund ist unauffällig.", mode: .spokenOnly) == "Der Befund ist unauffällig.")
