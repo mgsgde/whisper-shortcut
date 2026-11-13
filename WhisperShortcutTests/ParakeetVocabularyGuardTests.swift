@@ -296,4 +296,22 @@ struct ParakeetVocabularyGuardTests {
       ParakeetVocabularyGuard.accepts(
         .init(originalSpan: "Metoprollol", term: "Metoprolol"), glossaryTerms: glossary))
   }
+
+  @Test("Another glossary term hidden by punctuation or a multi-word term blocks the replacement")
+  func rejectsHiddenOtherTerm() {
+    let terms = ["Epicondylitis humeri radialis", "Epicondylitis humeri ulnaris"] + glossary
+    for span in ["Epicondylitis humeri ulnaris,", "bei Epicondylitis humeri ulnaris"] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: "Epicondylitis humeri radialis"), glossaryTerms: terms)
+          == "other-glossary-term",
+        "\(span)")
+    }
+    #expect(
+      !ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "weiter Bisoprolol", term: "Metoprolol"), glossaryTerms: terms))
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Metoprollol", term: "Metoprolol"), glossaryTerms: terms))
+  }
 }

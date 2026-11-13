@@ -53,15 +53,10 @@ enum ParakeetVocabularyGuard {
     if digitRuns(original).contains(where: { !termRuns.contains($0) }) { return "digits" }
 
     let foldedTerm = GlossaryDocument.fold(term)
-    let foldedOtherTerms = Set(
-      glossaryTerms.map { GlossaryDocument.fold($0) }.filter { $0 != foldedTerm })
-    if foldedOtherTerms.contains(GlossaryDocument.fold(original)) { return "other-glossary-term" }
-    for word in original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }) {
-      let stripped = word.trimmingCharacters(in: .punctuationCharacters)
-      if !stripped.isEmpty, foldedOtherTerms.contains(GlossaryDocument.fold(stripped)) {
-        return "other-glossary-term"
-      }
-    }
+    let squashedTerm = String(squashed(term))
+    let otherTerms = Set(
+      glossaryTerms.map { String(squashed($0)) }.filter { !$0.isEmpty && $0 != squashedTerm })
+    if containsOtherTerm(original, otherTerms: otherTerms) { return "other-glossary-term" }
 
     let spelledOut = squashed(original) == squashed(term)
     if !spelledOut, wordCount(original) > wordCount(term) + 1 { return "too-many-words" }
@@ -100,6 +95,20 @@ enum ParakeetVocabularyGuard {
   }
 
   private static let minimumSimilarity = 0.6
+
+  /// True when any contiguous run of words of `span`, squashed (punctuation and whitespace
+  /// removed, folded), is another glossary term: "weiter Bisoprolol", "Epicondylitis humeri
+  /// ulnaris," and "bei Epicondylitis humeri ulnaris" all hide one.
+  private static func containsOtherTerm(_ span: String, otherTerms: Set<String>) -> Bool {
+    let words = span.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).map(String.init)
+    for start in words.indices {
+      for end in start..<words.count {
+        let window = String(squashed(words[start...end].joined(separator: " ")))
+        if !window.isEmpty, otherTerms.contains(window) { return true }
+      }
+    }
+    return false
+  }
 
   /// (i) A span with more words than the term whose first or last word, once removed, makes it
   /// MORE similar to the term has swallowed a neighbour: "kein Metoprollol" → "Metoprolol" would
