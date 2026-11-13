@@ -245,4 +245,151 @@ struct ParakeetVocabularyGuardTests {
         "\(span) -> \(term)")
     }
   }
+
+  @Test("A misheard long term with the same first two letters is accepted")
+  func acceptsMisheardLongTerm() {
+    let terms = ["Röntgenbild", "Hypnotherapie"]
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Rötenbild", term: "Röntgenbild"), glossaryTerms: terms))
+    for span in ["Psychotherapie", "Physiotherapie"] {
+      #expect(
+        !ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: "Hypnotherapie"), glossaryTerms: terms),
+        "\(span) must stay")
+    }
+  }
+
+  @Test("rejectionReason names the first failing rule")
+  func rejectionReasons() {
+    func reason(_ span: String, _ term: String, _ glossary: [String]? = nil) -> String? {
+      ParakeetVocabularyGuard.rejectionReason(
+        .init(originalSpan: span, term: term), glossaryTerms: glossary ?? everydayGlossary)
+    }
+    #expect(reason("Hüfte", "Hüft-TEP") == "leading-part-of-compound")
+    #expect(reason("HbA1c 7,2", "HbA1c", glossary) == "digits")
+    #expect(reason("weiter Bisoprolol", "Metoprolol", glossary) == "other-glossary-term")
+    #expect(reason("erreicht", "Merkzeichen") == "similarity 0.55<0.60")
+    // The similarity floor (0.57) fires before the command-word check ever runs.
+    #expect(reason("Komma", "Kizomba") == "similarity 0.57<0.60")
+    #expect(reason("Komma", "Kommando", everydayGlossary) == "command-word")
+    #expect(reason("weiter", "Seiter") == "all-common-words")
+    #expect(reason("Metotrexat", "Methotrexat") == nil)
+    // Same start on two letters: a misheard term, no longer rejected as a real word.
+    #expect(reason("Rötenbild", "Röntgenbild") == nil)
+    #expect(reason("Psychotherapie", "Hypnotherapie") == "long-real-word-other-start")
+    #expect(reason("Das Rötenbild", "Röntgenbild") == "similarity 0.58<0.60")
+  }
+
+  @Test("A neighbouring word, incl. a negation, is not swallowed")
+  func rejectsExtraNeighbourWord() {
+    for span in ["kein Metoprollol", "ohne Metoprollol", "und Metoprollol"] {
+      #expect(
+        !ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: "Metoprolol"), glossaryTerms: glossary),
+        "\(span)")
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: "Metoprolol"), glossaryTerms: glossary) == "extra-word")
+    }
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Metoprollol", term: "Metoprolol"), glossaryTerms: glossary))
+  }
+
+  @Test("Another glossary term hidden by punctuation or a multi-word term blocks the replacement")
+  func rejectsHiddenOtherTerm() {
+    let terms = ["Epicondylitis humeri radialis", "Epicondylitis humeri ulnaris"] + glossary
+    for span in ["Epicondylitis humeri ulnaris,", "bei Epicondylitis humeri ulnaris"] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: "Epicondylitis humeri radialis"), glossaryTerms: terms)
+          == "other-glossary-term",
+        "\(span)")
+    }
+    #expect(
+      !ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "weiter Bisoprolol", term: "Metoprolol"), glossaryTerms: terms))
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Metoprollol", term: "Metoprolol"), glossaryTerms: terms))
+  }
+
+  @Test("Opposite-meaning prefix swaps are rejected")
+  func rejectsOppositePrefix() {
+    let terms = ["Hypertonie", "Adduktion", "Hypnotherapie"]
+    for (span, term) in [("Hypotonie", "Hypertonie"), ("Abduktion", "Adduktion")] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: term), glossaryTerms: terms) == "opposite-prefix",
+        "\(span) -> \(term)")
+    }
+    for (span, term) in [("Hypnoterapie", "Hypnotherapie"), ("Hypertonje", "Hypertonie")] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: terms),
+        "\(span) -> \(term)")
+    }
+  }
+
+  @Test("A short abbreviation needs an exact spelling")
+  func rejectsInexactShortTerm() {
+    let terms = ["MdE", "ADL", "GdB", "ACE", "B12"]
+    for (span, term) in [("Mode", "MdE"), ("Adel", "ADL")] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: term), glossaryTerms: terms) == "short-term-not-exact",
+        "\(span) -> \(term)")
+    }
+    for (span, term) in [
+      ("GDB", "GdB"), ("G d B", "GdB"), ("A D L", "ADL"), ("Ace", "ACE"), ("B 12", "B12"),
+    ] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: terms),
+        "\(span) -> \(term)")
+    }
+  }
+
+  @Test("A misspelt tail of a hyphenated term is accepted, a leading part is not")
+  func hyphenatedTermTail() {
+    let terms = ["Impingement-Syndrom", "Hüft-TEP"]
+    for (span, term) in [("Impingementsindrom", "Impingement-Syndrom"), ("Hüft-Tepp", "Hüft-TEP")] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: terms),
+        "\(span) -> \(term)")
+    }
+    for span in ["Hüfte", "Hüften"] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: "Hüft-TEP"), glossaryTerms: terms)
+          == "leading-part-of-compound",
+        "\(span)")
+    }
+  }
+
+  @Test("A compound split into two common words is accepted")
+  func acceptsSplitCompound() {
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Hand Gelenk", term: "Handgelenk"), glossaryTerms: ["Handgelenk"]))
+  }
+
+  @Test("An inflected form of a term is not flattened onto it")
+  func rejectsInflectedForm() {
+    let terms = ["Röntgenbild", "GdB"]
+    for span in ["Röntgenbilder", "Röntgenbildes"] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: "Röntgenbild"), glossaryTerms: terms)
+          == "inflected-form",
+        "\(span)")
+    }
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Rötenbild", term: "Röntgenbild"), glossaryTerms: terms))
+    #expect(
+      ParakeetVocabularyGuard.accepts(.init(originalSpan: "GDB", term: "GdB"), glossaryTerms: terms))
+  }
 }

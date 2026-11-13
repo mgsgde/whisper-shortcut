@@ -238,6 +238,18 @@ private actor VocabularyBooster {
       }
       let applied = ParakeetVocabularyGuard.apply(
         to: result.text, replacements: candidates, glossaryTerms: terms)
+      // The span is dictated text (possibly patient data): only a test profile may log it.
+      for candidate in candidates {
+        guard
+          let reason = ParakeetVocabularyGuard.rejectionReason(candidate, glossaryTerms: terms)
+        else { continue }
+        if TestProfile.isActive {
+          DebugLogger.log(
+            "LOCAL-SPEECH: vocabulary rejected «\(candidate.originalSpan)» → «\(candidate.term)» (\(reason))")
+        } else {
+          DebugLogger.log("LOCAL-SPEECH: vocabulary rejected → «\(candidate.term)» (\(reason))")
+        }
+      }
       if applied.rejected > 0 {
         DebugLogger.log(
           "LOCAL-SPEECH: Parakeet vocabulary rejected \(applied.rejected) replacement(s)")

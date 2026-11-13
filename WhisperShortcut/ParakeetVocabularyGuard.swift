@@ -27,6 +27,9 @@ enum ParakeetVocabularyGuard {
   ///     "Metotrexat" → "Methotrexat" 0.91, "Vers Med V" → "VersMedV" 1.0 pass), and a
   ///     multi-word span that already contains the term as a word is not collapsed onto it
   ///     ("im ADL" → "ADL" would swallow "im"),
+  /// (k) a term of at most four letters/digits keeps its length: "Mode" → "MdE" and "Adel" →
+  ///     "ADL" insert or drop a letter, a different word. A single wrong letter ("PMP" → "PNP")
+  ///     is the misrecognition the booster exists for, so a same-length span still passes.
   /// (e) no word of the span is a spoken-punctuation command word
   ///     (`SpokenPunctuation.commandWords`): "Komma" is never rewritten into "Kizomba".
   /// (f) unless the folded span (punctuation stripped) equals the folded term, not every
@@ -38,67 +41,139 @@ enum ParakeetVocabularyGuard {
   ///     into the whole term: "Hüfte" → "Hüft-TEP" would add a "TEP" nobody said. The speaker
   ///     says the compound in pieces ("Hüft TEP", two words) when they mean it.
   static func accepts(_ replacement: Replacement, glossaryTerms: [String]) -> Bool {
+    rejectionReason(replacement, glossaryTerms: glossaryTerms) == nil
+  }
+
+  /// Runs the checks of `accepts` in the same order and names the first one that fails
+  /// ("digits", "similarity 0.55<0.60", ...), or nil when the replacement is accepted.
+  static func rejectionReason(_ replacement: Replacement, glossaryTerms: [String]) -> String? {
     let original = replacement.originalSpan
     let term = replacement.term
 
-    if isOnlyLeadingPartOfCompound(original, term: term) { return false }
+    if isOnlyLeadingPartOfCompound(original, term: term) { return "leading-part-of-compound" }
 
     let termRuns = Set(digitRuns(term))
-    if digitRuns(original).contains(where: { !termRuns.contains($0) }) { return false }
+    if digitRuns(original).contains(where: { !termRuns.contains($0) }) { return "digits" }
 
     let foldedTerm = GlossaryDocument.fold(term)
-    let foldedOtherTerms = Set(
-      glossaryTerms.map { GlossaryDocument.fold($0) }.filter { $0 != foldedTerm })
-    if foldedOtherTerms.contains(GlossaryDocument.fold(original)) { return false }
-    for word in original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }) {
-      let stripped = word.trimmingCharacters(in: .punctuationCharacters)
-      if !stripped.isEmpty, foldedOtherTerms.contains(GlossaryDocument.fold(stripped)) {
-        return false
-      }
-    }
+    let squashedTerm = String(squashed(term))
+    let otherTerms = Set(
+      glossaryTerms.map { String(squashed($0)) }.filter { !$0.isEmpty && $0 != squashedTerm })
+    if containsOtherTerm(original, otherTerms: otherTerms) { return "other-glossary-term" }
 
     let spelledOut = squashed(original) == squashed(term)
-    if !spelledOut, wordCount(original) > wordCount(term) + 1 { return false }
+    if !spelledOut, wordCount(original) > wordCount(term) + 1 { return "too-many-words" }
 
-    if similarity(original, term) < minimumSimilarity { return false }
-    if isLongRealWordWithOtherStart(original, term: term) { return false }
+    let score = similarity(original, term)
+    if score < minimumSimilarity {
+      return "similarity \(String(format: "%.2f", score))<\(String(format: "%.2f", minimumSimilarity))"
+    }
+    if squashed(term).count <= 4, squashed(original).count != squashed(term).count {
+      return "short-term-not-exact"
+    }
+    if isInflectedForm(original, term: term) { return "inflected-form" }
+    if hasOppositePrefix(original, term: term) { return "opposite-prefix" }
+    if isLongRealWordWithOtherStart(original, term: term) { return "long-real-word-other-start" }
     let words = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
     if words.count > wordCount(term),
       words.contains(where: {
         GlossaryDocument.fold($0.trimmingCharacters(in: .punctuationCharacters)) == foldedTerm
       })
     {
-      return false
+      return "term-already-in-span"
     }
+    if hasExtraNeighbourWord(original, term: term) { return "extra-word" }
 
     for word in original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }) {
       let stripped = GlossaryDocument.fold(word.trimmingCharacters(in: .punctuationCharacters))
-      if SpokenPunctuation.commandWords.contains(stripped) { return false }
+      if SpokenPunctuation.commandWords.contains(stripped) { return "command-word" }
     }
 
-    if GlossaryDocument.fold(strippingPunctuation(original)) != foldedTerm {
+    if !spelledOut {
       let spanWords = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).compactMap {
         piece -> String? in
         let cleaned = strippingPunctuation(String(piece))
         return cleaned.isEmpty ? nil : cleaned
       }
-      if !spanWords.isEmpty, spanWords.allSatisfy(GermanCommonWords.contains) { return false }
+      if !spanWords.isEmpty, spanWords.allSatisfy(GermanCommonWords.contains) {
+        return "all-common-words"
+      }
     }
-    return true
+    return nil
   }
 
   private static let minimumSimilarity = 0.6
 
+  /// (l) The span is the term plus a German ending ("Röntgenbilder" / "Röntgenbildes" for
+  /// "Röntgenbild"): replacing it would flatten the inflection.
+  private static func isInflectedForm(_ span: String, term: String) -> Bool {
+    let a = String(squashed(span))
+    let b = String(squashed(term))
+    return ["s", "es", "e", "en", "er", "n", "ern"].contains { a == b + $0 }
+  }
+
+  /// Prefix pairs that flip the meaning ("pra" is "prä" folded).
+  private static let oppositePrefixes: [(String, String)] = [
+    ("hypo", "hyper"), ("ab", "ad"), ("inter", "intra"), ("pra", "post"), ("sub", "supra"),
+  ]
+
+  /// (j) The span and the term start with the two halves of an opposite pair and the rest is the
+  /// same or nearly: "Hypotonie" → "Hypertonie", "Abduktion" → "Adduktion" are not misspellings.
+  private static func hasOppositePrefix(_ span: String, term: String) -> Bool {
+    let a = String(squashed(span))
+    let b = String(squashed(term))
+    for (first, second) in oppositePrefixes {
+      for (p, q) in [(first, second), (second, first)] where a.hasPrefix(p) && b.hasPrefix(q) {
+        let restA = Array(a.dropFirst(p.count))
+        let restB = Array(b.dropFirst(q.count))
+        if restA == restB { return true }
+        let longest = max(restA.count, restB.count)
+        if longest > 0, 1 - Double(editDistance(restA, restB)) / Double(longest) >= 0.8 {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  /// True when any contiguous run of words of `span`, squashed (punctuation and whitespace
+  /// removed, folded), is another glossary term: "weiter Bisoprolol", "Epicondylitis humeri
+  /// ulnaris," and "bei Epicondylitis humeri ulnaris" all hide one.
+  private static func containsOtherTerm(_ span: String, otherTerms: Set<String>) -> Bool {
+    let words = span.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).map(String.init)
+    for start in words.indices {
+      for end in start..<words.count {
+        let window = String(squashed(words[start...end].joined(separator: " ")))
+        if !window.isEmpty, otherTerms.contains(window) { return true }
+      }
+    }
+    return false
+  }
+
+  /// (i) A span with more words than the term whose first or last word, once removed, makes it
+  /// MORE similar to the term has swallowed a neighbour: "kein Metoprollol" → "Metoprolol" would
+  /// drop the negation, "im ADL" → "ADL" the "im". A real split ("Wir Belsäule" → "Wirbelsäule",
+  /// "Vers Med V" → "VersMedV") is closest as a whole.
+  private static func hasExtraNeighbourWord(_ span: String, term: String) -> Bool {
+    let words = span.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).map(String.init)
+    guard words.count > wordCount(term) else { return false }
+    let whole = similarity(span, term)
+    let withoutFirst = words.dropFirst().joined(separator: " ")
+    let withoutLast = words.dropLast().joined(separator: " ")
+    return similarity(withoutFirst, term) > whole || similarity(withoutLast, term) > whole
+  }
+
   /// (h) A single long word (>= 8 letters) is a real word of its own, not a misspelt term, unless
-  /// it is nearly the term (similarity >= 0.85) or starts with the same three letters:
-  /// "Psychotherapie" / "Physiotherapie" (0.71 / 0.79) are never rewritten into "Hypnotherapie",
-  /// "Hypnoterapie" still is.
+  /// it is nearly the term (similarity >= 0.85) or starts with the same two letters:
+  /// "Psychotherapie" / "Physiotherapie" (0.71 / 0.79) are never rewritten into "Hypnotherapie"
+  /// ("ps" / "ph" vs "hy"), "Hypnoterapie" still is. "Rötenbild" (0.82) is a misheard
+  /// "Röntgenbild" (same start "rö"), not a real word, so it is accepted.
   private static func isLongRealWordWithOtherStart(_ span: String, term: String) -> Bool {
     guard wordCount(span) == 1 else { return false }
     let word = squashed(span)
     guard word.count >= 8 else { return false }
     if similarity(span, term) >= 0.85 { return false }
-    return word.prefix(3) != squashed(term).prefix(3)
+    return word.prefix(2) != squashed(term).prefix(2)
   }
 
   /// Short everyday words a short all-caps glossary term ("AN", "ES") would otherwise capitalise.
@@ -122,7 +197,14 @@ enum ParakeetVocabularyGuard {
     guard wordCount(span) == 1 else { return false }
     let word = GlossaryDocument.fold(span.trimmingCharacters(in: .punctuationCharacters))
     guard !word.isEmpty, word != parts.joined() else { return false }
-    return word.hasPrefix(head) || head.hasPrefix(word)
+    if word.hasPrefix(head) {
+      // A misspelt tail ("Impingementsindrom" for "Impingement-Syndrom") is the whole term
+      // misheard, not its first part: only a rest unlike the term's tail ("Hüfte" / "Hüft-TEP")
+      // counts as a leading part.
+      let rest = String(word.dropFirst(head.count)).replacingOccurrences(of: "-", with: "")
+      return similarity(rest, parts.dropFirst().joined()) < 0.6
+    }
+    return head.hasPrefix(word)
   }
 
   private static let trailingMarks: Set<Character> = [",", ".", "?", "!"]
