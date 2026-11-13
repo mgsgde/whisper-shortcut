@@ -40,6 +40,10 @@ final class RecordingIndicatorModel: ObservableObject {
   /// The status word next to the spinner / level bars. Names the mode ("Prompting", "Thinking")
   /// so Dictate and Dictate Prompt no longer both read "Listening"/"Transcribing".
   @Published var statusLabel = String(localized: "Listening")
+  /// `.recording` only: the CoreAudio name of the input device the recording captures from
+  /// (AVAudioRecorder always uses the macOS default input). Shown dim in the pill so a wrong
+  /// headset is visible the moment recording starts. nil hides the suffix.
+  @Published var inputDeviceName: String?
   @Published var levels: [CGFloat] = Array(repeating: 0, count: RecordingIndicatorModel.barCount)
   /// `.speaking` only: whether playback is paused.
   @Published var isPaused = false
@@ -768,11 +772,12 @@ struct RecordingIndicatorView: View {
     quickActions: [QuickAction],
     showsQuickActions: Bool,
     hasTemplate: Bool = false,
-    templateChoiceCount: Int = 0
+    templateChoiceCount: Int = 0,
+    inputDeviceName: String? = nil
   ) -> CGSize {
     let cardVisible = showsQuickActions && phase == .recording
       && (!quickActions.isEmpty || hasTemplate)
-    guard cardVisible else { return pillSize(for: phase) }
+    guard cardVisible else { return pillSize(for: phase, inputDeviceName: inputDeviceName) }
     // A template recording lists only the picker's templates, and never the field.
     let height = hasTemplate
       ? QuickActionCardMetrics.height(count: templateChoiceCount, field: false)
@@ -781,23 +786,36 @@ struct RecordingIndicatorView: View {
   }
 
   /// The pill grows with a status word so the user can tell listening from transcribing
-  /// without decoding icons (Wispr Flow Bar / Superwhisper parity).
-  static func pillSize(for phase: RecordingIndicatorPhase) -> CGSize {
+  /// without decoding icons (Wispr Flow Bar / Superwhisper parity). The recording pill also
+  /// grows to name the live microphone (implementer queue row 68, step 1).
+  static func pillSize(for phase: RecordingIndicatorPhase, inputDeviceName: String? = nil) -> CGSize {
     switch phase {
-    case .recording: return CGSize(width: 218, height: 40)
+    case .recording:
+      let deviceExtra = inputDeviceName.map { Self.inputDeviceSuffixWidth($0) } ?? 0
+      return CGSize(width: 218 + deviceExtra, height: 40)
     case .processing: return CGSize(width: 168, height: 40)
     case .speaking: return CGSize(width: 420, height: 40)
     }
   }
 
+  /// Width the dim "· <device>" suffix adds to the recording pill. Capped so an exotic
+  /// device name cannot balloon the pill — the name truncates instead.
+  private static func inputDeviceSuffixWidth(_ name: String) -> CGFloat {
+    let text = NSAttributedString(
+      string: "· \(name)",
+      attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .semibold)])
+    return min(ceil(text.size().width) + 12, 160)
+  }
+
   var body: some View {
-    let pill = Self.pillSize(for: model.phase)
+    let pill = Self.pillSize(for: model.phase, inputDeviceName: model.inputDeviceName)
     let panel = Self.panelSize(
       phase: model.phase,
       quickActions: model.quickActions,
       showsQuickActions: model.quickActionsVisible,
       hasTemplate: model.templateName != nil,
-      templateChoiceCount: model.visibleTemplateChoices.count)
+      templateChoiceCount: model.visibleTemplateChoices.count,
+      inputDeviceName: model.inputDeviceName)
     Group {
       if panel != pill {
         QuickActionCardView(
@@ -838,6 +856,13 @@ struct RecordingIndicatorView: View {
         Text(model.statusLabel)
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
+        if let deviceName = model.inputDeviceName {
+          Text("· \(deviceName)")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(.white.opacity(0.55))
+            .lineLimit(1)
+            .truncationMode(.tail)
+        }
         PillCircleButton(
           symbolName: "checkmark", foreground: .black, background: .white,
           accessibilityLabel: "Stop and process", action: onConfirm)
@@ -1052,6 +1077,9 @@ final class RecordingIndicatorManager {
     }
     model.resetLevels()
     model.statusLabel = label
+    // Read at show time, not once at launch: the default input changes with every
+    // headset connect/disconnect, and the pill must name the device this recording uses.
+    model.inputDeviceName = AudioInputDeviceCatalog.defaultInputDeviceName()
     model.phase = .recording
     orderFrontPanel()
   }
@@ -1489,7 +1517,8 @@ final class RecordingIndicatorManager {
       quickActions: model.quickActions,
       showsQuickActions: model.quickActionsVisible,
       hasTemplate: model.templateName != nil,
-      templateChoiceCount: model.visibleTemplateChoices.count)
+      templateChoiceCount: model.visibleTemplateChoices.count,
+      inputDeviceName: model.inputDeviceName)
     return NSSize(width: size.width, height: size.height)
   }
 
