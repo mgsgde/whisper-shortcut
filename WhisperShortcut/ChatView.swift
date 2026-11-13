@@ -4236,8 +4236,8 @@ struct ChatView: View {
       followsBottom = wasFollowing
       proxy.scrollTo(saved, anchor: .top)
       // A session that was following the bottom is put back on the newest content, not on the
-      // anchor it happened to have: the anchor is only the layout starting point. Only when the
-      // user turned on "Scroll along with new text" in Settings → Chat.
+      // anchor it happened to have: the anchor is only the layout starting point. Only while
+      // "Scroll along with new text" is on (default) in Settings → Chat.
       if wasFollowing && followNewContentEnabled { scrollToBottom(proxy: proxy) }
     } else if viewModel.messages.isEmpty {
       // An empty chat starts at the top, instantly: an animated scroll to the bottom starts from
