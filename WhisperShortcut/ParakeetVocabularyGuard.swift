@@ -70,6 +70,7 @@ enum ParakeetVocabularyGuard {
     if squashed(term).count <= 4, squashed(original) != squashed(term) {
       return "short-term-not-exact"
     }
+    if isInflectedForm(original, term: term) { return "inflected-form" }
     if hasOppositePrefix(original, term: term) { return "opposite-prefix" }
     if isLongRealWordWithOtherStart(original, term: term) { return "long-real-word-other-start" }
     let words = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
@@ -101,6 +102,14 @@ enum ParakeetVocabularyGuard {
   }
 
   private static let minimumSimilarity = 0.6
+
+  /// (l) The span is the term plus a German ending ("Röntgenbilder" / "Röntgenbildes" for
+  /// "Röntgenbild"): replacing it would flatten the inflection.
+  private static func isInflectedForm(_ span: String, term: String) -> Bool {
+    let a = String(squashed(span))
+    let b = String(squashed(term))
+    return ["s", "es", "e", "en", "er", "n", "ern"].contains { a == b + $0 }
+  }
 
   /// Prefix pairs that flip the meaning ("pra" is "prä" folded).
   private static let oppositePrefixes: [(String, String)] = [

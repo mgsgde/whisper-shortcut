@@ -375,4 +375,21 @@ struct ParakeetVocabularyGuardTests {
       ParakeetVocabularyGuard.accepts(
         .init(originalSpan: "Hand Gelenk", term: "Handgelenk"), glossaryTerms: ["Handgelenk"]))
   }
+
+  @Test("An inflected form of a term is not flattened onto it")
+  func rejectsInflectedForm() {
+    let terms = ["Röntgenbild", "GdB"]
+    for span in ["Röntgenbilder", "Röntgenbildes"] {
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: "Röntgenbild"), glossaryTerms: terms)
+          == "inflected-form",
+        "\(span)")
+    }
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Rötenbild", term: "Röntgenbild"), glossaryTerms: terms))
+    #expect(
+      ParakeetVocabularyGuard.accepts(.init(originalSpan: "GDB", term: "GdB"), glossaryTerms: terms))
+  }
 }
