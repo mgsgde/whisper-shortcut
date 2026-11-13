@@ -25,7 +25,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 ## What it does
 
 **Dictation**
-- **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right.
+- **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right. Settings → Dictate offers one-click starter lists of German specialist terms (orthopedics, psychiatry/psychotherapy, expert reports).
 - **Dictate Live**: text appears at the cursor after every short pause while you keep talking (on-device, Apple silicon).
 - **Offline dictation**: [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) transcribes 25 European languages on your Mac in a fraction of a second; Whisper covers the rest.
 
