@@ -388,7 +388,7 @@ audio_source() {
   local given="$AUDIO_EN" voice="Samantha" sentence="Today is a good day to try dictation."
   if [[ "$L" == de ]]; then
     given="$AUDIO_DE"; voice="Anna"
-    sentence="Heute ist ein schöner Tag, und ich probiere das Diktieren aus."
+    sentence="Heute ist ein schöner Tag Komma und ich probiere das Diktieren aus Punkt"
   fi
   if [[ -n "$given" ]]; then printf '%s' "$given"; return; fi
   say -v "$voice" -o "$WORK/say-$L.wav" --data-format=LEI16@16000 "$sentence" 2>/dev/null \
