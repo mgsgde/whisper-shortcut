@@ -1721,6 +1721,18 @@ class SpeechService {
       throw TranscriptionError.noSelectedText
     }
 
+    // Leaked reasoning or a runaway reply is never pasted over the selection. The placeholder is
+    // not the user's instruction, so it must not size the length cap.
+    let replyVerdict = PromptReplyGuard.verdict(
+      reply: normalizedText, selectedText: clipboardContext,
+      instruction: userInstruction == Self.voiceInstructionPlaceholder ? nil : userInstruction)
+    if replyVerdict != .ok {
+      DebugLogger.logWarning(
+        "\(logPrefix): Reply withheld (\(replyVerdict)): \(normalizedText.count) chars, "
+          + "selection \(clipboardContext?.count ?? 0) chars, instruction \(userInstruction.count) chars")
+      throw TranscriptionError.promptReplyRejected
+    }
+
     let latencyMs = Self.milliseconds(since: promptStarted)
     // Offline Mode never replays earlier turns (see the history guard above), so recording them
     // would only keep a patient's selection and reply in memory for no purpose. A template turn
@@ -1823,7 +1835,7 @@ class SpeechService {
 
     if let textInstruction {
       userParts.append(GeminiChatRequest.GeminiChatPart(
-        text: "VOICE INSTRUCTION:\n\(textInstruction)",
+        text: "\(AppConstants.voiceInstructionLabel)\n\(textInstruction)",
         inlineData: nil, fileData: nil, url: nil))
     } else if omitsSilentAudio(selection: clipboardContext) {
       DebugLogger.log(
@@ -1967,7 +1979,7 @@ class SpeechService {
     if let textInstruction {
       userContent.append([
         "type": "text",
-        "text": "VOICE INSTRUCTION:\n\(textInstruction)",
+        "text": "\(AppConstants.voiceInstructionLabel)\n\(textInstruction)",
       ])
     } else if omitsSilentAudio(selection: clipboardContext) {
       DebugLogger.log(
@@ -2041,7 +2053,7 @@ class SpeechService {
         parts.append(["text": selectionBlock])
       }
       if let textInstruction {
-        parts.append(["text": "VOICE INSTRUCTION:\n\(textInstruction)"])
+        parts.append(["text": "\(AppConstants.voiceInstructionLabel)\n\(textInstruction)"])
       } else if let audioPayload {
         if Self.additionalDictationHeader(
           turnKind: promptTurnKind, hasSelection: clipboardContext != nil) != nil {
@@ -2294,8 +2306,26 @@ class SpeechService {
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
       }
       let transcript = correctingRejectedSpellings(in: stripped)
-      instruction = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
+      var heard = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
+      // A template turn's dictation is content, not a command, so neither check applies to it.
+      if !heard.isEmpty, !promptTurnKind.isTemplate {
+        if PromptInstructionGuard.isNotUnderstood(heard) {
+          DebugLogger.logWarning(
+            "PROMPT-MODE-LOCAL: Transcribed instruction (\(heard.count) chars) is not an instruction — not calling the model")
+          ContextLogger.shared.logSignal(
+            .promptNoSelection, mode: InteractionMode.prompt.rawValue,
+            detail: ["reason": "instructionNotUnderstood"])
+          throw TranscriptionError.instructionNotUnderstood
+        }
+        if let snapped = PromptInstructionGuard.snapped(
+          heard, savedPrompts: QuickActionStore.storedCustomTexts()), snapped != heard
+        {
+          DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction snapped to a saved quick prompt")
+          heard = snapped
+        }
+      }
+      instruction = heard
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
       if instruction.isEmpty {
         // Nothing left after transcription (e.g. only "Punkt" spoken): a miss, not a network error —
@@ -2342,7 +2372,7 @@ class SpeechService {
       }
     } else {
       if !userText.isEmpty { userText += "\n\n" }
-      userText += "VOICE INSTRUCTION:\n\(instruction)"
+      userText += "\(AppConstants.voiceInstructionLabel)\n\(instruction)"
     }
 
     var contents: [[String: Any]] = envelope.history.map {

@@ -1111,6 +1111,14 @@ enum TranscriptionError: Error, Equatable {
   /// offers a manual Retry, but is not auto-retryable. Appended last for the index-logging reason
   /// above.
   case localModelFailed(String)
+  /// Dictate Prompt: the model's reply was withheld by `PromptReplyGuard` (it quoted the request
+  /// scaffold, or ran far past any plausible length). Nothing was pasted; the recording is kept and
+  /// the run is retryable. Appended last for the index-logging reason above.
+  case promptReplyRejected
+  /// Dictate Prompt: the transcribed instruction was a mis-transcription (`PromptInstructionGuard`).
+  /// Nothing was sent to the model and nothing changed. Not retryable: the same audio would give the
+  /// same transcript. Appended last for the index-logging reason above.
+  case instructionNotUnderstood
 
   var title: String {
     switch self {
@@ -1144,6 +1152,8 @@ enum TranscriptionError: Error, Equatable {
     case .localProcessingTimeout: return String(localized: "Local Processing Timeout")
     case .emptyModelReply: return String(localized: "No Reply")
     case .localModelFailed: return String(localized: "Offline Model Error")
+    case .promptReplyRejected: return String(localized: "Reply Not Pasted")
+    case .instructionNotUnderstood: return String(localized: "Instruction Not Understood")
     }
   }
 
@@ -1176,7 +1186,7 @@ enum TranscriptionError: Error, Equatable {
   var isRetryable: Bool {
     switch self {
     // Retryable errors (temporary issues)
-    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown, .emptyModelReply:
+    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown, .emptyModelReply, .promptReplyRejected:
       return true
     // Rate limited and quota exceeded are retryable if we have a retry delay
     case .rateLimited(let retryAfter, _, _):
@@ -1184,7 +1194,7 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .localModelFailed, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .localModelFailed, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText, .instructionNotUnderstood:
       return false
     }
   }
