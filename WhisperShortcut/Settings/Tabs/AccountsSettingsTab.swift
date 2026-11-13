@@ -9,6 +9,9 @@ import SwiftUI
 struct AccountsSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
+  /// Observed so the "Always allowed" section and its divider appear once the first action is
+  /// allowed for good, and vanish with the last one.
+  @ObservedObject private var alwaysAllow = ChatToolAlwaysAllow.shared
 
   // Only the Google key is mirrored on `SettingsViewModel` (its save path runs through
   // `saveSettings`); the other three are owned by their section and persisted straight to the
@@ -79,6 +82,11 @@ struct AccountsSettingsTab: View {
       SpacedSectionDivider()
 
       MailAccountsSection()
+
+      if !alwaysAllow.toolNames.isEmpty {
+        SpacedSectionDivider()
+        AlwaysAllowedActionsSection()
+      }
     }
   }
 }

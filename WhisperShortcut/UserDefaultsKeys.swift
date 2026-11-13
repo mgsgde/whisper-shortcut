@@ -14,6 +14,9 @@ enum UserDefaultsKeys {
   /// array of session UUID strings. Without it a tab switch back to a live conversation stopped
   /// the autoscroll, because a bottom-read session still has a top message.
   static let chatScrollFollowing = "chatScrollFollowing"
+  /// Tool names the user chose "Always allow" for, stored as `[String]`. Later calls skip the
+  /// approval card in every chat. See `ChatToolAlwaysAllow`.
+  static let chatAlwaysAllowedTools = "chatAlwaysAllowedTools"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"
