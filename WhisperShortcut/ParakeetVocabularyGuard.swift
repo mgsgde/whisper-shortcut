@@ -79,6 +79,7 @@ enum ParakeetVocabularyGuard {
     {
       return "term-already-in-span"
     }
+    if hasExtraNeighbourWord(original, term: term) { return "extra-word" }
 
     for word in original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }) {
       let stripped = GlossaryDocument.fold(word.trimmingCharacters(in: .punctuationCharacters))
@@ -99,6 +100,19 @@ enum ParakeetVocabularyGuard {
   }
 
   private static let minimumSimilarity = 0.6
+
+  /// (i) A span with more words than the term whose first or last word, once removed, makes it
+  /// MORE similar to the term has swallowed a neighbour: "kein Metoprollol" → "Metoprolol" would
+  /// drop the negation, "im ADL" → "ADL" the "im". A real split ("Wir Belsäule" → "Wirbelsäule",
+  /// "Vers Med V" → "VersMedV") is closest as a whole.
+  private static func hasExtraNeighbourWord(_ span: String, term: String) -> Bool {
+    let words = span.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).map(String.init)
+    guard words.count > wordCount(term) else { return false }
+    let whole = similarity(span, term)
+    let withoutFirst = words.dropFirst().joined(separator: " ")
+    let withoutLast = words.dropLast().joined(separator: " ")
+    return similarity(withoutFirst, term) > whole || similarity(withoutLast, term) > whole
+  }
 
   /// (h) A single long word (>= 8 letters) is a real word of its own, not a misspelt term, unless
   /// it is nearly the term (similarity >= 0.85) or starts with the same two letters:

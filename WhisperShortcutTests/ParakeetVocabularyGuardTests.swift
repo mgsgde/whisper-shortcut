@@ -280,4 +280,20 @@ struct ParakeetVocabularyGuardTests {
     #expect(reason("Psychotherapie", "Hypnotherapie") == "long-real-word-other-start")
     #expect(reason("Das Rötenbild", "Röntgenbild") == "similarity 0.58<0.60")
   }
+
+  @Test("A neighbouring word, incl. a negation, is not swallowed")
+  func rejectsExtraNeighbourWord() {
+    for span in ["kein Metoprollol", "ohne Metoprollol", "und Metoprollol"] {
+      #expect(
+        !ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: "Metoprolol"), glossaryTerms: glossary),
+        "\(span)")
+      #expect(
+        ParakeetVocabularyGuard.rejectionReason(
+          .init(originalSpan: span, term: "Metoprolol"), glossaryTerms: glossary) == "extra-word")
+    }
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Metoprollol", term: "Metoprolol"), glossaryTerms: glossary))
+  }
 }
