@@ -90,6 +90,25 @@ class Shortcuts {
       name: .dictationTemplatesChanged,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(dictationOnlyModeChanged),
+      name: .dictationOnlyModeChanged,
+      object: nil
+    )
+  }
+
+  /// "Dictation only" switched: register what the mode now allows. Stored bindings are untouched.
+  @objc private func dictationOnlyModeChanged() {
+    let apply = { [weak self] in
+      guard let self, !self.hotkeysSuspended else { return }
+      self.setupShortcuts(with: self.currentConfig)
+    }
+    if Thread.isMainThread {
+      apply()
+    } else {
+      DispatchQueue.main.async(execute: apply)
+    }
   }
 
   @objc private func recordingStarted(_ notification: Notification) {
@@ -135,6 +154,12 @@ class Shortcuts {
       return
     }
 
+    // "Dictation only" registers the dictation shortcuts alone; stored bindings stay as saved.
+    let dictationOnly = DictationOnlyMode.isEnabled
+    func registers(_ slot: ShortcutSlot) -> Bool {
+      DictationOnlyMode.registersShortcut(slot, enabled: dictationOnly)
+    }
+
     // Create toggle shortcuts (only if enabled)
     if config.startRecording.isEnabled {
       toggleDictationKey = HotKey(
@@ -144,7 +169,7 @@ class Shortcuts {
       }
     }
 
-    if config.startPrompting.isEnabled {
+    if config.startPrompting.isEnabled && registers(.dictatePrompt) {
       togglePromptingKey = HotKey(
         key: config.startPrompting.key, modifiers: config.startPrompting.modifiers)
       togglePromptingKey?.keyDownHandler = { [weak self] in
@@ -153,14 +178,14 @@ class Shortcuts {
     }
 
     #if !APP_STORE
-    if config.addToGlossary.isEnabled {
+    if config.addToGlossary.isEnabled && registers(.addToGlossary) {
       addToGlossaryKey = HotKey(
         key: config.addToGlossary.key, modifiers: config.addToGlossary.modifiers)
       addToGlossaryKey?.keyDownHandler = { [weak self] in
         self?.delegate?.addSelectionToGlossary()
       }
     }
-    if config.liveDictate.isEnabled {
+    if config.liveDictate.isEnabled && registers(.dictateLive) {
       liveDictateKey = HotKey(key: config.liveDictate.key, modifiers: config.liveDictate.modifiers)
       liveDictateKey?.keyDownHandler = { [weak self] in
         self?.delegate?.toggleLiveDictation()
@@ -169,7 +194,7 @@ class Shortcuts {
     #endif
 
     // Create settings shortcut (only if enabled)
-    if config.openSettings.isEnabled {
+    if config.openSettings.isEnabled && registers(.openSettings) {
       openSettingsKey = HotKey(
         key: config.openSettings.key, modifiers: config.openSettings.modifiers)
       openSettingsKey?.keyDownHandler = { [weak self] in
@@ -178,7 +203,7 @@ class Shortcuts {
     }
 
     // Create chat window shortcut (only if enabled)
-    if config.openChat.isEnabled {
+    if config.openChat.isEnabled && registers(.chat) {
       openChatKey = HotKey(
         key: config.openChat.key, modifiers: config.openChat.modifiers)
       openChatKey?.keyDownHandler = { [weak self] in
@@ -187,7 +212,7 @@ class Shortcuts {
     }
 
     // Create screenshot capture shortcut (only if enabled)
-    if config.screenshotCapture.isEnabled {
+    if config.screenshotCapture.isEnabled && registers(.screenshot) {
       screenshotCaptureKey = HotKey(
         key: config.screenshotCapture.key, modifiers: config.screenshotCapture.modifiers)
       screenshotCaptureKey?.keyDownHandler = { [weak self] in
@@ -198,14 +223,14 @@ class Shortcuts {
     // Create Read Aloud shortcut (only if enabled). Selection-based Read Aloud copies via ⌘C
     // (Accessibility), so the global shortcut is omitted from the App Store build.
     #if !APP_STORE
-    if config.readAloud.isEnabled {
+    if config.readAloud.isEnabled && registers(.readAloud) {
       readAloudKey = HotKey(
         key: config.readAloud.key, modifiers: config.readAloud.modifiers)
       readAloudKey?.keyDownHandler = { [weak self] in
         self?.delegate?.readAloud()
       }
     }
-    if config.readAloudPrompt.isEnabled {
+    if config.readAloudPrompt.isEnabled && registers(.readAloudPrompt) {
       readAloudPromptKey = HotKey(
         key: config.readAloudPrompt.key, modifiers: config.readAloudPrompt.modifiers)
       readAloudPromptKey?.keyDownHandler = { [weak self] in
@@ -214,17 +239,17 @@ class Shortcuts {
     }
     #endif
 
-    registerTemplateShortcuts(config)
+    registerTemplateShortcuts(config, enabled: registers(.templates))
   }
 
   /// With no saved templates the list is empty and nothing is registered — the generic template
   /// shortcut stays off too, so a key saved for it does nothing until a template exists.
-  private func registerTemplateShortcuts(_ config: ShortcutConfig) {
+  private func registerTemplateShortcuts(_ config: ShortcutConfig, enabled: Bool) {
     let templates = DictationTemplateStore.load()
     let pickerShortcut = DictationTemplateStore.loadPickerShortcut()
     registeredTemplateFingerprint = DictationTemplateStore.shortcutFingerprint(
       templates: templates, picker: pickerShortcut)
-    guard !templates.isEmpty else { return }
+    guard enabled, !templates.isEmpty else { return }
     let bindings = TemplateShortcuts.activeBindings(
       templates: templates, appConfig: config, pickerShortcut: pickerShortcut)
     var boundIDs = Set<UUID>()

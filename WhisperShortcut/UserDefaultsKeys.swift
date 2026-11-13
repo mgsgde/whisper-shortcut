@@ -191,6 +191,12 @@ enum UserDefaultsKeys {
   /// disk. See `OfflineMode`.
   static let offlineModeEnabled = "offlineModeEnabled"
 
+  // MARK: - Dictation only
+  /// "Dictation only" mode (see `DictationOnlyMode`). Default off.
+  static let dictationOnlyMode = "dictationOnlyMode"
+  /// Set once `DictationOnlyDefaults.apply` ran, so it never runs twice.
+  static let dictationOnlyDefaultsApplied = "dictationOnlyDefaultsApplied"
+
   // MARK: - Opt-in usage statistics (TelemetryService)
   /// The user's "Share anonymous usage statistics" choice. Off unless set.
   static let telemetryEnabled = "telemetryEnabled"

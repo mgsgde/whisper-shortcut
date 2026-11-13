@@ -1705,7 +1705,12 @@ enum SettingsTab: String, CaseIterable {
   }
 
   /// The sidebar's sections, in display order.
-  static var sections: [SettingsSection] { SettingsSection.allCases }
+  static var sections: [SettingsSection] { sections(enabled: DictationOnlyMode.isEnabled) }
+
+  /// Sections that still have a tab while "Dictation only" is `enabled`; empty ones disappear.
+  static func sections(enabled: Bool) -> [SettingsSection] {
+    SettingsSection.allCases.filter { !$0.tabs(enabled: enabled).isEmpty }
+  }
 
   /// A sidebar section header. Purely presentational: it groups tabs, it does not own settings.
   enum SettingsSection: String, CaseIterable {
@@ -1725,8 +1730,11 @@ enum SettingsTab: String, CaseIterable {
     }
 
     /// The tabs shown under this header, in `SettingsTab.allCases` order.
-    var tabs: [SettingsTab] {
-      SettingsTab.allCases.filter { $0.section == self }
+    var tabs: [SettingsTab] { tabs(enabled: DictationOnlyMode.isEnabled) }
+
+    /// `tabs` with "Dictation only" passed in, for tests.
+    func tabs(enabled: Bool) -> [SettingsTab] {
+      DictationOnlyMode.visibleTabs(SettingsTab.allCases, enabled: enabled).filter { $0.section == self }
     }
   }
 }

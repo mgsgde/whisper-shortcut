@@ -14,12 +14,20 @@ import SwiftUI
 struct KeyboardShortcutsSection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
+  /// Bumped when "Dictation only" changes so the rows below are read again.
+  @State private var modeRevision = 0
 
   #if !APP_STORE
   /// Re-read on appear and on app reactivation (the user may have just changed it in System
   /// Settings). The 🌐 setting is `GlobeKeyStatus`, refreshed by `GlobeKeyConflictCard`.
   @State private var hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
   #endif
+
+  /// Whether `slot` is shown: only shortcuts that register are listed while "Dictation only" is on.
+  private func shows(_ slot: ShortcutSlot) -> Bool {
+    _ = modeRevision
+    return DictationOnlyMode.registersShortcut(slot, enabled: DictationOnlyMode.isEnabled)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -34,11 +42,15 @@ struct KeyboardShortcutsSection: View {
       // Literal keys, not `"\(ShortcutAction.x.title):"`: interpolating the English `title`
       // looks up `%@:` and leaves the name untranslated.
       row("Dictate:", $viewModel.data.toggleDictation, .toggleDictation)
-      row("Dictate Prompt:", $viewModel.data.togglePrompting, .togglePrompting)
-      row("Screenshot:", $viewModel.data.screenshotCapture, .screenshotCapture)
+      if shows(.dictatePrompt) {
+        row("Dictate Prompt:", $viewModel.data.togglePrompting, .togglePrompting)
+      }
+      if shows(.screenshot) {
+        row("Screenshot:", $viewModel.data.screenshotCapture, .screenshotCapture)
+      }
 
       // Selection-based shortcuts copy via ⌘C (Accessibility) — not in the App Store build.
-      if ShortcutAction.readAloud.isInThisBuild {
+      if ShortcutAction.readAloud.isInThisBuild && shows(.readAloud) {
         row("Read Aloud:", $viewModel.data.readAloud, .readAloudShortcut)
         row("Read Aloud Prompt:", $viewModel.data.readAloudPrompt, .readAloudPromptShortcut)
       }
@@ -50,12 +62,17 @@ struct KeyboardShortcutsSection: View {
       row("Dictate Live:", $viewModel.data.liveDictate, .liveDictateShortcut)
       #endif
 
-      row("Open Chat:", $viewModel.data.openChat, .toggleChat)
+      if shows(.chat) {
+        row("Open Chat:", $viewModel.data.openChat, .toggleChat)
+      }
       row("Open Settings:", $viewModel.data.openSettings, .toggleSettings)
 
       #if !APP_STORE
       fnKeyToggle
       #endif
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .dictationOnlyModeChanged)) { _ in
+      modeRevision += 1
     }
   }
 
