@@ -101,15 +101,16 @@ enum ParakeetVocabularyGuard {
   private static let minimumSimilarity = 0.6
 
   /// (h) A single long word (>= 8 letters) is a real word of its own, not a misspelt term, unless
-  /// it is nearly the term (similarity >= 0.85) or starts with the same three letters:
-  /// "Psychotherapie" / "Physiotherapie" (0.71 / 0.79) are never rewritten into "Hypnotherapie",
-  /// "Hypnoterapie" still is.
+  /// it is nearly the term (similarity >= 0.85) or starts with the same two letters:
+  /// "Psychotherapie" / "Physiotherapie" (0.71 / 0.79) are never rewritten into "Hypnotherapie"
+  /// ("ps" / "ph" vs "hy"), "Hypnoterapie" still is. "Rötenbild" (0.82) is a misheard
+  /// "Röntgenbild" (same start "rö"), not a real word, so it is accepted.
   private static func isLongRealWordWithOtherStart(_ span: String, term: String) -> Bool {
     guard wordCount(span) == 1 else { return false }
     let word = squashed(span)
     guard word.count >= 8 else { return false }
     if similarity(span, term) >= 0.85 { return false }
-    return word.prefix(3) != squashed(term).prefix(3)
+    return word.prefix(2) != squashed(term).prefix(2)
   }
 
   /// Short everyday words a short all-caps glossary term ("AN", "ES") would otherwise capitalise.

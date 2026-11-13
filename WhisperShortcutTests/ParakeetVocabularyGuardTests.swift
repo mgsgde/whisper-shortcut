@@ -246,6 +246,20 @@ struct ParakeetVocabularyGuardTests {
     }
   }
 
+  @Test("A misheard long term with the same first two letters is accepted")
+  func acceptsMisheardLongTerm() {
+    let terms = ["Röntgenbild", "Hypnotherapie"]
+    #expect(
+      ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Rötenbild", term: "Röntgenbild"), glossaryTerms: terms))
+    for span in ["Psychotherapie", "Physiotherapie"] {
+      #expect(
+        !ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: "Hypnotherapie"), glossaryTerms: terms),
+        "\(span) must stay")
+    }
+  }
+
   @Test("rejectionReason names the first failing rule")
   func rejectionReasons() {
     func reason(_ span: String, _ term: String, _ glossary: [String]? = nil) -> String? {
@@ -261,8 +275,9 @@ struct ParakeetVocabularyGuardTests {
     #expect(reason("Komma", "Kommando", everydayGlossary) == "command-word")
     #expect(reason("weiter", "Seiter") == "all-common-words")
     #expect(reason("Metotrexat", "Methotrexat") == nil)
-    // Recorded as observed on 2026-11-13.
-    #expect(reason("Rötenbild", "Röntgenbild") == "long-real-word-other-start")
+    // Same start on two letters: a misheard term, no longer rejected as a real word.
+    #expect(reason("Rötenbild", "Röntgenbild") == nil)
+    #expect(reason("Psychotherapie", "Hypnotherapie") == "long-real-word-other-start")
     #expect(reason("Das Rötenbild", "Röntgenbild") == "similarity 0.58<0.60")
   }
 }
