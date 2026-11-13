@@ -568,6 +568,30 @@ struct LiveGluedPunktTests {
     }
   }
 
+  @Test("More real compounds stay; Ruhepunkt is split on purpose")
+  func keepsMoreRealWords() {
+    for word in [
+      "Schwachpunkt", "Schlusspunkt", "Kontrapunkt", "Diskussionspunkt", "Anknüpfungspunkt",
+      "Prüfpunkt", "Hochpunkt", "Lichtpunkt", "Einstiegspunkt", "Verbindungspunkt",
+      "Orientierungspunkt", "Höchstpunkt", "Gesprächspunkt", "Verhandlungspunkt",
+      "Abschlusspunkt", "Wiedereinstiegspunkt", "Kreuzungspunkt", "Mittelpunkt", "Streitpunkt",
+    ] {
+      let text = "Das ist der \(word)"
+      #expect(LiveDictation.splittingGluedTrailingPunkt(text) == text, "\(word)")
+      #expect(LiveDictation.splittingGluedTrailingPunkt(text + ".") == text + ".", "\(word).")
+    }
+    #expect(LiveDictation.splittingGluedTrailingPunkt("in Ruhepunkt") == "in Ruhe Punkt")
+  }
+
+  @Test("A glued Punkt followed by the model's own mark is split, the mark kept")
+  func splitsBeforeModelPunctuation() {
+    #expect(
+      LiveDictation.splittingGluedTrailingPunkt("Die Haut ist trockenpunkt.")
+        == "Die Haut ist trocken Punkt.")
+    #expect(spoken("Die Haut ist trockenpunkt.") == "Die Haut ist trocken.")
+    #expect(LiveDictation.splittingGluedTrailingPunkt("Kein Juckreizpunkt?!") == "Kein Juckreiz Punkt?!")
+  }
+
   @Test("Only the last word is looked at")
   func midPieceUntouched() {
     #expect(LiveDictation.splittingGluedTrailingPunkt("Kniepunkt und Hüfte") == "Kniepunkt und Hüfte")

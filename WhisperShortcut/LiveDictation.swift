@@ -141,11 +141,12 @@ enum LiveDictation {
 
   // swiftlint:disable:next force_try
   private static let gluedPunktRegex = try! NSRegularExpression(
-    pattern: #"((\p{L}{2,})punkt)\s*$"#, options: [.caseInsensitive])
+    pattern: #"((\p{L}{2,})punkt)[.,;:!?…]*\s*$"#, options: [.caseInsensitive])
 
   /// Lowercase real German words ending in "punkt" (plus the Dictate-relevant medical ones); a last
   /// word equal to one of these is not split (exact match, not suffix; see
-  /// `splittingGluedTrailingPunkt`).
+  /// `splittingGluedTrailingPunkt`). "ruhepunkt" is left out on purpose: in dictation "in Ruhe
+  /// Punkt" is far likelier than the word.
   static let realPunktCompounds: Set<String> = [
     "zeitpunkt", "schwerpunkt", "standpunkt", "mittelpunkt", "höhepunkt", "treffpunkt",
     "ausgangspunkt", "druckpunkt", "triggerpunkt", "tenderpunkt", "akupunkturpunkt",
@@ -160,6 +161,10 @@ enum LiveDictation {
     "einstichpunkt", "insertionspunkt", "ansatzpunkt", "auslösepunkt",
     "maximalpunkt", "sattelpunkt", "lotpunkt", "fußpunkt", "reizpunkt", "druckschmerzpunkt",
     "knickpunkt", "taupunkt",
+    "schwachpunkt", "schlusspunkt", "kontrapunkt", "diskussionspunkt", "anknüpfungspunkt",
+    "prüfpunkt", "hochpunkt", "lichtpunkt", "einstiegspunkt", "verbindungspunkt",
+    "orientierungspunkt", "höchstpunkt", "gesprächspunkt", "verhandlungspunkt", "abschlusspunkt",
+    "wiedereinstiegspunkt", "kreuzungspunkt",
   ]
 
   /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
