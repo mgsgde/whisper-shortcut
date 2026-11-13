@@ -245,4 +245,24 @@ struct ParakeetVocabularyGuardTests {
         "\(span) -> \(term)")
     }
   }
+
+  @Test("rejectionReason names the first failing rule")
+  func rejectionReasons() {
+    func reason(_ span: String, _ term: String, _ glossary: [String]? = nil) -> String? {
+      ParakeetVocabularyGuard.rejectionReason(
+        .init(originalSpan: span, term: term), glossaryTerms: glossary ?? everydayGlossary)
+    }
+    #expect(reason("Hüfte", "Hüft-TEP") == "leading-part-of-compound")
+    #expect(reason("HbA1c 7,2", "HbA1c", glossary) == "digits")
+    #expect(reason("weiter Bisoprolol", "Metoprolol", glossary) == "other-glossary-term")
+    #expect(reason("erreicht", "Merkzeichen") == "similarity 0.55<0.60")
+    // The similarity floor (0.57) fires before the command-word check ever runs.
+    #expect(reason("Komma", "Kizomba") == "similarity 0.57<0.60")
+    #expect(reason("Komma", "Kommando", everydayGlossary) == "command-word")
+    #expect(reason("weiter", "Seiter") == "all-common-words")
+    #expect(reason("Metotrexat", "Methotrexat") == nil)
+    // Recorded as observed on 2026-11-13.
+    #expect(reason("Rötenbild", "Röntgenbild") == "long-real-word-other-start")
+    #expect(reason("Das Rötenbild", "Röntgenbild") == "similarity 0.58<0.60")
+  }
 }

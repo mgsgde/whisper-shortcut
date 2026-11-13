@@ -38,42 +38,51 @@ enum ParakeetVocabularyGuard {
   ///     into the whole term: "Hüfte" → "Hüft-TEP" would add a "TEP" nobody said. The speaker
   ///     says the compound in pieces ("Hüft TEP", two words) when they mean it.
   static func accepts(_ replacement: Replacement, glossaryTerms: [String]) -> Bool {
+    rejectionReason(replacement, glossaryTerms: glossaryTerms) == nil
+  }
+
+  /// Runs the checks of `accepts` in the same order and names the first one that fails
+  /// ("digits", "similarity 0.55<0.60", ...), or nil when the replacement is accepted.
+  static func rejectionReason(_ replacement: Replacement, glossaryTerms: [String]) -> String? {
     let original = replacement.originalSpan
     let term = replacement.term
 
-    if isOnlyLeadingPartOfCompound(original, term: term) { return false }
+    if isOnlyLeadingPartOfCompound(original, term: term) { return "leading-part-of-compound" }
 
     let termRuns = Set(digitRuns(term))
-    if digitRuns(original).contains(where: { !termRuns.contains($0) }) { return false }
+    if digitRuns(original).contains(where: { !termRuns.contains($0) }) { return "digits" }
 
     let foldedTerm = GlossaryDocument.fold(term)
     let foldedOtherTerms = Set(
       glossaryTerms.map { GlossaryDocument.fold($0) }.filter { $0 != foldedTerm })
-    if foldedOtherTerms.contains(GlossaryDocument.fold(original)) { return false }
+    if foldedOtherTerms.contains(GlossaryDocument.fold(original)) { return "other-glossary-term" }
     for word in original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }) {
       let stripped = word.trimmingCharacters(in: .punctuationCharacters)
       if !stripped.isEmpty, foldedOtherTerms.contains(GlossaryDocument.fold(stripped)) {
-        return false
+        return "other-glossary-term"
       }
     }
 
     let spelledOut = squashed(original) == squashed(term)
-    if !spelledOut, wordCount(original) > wordCount(term) + 1 { return false }
+    if !spelledOut, wordCount(original) > wordCount(term) + 1 { return "too-many-words" }
 
-    if similarity(original, term) < minimumSimilarity { return false }
-    if isLongRealWordWithOtherStart(original, term: term) { return false }
+    let score = similarity(original, term)
+    if score < minimumSimilarity {
+      return "similarity \(String(format: "%.2f", score))<\(String(format: "%.2f", minimumSimilarity))"
+    }
+    if isLongRealWordWithOtherStart(original, term: term) { return "long-real-word-other-start" }
     let words = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
     if words.count > wordCount(term),
       words.contains(where: {
         GlossaryDocument.fold($0.trimmingCharacters(in: .punctuationCharacters)) == foldedTerm
       })
     {
-      return false
+      return "term-already-in-span"
     }
 
     for word in original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }) {
       let stripped = GlossaryDocument.fold(word.trimmingCharacters(in: .punctuationCharacters))
-      if SpokenPunctuation.commandWords.contains(stripped) { return false }
+      if SpokenPunctuation.commandWords.contains(stripped) { return "command-word" }
     }
 
     if GlossaryDocument.fold(strippingPunctuation(original)) != foldedTerm {
@@ -82,9 +91,11 @@ enum ParakeetVocabularyGuard {
         let cleaned = strippingPunctuation(String(piece))
         return cleaned.isEmpty ? nil : cleaned
       }
-      if !spanWords.isEmpty, spanWords.allSatisfy(GermanCommonWords.contains) { return false }
+      if !spanWords.isEmpty, spanWords.allSatisfy(GermanCommonWords.contains) {
+        return "all-common-words"
+      }
     }
-    return true
+    return nil
   }
 
   private static let minimumSimilarity = 0.6
