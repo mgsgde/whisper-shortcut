@@ -84,8 +84,9 @@ agent, scheduled or interactive:
 Owner rulings, in Magnus's words. The user-level `~/.claude/CLAUDE.md` holds the full wording and
 the current daily cap; this table is the repo's copy of the split, not a second source for it.
 
-- „Es soll nicht mehr Fable genutzt werden, es soll überall Opus 5.5 verwendet werden, nicht
-  Fable." (2026-09-28): planning, evaluation, review and every judgment run on **Opus 5.5**.
+- Planning, evaluation, review and every judgment run on **Opus 5.5**.
+- **Fable 5.2 only for the hard thinking, on Magnus's word or an accepted proposal** (2026-11-13, replaces „no Fable"): „entweder ich sage Opus 5.5 … für das und das möchte ich, dass du Fable 5.2 nutzt, weil es wichtig ist, oder Opus 5.5 soll mir den Vorschlag machen und ich akzeptiere".
+  Opus proposes in one line and waits for the yes (important UI component or screen, hard-to-reverse decision, strategy, a problem it failed at twice; never tweaks), then one `Agent` subagent with `model: "fable"` as consultant on a full brief; Opus builds. Never switch a running session to Fable. Full wording: `~/.claude/CLAUDE.md` → Models.
 - „Opus 5.5 fürs Planen und fürs Evaluieren und für die UI … stupide Tätigkeiten wie Typing: Grok
   oder Sonnet" (2026-10-02). „Wann immer Grok aufgebraucht ist, einfach Sonnet verwenden"
   (2026-10-11).
