@@ -198,4 +198,17 @@ struct UserCommandsTests {
     #expect(ChatViewModel.reservedUserCommandNames.contains("improve"))
     #expect(ChatViewModel.commandSuggestions.map(\.command).contains("/improve"))
   }
+
+  @MainActor
+  @Test("A mistyped command is caught and gets the closest command")
+  func unknownSlashCommand() {
+    #expect(ChatViewModel.looksLikeSlashCommand("/improce"))
+    #expect(!ChatViewModel.looksLikeSlashCommand("/usr/bin"))
+    #expect(!ChatViewModel.looksLikeSlashCommand("/improve this please"))
+    #expect(!ChatViewModel.looksLikeSlashCommand("improve"))
+    let commands = ChatViewModel.commandSuggestions.map(\.command)
+    #expect(ChatViewModel.closestCommand(to: "/improce", among: commands) == "/improve")
+    #expect(ChatViewModel.closestCommand(to: "/setings", among: commands) == "/settings")
+    #expect(ChatViewModel.closestCommand(to: "/xyzzyabc", among: commands) == nil)
+  }
 }
