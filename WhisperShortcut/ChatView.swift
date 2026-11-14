@@ -472,13 +472,23 @@ class ChatViewModel: ObservableObject {
       composerText: composerText,
       commands: slashMenuCommands,
       models: PromptModel.chatModels,
-      current: Self.openChatModel,
+      current: currentChatModel,
       needsSetup: { !$0.hasCredential })
   }
 
   /// Switches the chat model from the slash menu's `/model` list.
   func selectChatModel(_ model: PromptModel) {
     switchToModel(model)
+  }
+
+  /// The composer's model picker writes the global model itself; a pick there must also end this
+  /// chat's `/improve` override, or the label would keep naming the override and ignore the click.
+  var hasModelOverride: Bool { session.modelOverride != nil }
+
+  func clearModelOverride() {
+    guard session.modelOverride != nil else { return }
+    session.modelOverride = nil
+    store.save(session)
   }
 
   /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
@@ -688,7 +698,7 @@ class ChatViewModel: ObservableObject {
   }
 
   private func resend(id: UUID, replacingTypedText newText: String?) {
-    guard validateCredential(for: Self.openChatModel) else { return }
+    guard validateCredential(for: currentChatModel) else { return }
     guard !isSending else {
       showNotice("Wait for the current response to finish (or press Stop).")
       return
@@ -724,7 +734,7 @@ class ChatViewModel: ObservableObject {
     // Emitted before the re-send, while `refTs` still points at the answer being rejected: once
     // `performSend` logs the replacement turn, the marker moves on.
     ContextLogger.shared.logSignal(
-      .chatRetry, mode: InteractionMode.chat.rawValue, detail: ["model": Self.openChatModel.rawValue])
+      .chatRetry, mode: InteractionMode.chat.rawValue, detail: ["model": currentChatModel.rawValue])
     performSend(
       content: content, attachedParts: original.attachedImageParts,
       commandName: newText == nil ? original.commandName : nil)
@@ -1106,7 +1116,7 @@ class ChatViewModel: ObservableObject {
         // `ChatViewModel` is `@MainActor`, so this Task inherits MainActor — no explicit hop needed.
         self.processNextQueued()
       }
-      let selectedModel = Self.openChatModel
+      let selectedModel = model(for: sessionId == session.id ? session : (store.session(by: sessionId) ?? session))
       guard validateCredential(for: selectedModel) else { return }
 
       let provider = LLMProviderFactory.provider(for: selectedModel)
@@ -1598,7 +1608,7 @@ class ChatViewModel: ObservableObject {
   /// A busy session no longer blocks an idle one behind it in the global queue.
   private func processNextQueued() {
     // Checked only with work waiting: `validateCredential` raises the banner as a side effect.
-    guard !messageQueue.isEmpty, validateCredential(for: Self.openChatModel) else { return }
+    guard !messageQueue.isEmpty, validateCredential(for: currentChatModel) else { return }
     let (remaining, next) = Self.drainNextQueuedMessage(
       messageQueue,
       isSending: { self.isSendingSession($0) },
@@ -1728,6 +1738,22 @@ class ChatViewModel: ObservableObject {
 
   /// `localModel`: the chat runs on an on-device model, which gets no tools and so cannot read
   /// the log or propose a change.
+  /// Models that run the /improve review reliably (tool use and judgment). Preference order for picking one.
+  static let improvePreferred: [PromptModel] = [.gemini31Pro, .claudeSonnet55, .openaiGPT6Sol]
+  /// Already good enough: when the chat model is one of these, /improve keeps it.
+  static let improveCapable: Set<PromptModel> = [
+    .gemini4Argon, .gemini31Pro, .claudeSonnet55, .claudeOpus55, .openaiGPT6Sol, .openaiGPT61Terra, .grok47,
+  ]
+  enum ImproveModelChoice: Equatable { case keep; case use(PromptModel); case noneAvailable }
+
+  static func improveModelChoice(
+    current: PromptModel, hasCredential: (PromptModel) -> Bool
+  ) -> ImproveModelChoice {
+    if improveCapable.contains(current), hasCredential(current) { return .keep }
+    if let m = improvePreferred.first(where: hasCredential) { return .use(m) }
+    return .noneAvailable
+  }
+
   static func improveAction(offlineMode: Bool, localModel: Bool = false) -> ImproveAction {
     if offlineMode { return .offline }
     if localModel { return .localModel }
@@ -1765,11 +1791,22 @@ class ChatViewModel: ObservableObject {
   /// when it is on, propose one change at a time, apply it only after the user agrees.
   private func handleImproveCommand() async {
     switch Self.improveAction(
-      offlineMode: OfflineMode.isEnabled, localModel: Self.openChatModel.provider == .localMLX)
+      offlineMode: OfflineMode.isEnabled, localModel: currentChatModel.provider == .localMLX)
     {
     case .ask(let request):
+      switch Self.improveModelChoice(
+        current: currentChatModel, hasCredential: { $0.provider.hasCredential })
+      {
+      case .keep:
+        break
+      case .use(let m):
+        session.modelOverride = m.rawValue  // persisted by appendModelMessage's store.save
+        appendModelMessage(verbatim: String(localized: "Improve is running with \(m.displayName). Your usual chat model stays as it is."))
+      case .noneAvailable:
+        appendModelMessage(verbatim: String(localized: "Improve works best with Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol. Add an API key for one of them in Settings to get a more reliable review."))
+      }
       // `sendMessage` only dispatches slash commands; plain text goes out through `sendComposed`.
-      guard validateCredential(for: Self.openChatModel) else { return }
+      guard validateCredential(for: currentChatModel) else { return }
       await sendComposed(finalContent: request, attachedParts: [])
     case .offline:
       appendModelMessage(verbatim: Self.improveOfflineMessage(
@@ -2020,7 +2057,7 @@ class ChatViewModel: ObservableObject {
     if offline {
       // No doc tools offline, so the app's own facts travel in the prompt.
       text += "\n\n---\n\n" + OfflineChatAppContext.current(
-        chatModel: Self.openChatModel,
+        chatModel: model(for: s),
         userMessages: s.messages.filter { $0.role == .user }.map(\.content))
     } else {
       text += toolAndWorkspaceInstructions(for: s, webSearch: webSearch)
@@ -2082,8 +2119,27 @@ class ChatViewModel: ObservableObject {
 
   /// Display name for the current chat model (e.g. "Gemini 3 Flash") for the nav bar.
   var openChatModelDisplayName: String {
-    Self.openChatModel.displayName
+    currentChatModel.displayName
   }
+
+  /// The model a turn in `session` runs on: its `/improve` override when usable, else the global
+  /// chat model. Pure; `hasCredential` is injectable for tests.
+  static func effectiveModel(
+    override: String?, global: PromptModel,
+    hasCredential: (PromptModel) -> Bool = { $0.provider.hasCredential }
+  ) -> PromptModel {
+    guard let override, let m = PromptModel(rawValue: override),
+      m.supportsTextChat, hasCredential(m)
+    else { return global }
+    return m
+  }
+
+  func model(for session: ChatSession) -> PromptModel {
+    Self.effectiveModel(override: session.modelOverride, global: Self.openChatModel)
+  }
+
+  /// The model of the chat on screen (override-aware); `openChatModel` stays the global value.
+  var currentChatModel: PromptModel { model(for: session) }
 
   /// The session a message mutation should write. Nil when `sessionId` is a background
   /// session that is no longer in the store. Inlined on the streaming path: one struct copy,
@@ -2415,7 +2471,7 @@ class ChatViewModel: ObservableObject {
   /// changes the selection.
   @MainActor
   private func handleModelCommand(argument: String) {
-    let current = Self.openChatModel
+    let current = currentChatModel
     let outcome = ChatModelCommandResolver.resolve(
       argument: argument,
       currentSelection: current
@@ -2448,6 +2504,8 @@ class ChatViewModel: ObservableObject {
       return
     }
     Self.persistChatModelSelection(model)
+    // The explicit choice wins in this chat too (persisted by appendModelMessage's store.save).
+    session.modelOverride = nil
     NotificationCenter.default.post(name: .promptModelChanged, object: model)
     // Say it now rather than on the next send, which would fail with the same message.
     let setupHint = model.provider.hasCredential ? "" : " " + model.provider.credentialRequiredMessage
@@ -2704,7 +2762,7 @@ class ChatViewModel: ObservableObject {
       leaving.messages.lazy.filter({ $0.role == .user }).count == 1
     else { return }
     ContextLogger.shared.logSignal(
-      .chatAbandoned, mode: InteractionMode.chat.rawValue, detail: ["reason": reason, "model": Self.openChatModel.rawValue])
+      .chatAbandoned, mode: InteractionMode.chat.rawValue, detail: ["reason": reason, "model": model(for: leaving).rawValue])
   }
 
   /// Pushes a session onto the recently-closed ring buffer if it has any
@@ -4040,7 +4098,7 @@ struct ChatView: View {
           if viewModel.isSending {
             // An offline model that is still downloading or loading says so instead of the dots.
             ChatPendingReplyIndicator(
-              model: ChatViewModel.openChatModel.localMLXModelType,
+              model: viewModel.currentChatModel.localMLXModelType,
               typing: AnyView(LiveTypingIndicatorView(steps: viewModel.currentToolSteps)))
               .allowsHitTesting(false)
           }
@@ -4937,6 +4995,8 @@ struct ChatInputAreaView: View {
   /// power text chat; superseded models resolve to their replacement so the label always
   /// matches an entry in the picker.
   private var resolvedOpenGeminiModel: PromptModel {
+    // `/improve` can run this one chat on another model; the label must name the model that answers.
+    if viewModel.hasModelOverride { return viewModel.currentChatModel }
     let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedChatModelRaw)
     let resolved = PromptModel(rawValue: migratedRaw)
       .map { PromptModel.migrateIfDeprecated($0) }
@@ -5103,7 +5163,7 @@ struct ChatInputAreaView: View {
       Task { await viewModel.sendMessage(userInput: typed) }
       return
     }
-    guard viewModel.validateCredential(for: ChatViewModel.openChatModel) else { return }
+    guard viewModel.validateCredential(for: viewModel.currentChatModel) else { return }
     composer.clearAll()
     Task {
       await viewModel.sendComposed(
@@ -5347,6 +5407,7 @@ struct ChatInputAreaView: View {
                       get: { model == current },
                       set: { _ in
                         selectedChatModelRaw = model.rawValue
+                        viewModel.clearModelOverride()
                         ChatViewModel.recordModelUse(model) // keep autocomplete recency in sync with the picker
                         NotificationCenter.default.post(name: .promptModelChanged, object: model)
                       }))

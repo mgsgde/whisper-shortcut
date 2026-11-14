@@ -171,6 +171,10 @@ struct ChatSession: Codable {
   /// Per-session reasoning intensity set via `/think`. `.default` keeps each model's built-in
   /// thinking config; other levels override it per provider. Persisted so it survives restarts.
   var thinkingLevel: ThinkingLevel
+  /// Per-session chat model (a `PromptModel` rawValue) that beats the global chat model; `nil` =
+  /// use the global one. Set by `/improve` (runs on a tool-reliable model in this chat only),
+  /// cleared by `/model`. Persisted so it survives restarts.
+  var modelOverride: String?
   /// Per-session narrowing of the shared workspace folders, set via `/workspace`.
   /// `nil` = every shared folder (the default); `[]` = no file access and no context files in
   /// this chat; a non-empty list = only those display paths. The nil-vs-empty distinction
@@ -180,7 +184,7 @@ struct ChatSession: Codable {
   /// switched tabs before the error arrived. Cleared on the next successful send or retry.
   var lastSendError: String?
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, workspaceFolders: [String]? = nil, lastSendError: String? = nil) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, workspaceFolders: [String]? = nil, lastSendError: String? = nil, modelOverride: String? = nil) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
@@ -192,11 +196,12 @@ struct ChatSession: Codable {
     self.thinkingLevel = thinkingLevel
     self.workspaceFolders = workspaceFolders
     self.lastSendError = lastSendError
+    self.modelOverride = modelOverride
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem, thinkingLevel
-    case workspaceFolders, lastSendError
+    case workspaceFolders, lastSendError, modelOverride
   }
 
   init(from decoder: Decoder) throws {
@@ -213,6 +218,7 @@ struct ChatSession: Codable {
     // Absent (every chat written before `/workspace` existed) stays nil = all shared folders.
     workspaceFolders = try c.decodeIfPresent([String].self, forKey: .workspaceFolders)
     lastSendError = try c.decodeIfPresent(String.self, forKey: .lastSendError)
+    modelOverride = try c.decodeIfPresent(String.self, forKey: .modelOverride)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -228,6 +234,7 @@ struct ChatSession: Codable {
     try c.encode(thinkingLevel, forKey: .thinkingLevel)
     try c.encodeIfPresent(workspaceFolders, forKey: .workspaceFolders)
     try c.encodeIfPresent(lastSendError, forKey: .lastSendError)
+    try c.encodeIfPresent(modelOverride, forKey: .modelOverride)
   }
 }
 

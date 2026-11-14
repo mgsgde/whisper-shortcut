@@ -111,6 +111,26 @@
         }
       }
     },
+    "Improve is running with %@. Your usual chat model stays as it is." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbessern läuft mit %@. Ihr gewohntes Chat-Modell bleibt unverändert."
+          }
+        }
+      }
+    },
+    "Improve works best with Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol. Add an API key for one of them in Settings to get a more reliable review." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbessern funktioniert am besten mit Gemini 3.1 Pro, Claude Sonnet 5.5 oder GPT-6 Sol. Hinterlegen Sie in den Einstellungen einen API-Schlüssel für eines davon, um eine zuverlässigere Prüfung zu erhalten."
+          }
+        }
+      }
+    },
     "Learning from your dictations needs Offline Mode off." : {
       "localizations" : {
         "de" : {
