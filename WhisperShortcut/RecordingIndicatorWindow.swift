@@ -1170,9 +1170,10 @@ final class RecordingIndicatorManager {
   }
 
   func hideQuickActions() {
-    releaseKeyFocus()
     model.typedPrompt = ""
     guard model.quickActionsVisible || !model.quickActions.isEmpty else { return }
+    // Only the card's focus is released here; the Read Aloud pill owns its own (pause re-runs this path).
+    releaseKeyFocus()
     model.quickActionsVisible = false
     model.quickActions = []
     model.templateName = nil
