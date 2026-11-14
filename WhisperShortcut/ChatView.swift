@@ -280,6 +280,7 @@ class ChatViewModel: ObservableObject {
   private static let meetingCommand = "/meeting"
   private static let copyCommand = "/copy"
   private static let feedbackCommand = "/feedback"
+  static let improveCommand = "/improve"
   static let thinkCommand = "/think"
   static let workspaceCommand = "/workspace"
 
@@ -340,6 +341,7 @@ class ChatViewModel: ObservableObject {
   ]
   private static let specsAfterModels: [(command: String, description: LocalizedStringResource)] = [
     ("/think", "Set reasoning depth for this chat: minimal | low | medium | high | default"),
+    ("/improve", "Look at your recent dictations and suggest one fix for names or wording"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -1662,6 +1664,12 @@ class ChatViewModel: ObservableObject {
       return
     }
 
+    if lower == Self.improveCommand {
+      inputText = ""
+      await handleImproveCommand()
+      return
+    }
+
     // Model-switch commands (provider-default aliases /gemini /grok /gpt, the per-model short
     // aliases /gemini35flash /gemini35flashlite …, and the silent /openai alias). Generated from PromptModel,
     // so this one lookup covers every model without per-command branches.
@@ -1705,6 +1713,47 @@ class ChatViewModel: ObservableObject {
         runUserCommand(cmd, arguments: rest, via: "slash")
         return
       }
+    }
+  }
+
+  // MARK: - /improve
+
+  /// What `/improve` does, decided from the two switches it depends on. The Chat can only learn
+  /// from usage the app kept: without the usage log `read_recent_interactions` is not offered and
+  /// the model would guess.
+  enum ImproveAction: Equatable {
+    case ask(String)
+    case offline
+    case needsUsageData
+    case localModel
+  }
+
+  /// `localModel`: the chat runs on an on-device model, which gets no tools and so cannot read
+  /// the log or propose a change.
+  static func improveAction(offlineMode: Bool, usageDataOn: Bool, localModel: Bool = false) -> ImproveAction {
+    if offlineMode { return .offline }
+    if localModel { return .localModel }
+    guard usageDataOn else { return .needsUsageData }
+    return .ask(String(localized: "Look at my recent dictations and chats and suggest one improvement."))
+  }
+
+  /// `/improve` and the empty chat's Improve button: one plain request in the user's language. The
+  /// system prompt's "tuning the app from its usage log" rules do the rest: read the log, find one
+  /// recurring mistake, propose one fix, apply it only after the user agrees.
+  private func handleImproveCommand() async {
+    switch Self.improveAction(
+      offlineMode: OfflineMode.isEnabled, usageDataOn: ContextLoggingPreference.isEnabled,
+      localModel: Self.openChatModel.provider == .localMLX)
+    {
+    case .ask(let request):
+      await sendMessage(userInput: request)
+    case .offline:
+      appendModelMessage("Offline Mode keeps no usage log, so there is nothing to learn from yet. Turn Offline Mode off to use /improve.")
+    case .needsUsageData:
+      appendModelMessage("To learn from how you dictate, WhisperShortcut needs your recent usage. Turn on \"Save usage data\" in the Settings that just opened, then try /improve again.")
+      SettingsManager.shared.showSettings(tab: .permissions)
+    case .localModel:
+      appendModelMessage("The on-device model can't read your usage or change settings. Pick an online model with /model, then try /improve again.")
     }
   }
 
@@ -4093,10 +4142,15 @@ struct ChatView: View {
       ("/screenshot", "Screenshot", "camera.viewfinder"),
       ("/folder", "Share folder", "folder"),
       ("/meeting", "Start meeting", "record.circle"),
+      ("/improve", "Improve", "wand.and.stars"),
       ("/settings", "Settings", "gear"),
     ]
     if viewModel.singleChatOnly {
       starters = starters.filter { $0.command != "/meeting" }
+    }
+    // Offline Mode keeps no usage log, so Improve would only explain that it cannot run.
+    if OfflineMode.isEnabled {
+      starters = starters.filter { $0.command != ChatViewModel.improveCommand }
     }
     return VStack(alignment: .leading, spacing: 22) {
       VStack(alignment: .leading, spacing: 6) {
@@ -4109,13 +4163,16 @@ struct ChatView: View {
           .foregroundColor(ChatTheme.secondaryText)
       }
 
-      HStack(spacing: 8) {
+      // Wraps instead of squeezing: five chips do not fit one row in a narrow window or in German.
+      FlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
         ForEach(starters, id: \.command) { item in
           Button {
             Task { await viewModel.sendMessage(userInput: item.command) }
           } label: {
             Label(item.title, systemImage: item.icon)
               .font(.callout)
+              .lineLimit(1)
+              .fixedSize()
               .foregroundColor(ChatTheme.primaryText)
               .padding(.horizontal, 10)
               .padding(.vertical, 7)

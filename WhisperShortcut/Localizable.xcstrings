@@ -11,6 +11,66 @@
         }
       }
     },
+    "Improve" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbessern"
+          }
+        }
+      }
+    },
+    "Look at my recent dictations and chats and suggest one improvement." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sieh dir meine letzten Diktate und Chats an und schlag mir eine Verbesserung vor."
+          }
+        }
+      }
+    },
+    "Look at your recent dictations and suggest one fix for names or wording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre letzten Diktate ansehen und eine Verbesserung für Namen oder Formulierungen vorschlagen"
+          }
+        }
+      }
+    },
+    "Offline Mode keeps no usage log, so there is nothing to learn from yet. Turn Offline Mode off to use /improve." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Offline-Modus speichert die App keine Nutzungsdaten, daher gibt es noch nichts, woraus sie lernen kann. Schalten Sie den Offline-Modus aus, um /improve zu nutzen."
+          }
+        }
+      }
+    },
+    "The on-device model can't read your usage or change settings. Pick an online model with /model, then try /improve again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell auf dem Mac kann Ihre Nutzung nicht lesen und keine Einstellungen ändern. Wählen Sie mit /model ein Online-Modell und versuchen Sie /improve dann noch einmal."
+          }
+        }
+      }
+    },
+    "To learn from how you dictate, WhisperShortcut needs your recent usage. Turn on \"Save usage data\" in the Settings that just opened, then try /improve again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um aus Ihren Diktaten zu lernen, braucht WhisperShortcut Ihre letzte Nutzung. Schalten Sie in den gerade geöffneten Einstellungen „Nutzungsdaten speichern“ ein und versuchen Sie /improve dann noch einmal."
+          }
+        }
+      }
+    },
     "Writing Style Suggestion" : {
       "localizations" : {
         "de" : {

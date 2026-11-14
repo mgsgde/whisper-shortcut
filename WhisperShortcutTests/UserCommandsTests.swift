@@ -174,4 +174,28 @@ struct UserCommandsTests {
     let back = try dec.decode(ChatMessage.self, from: try enc.encode(withCommand))
     #expect(back.commandName == "report")
   }
+
+  @MainActor
+  @Test("/improve action: offline wins, usage data off needs opt-in, else ask")
+  func improveAction() {
+    #expect(ChatViewModel.improveAction(offlineMode: true, usageDataOn: true) == .offline)
+    #expect(ChatViewModel.improveAction(offlineMode: true, usageDataOn: false) == .offline)
+    #expect(ChatViewModel.improveAction(offlineMode: false, usageDataOn: false) == .needsUsageData)
+    #expect(ChatViewModel.improveAction(offlineMode: false, usageDataOn: true, localModel: true) == .localModel)
+    #expect(ChatViewModel.improveAction(offlineMode: true, usageDataOn: true, localModel: true) == .offline)
+    let action = ChatViewModel.improveAction(offlineMode: false, usageDataOn: true)
+    if case .ask(let text) = action {
+      #expect(!text.isEmpty)
+      #expect(!text.hasPrefix("/"))
+    } else {
+      Issue.record("expected .ask, got \(action)")
+    }
+  }
+
+  @MainActor
+  @Test("/improve is a registered, reserved command")
+  func improveIsReserved() {
+    #expect(ChatViewModel.reservedUserCommandNames.contains("improve"))
+    #expect(ChatViewModel.commandSuggestions.map(\.command).contains("/improve"))
+  }
 }
