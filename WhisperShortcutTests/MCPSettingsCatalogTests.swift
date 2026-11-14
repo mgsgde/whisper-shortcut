@@ -51,7 +51,7 @@ struct MCPSettingsCatalogTests {
     let env = MCPTestEnv(level: .apply)
     let before = Self.deniedKeys.map { env.testDefaults.object(forKey: $0).map { "\($0)" } }
     for setting in env.settingsCatalog {
-      guard setting.unavailableReason() == nil, let value = Self.sampleValue(for: setting) else { continue }
+      guard !setting.chatOnly, setting.unavailableReason() == nil, let value = Self.sampleValue(for: setting) else { continue }
       guard setting.validate(value) == nil else { continue }
       try? setting.apply(value)
     }

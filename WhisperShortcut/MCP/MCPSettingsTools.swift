@@ -9,13 +9,13 @@ extension MCPConfigTools {
   /// A catalog entry visible right now (its `unavailableReason` is nil).
   private func availableSettings(category: String?) -> [MCPSetting] {
     env.settingsCatalog.filter { setting in
-      setting.unavailableReason() == nil && (category == nil || setting.category == category)
+      !setting.chatOnly && setting.unavailableReason() == nil && (category == nil || setting.category == category)
     }
   }
 
   // MARK: - get_settings
 
-  private func settingJSON(_ setting: MCPSetting) -> [String: Any] {
+  static func settingJSON(_ setting: MCPSetting) -> [String: Any] {
     var out: [String: Any] = [
       "id": setting.id, "title": setting.title, "category": setting.category,
       "value": setting.read(), "requires_approval": setting.proposalOnly,
@@ -45,7 +45,7 @@ extension MCPConfigTools {
 
   func getSettings(_ args: [String: Any]) -> MCPToolResult {
     let category = (args["category"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-    let settings = availableSettings(category: category).map(settingJSON)
+    let settings = availableSettings(category: category).map(Self.settingJSON)
     log("get_settings", "applied", "read", len: settings.count)
     return (json(["settings": settings]), false)
   }
@@ -72,7 +72,7 @@ extension MCPConfigTools {
 
     var validated: [ValidatedChange] = []
     for (id, to) in changes {
-      guard let setting = env.settingsCatalog.first(where: { $0.id == id }) else {
+      guard let setting = env.settingsCatalog.first(where: { $0.id == id && !$0.chatOnly }) else {
         return reject(tool, "unknown setting", "Unknown setting id: \(id). Call get_settings first.")
       }
       if let unavailable = setting.unavailableReason() {

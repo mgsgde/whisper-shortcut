@@ -176,14 +176,12 @@ struct UserCommandsTests {
   }
 
   @MainActor
-  @Test("/improve action: offline wins, usage data off needs opt-in, else ask")
+  @Test("/improve action: offline wins, then on-device model, else ask")
   func improveAction() {
-    #expect(ChatViewModel.improveAction(offlineMode: true, usageDataOn: true) == .offline)
-    #expect(ChatViewModel.improveAction(offlineMode: true, usageDataOn: false) == .offline)
-    #expect(ChatViewModel.improveAction(offlineMode: false, usageDataOn: false) == .needsUsageData)
-    #expect(ChatViewModel.improveAction(offlineMode: false, usageDataOn: true, localModel: true) == .localModel)
-    #expect(ChatViewModel.improveAction(offlineMode: true, usageDataOn: true, localModel: true) == .offline)
-    let action = ChatViewModel.improveAction(offlineMode: false, usageDataOn: true)
+    #expect(ChatViewModel.improveAction(offlineMode: true) == .offline)
+    #expect(ChatViewModel.improveAction(offlineMode: true, localModel: true) == .offline)
+    #expect(ChatViewModel.improveAction(offlineMode: false, localModel: true) == .localModel)
+    let action = ChatViewModel.improveAction(offlineMode: false)
     if case .ask(let text) = action {
       #expect(!text.isEmpty)
       #expect(!text.hasPrefix("/"))

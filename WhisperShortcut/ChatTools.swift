@@ -99,6 +99,9 @@ enum ChatToolRegistry {
     case updateInstructionsToolName:
       // Reading the current rules is harmless and is what the model is told to do first.
       return (args["action"] as? String) != "read"
+    case AppSettingsChatTool.name:
+      // Only a change needs the card; the review and a dismissal change nothing the user relies on.
+      return (args["action"] as? String) == "set"
     default:
       return false
     }
@@ -111,13 +114,20 @@ enum ChatToolRegistry {
   static func allowsChatWideApproval(_ name: String) -> Bool {
     switch name {
     case rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
-         updateInstructionsToolName, "open_url",
+         updateInstructionsToolName, AppSettingsChatTool.name, "open_url",
          "write_text_file", "append_to_file", "edit_text_file",
          "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card":
       return false
     default:
       return requiresUserApproval(name, args: ["action": "write"])
     }
+  }
+
+  /// Called where a tool call the user denied is recorded. Only `app_settings` `set` acts: the
+  /// declined findings stay quiet until the value they are about changes.
+  static func onDenied(name: String, args: [String: Any]) {
+    guard name == AppSettingsChatTool.name else { return }
+    AppSettingsChatTool.suppressDeclined(args: args)
   }
 
   /// Text the model wants stored for good (a folder path, a glossary term): newlines become spaces
@@ -194,6 +204,8 @@ enum ChatToolRegistry {
       default: line = String(localized: "Change: \(target)")
       }
       return text.isEmpty ? line : line + "\n\n" + preview(text)
+    case AppSettingsChatTool.name:
+      return AppSettingsChatTool.approvalSummary(args: args)
     case "write_text_file":
       let overwrite = boolArgument(args, "overwrite", default: false)
       let path = arg("path")
@@ -1439,7 +1451,7 @@ enum ChatToolRegistry {
     if chatProvider == .localMLX { return [] }
     var decls =
       functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
-      + instructionsFunctionDeclarations
+      + instructionsFunctionDeclarations + [AppSettingsChatTool.declaration]
     if usageDataAvailable {
       decls += usageLogFunctionDeclarations
     }
@@ -1672,6 +1684,9 @@ enum ChatToolRegistry {
         if !warnings.isEmpty { result["warnings"] = warnings }
         return result
       }
+
+    case AppSettingsChatTool.name:
+      return AppSettingsChatTool.execute(args: args)
 
     case readRecentInteractionsToolName:
       // Re-checked at call time: the declaration list was built when the turn started.

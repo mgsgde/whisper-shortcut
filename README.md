@@ -38,7 +38,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 
 **Chat and meetings**
 - **Chat**: a chat window (⌥Space) with every supported model, screenshots, files, web search and YouTube videos. It works with Google Calendar, Tasks and Gmail, Trello, IMAP mailboxes and folders you share, including your `AGENTS.md` / `CLAUDE.md` context files.
-- **Improve**: type `/improve` or click Improve in an empty chat. The Chat reads your recent dictations (needs "Save usage data" in Settings → Permissions & Privacy), finds one mistake that keeps coming back and suggests one fix, a glossary term or a rule, which you approve before it changes anything.
+- **Improve**: type `/improve` or click Improve in an empty chat. The Chat reviews your settings (features that are off, missing permissions, models) and, with "Save usage data" on, your recent dictations, and suggests one change at a time, a setting, a glossary term or a rule, which you approve before it changes anything.
 - **Live Meeting**: records your meeting (with headphones too), transcribes it as it goes, writes live notes into the chat and answers questions about anything said so far.
 - **Claude, Claude Code and Codex over MCP**: connect them with one click. They read your meetings, even the one running right now, and tune your dictation from your logs, one glossary term or rule at a time that you approve. Examples at [whispershortcut.com/mcp](https://whispershortcut.com/mcp).
 

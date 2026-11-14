@@ -11,6 +11,96 @@
         }
       }
     },
+    "Accessibility permission" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen-Berechtigung"
+          }
+        }
+      }
+    },
+    "Auto-paste and Fn dictation are on but can't work without it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisches Einfügen und Diktieren mit Fn sind an, funktionieren aber erst mit dieser Berechtigung."
+          }
+        }
+      }
+    },
+    "Change settings:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen ändern:"
+          }
+        }
+      }
+    },
+    "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt sieht den Text, den Sie gerade bearbeiten, sodass „kürz das“ oder „antworte darauf“ einfach funktioniert."
+          }
+        }
+      }
+    },
+    "Dictate Prompt writes the way you do, learned from your sent mail." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt schreibt so wie Sie, gelernt aus Ihren gesendeten Mails."
+          }
+        }
+      }
+    },
+    "Dictated text lands at the cursor by itself, no Cmd+V needed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der diktierte Text landet direkt am Cursor, ohne Cmd+V."
+          }
+        }
+      }
+    },
+    "Dictation is ready right after you start your Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren ist direkt nach dem Start Ihres Macs bereit."
+          }
+        }
+      }
+    },
+    "Front window picture is on but does nothing without it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Fensterbild ist an, bewirkt aber ohne diese Berechtigung nichts."
+          }
+        }
+      }
+    },
+    "Here's what I'd change in your setup:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das würde ich an Ihrer Einrichtung ändern:"
+          }
+        }
+      }
+    },
     "Improve" : {
       "localizations" : {
         "de" : {
@@ -21,52 +111,112 @@
         }
       }
     },
-    "Look at my recent dictations and chats and suggest one improvement." : {
+    "Learning from your dictations needs Offline Mode off." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sieh dir meine letzten Diktate und Chats an und schlag mir eine Verbesserung vor."
+            "value" : "Um aus Ihren Diktaten zu lernen, muss der Offline-Modus aus sein."
           }
         }
       }
     },
-    "Look at your recent dictations and suggest one fix for names or wording" : {
+    "Lets Improve learn from your dictations and fix names and wording it keeps getting wrong. It stays on this Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ihre letzten Diktate ansehen und eine Verbesserung für Namen oder Formulierungen vorschlagen"
+            "value" : "Damit kann Verbessern aus Ihren Diktaten lernen und Namen und Formulierungen korrigieren, die immer wieder falsch erkannt werden. Die Daten bleiben auf diesem Mac."
           }
         }
       }
     },
-    "Offline Mode keeps no usage log, so there is nothing to learn from yet. Turn Offline Mode off to use /improve." : {
+    "Press Fn to dictate, with no shortcut to remember." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Im Offline-Modus speichert die App keine Nutzungsdaten, daher gibt es noch nichts, woraus sie lernen kann. Schalten Sie den Offline-Modus aus, um /improve zu nutzen."
+            "value" : "Fn drücken und diktieren, ohne sich ein Tastenkürzel zu merken."
           }
         }
       }
     },
-    "The on-device model can't read your usage or change settings. Pick an online model with /model, then try /improve again." : {
+    "Review my setup and how I use the app, and suggest the best improvements." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Modell auf dem Mac kann Ihre Nutzung nicht lesen und keine Einstellungen ändern. Wählen Sie mit /model ein Online-Modell und versuchen Sie /improve dann noch einmal."
+            "value" : "Prüf meine Einstellungen und wie ich die App nutze, und schlag mir die besten Verbesserungen vor."
           }
         }
       }
     },
-    "To learn from how you dictate, WhisperShortcut needs your recent usage. Turn on \"Save usage data\" in the Settings that just opened, then try /improve again." : {
+    "Review your settings and recent dictations and suggest the best improvements" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um aus Ihren Diktaten zu lernen, braucht WhisperShortcut Ihre letzte Nutzung. Schalten Sie in den gerade geöffneten Einstellungen „Nutzungsdaten speichern“ ein und versuchen Sie /improve dann noch einmal."
+            "value" : "Einstellungen und letzte Diktate prüfen und die besten Verbesserungen vorschlagen"
+          }
+        }
+      }
+    },
+    "Screen Recording permission" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmaufnahme-Berechtigung"
+          }
+        }
+      }
+    },
+    "Settings → %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen → %@"
+          }
+        }
+      }
+    },
+    "Settings → Permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen → Berechtigungen & Datenschutz"
+          }
+        }
+      }
+    },
+    "The recommended model is %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empfohlen ist %@."
+          }
+        }
+      }
+    },
+    "To learn from your dictations, pick an online model with /model and try /improve again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um aus Ihren Diktaten zu lernen, wählen Sie mit /model ein Online-Modell und versuchen Sie /improve erneut."
+          }
+        }
+      }
+    },
+    "When the field is empty or unreadable, Dictate Prompt also sees the front window (never the whole screen)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist das Feld leer oder nicht lesbar, sieht Dictate Prompt zusätzlich das vordere Fenster (nie den ganzen Bildschirm)."
           }
         }
       }
@@ -2746,6 +2896,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bei mehreren Vorlagen wählen Sie beim Sprechen mit 1, 2, 3 … eine aus. Vorausgewählt ist die zuletzt benutzte."
+          }
+        }
+      }
+    },
+    "Your setup looks good." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Einrichtung sieht gut aus."
           }
         }
       }

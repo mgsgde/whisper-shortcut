@@ -97,6 +97,9 @@ struct MCPSetting {
   let kind: Kind
   /// Always a proposal, at every access level, never applied directly.
   let proposalOnly: Bool
+  /// Reachable only through the in-app Chat's `app_settings` tool (which asks the user first), never
+  /// through MCP `get_settings` / `update_settings`: an AI app must not widen what it can read.
+  let chatOnly: Bool
   /// Non-nil = this entry cannot be read or changed right now (and why); the tools skip it.
   let unavailableReason: () -> String?
   let read: () -> Any
@@ -114,6 +117,7 @@ struct MCPSetting {
 
   init(
     id: String, title: String, category: String, kind: Kind, proposalOnly: Bool = false,
+    chatOnly: Bool = false,
     unavailableReason: @escaping () -> String? = { nil }, read: @escaping () -> Any,
     validate: @escaping (Any) -> String?, apply: @escaping (Any) throws -> Void,
     normalizeForLabel: @escaping (Any) -> Any = { $0 },
@@ -124,6 +128,7 @@ struct MCPSetting {
     self.category = category
     self.kind = kind
     self.proposalOnly = proposalOnly
+    self.chatOnly = chatOnly
     self.unavailableReason = unavailableReason
     self.read = read
     self.validate = validate
@@ -296,6 +301,7 @@ enum MCPSettingsCatalog {
     case "Meeting chunk interval": return String(localized: "Meeting chunk interval")
     case "Ask when meeting longer than": return String(localized: "Ask when meeting longer than")
     case "Screenshot context": return String(localized: "Screenshot context")
+    case "Save usage data": return String(localized: "Save usage data")
     case "Launch at login": return String(localized: "Launch at login")
     case "Use my writing style in Dictate Prompt": return String(localized: "Use my writing style in Dictate Prompt")
     case "Let Dictate Prompt use read-only tools": return String(localized: "Let Dictate Prompt use read-only tools")
@@ -1305,6 +1311,23 @@ enum MCPSettingsCatalog {
       category: "writing_style", key: UserDefaultsKeys.writingStyleEnabled, defaultValue: false,
       proposalOnly: true,
       afterApply: { deps.writingStyleToggled($0) }))
+
+    // MARK: privacy.save_usage_data — only the in-app Chat's `/improve` review reaches this
+    // (`chatOnly`): "Save usage data" widens what AI apps may read, so MCP never sees it. The
+    // Settings toggle (`UsageDataSection`) is a bare `@AppStorage` switch with no side effect to
+    // mirror. Offline Mode keeps no usage log, so the entry is unavailable while it is on.
+    settings.append(MCPSetting(
+      id: "privacy.save_usage_data", title: "Save usage data", category: "privacy", kind: .bool,
+      proposalOnly: true, chatOnly: true,
+      unavailableReason: {
+        defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) ? "Offline Mode keeps no usage log." : nil
+      },
+      read: { defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled) },
+      validate: { value in value is Bool ? nil : "Save usage data needs true or false." },
+      apply: { value in
+        guard let b = value as? Bool else { throw MCPConfigError(message: "Save usage data needs true or false.") }
+        defaults.set(b, forKey: UserDefaultsKeys.contextLoggingEnabled)
+      }))
 
     // MARK: dictate_prompt.tools_enabled — always a proposal: lookups are sent to the model.
     settings.append(boolSetting(

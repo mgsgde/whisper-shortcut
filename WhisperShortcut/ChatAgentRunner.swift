@@ -358,6 +358,7 @@ final class ChatAgentRunner {
         if !allowed {
           steps.finish(stepId, phase: .denied)
           DebugLogger.log("CHAT-TOOL-DENIED: \(call.name)")
+          ChatToolRegistry.onDenied(name: call.name, args: call.args)
           let response = ["error": "The user denied this \(call.name) call."]
           responseParts.append([
             "functionResponse": [
