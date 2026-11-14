@@ -73,9 +73,152 @@ enum SettingsAdvisor {
   /// Model-deviation findings are nag-once: `review` suppresses them as soon as it has shown them.
   static func isNagOnce(_ id: String) -> Bool { modelIDs.contains(id) }
 
+  // MARK: - Feature states (the one list of "features worth turning on")
+
+  /// One feature the user may want on: its current on/off and permission state, once, for both
+  /// projections (the Chat's `/improve` findings and MCP `not_yet_enabled`).
+  struct FeatureState {
+    enum Permission { case accessibility, screenRecording }
+
+    let setting: MCPSetting
+    /// Chat wording (localized).
+    let title: String
+    let benefit: String
+    /// Model-facing English wording for MCP.
+    let mcpTitle: String
+    let mcpBenefit: String
+    let permission: Permission?
+    let isOn: Bool
+    /// True when no permission is needed or it is granted.
+    let permissionGranted: Bool
+    /// `how_to_enable` for MCP, by state.
+    let mcpOffHow: String
+    let mcpOffMissingHow: String?
+    let mcpOnMissingHow: String?
+
+    var id: String { setting.id }
+  }
+
+  /// Ids in MCP `not_yet_enabled` order (the Chat uses `featureStates` order).
+  static let mcpFeatureOrder = [
+    "clipboard.auto_paste", "dictate_prompt.screenshot_context", "dictation.fn_key",
+    "dictate_prompt.field_text_context", "general.launch_at_login",
+  ]
+
+  /// Unsuppressed, uncapped, in Chat recommended order. Features the catalog hides (e.g. Fn key
+  /// in the App Store build) are left out.
+  static func featureStates(
+    catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies
+  ) -> [FeatureState] {
+    func make(
+      _ id: String, title: String, benefit: String, mcpTitle: String, mcpBenefit: String,
+      permission: FeatureState.Permission?, offHow: String, offMissingHow: String? = nil,
+      onMissingHow: String? = nil
+    ) -> FeatureState? {
+      guard let s = catalog.first(where: { $0.id == id }), s.unavailableReason() == nil,
+        let value = s.read() as? Bool
+      else { return nil }
+      let granted: Bool
+      switch permission {
+      case .accessibility: granted = deps.hasAccessibilityPermission()
+      case .screenRecording: granted = deps.hasScreenRecordingPermission()
+      case nil: granted = true
+      }
+      return FeatureState(
+        setting: s, title: title, benefit: benefit, mcpTitle: mcpTitle, mcpBenefit: mcpBenefit,
+        permission: permission, isOn: value, permissionGranted: granted, mcpOffHow: offHow,
+        mcpOffMissingHow: offMissingHow, mcpOnMissingHow: onMissingHow)
+    }
+    let grantAccessibility =
+      "The user grants Accessibility in WhisperShortcut Settings → Permissions (only they can), then you or they turn on"
+    return [
+      make(
+        "dictation.fn_key", title: String(localized: "Dictate with the Fn key"),
+        benefit: String(localized: "Press Fn to dictate, with no shortcut to remember."),
+        mcpTitle: "Dictate with the Fn key",
+        mcpBenefit: "Press Fn to dictate, with no shortcut to remember.",
+        permission: .accessibility,
+        offHow: "Ask the user, then update_settings dictation.fn_key = true.",
+        offMissingHow: "\(grantAccessibility) dictation.fn_key.",
+        onMissingHow:
+          "Fn dictation is on but cannot work without Accessibility. The user grants it in WhisperShortcut Settings → Permissions."),
+      make(
+        "clipboard.auto_paste", title: String(localized: "Auto-paste after dictation"),
+        benefit: String(localized: "Dictated text lands at the cursor by itself, no Cmd+V needed."),
+        mcpTitle: "Auto-paste after dictation",
+        mcpBenefit:
+          "Dictated text lands at the cursor by itself instead of only on the clipboard, so the user does not have to press Cmd+V after every dictation.",
+        permission: .accessibility,
+        offHow: "Ask the user, then update_settings clipboard.auto_paste = true.",
+        offMissingHow: "\(grantAccessibility) clipboard.auto_paste.",
+        onMissingHow:
+          "Auto-paste is on but cannot paste without Accessibility. The user grants it in WhisperShortcut Settings → Permissions."),
+      make(
+        "dictate_prompt.field_text_context", title: String(localized: "Send text around the cursor"),
+        benefit: String(localized: "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works."),
+        mcpTitle: "Send text around the cursor",
+        mcpBenefit: "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works.",
+        permission: nil,
+        offHow: "Ask the user, then update_settings dictate_prompt.field_text_context = true."),
+      make(
+        "dictate_prompt.screenshot_context", title: String(localized: "Send picture of front window"),
+        benefit: String(localized: "When the field is empty or unreadable, Dictate Prompt also sees the front window (never the whole screen)."),
+        mcpTitle: "Front window picture",
+        mcpBenefit:
+          "When the focused field is empty, short or unreadable, Dictate Prompt also sees a picture of the front window (never the whole screen), so it understands what the user is replying to or editing.",
+        permission: .screenRecording,
+        offHow:
+          "Propose update_settings dictate_prompt.screenshot_context = true; the user accepts it in WhisperShortcut.",
+        offMissingHow:
+          "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in the Dictate Prompt settings.",
+        onMissingHow:
+          "The setting is on but does nothing without Screen Recording. The user grants it in WhisperShortcut Settings → Permissions."),
+      make(
+        "general.launch_at_login", title: String(localized: "Launch at login"),
+        benefit: String(localized: "Dictation is ready right after you start your Mac."),
+        mcpTitle: "Launch at login",
+        mcpBenefit: "Dictation is ready right after you start your Mac.",
+        permission: nil,
+        offHow:
+          "Ask the user, then propose update_settings general.launch_at_login = true; the user accepts it in WhisperShortcut."),
+    ].compactMap { $0 }
+  }
+
+  /// MCP `get_configuration` → `not_yet_enabled`: the same feature states, no suppressions (an
+  /// outside AI app has its own conversation), none of the chat-only entries (models, writing
+  /// style, usage data), plus `recent_interactions`, which only exists for MCP.
+  static func mcpNotYetEnabled(
+    catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies, interactionsShared: Bool
+  ) -> [[String: Any]] {
+    func hint(_ id: String, _ title: String, _ state: String, _ benefit: String, _ how: String) -> [String: Any] {
+      ["id": id, "title": title, "state": state, "benefit": benefit, "how_to_enable": how]
+    }
+    let states = featureStates(catalog: catalog, deps: deps)
+    var out: [[String: Any]] = []
+    for id in mcpFeatureOrder {
+      guard let f = states.first(where: { $0.id == id }) else { continue }
+      if f.isOn && f.permissionGranted { continue }
+      if f.isOn {
+        guard let how = f.mcpOnMissingHow else { continue }
+        out.append(hint(id, f.mcpTitle, "on_but_permission_missing", f.mcpBenefit, how))
+      } else if f.permissionGranted {
+        out.append(hint(id, f.mcpTitle, "off", f.mcpBenefit, f.mcpOffHow))
+      } else {
+        out.append(hint(id, f.mcpTitle, "off_permission_missing", f.mcpBenefit, f.mcpOffMissingHow ?? f.mcpOffHow))
+      }
+    }
+    if !interactionsShared {
+      out.append(hint(
+        "recent_interactions", "AI apps may read recent dictations", "off",
+        "Lets you read the user's recent dictations and errors, so tuning fixes real mistakes instead of guesses.",
+        "The user turns on \"Save usage data\" and \"AI apps may read my recent dictations\" in WhisperShortcut Settings."))
+    }
+    return out
+  }
+
   // MARK: - Findings
 
-  /// Candidates in table order (blocker → recommended → optional), not yet filtered or capped.
+  /// Chat candidates in table order (blocker → recommended → optional), not yet filtered or capped.
   private static func candidates(
     catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies
   ) -> [SettingsFinding] {
@@ -83,8 +226,12 @@ enum SettingsAdvisor {
       guard let s = catalog.first(where: { $0.id == id }), s.unavailableReason() == nil else { return nil }
       return s
     }
-    func isOn(_ id: String) -> Bool { (setting(id)?.read() as? Bool) == true }
     func label(_ s: MCPSetting, _ value: Any) -> String { MCPSettingsCatalog.label(for: value, kind: s.kind) }
+
+    let states = featureStates(catalog: catalog, deps: deps)
+    func blocked(_ p: FeatureState.Permission) -> Bool {
+      states.contains { $0.permission == p && $0.isOn && !$0.permissionGranted }
+    }
 
     var out: [SettingsFinding] = []
 
@@ -95,14 +242,14 @@ enum SettingsAdvisor {
         benefit: String(localized: "Lets Improve learn from your dictations and fix names and wording it keeps getting wrong. It stays on this Mac."),
         priority: .blocker, current: "Off", recommended: "On", fix: .set(id: s.id, value: .bool(true))))
     }
-    if (isOn("clipboard.auto_paste") || isOn("dictation.fn_key")) && !deps.hasAccessibilityPermission() {
+    if blocked(.accessibility) {
       out.append(SettingsFinding(
         id: accessibilityID, title: String(localized: "Accessibility permission"),
         benefit: String(localized: "Auto-paste and Fn dictation are on but can't work without it."),
         priority: .blocker, current: "Missing", recommended: "Granted",
         fix: .userAction(where: String(localized: "Settings → Permissions"))))
     }
-    if isOn("dictate_prompt.screenshot_context") && !deps.hasScreenRecordingPermission() {
+    if blocked(.screenRecording) {
       out.append(SettingsFinding(
         id: screenRecordingID, title: String(localized: "Screen Recording permission"),
         benefit: String(localized: "Front window picture is on but does nothing without it."),
@@ -110,25 +257,12 @@ enum SettingsAdvisor {
         fix: .userAction(where: String(localized: "Settings → Permissions"))))
     }
 
-    // Recommended: bool settings that are off. Skipped when turning them on would be refused
-    // right now (e.g. no Accessibility permission yet: the blocker above covers that case).
-    let recommended: [(id: String, title: String, benefit: String)] = [
-      ("dictation.fn_key", String(localized: "Dictate with the Fn key"),
-       String(localized: "Press Fn to dictate, with no shortcut to remember.")),
-      ("clipboard.auto_paste", String(localized: "Auto-paste after dictation"),
-       String(localized: "Dictated text lands at the cursor by itself, no Cmd+V needed.")),
-      ("dictate_prompt.field_text_context", String(localized: "Send text around the cursor"),
-       String(localized: "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works.")),
-      ("dictate_prompt.screenshot_context", String(localized: "Send picture of front window"),
-       String(localized: "When the field is empty or unreadable, Dictate Prompt also sees the front window (never the whole screen).")),
-      ("general.launch_at_login", String(localized: "Launch at login"),
-       String(localized: "Dictation is ready right after you start your Mac.")),
-    ]
-    for item in recommended {
-      guard let s = setting(item.id), (s.read() as? Bool) == false, s.validate(true) == nil else { continue }
+    // Recommended: features that are off. Skipped when turning them on would be refused right
+    // now (e.g. no Accessibility permission yet: the blocker above covers that case).
+    for f in states where !f.isOn && f.setting.validate(true) == nil {
       out.append(SettingsFinding(
-        id: s.id, title: item.title, benefit: item.benefit, priority: .recommended,
-        current: "Off", recommended: "On", fix: .set(id: s.id, value: .bool(true))))
+        id: f.id, title: f.title, benefit: f.benefit, priority: .recommended,
+        current: "Off", recommended: "On", fix: .set(id: f.id, value: .bool(true))))
     }
 
     // Optional: models that differ from the shipped defaults.

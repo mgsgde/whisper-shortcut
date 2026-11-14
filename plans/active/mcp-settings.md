@@ -175,3 +175,7 @@ write tools, `.mcpb`.
 `README.md` feature list: AI apps can read and change WhisperShortcut's settings (models,
 shortcuts, behaviour) over MCP, within the access level. `plans/active/mcp-config-access.md`:
 mark slice 2 as superseded by this file.
+
+## not_yet_enabled
+
+Since 2026-11-14 `get_configuration` → `not_yet_enabled` is a projection of `SettingsAdvisor` (`mcpNotYetEnabled`), shared with the Chat's `/improve`; `MCPFeatureHints` is gone.

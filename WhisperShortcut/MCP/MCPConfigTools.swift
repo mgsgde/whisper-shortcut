@@ -26,13 +26,8 @@ struct MCPConfigEnvironment {
   var errorLog: (_ query: InteractionLogQuery) -> [ErrorLogLine] = { ErrorLogReader.load($0) }
   /// Rows of `system-prompts-history.jsonl`, oldest first, for `get_config_history`.
   var configHistory: () -> [UnifiedSystemPromptHistoryEntry] = { ConfigHistoryReader.load() }
-  /// Features an AI app should mention when they are off or blocked by a missing permission.
-  /// Defaults to everything working so tests that build an environment stay unaffected.
-  var featureState: () -> MCPFeatureState = {
-    MCPFeatureState(
-      autoPaste: true, accessibility: true, frontWindowFallback: true, fieldTextContext: true, screenRecording: true,
-      interactionsShared: true)
-  }
+  /// Dependencies behind `not_yet_enabled` (permissions, defaults). Tests inject fakes.
+  var settingsDeps: MCPSettingsCatalog.Dependencies = .live
 
   var applier: MCPConfigApplier { MCPConfigApplier(targets: targets, changeLog: changeLog) }
 
@@ -62,20 +57,7 @@ struct MCPConfigEnvironment {
       },
       writingStyleEnabled: { defaults.bool(forKey: UserDefaultsKeys.writingStyleEnabled) },
       appVersion: AppConstants.appVersion,
-      settingsCatalog: MCPSettingsCatalog.build(.live),
-      featureState: {
-        MCPFeatureState(
-          autoPaste: AutoPasteDefault.currentValue,
-          accessibility: AccessibilityPermissionManager.hasAccessibilityPermission(),
-          frontWindowFallback: defaults.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
-            ? defaults.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-            : SettingsDefaults.screenshotInPromptMode,
-          fieldTextContext: DictationPreferences.promptSendsFocusedFieldTextEnabled,
-          // Read-only, same check as MCPSettingsCatalog.Dependencies. Never call SCShareableContent.
-          screenRecording: PermissionStatusChecker.status(for: .screenRecording) == .granted,
-          interactionsShared: defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
-            && defaults.bool(forKey: UserDefaultsKeys.mcpShareRecentInteractions))
-      })
+      settingsCatalog: MCPSettingsCatalog.build(.live))
   }
 }
 
@@ -407,7 +389,9 @@ struct MCPConfigTools {
         "pending_proposals": MCPMain.run { env.proposals.pending.count },
       ] as [String: Any],
       "tune_recipe": MCPTuneRecipe.text(focus: nil),
-      "not_yet_enabled": MCPFeatureHints.build(env.featureState()),
+      "not_yet_enabled": SettingsAdvisor.mcpNotYetEnabled(
+        catalog: env.settingsCatalog, deps: env.settingsDeps,
+        interactionsShared: env.contextLoggingEnabled() && env.shareRecentInteractions()),
       "quick_prompts": (env.contextLoggingEnabled() && env.shareRecentInteractions())
         ? QuickActionStore.shared.usageSummary() as Any
         : "Turn on Save usage data and Let AI apps read my recent dictations to see how often each quick prompt is used." as Any,

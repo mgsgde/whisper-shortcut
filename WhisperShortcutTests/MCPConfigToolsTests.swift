@@ -27,6 +27,7 @@ final class MCPTestEnv: @unchecked Sendable {
   // MARK: - Settings catalog fakes (never touch the real UserDefaults, Keychain or SMAppService)
   let testDefaults: UserDefaults
   let settingsCatalog: [MCPSetting]
+  let settingsDeps: MCPSettingsCatalog.Dependencies
   /// Mutable backing for the fakes above, boxed so closures built in `init` (before `self` fully
   /// exists) and the test's later assertions share the same state.
   final class Box {
@@ -66,6 +67,7 @@ final class MCPTestEnv: @unchecked Sendable {
       postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) },
       // The live hook runs a real Gmail import and Gemini derive and shows the review panel.
       writingStyleToggled: { box.writingStyleToggles.append($0) })
+    self.settingsDeps = deps
     self.settingsCatalog = MCPSettingsCatalog.build(deps)
     changeLog = MCPChangeLog(directory: dir, targets: targets, settingsCatalog: settingsCatalog)
     proposals = MCPProposalStore(
@@ -84,7 +86,7 @@ final class MCPTestEnv: @unchecked Sendable {
       settings: { self.settings },
       shortcuts: { [["action": "Dictate", "shortcut": "F5", "enabled": true]] },
       writingStyleEnabled: { true },
-      appVersion: "9.9", settingsCatalog: settingsCatalog))
+      appVersion: "9.9", settingsCatalog: settingsCatalog, settingsDeps: settingsDeps))
   }
 
   func dispatcher() -> MCPDispatcher {
