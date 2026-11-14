@@ -291,15 +291,92 @@ enum WritingStyleImporter {
     No adjectives like "friendly" or "professional". At most 12 lines per context. Write the lines in English, quoted phrases in their original language. Use an empty string for a context without messages.
     """
 
+  /// One evidence-checked edit of a single context section. Field names match the model schema.
+  struct ProfileOperation: Codable, Equatable {
+    enum Op: String, Codable, Equatable {
+      case add, replace, remove
+    }
+
+    let context: WritingContext
+    let op: Op
+    let oldLine: String
+    let newLine: String
+    let evidence: [String]
+
+    enum CodingKeys: String, CodingKey {
+      case context
+      case op
+      case oldLine = "old_line"
+      case newLine = "new_line"
+      case evidence
+    }
+  }
+
+  private static let reviseNewLimit = 60
+  private static let reviseAnchorLimit = 15
+
+  /// Line rules from `profileSystemPrompt`, plus the revise contract: keep the current profile
+  /// and propose an operation only when the messages show it.
+  private static let reviseSystemPrompt = profileSystemPrompt + """
+
+    The current profile is given. Keep every line verbatim. Propose a change only when the messages clearly show a habit the profile lacks or contradict a line. Never reword a line just to phrase it differently. An empty list is the expected answer most of the time. Every operation needs at least 2 verbatim quotes copied exactly from the messages.
+    """
+
+  private static let revisionSchema: [String: Any] = [
+    "type": "object",
+    "properties": [
+      "operations": [
+        "type": "array",
+        "description": "Changes to the current profile. Empty when the profile already matches the messages.",
+        "items": [
+          "type": "object",
+          "properties": [
+            "context": [
+              "type": "string",
+              "enum": WritingContext.allCases.map(\.rawValue),
+            ] as [String: Any],
+            "op": [
+              "type": "string",
+              "enum": ["add", "replace", "remove"],
+            ] as [String: Any],
+            "old_line": [
+              "type": "string",
+              "description": "Exact current line for replace and remove. Empty string for add.",
+            ] as [String: Any],
+            "new_line": [
+              "type": "string",
+              "description": "The line to add, or the replacement line. Empty string for remove.",
+            ] as [String: Any],
+            "evidence": [
+              "type": "array",
+              "items": ["type": "string"] as [String: Any],
+              "description": "Verbatim quotes copied from the messages. At least 2.",
+            ] as [String: Any],
+          ] as [String: Any],
+          "required": ["context", "op", "old_line", "new_line", "evidence"],
+        ] as [String: Any],
+      ] as [String: Any],
+    ] as [String: Any],
+    "required": ["operations"],
+  ]
+
   /// Asks the Writing Style model (`selectedImprovementModel`) for a profile, shows it for review, and saves what the
-  /// user accepts. Returns the saved profile, or nil when the user cancelled.
+  /// user accepts. The first profile is derived from scratch. When one already exists, the same entry point revises
+  /// it and shows the panel only for changes backed by at least two messages. Returns the saved profile, or nil when
+  /// the user cancelled, the save failed, or no revision applied.
   @discardableResult
   static func deriveProfile() async throws -> String? {
     guard !OfflineMode.isEnabled else { throw ImportError.offlineMode }
     let store = WritingStyleStore.shared
     let samples = store.loadSamples()
     guard !samples.isEmpty else { throw ImportError.noSamples }
+    if store.hasProfile {
+      return try await reviseProfile(store: store, samples: samples)
+    }
+    return try await deriveFirstProfile(store: store, samples: samples)
+  }
 
+  private static func deriveFirstProfile(store: WritingStyleStore, samples: [WritingSample]) async throws -> String? {
     var userMessage = ""
     var used = 0
     for context in WritingContext.allCases {
@@ -332,23 +409,224 @@ enum WritingStyleImporter {
     }
     let suggested = mergedProfile(
       derived: derived, current: current, contextsWithSamples: Set(samples.map(\.context)))
+    let rationale = "Derived from \(used) of your messages."
     guard let accepted = await ProposalReviewPanel.present(
       focusDisplayName: "Writing Style",
       originalText: current,
       suggestedText: suggested,
-      rationale: "Derived from \(used) of your messages.")
-    else {
+      rationale: rationale)
+    else { return cancelProfileReview(store: store) }
+    return saveAcceptedProfile(accepted, rationale: rationale)
+  }
+
+  /// New samples are the tail of that context in file order (append order), at most the last 60
+  /// and never more than the samples added since the profile was saved. Up to 15 earlier samples
+  /// of the same context are anchors. A context with nothing in the tail is skipped.
+  private struct RevisionSelection {
+    let newSamples: [WritingSample]
+    let anchors: [WritingSample]
+  }
+
+  private static func revisionSelection(samples: [WritingSample], since: Int) -> [WritingContext: RevisionSelection] {
+    let window = min(max(since, 0), reviseNewLimit)
+    guard window > 0 else { return [:] }
+    var selected: [WritingContext: RevisionSelection] = [:]
+    for context in WritingContext.allCases {
+      let inContext = samples.filter { $0.context == context }
+      let newSamples = Array(inContext.suffix(window))
+      guard !newSamples.isEmpty else { continue }
+      let older = Array(inContext.dropLast(newSamples.count))
+      selected[context] = RevisionSelection(
+        newSamples: newSamples, anchors: evenSample(older, max: reviseAnchorLimit))
+    }
+    return selected
+  }
+
+  private static func revisionUserMessage(current: String, selection: [WritingContext: RevisionSelection]) -> String {
+    var message = "## Current profile\n\(current)\n\n"
+    for context in WritingContext.allCases {
+      guard let picked = selection[context] else { continue }
+      message += "## Context: \(context.rawValue)\n\n"
+      let shown = picked.newSamples + picked.anchors
+      message += shown.map { "---\n\($0.text)" }.joined(separator: "\n") + "\n\n"
+    }
+    return message
+  }
+
+  private static func profileOperations(from result: [String: Any]) -> [ProfileOperation] {
+    guard let raw = result["operations"] as? [Any] else { return [] }
+    return raw.compactMap { item in
+      guard JSONSerialization.isValidJSONObject(item),
+        let data = try? JSONSerialization.data(withJSONObject: item)
+      else { return nil }
+      return try? JSONDecoder().decode(ProfileOperation.self, from: data)
+    }
+  }
+
+  private static func reviseProfile(store: WritingStyleStore, samples: [WritingSample]) async throws -> String? {
+    let current = store.loadProfile()
+    let selection = revisionSelection(samples: samples, since: store.samplesSinceProfile)
+    guard !selection.isEmpty else {
       store.resetSamplesSinceProfile()
-      UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
-      DebugLogger.log("WRITING-STYLE-PROFILE: review cancelled")
+      DebugLogger.log("WRITING-STYLE-PROFILE: revise proposed=0 applied=0")
       return nil
     }
-    store.saveProfile(accepted)
-    UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
-    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
-    store.resetSamplesSinceProfile()
-    DebugLogger.logSuccess("WRITING-STYLE-PROFILE: saved")
-    return accepted
+
+    let model = PromptModel.loadChatSlotModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel)
+    try ProviderCredentials.verifyConfigured(model.provider)
+    let shown = selection.values.reduce(0) { $0 + $1.newSamples.count + $1.anchors.count }
+    DebugLogger.log("WRITING-STYLE-PROFILE: revising from \(shown) samples with \(model.displayName)")
+
+    let result = try await LLMProviderFactory.provider(for: model).generateStructured(
+      model: model.rawValue,
+      contents: [["role": "user", "parts": [["text": revisionUserMessage(current: current, selection: selection)]]]],
+      systemInstruction: ["parts": [["text": reviseSystemPrompt]]],
+      schema: revisionSchema,
+      schemaName: "writing_style_revision",
+      thinkingLevel: .low)
+
+    let operations = profileOperations(from: result)
+    let revised = applyRevision(current: current, operations: operations, samples: samples)
+    DebugLogger.log(
+      "WRITING-STYLE-PROFILE: revise proposed=\(operations.count) applied=\(revised.applied.count)")
+    guard !revised.applied.isEmpty else {
+      store.resetSamplesSinceProfile()
+      return nil
+    }
+    let rationale = String(
+      localized: "\(revised.applied.count) changes, each backed by at least 2 of your messages.")
+    guard let accepted = await ProposalReviewPanel.present(
+      focusDisplayName: "Writing Style",
+      originalText: current,
+      suggestedText: revised.profile,
+      rationale: rationale)
+    else { return cancelProfileReview(store: store) }
+    return saveAcceptedProfile(accepted, rationale: rationale)
+  }
+
+  private static func saveAcceptedProfile(_ accepted: String, rationale: String) -> String? {
+    switch MCPConfigApplier(targets: .live, changeLog: .shared).applyWritingStyle(
+      content: accepted, rationale: rationale, viaProposal: true)
+    {
+    case .success:
+      DebugLogger.logSuccess("WRITING-STYLE-PROFILE: saved")
+      return accepted
+    case .failure:
+      DebugLogger.logError("WRITING-STYLE-PROFILE: save failed")
+      return nil
+    }
+  }
+
+  private static func cancelProfileReview(store: WritingStyleStore) -> String? {
+    store.markProfileDismissed()
+    DebugLogger.log("WRITING-STYLE-PROFILE: review cancelled")
+    return nil
+  }
+
+  /// Applies evidence-checked line edits. An operation is dropped unless every quote occurs in a
+  /// sample of its context and the quotes together hit at least two different samples, the line
+  /// it replaces or removes is actually in that section, and a line it adds is not already there.
+  /// Sections with no applied operation keep their text. The result uses the same headers as
+  /// `mergedProfile`.
+  static func applyRevision(
+    current: String, operations: [ProfileOperation], samples: [WritingSample]
+  ) -> (profile: String, applied: [ProfileOperation]) {
+    var sections: [WritingContext: [String]] = [:]
+    for context in WritingContext.allCases {
+      sections[context] = sectionLines(WritingStyleStore.profileSection(in: current, for: context))
+    }
+    var applied: [ProfileOperation] = []
+    for operation in operations {
+      var lines = sections[operation.context] ?? []
+      guard revisionIsSupported(operation, lines: lines, samples: samples) else { continue }
+      let newLine = operation.newLine.trimmingCharacters(in: .whitespacesAndNewlines)
+      switch operation.op {
+      case .add:
+        lines.append(newLine)
+      case .replace:
+        guard let index = lines.firstIndex(where: { linesMatch($0, operation.oldLine) }) else { continue }
+        lines[index] = newLine
+      case .remove:
+        guard let index = lines.firstIndex(where: { linesMatch($0, operation.oldLine) }) else { continue }
+        lines.remove(at: index)
+      }
+      sections[operation.context] = lines
+      applied.append(operation)
+    }
+    let profile = WritingContext.allCases.map { context in
+      let body = (sections[context] ?? []).joined(separator: "\n")
+      return "\(context.profileHeader)\n\(body)\n"
+    }.joined(separator: "\n")
+    return (profile, applied)
+  }
+
+  private static func sectionLines(_ section: String) -> [String] {
+    guard !section.isEmpty else { return [] }
+    return section.components(separatedBy: .newlines)
+  }
+
+  /// Trimmed, and a single leading "- " does not count, so a bullet and the same words match.
+  private static func comparableLine(_ line: String) -> String {
+    var trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasPrefix("- ") {
+      trimmed = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return trimmed
+  }
+
+  private static func linesMatch(_ line: String, _ other: String) -> Bool {
+    let key = comparableLine(line)
+    return !key.isEmpty && key == comparableLine(other)
+  }
+
+  private static func sectionContains(_ line: String, in lines: [String]) -> Bool {
+    let key = comparableLine(line)
+    guard !key.isEmpty else { return false }
+    return lines.contains { comparableLine($0) == key }
+  }
+
+  /// Lowercased, trimmed, and internal whitespace collapsed to single spaces.
+  private static func normalizedEvidence(_ text: String) -> String {
+    text.lowercased()
+      .components(separatedBy: .whitespacesAndNewlines)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+  }
+
+  private static func evidenceMatches(_ operation: ProfileOperation, samples: [WritingSample]) -> Bool {
+    let quotes = operation.evidence.map(normalizedEvidence)
+    guard !quotes.isEmpty, quotes.allSatisfy({ $0.count >= 2 }) else { return false }
+    let texts = samples.filter { $0.context == operation.context }.map { normalizedEvidence($0.text) }
+    var hit = Set<Int>()
+    for quote in quotes {
+      var found = false
+      for (index, text) in texts.enumerated() where text.contains(quote) {
+        found = true
+        hit.insert(index)
+      }
+      if !found { return false }
+    }
+    return hit.count >= 2
+  }
+
+  private static func revisionIsSupported(
+    _ operation: ProfileOperation, lines: [String], samples: [WritingSample]
+  ) -> Bool {
+    guard evidenceMatches(operation, samples: samples) else { return false }
+    switch operation.op {
+    case .add:
+      let newLine = operation.newLine.trimmingCharacters(in: .whitespacesAndNewlines)
+      return !newLine.isEmpty && !sectionContains(newLine, in: lines)
+    case .replace:
+      let newLine = operation.newLine.trimmingCharacters(in: .whitespacesAndNewlines)
+      return lines.contains(where: { linesMatch($0, operation.oldLine) })
+        && !newLine.isEmpty
+        && !sectionContains(newLine, in: lines)
+    case .remove:
+      return lines.contains(where: { linesMatch($0, operation.oldLine) })
+    }
   }
 
   /// A context with samples takes the derived lines (even if the model wrote filler for the rest).

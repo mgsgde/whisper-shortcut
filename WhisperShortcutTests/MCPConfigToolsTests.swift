@@ -246,13 +246,18 @@ struct MCPConfigToolsTests {
     #expect(bad.isError)
   }
 
-  @Test("Writing style: applied at apply, proposal at propose")
+  @Test("Writing style: applied at apply, proposal at propose, apply stamps the profile")
   func writingStyle() {
     let env = MCPTestEnv(level: .apply)
+    env.testDefaults.set(4, forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile)
+    env.testDefaults.set(Date(timeIntervalSince1970: 50), forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
     let t = env.tools()
     let r = t.call(name: "update_writing_style_profile", arguments: ["content": "Short and direct.", "rationale": "r"], access: .write)
     #expect(obj(r)["status"] as? String == "applied")
     #expect(env.writingStyle.loadProfile() == "Short and direct.")
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt) != nil)
+    #expect(env.testDefaults.integer(forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile) == 0)
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) == nil)
     env.level = .propose
     let p = t.call(name: "update_writing_style_profile", arguments: ["content": "Other.", "rationale": "r"], access: .write)
     #expect(obj(p)["status"] as? String == "pending_review")

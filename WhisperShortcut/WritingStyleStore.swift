@@ -67,6 +67,30 @@ final class WritingStyleStore {
     defaults.object(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt) as? Date
   }
 
+  /// True when the saved profile has at least one non-empty context section. A missing file and
+  /// `emptyProfile` (headers only) are both false. This is the file, not `profileUpdatedAt`.
+  var hasProfile: Bool {
+    let profile = loadProfile()
+    return WritingContext.allCases.contains {
+      !Self.profileSection(in: profile, for: $0).isEmpty
+    }
+  }
+
+  /// The profile was just written. Stamps the update, clears a previous dismissal, and resets
+  /// the sample counter. Callers that save a profile go through here so the keys stay together.
+  func markProfileSaved(now: Date = Date()) {
+    defaults.set(now, forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
+    defaults.removeObject(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
+    resetSamplesSinceProfile()
+  }
+
+  /// The user dismissed the review. The profile file is unchanged; the counter resets so the
+  /// same samples do not bring the panel back on the next check.
+  func markProfileDismissed(now: Date = Date()) {
+    defaults.set(now, forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
+    resetSamplesSinceProfile()
+  }
+
   /// A sample for a dictation pasted into a known app, or nil when the text is too short or long
   /// to be a useful example.
   static func dictatedSample(text: String, context: WritingContext, now: Date = Date()) -> WritingSample? {

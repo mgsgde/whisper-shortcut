@@ -142,6 +142,7 @@ struct MCPConfigApplier {
       guard targets.writingStyle.loadProfile() == content else {
         return .failure(MCPConfigError(message: "Could not write the writing style profile."))
       }
+      targets.writingStyle.markProfileSaved()
       let change = changeLog.record(
         kind: .writingStyle, target: "profile", previous: previous, new: content,
         rationale: rationale, viaProposal: viaProposal)

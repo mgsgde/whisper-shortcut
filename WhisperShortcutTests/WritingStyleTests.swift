@@ -173,6 +173,45 @@ struct WritingStyleTests {
                   sentAt: Date(), incomingChars: nil, text: text)
   }
 
+  @Test("hasProfile is false with no file or headers only, true once a section has a line")
+  func hasProfile() {
+    let store = makeStore()
+    defer { store.clearAll() }
+    #expect(!store.hasProfile)
+    store.saveProfile(WritingStyleStore.emptyProfile)
+    #expect(!store.hasProfile)
+    store.saveProfile("=== Email ===\nGreeting: \"Hi\"\n\n=== Messenger ===\n")
+    #expect(store.hasProfile)
+  }
+
+  @Test("Saving and dismissing a profile write this store's defaults and reset its counter")
+  func profileBookkeeping() {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("writing-style-tests-\(UUID().uuidString)")
+    let defaults = UserDefaults(suiteName: "writing-style-tests-\(UUID().uuidString)")!
+    let store = WritingStyleStore(directory: dir, isEnabled: { true }, defaults: defaults)
+    defer { store.clearAll() }
+    #expect(store.addSamples([sample("First message worth keeping.", id: "a")]) == 1)
+    #expect(store.samplesSinceProfile == 1)
+    store.markProfileDismissed(now: Date(timeIntervalSince1970: 10))
+    #expect(
+      (defaults.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) as? Date)?
+        .timeIntervalSince1970 == 10)
+    #expect(store.samplesSinceProfile == 0)
+    let savedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    store.markProfileSaved(now: savedAt)
+    #expect(store.profileUpdatedAt?.timeIntervalSince1970 == savedAt.timeIntervalSince1970)
+    #expect(defaults.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) == nil)
+    #expect(store.samplesSinceProfile == 0)
+    #expect(store.addSamples([sample("Second message worth keeping.", id: "b")]) == 1)
+    store.markProfileDismissed(now: Date(timeIntervalSince1970: 1_700_000_100))
+    #expect(store.samplesSinceProfile == 0)
+    #expect(store.profileUpdatedAt?.timeIntervalSince1970 == savedAt.timeIntervalSince1970)
+    #expect(
+      (defaults.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) as? Date)?
+        .timeIntervalSince1970 == 1_700_000_100)
+  }
+
   @Test("Profile sections are parsed by header")
   func profileSections() {
     let profile = "=== Email ===\nGreeting: \"Hi <name>,\"\n\n=== Messenger ===\nlowercase, no greeting\n=== Work Chat ===\n"
@@ -196,6 +235,125 @@ struct WritingStyleTests {
       derived: [.messenger: "No examples."], current: "=== Email ===\nold\n", contextsWithSamples: [])
     #expect(WritingStyleStore.profileSection(in: empty, for: .messenger) == "")
     #expect(WritingStyleStore.profileSection(in: empty, for: .email) == "old")
+  }
+
+  private func profileText(_ bodies: [WritingContext: String]) -> String {
+    WritingContext.allCases.map { context in
+      "\(context.profileHeader)\n\(bodies[context] ?? "")\n"
+    }.joined(separator: "\n")
+  }
+
+  private func operation(
+    _ op: WritingStyleImporter.ProfileOperation.Op,
+    context: WritingContext = .email,
+    oldLine: String = "",
+    newLine: String = "",
+    evidence: [String]
+  ) -> WritingStyleImporter.ProfileOperation {
+    WritingStyleImporter.ProfileOperation(
+      context: context, op: op, oldLine: oldLine, newLine: newLine, evidence: evidence)
+  }
+
+  @Test("applyRevision adds a line quoted from two samples and leaves other sections unchanged")
+  func revisionAddsWithTwoSamples() {
+    let current = profileText([
+      .email: "Length: short",
+      .messenger: "lowercase, no greeting",
+      .defaultContext: "hand-written default",
+    ])
+    let samples = [
+      sample("Hi Anna, Thursday works for me.", context: .email, id: "1"),
+      sample("Hi Ben, Friday works for me.", context: .email, id: "2"),
+    ]
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["THURSDAY   works", "friday works"])
+    let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
+    #expect(result.applied == [op])
+    #expect(WritingStyleStore.profileSection(in: result.profile, for: .email) == "Length: short\nGreeting: \"Hi\"")
+    #expect(result.profile.contains("=== Messenger ===\nlowercase, no greeting\n"))
+    #expect(result.profile.contains("=== Default ===\nhand-written default\n"))
+    #expect(WritingStyleStore.profileSection(in: result.profile, for: .workChat) == "")
+  }
+
+  @Test("applyRevision drops an operation when a quote is not in any sample")
+  func revisionDropsUnknownQuote() {
+    let current = profileText([.email: "Length: short"])
+    let samples = [
+      sample("Hi Anna, Thursday works for me.", context: .email, id: "1"),
+      sample("Hi Ben, Thursday works for me too.", context: .email, id: "2"),
+    ]
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works", "absolutely nowhere"])
+    let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
+    #expect(result.applied.isEmpty)
+    #expect(WritingStyleStore.profileSection(in: result.profile, for: .email) == "Length: short")
+  }
+
+  @Test("applyRevision drops quotes that are both found only in one sample")
+  func revisionDropsSingleSample() {
+    let current = profileText([.email: "Length: short"])
+    let samples = [
+      sample("Hi Anna, Thursday works and Friday works.", context: .email, id: "1"),
+      sample("See you at the office tomorrow morning.", context: .email, id: "2"),
+    ]
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works", "Friday works"])
+    let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
+    #expect(result.applied.isEmpty)
+  }
+
+  @Test("applyRevision drops a replace when the old line is not in the section")
+  func revisionDropsUnknownLine() {
+    let current = profileText([.email: "Greeting: \"Hi\""])
+    let samples = [
+      sample("Hi Anna, Thursday works for me.", context: .email, id: "1"),
+      sample("Hi Ben, Friday works for me.", context: .email, id: "2"),
+    ]
+    let op = operation(
+      .replace, oldLine: "Closing: bye", newLine: "Closing: \"Bis dann\"",
+      evidence: ["Thursday works", "Friday works"])
+    let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
+    #expect(result.applied.isEmpty)
+    #expect(WritingStyleStore.profileSection(in: result.profile, for: .email) == "Greeting: \"Hi\"")
+  }
+
+  @Test("applyRevision replaces and removes an existing line")
+  func revisionReplaceAndRemove() {
+    let current = profileText([
+      .email: "Greeting: \"Hi\"\n- Length: short\nEmoji: none",
+      .messenger: "lowercase, no greeting",
+    ])
+    let samples = [
+      sample("Hi Anna, Thursday works. I write about ten words.", context: .email, id: "1"),
+      sample("Hi Ben, Friday works. I write about ten words.", context: .email, id: "2"),
+    ]
+    let replace = operation(
+      .replace, oldLine: "Length: short", newLine: "Length: about ten words",
+      evidence: ["Thursday works", "Friday works"])
+    let remove = operation(
+      .remove, oldLine: "- Emoji: none", evidence: ["about ten words", "Hi Anna"])
+    let result = WritingStyleImporter.applyRevision(
+      current: current, operations: [replace, remove], samples: samples)
+    #expect(result.applied == [replace, remove])
+    #expect(
+      WritingStyleStore.profileSection(in: result.profile, for: .email)
+        == "Greeting: \"Hi\"\nLength: about ten words")
+    #expect(result.profile.contains("=== Messenger ===\nlowercase, no greeting\n"))
+  }
+
+  @Test("applyRevision does not count quotes from another context")
+  func revisionIgnoresOtherContext() {
+    let current = profileText([
+      .email: "Length: short",
+      .messenger: "lowercase, no greeting",
+    ])
+    let samples = [
+      sample("See you at the office tomorrow.", context: .email, id: "e"),
+      sample("Hi Anna, Thursday works for me.", context: .messenger, id: "m1"),
+      sample("Hi Ben, Friday works for me.", context: .messenger, id: "m2"),
+    ]
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works", "Friday works"])
+    let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
+    #expect(result.applied.isEmpty)
+    #expect(WritingStyleStore.profileSection(in: result.profile, for: .email) == "Length: short")
+    #expect(result.profile.contains("=== Messenger ===\nlowercase, no greeting\n"))
   }
 
   @Test("Duplicates by id and by text are skipped")

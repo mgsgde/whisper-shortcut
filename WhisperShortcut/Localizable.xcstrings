@@ -1181,6 +1181,16 @@
         }
       }
     },
+    "%lld changes, each backed by at least 2 of your messages." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Änderungen, jede mit mindestens zwei Ihrer Nachrichten belegt."
+          }
+        }
+      }
+    },
     "%lld denied" : {
       "localizations" : {
         "de" : {

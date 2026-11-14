@@ -3,7 +3,7 @@
 //  WhisperShortcut
 //
 //  Keeps Writing Style learning on its own while the toggle is on: imports sent emails from Gmail
-//  weekly and re-derives the profile once enough new samples have arrived. The profile review
+//  weekly and updates the profile once enough new samples have arrived. The profile review
 //  panel still appears, so the user stays in control. Logs carry counts only, never text.
 //
 
@@ -120,7 +120,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
     let total = store.loadSamples().count
     let dismissed = UserDefaults.standard.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) != nil
     let due = Self.isProfileDue(
-      since: since, total: total, hasProfile: store.profileUpdatedAt != nil, dismissed: dismissed)
+      since: since, total: total, hasProfile: store.hasProfile, dismissed: dismissed)
     DebugLogger.log("WRITING-STYLE-AUTO: check since=\(since) total=\(total) due=\(due)")
     guard due, improvementModelHasCredential else { return }
     await derive(userTriggered: false)
