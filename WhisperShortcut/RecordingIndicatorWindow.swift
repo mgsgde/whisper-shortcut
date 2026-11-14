@@ -911,7 +911,7 @@ struct RecordingIndicatorView: View {
 /// app the user is dictating into. It takes key status while the user types a
 /// Dictate Prompt instruction (while the quick-action list is up) — non-activating, so
 /// the target app stays frontmost. While Read Aloud plays the pill takes key focus
-/// (non-activating): Space pause/resume, ←/→ 10 s, Esc stop; any other key or a click
+/// (non-activating): Space or ↩ pause/resume, ←/→ 10 s, Esc stop; any other key or a click
 /// elsewhere hands focus back.
 private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
@@ -1033,6 +1033,8 @@ final class RecordingIndicatorManager {
   private var frontObservers: [NSObjectProtocol] = []
   /// Watches display attach/detach/arrangement changes while the pill is visible.
   private var screenObserver: NSObjectProtocol?
+  /// Logs when the Read Aloud pill gives up key status. Does not reclaim focus.
+  private var keyResignObserver: NSObjectProtocol?
 
   private enum Constants {
     static let bottomMargin: CGFloat = 28
@@ -1257,7 +1259,7 @@ final class RecordingIndicatorManager {
     // the pill then has to reclaim it.
     guard !(panel.acceptsKeyInput && panel.isKeyWindow) else { return }
     claimKeyFocus(panel)
-    DebugLogger.log("READ-ALOUD-KEYS: Pill took key focus")
+    DebugLogger.log("READ-ALOUD-KEYS: Pill took key focus (isKey=\(panel.isKeyWindow), appActive=\(NSApp.isActive))")
   }
 
   private func claimKeyFocus(_ panel: RecordingIndicatorPanel) {
@@ -1444,6 +1446,10 @@ final class RecordingIndicatorManager {
     panel.onMouseDown = { [weak self] in
       guard let self, let panel = self.panel else { return }
       self.takeKeyFocusForSpeaking(panel)
+      DispatchQueue.main.async { [weak self] in
+        guard let self, let panel = self.panel else { return }
+        self.takeKeyFocusForSpeaking(panel)
+      }
     }
     panel.onSpeakingKey = { [weak self] event in
       guard let self, self.model.phase == .speaking,
@@ -1459,6 +1465,11 @@ final class RecordingIndicatorManager {
           DebugLogger.log("READ-ALOUD-KEYS: Space")
           self.onTogglePause?()
           return true
+        case 36, 76:
+          if event.isARepeat { return true }
+          DebugLogger.log("READ-ALOUD-KEYS: ↩")
+          self.onTogglePause?()
+          return true
         case 123:
           if !event.isARepeat { DebugLogger.log("READ-ALOUD-KEYS: ←") }
           self.onSkip?(-RecordingIndicatorView.skipInterval)
@@ -1472,6 +1483,8 @@ final class RecordingIndicatorManager {
           DebugLogger.log("READ-ALOUD-KEYS: Esc")
           self.onCancel?()
           return true
+        case 125, 126:
+          return true
         default:
           break
         }
@@ -1479,6 +1492,16 @@ final class RecordingIndicatorManager {
       self.releaseKeyFocus()
       DebugLogger.log("READ-ALOUD-KEYS: Unhandled key, focus returned")
       return true
+    }
+    keyResignObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, self.model.phase == .speaking, let panel = self.panel else { return }
+        DebugLogger.log(
+          "READ-ALOUD-KEYS: Pill lost key focus (accepts=\(panel.acceptsKeyInput), front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil"))"
+        )
+      }
     }
     return panel
   }
