@@ -71,26 +71,6 @@
         }
       }
     },
-    "Unknown command %@. Did you mean %@?" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unbekannter Befehl %1$@. Meinten Sie %2$@?"
-          }
-        }
-      }
-    },
-    "Unknown command %@. Press / to see all commands." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unbekannter Befehl %@. Tippen Sie /, um alle Befehle zu sehen."
-          }
-        }
-      }
-    },
     "Writing Style Suggestion" : {
       "localizations" : {
         "de" : {

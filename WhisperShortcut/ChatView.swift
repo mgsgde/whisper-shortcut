@@ -1757,35 +1757,6 @@ class ChatViewModel: ObservableObject {
     }
   }
 
-  // MARK: - Unknown commands
-
-  /// A line that can only be meant as a command: one word, a slash, then letters, digits or
-  /// dashes ("/improce"). Paths ("/usr/bin") and sentences keep going to the model.
-  static func looksLikeSlashCommand(_ typed: String) -> Bool {
-    typed.range(of: "^/[\\p{L}0-9-]+$", options: .regularExpression) != nil
-  }
-
-  /// The built-in or user command within two typos of `typed` ("/improce" → "/improve"), the
-  /// closest one first.
-  static func closestCommand(to typed: String, among commands: [String]) -> String? {
-    let word = typed.lowercased()
-    return commands
-      .compactMap { cmd in GlossaryFastLearner.levenshtein(word, cmd.lowercased(), limit: 2).map { (cmd, $0) } }
-      .min { $0.1 < $1.1 }?.0
-  }
-
-  /// A mistyped command must not reach the model: it would answer the typo and title the chat
-  /// with it. Says so locally and names the likely command.
-  func handleUnknownSlashCommand(_ typed: String) {
-    let commands = Self.commandSuggestions.map(\.command)
-      + UserCommandStore.shared.commands.map { "/" + $0.name }
-    if let match = Self.closestCommand(to: typed, among: commands) {
-      appendModelMessage("Unknown command \(typed). Did you mean \(match)?")
-    } else {
-      appendModelMessage("Unknown command \(typed). Press / to see all commands.")
-    }
-  }
-
   // MARK: - User commands
 
   /// Lowercased names (no slash) of every built-in command and model alias; user command files
@@ -5103,11 +5074,6 @@ struct ChatInputAreaView: View {
         composer.removeTrailingWord()
       }
       Task { await viewModel.sendMessage(userInput: typed) }
-      return
-    }
-    if ChatViewModel.looksLikeSlashCommand(typed.trimmingCharacters(in: .whitespacesAndNewlines)) {
-      composer.removeTrailingWord()
-      viewModel.handleUnknownSlashCommand(typed.trimmingCharacters(in: .whitespacesAndNewlines))
       return
     }
     guard viewModel.validateCredential(for: ChatViewModel.openChatModel) else { return }
