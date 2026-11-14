@@ -111,7 +111,7 @@ class MenuBarController: NSObject {
   /// flag from one recording could carry into the next. A recording now starts from a fresh value
   /// (`beginAudioCapture`) and ends by dropping it (`audioRecorderDidFinishRecording`, the fail and
   /// cancel paths). Same shape as `VoiceJob` on the processing side (refactor ledger R52).
-  private struct RecordingIntent {
+  struct RecordingIntent {
     /// Identifies this recording, so Fn can end only the one it started.
     let id = UUID()
     enum Target: Equatable {
@@ -160,6 +160,12 @@ class MenuBarController: NSObject {
     var templateEnabled = true
     /// Read Aloud Prompt: the Dictate Prompt result is spoken, not copied or pasted.
     var speakResult = false
+
+    /// Whether audio the recorder just delivered belongs to this intent. A started capture does;
+    /// so does one the user discarded before the mic came up (Fn+key, indicator ✕), because
+    /// `discardOnFinish` is only ever set by stopping this very recording. A new recording that is
+    /// still waiting for mic permission has neither and must not take the audio.
+    var ownsFinishedAudio: Bool { captureStarted || discardOnFinish }
 
     var pendingMode: AppState.RecordingMode? {
       if case .mode(let mode) = target, !captureStarted { return mode }
@@ -4445,10 +4451,11 @@ extension MenuBarController: AudioRecorderDelegate {
 
       // The recording is over: its intent goes with this audio and nowhere else, so nothing from it
       // can reach the next recording.
-      // Only an intent whose capture started belongs to this audio. A new recording that is still
+      // Only an intent whose capture started belongs to this audio. So does one discarded before
+      // the mic came up (Fn+key, indicator ✕). A new recording that is still
       // waiting for mic permission (possible when a double stop already returned the app to idle)
       // is not this recording's, and taking it would strand that recorder.
-      let intent = self.recording?.captureStarted == true ? self.recording : nil
+      let intent = self.recording?.ownsFinishedAudio == true ? self.recording : nil
       if intent != nil { self.recording = nil }
 
       // Cancelled via the recording indicator's ✕ — discard the audio, don't process
