@@ -3,8 +3,9 @@
 //  WhisperShortcut
 //
 //  Keeps Writing Style learning on its own while the toggle is on: imports sent emails from Gmail
-//  weekly and updates the profile once enough new samples have arrived. The profile review
-//  panel still appears, so the user stays in control. Logs carry counts only, never text.
+//  weekly and stores a profile suggestion as a pending proposal once enough new samples have
+//  arrived. A check the app runs on its own only waits in the menu; one the user asked for opens
+//  the review window. Logs carry counts only, never text.
 //
 
 import Foundation
@@ -19,6 +20,8 @@ final class WritingStyleAutoUpdater: ObservableObject {
 
   static let profileThreshold = 20
   static let gmailInterval: TimeInterval = 7 * 24 * 3600
+  /// Minimum time between profile proposals the app makes on its own.
+  static let proposalCooldown: TimeInterval = 14 * 24 * 3600
   private static let dailyCheckInterval: TimeInterval = 24 * 3600
 
   private var dailyTimer: Timer?
@@ -26,7 +29,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
   private init() {}
 
   /// Under XCTest the process shares the dev app's defaults, where Writing Style may be on: a run
-  /// would import Gmail, call the model with real messages and show the review panel.
+  /// would import Gmail and call the model with real messages.
   private static func skipUnderTest() -> Bool {
     guard isRunningUnderTest else { return false }
     DebugLogger.log("WRITING-STYLE-AUTO: skipped under test")
@@ -41,7 +44,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
   /// own job; that coordinator is gone (owner decision 2026-11-02), so Writing Style owns its timer.
   func startDailySchedule() {
     guard !AppConstants.isSidecarInstance, dailyTimer == nil else { return }
-    // Detached from the caller: the profile review panel can wait on the user indefinitely.
+    // Detached from the caller so a Gmail import does not block launch.
     Task { @MainActor in await self.runIfDue() }
     dailyTimer = Timer.scheduledTimer(withTimeInterval: Self.dailyCheckInterval, repeats: true) { _ in
       Task { @MainActor in await WritingStyleAutoUpdater.shared.runIfDue() }
@@ -67,7 +70,7 @@ final class WritingStyleAutoUpdater: ObservableObject {
   // MARK: - Automatic
 
   /// Toggle just turned on: import Gmail now (if connected and not offline), then derive the
-  /// profile if any samples exist.
+  /// profile if any samples exist. The user just asked, so the review window opens.
   func handleEnabled() async {
     guard !Self.skipUnderTest(), !isWorking, isEnabled, !OfflineMode.isEnabled else { return }
     isWorking = true
@@ -86,13 +89,19 @@ final class WritingStyleAutoUpdater: ObservableObject {
     }
 
     guard !WritingStyleStore.shared.loadSamples().isEmpty, improvementModelHasCredential else { return }
-    await derive(userTriggered: false)
+    await derive(userTriggered: true)
   }
 
-  /// Pure due rule. A first profile is offered once enough samples exist, but not again after the
-  /// user dismissed the review; 20 NEW samples re-offer it either way.
-  nonisolated static func isProfileDue(since: Int, total: Int, hasProfile: Bool, dismissed: Bool) -> Bool {
-    since >= profileThreshold || (!hasProfile && !dismissed && total >= profileThreshold)
+  /// Pure due rule for automatic checks. A first profile is offered once enough samples exist, but
+  /// not again after the user dismissed the review; it ignores the cooldown. An update needs 20 NEW
+  /// samples and at least `proposalCooldown` since the last proposal. User-started paths skip this.
+  nonisolated static func isProfileDue(
+    since: Int, total: Int, hasProfile: Bool, dismissed: Bool, lastProposedAt: Date?, now: Date
+  ) -> Bool {
+    if !hasProfile && !dismissed && total >= profileThreshold { return true }
+    guard since >= profileThreshold else { return false }
+    guard let lastProposedAt else { return true }
+    return now.timeIntervalSince(lastProposedAt) >= proposalCooldown
   }
 
   /// Daily check (launch + 24h timer).
@@ -119,9 +128,16 @@ final class WritingStyleAutoUpdater: ObservableObject {
     let since = store.samplesSinceProfile
     let total = store.loadSamples().count
     let dismissed = UserDefaults.standard.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) != nil
+    let now = Date()
+    let lastProposedAt = store.lastProposedAt
     let due = Self.isProfileDue(
-      since: since, total: total, hasProfile: store.hasProfile, dismissed: dismissed)
-    DebugLogger.log("WRITING-STYLE-AUTO: check since=\(since) total=\(total) due=\(due)")
+      since: since, total: total, hasProfile: store.hasProfile, dismissed: dismissed,
+      lastProposedAt: lastProposedAt, now: now)
+    let cooldownDays = lastProposedAt.map {
+      max(0, Int(ceil((Self.proposalCooldown - now.timeIntervalSince($0)) / 86_400)))
+    } ?? 0
+    DebugLogger.log(
+      "WRITING-STYLE-AUTO: check since=\(since) total=\(total) due=\(due) cooldown=\(cooldownDays)")
     guard due, improvementModelHasCredential else { return }
     await derive(userTriggered: false)
   }
@@ -157,12 +173,18 @@ final class WritingStyleAutoUpdater: ObservableObject {
   private func derive(userTriggered: Bool) async {
     guard !Self.skipUnderTest() else { return }
     do {
-      let saved = try await WritingStyleImporter.deriveProfile()
-      DebugLogger.log("WRITING-STYLE-AUTO: derive saved=\(saved != nil)")
-      if userTriggered {
-        lastMessage = saved != nil ? String(localized: "Style profile updated.") : String(localized: "Profile update cancelled.")
-      } else if saved != nil {
-        lastMessage = String(localized: "Style profile updated.")
+      switch try await WritingStyleImporter.deriveProfile() {
+      case .proposed(let proposal):
+        DebugLogger.log("WRITING-STYLE-AUTO: derive proposed=1")
+        if userTriggered {
+          MCPProposalWindows.shared.show(proposal)
+          lastMessage = String(localized: "Suggestion ready to review.")
+        }
+      case .unchanged:
+        DebugLogger.log("WRITING-STYLE-AUTO: derive proposed=0")
+        if userTriggered {
+          lastMessage = String(localized: "No changes. Your profile already matches your messages.")
+        }
       }
     } catch {
       DebugLogger.logError("WRITING-STYLE-AUTO: derive failed")

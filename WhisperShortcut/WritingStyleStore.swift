@@ -63,6 +63,15 @@ final class WritingStyleStore {
     defaults.set(0, forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile)
   }
 
+  /// When the app last created a profile proposal. Drives the 14-day cooldown for automatic ones.
+  var lastProposedAt: Date? {
+    defaults.object(forKey: UserDefaultsKeys.writingStyleLastProposedAt) as? Date
+  }
+
+  func markProposed(now: Date = Date()) {
+    defaults.set(now, forKey: UserDefaultsKeys.writingStyleLastProposedAt)
+  }
+
   var profileUpdatedAt: Date? {
     defaults.object(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt) as? Date
   }
@@ -213,6 +222,7 @@ final class WritingStyleStore {
     defaults.removeObject(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
     defaults.removeObject(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
     defaults.removeObject(forKey: UserDefaultsKeys.writingStyleLastGmailImportAt)
+    defaults.removeObject(forKey: UserDefaultsKeys.writingStyleLastProposedAt)
   }
 
   private func readSamplesUnlocked() -> [WritingSample] {

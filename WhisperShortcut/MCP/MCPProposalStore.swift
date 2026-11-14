@@ -10,6 +10,8 @@ extension Notification.Name {
 struct MCPProposal: Codable, Identifiable {
   enum Kind: String, Codable { case systemPrompt, writingStyle, saveCommand, deleteCommand, problemReport, settings }
   enum Status: String, Codable { case pending, accepted, declined }
+  /// Who asked for the change. Optional on the proposal so older JSONL lines still decode.
+  enum Origin: String, Codable { case aiApp, writingStyle }
 
   let id: String
   let createdAt: Date
@@ -36,6 +38,10 @@ struct MCPProposal: Codable, Identifiable {
   /// Why a pending proposal was declined without the user, when the app did it. Optional so older
   /// lines still decode.
   var resolutionReason: String? = nil
+  /// Nil on lines written before this field existed, which means an AI app.
+  var origin: Origin? = nil
+
+  var isFromWritingStyle: Bool { origin == .writingStyle }
 }
 
 /// Pending AI-app proposals in `UserContext/mcp-proposals.jsonl`, so a quit does not lose them.
@@ -97,7 +103,7 @@ final class MCPProposalStore: ObservableObject {
     kind: MCPProposal.Kind, title: String? = nil, section: String? = nil, commandName: String? = nil,
     commandScope: String? = nil, commandLabel: String? = nil, commandDescription: String? = nil,
     previousContent: String? = nil, proposedContent: String? = nil, rationale: String,
-    settingsChanges: [MCPSettingsChangeItem]? = nil
+    settingsChanges: [MCPSettingsChangeItem]? = nil, origin: MCPProposal.Origin? = nil
   ) throws -> MCPProposal {
     try MCPMain.run {
       // A newer proposal for the same target replaces the older one.
@@ -117,13 +123,14 @@ final class MCPProposalStore: ObservableObject {
         throw MCPConfigError(
           message: "Too many changes are waiting for approval in WhisperShortcut. Ask the user to review them first.")
       }
+      // Status only, not decline(): replacing a Writing Style proposal must not stamp it dismissed.
       for i in sameTarget { all[i].status = .declined }
       let proposal = MCPProposal(
         id: UUID().uuidString, createdAt: Date(), kind: kind, title: title, section: section,
         commandName: commandName, commandScope: commandScope, commandLabel: commandLabel,
         commandDescription: commandDescription, previousContent: previousContent,
         proposedContent: proposedContent, rationale: rationale, status: .pending, edited: false,
-        settingsChanges: settingsChanges)
+        settingsChanges: settingsChanges, origin: origin)
       all.append(proposal)
       commit()
       return proposal
@@ -249,6 +256,9 @@ final class MCPProposalStore: ObservableObject {
     MCPMain.run {
       guard let index = all.firstIndex(where: { $0.id == id && $0.status == .pending }) else { return }
       all[index].status = .declined
+      if all[index].isFromWritingStyle {
+        applier?.targets.writingStyle.markProfileDismissed()
+      }
       commit()
       DebugLogger.log("MCP-CONFIG: proposal \(all[index].kind.rawValue) declined")
     }

@@ -1081,6 +1081,17 @@ class MenuBarController: NSObject {
       }
     }
 
+    // A suggestion waiting for a decision shows as a dot on the idle icon and as a menu row.
+    NotificationCenter.default.addObserver(
+      forName: .mcpProposalsDidChange, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.updateMenuBarIcon()
+        if let menu = self.statusItem?.menu { self.refreshMenu(menu) }
+      }
+    }
+
     // On-device Read Aloud holds audio back until it can play without running dry; the pill's
     // spinner becomes a progress ring for that wait. Posted on the main actor.
     NotificationCenter.default.addObserver(
@@ -1296,6 +1307,10 @@ class MenuBarController: NSObject {
     } else {
       button.toolTip = appState.tooltip
     }
+    if hasPendingSuggestion, presentedState.symbolName != nil {
+      let hint = String(localized: "A suggestion is waiting for your review")
+      button.toolTip = [button.toolTip, hint].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
   }
 
   /// Idle, with nothing that can transcribe or call a model: no chat credential and the selected
@@ -1331,8 +1346,9 @@ class MenuBarController: NSObject {
       // mic.fill's stand made it clip against the menu bar bezel intermittently at 15pt.
       // 14pt + scaleProportionallyDown lets AppKit fit any intrinsic image size into the bar.
       let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-      let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: state.tooltip)?
+      let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: state.tooltip)?
         .withSymbolConfiguration(config)
+      let image = hasPendingSuggestion ? symbol.map(Self.withSuggestionDot) : symbol
       image?.isTemplate = true
       button.image = image
       button.imageScaling = .scaleProportionallyDown
@@ -1342,6 +1358,30 @@ class MenuBarController: NSObject {
       button.title = state.icon
     }
     applyDevBadge(to: button)
+  }
+
+  /// A Writing Style suggestion or an AI app's change is waiting for the user's decision.
+  private var hasPendingSuggestion: Bool { !MCPProposalStore.shared.pending.isEmpty }
+
+  /// The idle symbol with a small dot at its top right, the usual "something is waiting" mark.
+  /// Drawn as a template so it takes the menu bar's tint in light and dark mode; a ring of clear
+  /// space around the dot keeps it readable where it overlaps the symbol.
+  private static func withSuggestionDot(_ symbol: NSImage) -> NSImage {
+    let dot: CGFloat = 5
+    let gap: CGFloat = 1.5
+    let size = NSSize(width: symbol.size.width + dot / 2, height: symbol.size.height)
+    let image = NSImage(size: size, flipped: false) { _ in
+      symbol.draw(in: NSRect(origin: .zero, size: symbol.size))
+      let dotRect = NSRect(x: size.width - dot, y: size.height - dot, width: dot, height: dot)
+      NSGraphicsContext.current?.compositingOperation = .clear
+      NSBezierPath(ovalIn: dotRect.insetBy(dx: -gap, dy: -gap)).fill()
+      NSGraphicsContext.current?.compositingOperation = .sourceOver
+      NSColor.black.setFill()
+      NSBezierPath(ovalIn: dotRect).fill()
+      return true
+    }
+    image.accessibilityDescription = symbol.accessibilityDescription
+    return image
   }
 
   /// Local Debug builds carry an orange "DEV" tag next to the icon, so it is obvious at a glance
@@ -1389,12 +1429,19 @@ class MenuBarController: NSObject {
     let needsOnboarding = WelcomeWindowController.needsCompletion
     menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
     menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
-    let pendingProposals = MCPProposalStore.shared.pending.count
+    let pending = MCPProposalStore.shared.pending
+    let fromWritingStyle = pending.filter(\.isFromWritingStyle).count
     if let proposalsItem = menu.item(withTag: MenuTag.aiAppProposals.rawValue) {
-      proposalsItem.isHidden = pendingProposals == 0
-      proposalsItem.title = pendingProposals > 1
-        ? String(localized: "Review \(pendingProposals) Changes from AI Apps…")
-        : String(localized: "Review Change from AI App…")
+      proposalsItem.isHidden = pending.isEmpty
+      if fromWritingStyle == pending.count {
+        proposalsItem.title = String(localized: "Review Writing Style Suggestion…")
+      } else if fromWritingStyle > 0 {
+        proposalsItem.title = String(localized: "Review \(pending.count) Suggestions…")
+      } else {
+        proposalsItem.title = pending.count > 1
+          ? String(localized: "Review \(pending.count) Changes from AI Apps…")
+          : String(localized: "Review Change from AI App…")
+      }
     }
     menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
 

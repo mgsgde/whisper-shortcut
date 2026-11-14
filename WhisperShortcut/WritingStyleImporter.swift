@@ -360,12 +360,17 @@ enum WritingStyleImporter {
     "required": ["operations"],
   ]
 
-  /// Asks the Writing Style model (`selectedImprovementModel`) for a profile, shows it for review, and saves what the
-  /// user accepts. The first profile is derived from scratch. When one already exists, the same entry point revises
-  /// it and shows the panel only for changes backed by at least two messages. Returns the saved profile, or nil when
-  /// the user cancelled, the save failed, or no revision applied.
-  @discardableResult
-  static func deriveProfile() async throws -> String? {
+  /// What `deriveProfile` decided. A proposal waits for the user; nothing was saved yet.
+  enum ProfileOutcome {
+    case proposed(MCPProposal)
+    case unchanged
+  }
+
+  /// Asks the Writing Style model (`selectedImprovementModel`) for a profile and stores the
+  /// suggestion as a pending proposal. The first profile is derived from scratch. When one already
+  /// exists, the same entry point revises it and proposes only changes backed by at least two
+  /// messages. `.unchanged` means a revision applied nothing.
+  static func deriveProfile() async throws -> ProfileOutcome {
     guard !OfflineMode.isEnabled else { throw ImportError.offlineMode }
     let store = WritingStyleStore.shared
     let samples = store.loadSamples()
@@ -376,7 +381,7 @@ enum WritingStyleImporter {
     return try await deriveFirstProfile(store: store, samples: samples)
   }
 
-  private static func deriveFirstProfile(store: WritingStyleStore, samples: [WritingSample]) async throws -> String? {
+  private static func deriveFirstProfile(store: WritingStyleStore, samples: [WritingSample]) async throws -> ProfileOutcome {
     var userMessage = ""
     var used = 0
     for context in WritingContext.allCases {
@@ -409,14 +414,8 @@ enum WritingStyleImporter {
     }
     let suggested = mergedProfile(
       derived: derived, current: current, contextsWithSamples: Set(samples.map(\.context)))
-    let rationale = "Derived from \(used) of your messages."
-    guard let accepted = await ProposalReviewPanel.present(
-      focusDisplayName: "Writing Style",
-      originalText: current,
-      suggestedText: suggested,
-      rationale: rationale)
-    else { return cancelProfileReview(store: store) }
-    return saveAcceptedProfile(accepted, rationale: rationale)
+    let rationale = String(localized: "Derived from \(used) of your messages.")
+    return try proposeProfile(store: store, current: current, suggested: suggested, rationale: rationale)
   }
 
   /// New samples are the tail of that context in file order (append order), at most the last 60
@@ -463,13 +462,42 @@ enum WritingStyleImporter {
     }
   }
 
-  private static func reviseProfile(store: WritingStyleStore, samples: [WritingSample]) async throws -> String? {
+  /// Header, then one block per applied operation: the label and line, then the evidence quotes
+  /// indented two spaces. Each quote is wrapped in „…“ and cut to 80 characters.
+  static func revisionRationale(applied: [ProfileOperation]) -> String {
+    let header = applied.count == 1
+      ? String(localized: "1 change, backed by at least 2 of your messages.")
+      : String(localized: "\(applied.count) changes, each backed by at least 2 of your messages.")
+    let blocks = applied.map { operation -> String in
+      let label: String
+      let line: String
+      switch operation.op {
+      case .add:
+        label = String(localized: "Added")
+        line = operation.newLine
+      case .replace:
+        label = String(localized: "Changed")
+        line = operation.newLine
+      case .remove:
+        label = String(localized: "Removed")
+        line = operation.oldLine
+      }
+      let quotes = operation.evidence.map { quote -> String in
+        let clipped = quote.count > 80 ? String(quote.prefix(80)) + "…" : quote
+        return "„\(clipped)“"
+      }.joined(separator: ", ")
+      return "\(label): \(line)\n  \(quotes)"
+    }
+    return ([header] + blocks).joined(separator: "\n\n")
+  }
+
+  private static func reviseProfile(store: WritingStyleStore, samples: [WritingSample]) async throws -> ProfileOutcome {
     let current = store.loadProfile()
     let selection = revisionSelection(samples: samples, since: store.samplesSinceProfile)
     guard !selection.isEmpty else {
       store.resetSamplesSinceProfile()
       DebugLogger.log("WRITING-STYLE-PROFILE: revise proposed=0 applied=0")
-      return nil
+      return .unchanged
     }
 
     let model = PromptModel.loadChatSlotModel(
@@ -493,36 +521,28 @@ enum WritingStyleImporter {
       "WRITING-STYLE-PROFILE: revise proposed=\(operations.count) applied=\(revised.applied.count)")
     guard !revised.applied.isEmpty else {
       store.resetSamplesSinceProfile()
-      return nil
+      return .unchanged
     }
-    let rationale = String(
-      localized: "\(revised.applied.count) changes, each backed by at least 2 of your messages.")
-    guard let accepted = await ProposalReviewPanel.present(
-      focusDisplayName: "Writing Style",
-      originalText: current,
-      suggestedText: revised.profile,
-      rationale: rationale)
-    else { return cancelProfileReview(store: store) }
-    return saveAcceptedProfile(accepted, rationale: rationale)
+    return try proposeProfile(
+      store: store, current: current, suggested: revised.profile,
+      rationale: revisionRationale(applied: revised.applied))
   }
 
-  private static func saveAcceptedProfile(_ accepted: String, rationale: String) -> String? {
-    switch MCPConfigApplier(targets: .live, changeLog: .shared).applyWritingStyle(
-      content: accepted, rationale: rationale, viaProposal: true)
-    {
-    case .success:
-      DebugLogger.logSuccess("WRITING-STYLE-PROFILE: saved")
-      return accepted
-    case .failure:
-      DebugLogger.logError("WRITING-STYLE-PROFILE: save failed")
-      return nil
+  private static func proposeProfile(
+    store: WritingStyleStore, current: String, suggested: String, rationale: String
+  ) throws -> ProfileOutcome {
+    let proposal: MCPProposal
+    do {
+      proposal = try MCPProposalStore.shared.create(
+        kind: .writingStyle, previousContent: current, proposedContent: suggested,
+        rationale: rationale, origin: .writingStyle)
+    } catch {
+      DebugLogger.logError("WRITING-STYLE-PROFILE: proposal failed")
+      throw error
     }
-  }
-
-  private static func cancelProfileReview(store: WritingStyleStore) -> String? {
-    store.markProfileDismissed()
-    DebugLogger.log("WRITING-STYLE-PROFILE: review cancelled")
-    return nil
+    store.resetSamplesSinceProfile()
+    store.markProposed()
+    return .proposed(proposal)
   }
 
   /// Applies evidence-checked line edits. An operation is dropped unless every quote occurs in a

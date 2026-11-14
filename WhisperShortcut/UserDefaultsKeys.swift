@@ -238,6 +238,7 @@ enum UserDefaultsKeys {
   static let writingStyleProfileDismissedAt = "writingStyleProfileDismissedAt"
   /// When the Writing Style Gmail import last finished without error.
   static let writingStyleLastGmailImportAt = "writingStyleLastGmailImportAt"
+  static let writingStyleLastProposedAt = "writingStyleLastProposedAt"
 
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"

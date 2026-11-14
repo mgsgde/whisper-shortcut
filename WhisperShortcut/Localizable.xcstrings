@@ -1,6 +1,56 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "1 change, backed by at least 2 of your messages." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Änderung, mit mindestens zwei Ihrer Nachrichten belegt."
+          }
+        }
+      }
+    },
+    "Writing Style Suggestion" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schreibstil-Vorschlag"
+          }
+        }
+      }
+    },
+    "Review Writing Style Suggestion…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schreibstil-Vorschlag prüfen…"
+          }
+        }
+      }
+    },
+    "Review %lld Suggestions…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Vorschläge prüfen…"
+          }
+        }
+      }
+    },
+    "A suggestion is waiting for your review" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Vorschlag wartet auf Ihre Prüfung"
+          }
+        }
+      }
+    },
     "Always allow" : {
       "localizations" : {
         "de" : {
@@ -2821,6 +2871,16 @@
         }
       }
     },
+    "Added" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzugefügt"
+          }
+        }
+      }
+    },
     "Accessibility" : {
       "localizations" : {
         "de" : {
@@ -4815,6 +4875,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Anweisungen von Dictate Prompt ändern."
+          }
+        }
+      }
+    },
+    "Changed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geändert"
           }
         }
       }
@@ -7657,6 +7727,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Standard"
+          }
+        }
+      }
+    },
+    "Derived from %lld of your messages." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus %lld Ihrer Nachrichten abgeleitet."
           }
         }
       }
@@ -13073,6 +13153,16 @@
         }
       }
     },
+    "No changes. Your profile already matches your messages." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Änderungen. Ihr Profil passt bereits zu Ihren Nachrichten."
+          }
+        }
+      }
+    },
     "No changes applied. You cancelled all suggestions or left them empty." : {
       "localizations" : {
         "de" : {
@@ -16688,6 +16778,16 @@
         }
       }
     },
+    "Removed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt"
+          }
+        }
+      }
+    },
     "Remove" : {
       "localizations" : {
         "de" : {
@@ -19601,6 +19701,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Strukturierte Ausgabe gibt es für lokale Modelle noch nicht."
+          }
+        }
+      }
+    },
+    "Suggestion ready to review." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschlag liegt zur Prüfung bereit."
           }
         }
       }

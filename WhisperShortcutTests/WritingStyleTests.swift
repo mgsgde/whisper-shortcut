@@ -26,8 +26,38 @@ struct WritingStyleTests {
   private func profileDue(_ c: DueCase) {
     #expect(
       WritingStyleAutoUpdater.isProfileDue(
-        since: c.since, total: c.total, hasProfile: false, dismissed: c.dismissed) == c.isDue,
+        since: c.since, total: c.total, hasProfile: false, dismissed: c.dismissed,
+        lastProposedAt: nil, now: Date()) == c.isDue,
       "\(c.label)")
+  }
+
+  @Test("isProfileDue: 14-day cooldown applies to updates only")
+  private func profileDueCooldown() {
+    let now = Date()
+    let day: TimeInterval = 24 * 3600
+    func due(since: Int, total: Int = 40, hasProfile: Bool = true, last: Date?) -> Bool {
+      WritingStyleAutoUpdater.isProfileDue(
+        since: since, total: total, hasProfile: hasProfile, dismissed: false,
+        lastProposedAt: last, now: now)
+    }
+    #expect(due(since: 20, last: nil))
+    #expect(!due(since: 25, last: now.addingTimeInterval(-13 * day)))
+    #expect(due(since: 25, last: now.addingTimeInterval(-14 * day)))
+    #expect(due(since: 0, total: 20, hasProfile: false, last: now.addingTimeInterval(-1 * day)))
+    #expect(!due(since: 19, last: nil))
+    #expect(!due(since: 19, last: now.addingTimeInterval(-30 * day)))
+  }
+
+  @Test("markProposed sets lastProposedAt and clearAll removes it")
+  private func markProposedRoundTrip() {
+    let store = makeStore()
+    defer { store.clearAll() }
+    #expect(store.lastProposedAt == nil)
+    let stamp = Date(timeIntervalSince1970: 1_800_000_000)
+    store.markProposed(now: stamp)
+    #expect(store.lastProposedAt == stamp)
+    store.clearAll()
+    #expect(store.lastProposedAt == nil)
   }
 
   // MARK: - Cleaning sent mail
@@ -336,6 +366,40 @@ struct WritingStyleTests {
       WritingStyleStore.profileSection(in: result.profile, for: .email)
         == "Greeting: \"Hi\"\nLength: about ten words")
     #expect(result.profile.contains("=== Messenger ===\nlowercase, no greeting\n"))
+  }
+
+  @Test("revisionRationale lists each applied change with quoted, truncated evidence")
+  func revisionRationale() {
+    let long = String(repeating: "w", count: 81)
+    let clipped = String(repeating: "w", count: 80) + "…"
+    let add = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works", long])
+    let changed = operation(
+      .replace, oldLine: "Length: short", newLine: "Length: about ten words", evidence: ["ten words"])
+    let removed = operation(.remove, oldLine: "Emoji: none", evidence: ["no emoji", "still none"])
+    let text = WritingStyleImporter.revisionRationale(applied: [add, changed, removed])
+    let header = String(localized: "\(3) changes, each backed by at least 2 of your messages.")
+    let added = String(localized: "Added")
+    let changedLabel = String(localized: "Changed")
+    let removedLabel = String(localized: "Removed")
+    let expected = """
+    \(header)
+
+    \(added): Greeting: "Hi"
+      „Thursday works“, „\(clipped)“
+
+    \(changedLabel): Length: about ten words
+      „ten words“
+
+    \(removedLabel): Emoji: none
+      „no emoji“, „still none“
+    """
+    #expect(text == expected)
+
+    let exact = String(repeating: "q", count: 80)
+    let only = operation(.add, newLine: "Phrases: exact", evidence: [exact])
+    let exactText = WritingStyleImporter.revisionRationale(applied: [only])
+    #expect(exactText.contains("„\(exact)“"))
+    #expect(!exactText.contains("…"))
   }
 
   @Test("applyRevision does not count quotes from another context")

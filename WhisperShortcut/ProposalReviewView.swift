@@ -6,7 +6,6 @@
 //  current text (read-only) with the suggested text (editable), Accept or Cancel.
 //
 
-import AppKit
 import SwiftUI
 
 // MARK: - SwiftUI View
@@ -185,7 +184,7 @@ struct ProposalReviewView: View {
     self.onCancel = onCancel
   }
 
-  /// Title for the review window (used by the panel).
+  /// Title shown above the diff.
   var windowTitle: String {
     return String(localized: "\(String(localized: titlePrefix)) – \(focusDisplayName)")
   }
@@ -289,100 +288,6 @@ struct ProposalReviewView: View {
     }
     .padding(24)
     .frame(minWidth: 820, minHeight: 600)
-  }
-}
-
-// MARK: - Modal presentation
-
-/// Turns "the window closed" into "the user cancelled".
-///
-/// The panel is `.closable`, so the red button, Escape and ⌘W can all dismiss it without ever
-/// running Accept or Cancel. Without this, `NSApp.stopModal()` is never called: the window is
-/// gone but the modal session keeps spinning, and every other window in the app stops
-/// responding while nothing is on screen to explain why. Reported 2026-08-19 after a Voice
-/// Feedback proposal was dismissed instead of answered.
-private final class ReviewPanelCloseObserver: NSObject, NSWindowDelegate {
-  private let onClose: () -> Void
-  init(onClose: @escaping () -> Void) { self.onClose = onClose }
-  func windowWillClose(_ notification: Notification) { onClose() }
-}
-
-enum ProposalReviewPanel {
-  /// Presents the review UI in a modal panel. Returns the edited text if the user clicked Accept,
-  /// nil if the user cancelled **or dismissed the window any other way**.
-  static func present(
-    focusDisplayName: String,
-    originalText: String,
-    suggestedText: String,
-    rationale: String? = nil
-  ) async -> String? {
-    await withCheckedContinuation { continuation in
-      let resultLock = NSLock()
-      var hasResumed = false
-      func resumeOnce(returning value: String?) {
-        resultLock.lock()
-        defer { resultLock.unlock() }
-        guard !hasResumed else { return }
-        hasResumed = true
-        continuation.resume(returning: value)
-      }
-
-      DispatchQueue.main.async {
-        let panel = NSPanel(
-          contentRect: NSRect(x: 0, y: 0, width: 900, height: 820),
-          styleMask: [.titled, .closable, .resizable],
-          backing: .buffered,
-          defer: false
-        )
-        panel.isReleasedWhenClosed = false
-        panel.becomesKeyOnlyIfNeeded = false
-        panel.hidesOnDeactivate = false
-        panel.minSize = NSSize(width: 820, height: 600)
-
-        let view = ProposalReviewView(
-          focusDisplayName: focusDisplayName,
-          originalText: originalText,
-          suggestedText: suggestedText,
-          rationale: rationale,
-          onAccept: { text in
-            resumeOnce(returning: text)
-            NSApp.stopModal()
-            panel.orderOut(nil)
-          },
-          onCancel: {
-            resumeOnce(returning: nil)
-            NSApp.stopModal()
-            panel.orderOut(nil)
-          }
-        )
-        let hosting = NSHostingController(rootView: view)
-        hosting.view.frame = NSRect(x: 0, y: 0, width: 900, height: 820)
-        panel.title = view.windowTitle
-        panel.contentViewController = hosting
-
-        // Dismissing the window is a cancel, not a way to wedge the app. Held strongly for the
-        // duration of the modal session — NSWindow.delegate is weak.
-        let closeObserver = ReviewPanelCloseObserver {
-          DebugLogger.log("REVIEW-PANEL: window dismissed without Accept/Cancel — treating as cancel")
-          resumeOnce(returning: nil)
-          NSApp.stopModal()
-        }
-        panel.delegate = closeObserver
-
-        panel.center()
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.runModal(for: panel)
-        // Detach before the final close, or `panel.close()` re-enters the observer and calls
-        // stopModal on whatever modal session happens to be running next.
-        panel.delegate = nil
-        withExtendedLifetime(closeObserver) {}
-        panel.close()
-
-        // Belt and braces: if the panel went away without any path resuming the continuation,
-        // an awaiting caller would hang forever. Resuming twice is a no-op by construction.
-        resumeOnce(returning: nil)
-      }
-    }
   }
 }
 

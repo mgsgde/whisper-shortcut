@@ -3,8 +3,8 @@ import SwiftUI
 
 /// Review windows for changes AI apps proposed (`MCPProposalStore`).
 ///
-/// Ordinary, non-modal windows, unlike the modal `ProposalReviewPanel`: a proposal arrives from another
-/// app at any moment, and an app-modal panel would freeze every other WhisperShortcut window until
+/// Ordinary, non-modal review windows. A proposal arrives from another
+/// app at any moment, and a modal panel would freeze every other WhisperShortcut window until
 /// it is answered. One window per proposal; opening the same proposal again brings it forward.
 final class MCPProposalWindows: NSObject, NSWindowDelegate {
   static let shared = MCPProposalWindows()
@@ -55,6 +55,10 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
         items: proposal.settingsChanges ?? [], rationale: proposal.rationale,
         onAccept: { [weak self] in self?.acceptSettings(id) },
         onCancel: { [weak self] in self?.decline(id) }))
+    } else if proposal.isFromWritingStyle {
+      // Writing Style found this on its own; "AI app" would point the user at Claude or Codex.
+      window.title = String(localized: "Writing Style Suggestion")
+      window.contentView = NSHostingView(rootView: reviewView(for: proposal))
     } else {
       window.title = String(localized: "Suggested by an AI app")
       window.contentView = NSHostingView(rootView: reviewView(for: proposal))
@@ -73,7 +77,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       originalText: Self.baseline(for: proposal),
       suggestedText: proposal.proposedContent ?? "",
       rationale: Self.rationale(for: proposal),
-      titlePrefix: "Suggested by an AI app",
+      titlePrefix: proposal.isFromWritingStyle ? "Suggested change" : "Suggested by an AI app",
       cancelTitle: "Decline",
       acceptTitle: proposal.kind == .deleteCommand ? ("Delete Command" as LocalizedStringResource) : "Accept",
       textNoun: Self.noun(for: proposal),
@@ -103,7 +107,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   private func sync() {
     let pending = MCPProposalStore.shared.pending
     let ids = Set(pending.map(\.id))
-    for proposal in pending where !knownPending.contains(proposal.id) { show(proposal, activate: false) }
+    for proposal in pending where !knownPending.contains(proposal.id) && !proposal.isFromWritingStyle {
+      show(proposal, activate: false)
+    }
     // Resolved elsewhere (Settings, another window): close what is left open.
     for (id, window) in windows where !ids.contains(id) { window.close() }
     knownPending = ids

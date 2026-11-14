@@ -257,5 +257,66 @@ struct MCPProposalAndChangeLogTests {
     #expect(proposal?.proposedContent == "Old text")
     #expect(proposal?.status == .pending)
     #expect(proposal?.kind == .systemPrompt)
+    #expect(proposal?.origin == nil)
+    #expect(proposal?.isFromWritingStyle == false)
+  }
+
+  @Test("A proposal line without origin decodes as not from Writing Style")
+  func decodesWithoutOrigin() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mcp-old-origin-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let line = """
+      {"id":"old-origin","createdAt":"2026-10-01T12:00:00Z","kind":"writingStyle","proposedContent":"Old profile","rationale":"because","status":"pending","edited":false}
+      """
+    try (line + "\n").write(
+      to: dir.appendingPathComponent(MCPProposalStore.fileName), atomically: true, encoding: .utf8)
+    let proposal = MCPProposalStore(directory: dir).status(of: "old-origin")
+    #expect(proposal?.origin == nil)
+    #expect(proposal?.isFromWritingStyle == false)
+  }
+
+  @Test("A writing-style origin persists across a reloaded store")
+  func writingStyleOriginPersists() throws {
+    let env = MCPTestEnv()
+    let created = try env.proposals.create(
+      kind: .writingStyle, previousContent: "old", proposedContent: "new",
+      rationale: "because", origin: .writingStyle)
+    #expect(created.origin == .writingStyle)
+    #expect(created.isFromWritingStyle)
+    let loaded = MCPProposalStore(directory: env.dir).status(of: created.id)
+    #expect(loaded?.origin == .writingStyle)
+    #expect(loaded?.isFromWritingStyle == true)
+  }
+
+  @Test("Declining a Writing Style proposal stamps dismissed; an AI-app one does not")
+  func declineWritingStyleStampsDismissed() throws {
+    let env = MCPTestEnv()
+    let fromApp = try env.proposals.create(
+      kind: .writingStyle, previousContent: nil, proposedContent: "From an AI app.",
+      rationale: "because", origin: .aiApp)
+    env.proposals.decline(fromApp.id)
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) == nil)
+
+    let fromStyle = try env.proposals.create(
+      kind: .writingStyle, previousContent: nil, proposedContent: "From Writing Style.",
+      rationale: "because", origin: .writingStyle)
+    env.proposals.decline(fromStyle.id)
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) != nil)
+  }
+
+  @Test("Accepting a Writing Style proposal writes the profile and stamps the update")
+  func acceptWritingStyleProposal() throws {
+    let env = MCPTestEnv()
+    let proposal = try env.proposals.create(
+      kind: .writingStyle, previousContent: nil, proposedContent: "Short and direct.",
+      rationale: "because", origin: .writingStyle)
+    guard case .success = env.proposals.accept(proposal.id) else {
+      Issue.record("accept failed")
+      return
+    }
+    #expect(env.writingStyle.loadProfile() == "Short and direct.")
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt) != nil)
+    #expect(env.proposals.status(of: proposal.id)?.status == .accepted)
   }
 }
