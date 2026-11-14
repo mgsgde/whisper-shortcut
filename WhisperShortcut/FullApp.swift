@@ -244,11 +244,12 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // toggles it in Settings → General. The app must never register itself for
     // auto-launch without user consent (App Store Guideline 2.4.5(iii)).
 
-    // Smart Improvement was removed (owner decision 2026-11-02). Its schedule keys have no reader
-    // left; clear them so a reset or a support dump does not show a dead setting.
-    for key in ["improveFromUsageAutoRunInterval", "lastAutoImprovementRunDate"] {
-      UserDefaults.standard.removeObject(forKey: key)
-    }
+    // Smart Improvement was removed (owner decision 2026-11-02), but builds from before that still
+    // exist in worktrees and share the Dev app's settings and glossary. A missing interval means
+    // "every 7 days" to them, so on 2026-11-14 one rewrote the real glossary two minutes after
+    // launch. 0 means Off there: keep it written so every old build skips its auto run.
+    UserDefaults.standard.set(0, forKey: "improveFromUsageAutoRunInterval")
+    UserDefaults.standard.removeObject(forKey: "lastAutoImprovementRunDate")
 
     // Writing Style: Gmail import and profile re-derive, checked now and daily. The guard against a
     // sidecar sits inside `startDailySchedule`.

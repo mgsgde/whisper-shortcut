@@ -1746,7 +1746,9 @@ class ChatViewModel: ObservableObject {
       localModel: Self.openChatModel.provider == .localMLX)
     {
     case .ask(let request):
-      await sendMessage(userInput: request)
+      // `sendMessage` only dispatches slash commands; plain text goes out through `sendComposed`.
+      guard validateCredential(for: Self.openChatModel) else { return }
+      await sendComposed(finalContent: request, attachedParts: [])
     case .offline:
       appendModelMessage("Offline Mode keeps no usage log, so there is nothing to learn from yet. Turn Offline Mode off to use /improve.")
     case .needsUsageData:
