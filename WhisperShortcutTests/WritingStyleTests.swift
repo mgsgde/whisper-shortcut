@@ -164,7 +164,8 @@ struct WritingStyleTests {
   private func makeStore(enabled: Bool = true) -> WritingStyleStore {
     let dir = FileManager.default.temporaryDirectory
       .appendingPathComponent("writing-style-tests-\(UUID().uuidString)")
-    return WritingStyleStore(directory: dir, isEnabled: { enabled })
+    let defaults = UserDefaults(suiteName: "writing-style-tests-\(UUID().uuidString)")!
+    return WritingStyleStore(directory: dir, isEnabled: { enabled }, defaults: defaults)
   }
 
   private func sample(_ text: String, context: WritingContext = .email, id: String = UUID().uuidString) -> WritingSample {

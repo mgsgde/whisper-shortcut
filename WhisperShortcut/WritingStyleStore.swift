@@ -29,7 +29,8 @@ final class WritingStyleStore {
 
   static let shared = WritingStyleStore(
     directory: AppSupportPaths.userContextURL().appendingPathComponent("writing-style"),
-    isEnabled: { UserDefaults.standard.bool(forKey: UserDefaultsKeys.writingStyleEnabled) })
+    isEnabled: { UserDefaults.standard.bool(forKey: UserDefaultsKeys.writingStyleEnabled) },
+    defaults: .standard)
 
   /// Newest samples win beyond this, so the file stays small and retrieval stays cheap.
   static let maxSamplesPerContext = 500
@@ -44,7 +45,8 @@ final class WritingStyleStore {
   private let defaults: UserDefaults
   private let lock = NSLock()
 
-  init(directory: URL, isEnabled: @escaping () -> Bool, defaults: UserDefaults = .standard) {
+  /// - Parameter defaults: Required so tests cannot write the live app's defaults (the Debug test host shares the Dev app's domain).
+  init(directory: URL, isEnabled: @escaping () -> Bool, defaults: UserDefaults) {
     self.directory = directory
     self.isEnabled = isEnabled
     self.defaults = defaults

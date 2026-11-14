@@ -44,10 +44,11 @@ final class MCPTestEnv: @unchecked Sendable {
     dir = FileManager.default.temporaryDirectory.appendingPathComponent("mcp-cfg-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     systemPrompts = SystemPromptsStore(contextDirectoryURL: dir)
-    writingStyle = WritingStyleStore(directory: dir.appendingPathComponent("ws"), isEnabled: { true })
+    testDefaults = UserDefaults(suiteName: "mcp-settings-test-\(UUID().uuidString)")!
+    writingStyle = WritingStyleStore(
+      directory: dir.appendingPathComponent("ws"), isEnabled: { true }, defaults: testDefaults)
     commands = UserCommandStore(directoryURL: dir.appendingPathComponent("commands"), reservedNames: { ["help"] })
     let targets = MCPConfigTargets(systemPrompts: systemPrompts, writingStyle: writingStyle, commands: commands)
-    testDefaults = UserDefaults(suiteName: "mcp-settings-test-\(UUID().uuidString)")!
     let box = Box()
     self.box = box
     let deps = MCPSettingsCatalog.Dependencies(
