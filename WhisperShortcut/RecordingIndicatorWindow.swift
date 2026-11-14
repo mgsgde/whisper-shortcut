@@ -12,7 +12,7 @@
 //    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
 //                 speed button (cycles 0.75×…2×) — ⏸ becomes a spinner while the next chunk is
 //                 loading. While Read Aloud plays the pill takes key focus (non-activating):
-//                 Space pause/resume, ←/→ 10 s, Esc stop; any other key or a click elsewhere
+//                 Space pause/resume, ←/→ 5 s, Esc stop; any other key or a click elsewhere
 //                 hands focus back.
 //  On success the pill hides immediately — the pasted/copied text itself is the
 //  feedback, and lingering UI would cover whatever the user is working on.
@@ -755,6 +755,8 @@ struct RecordingIndicatorView: View {
 
   /// Seconds the ⏪ / ⏩ buttons jump.
   static let skipInterval: TimeInterval = 10
+  /// ←/→ while the pill has key focus: about one spoken sentence, so one press repeats what was missed.
+  static let keySkipInterval: TimeInterval = 5
 
   static func timeLabel(_ seconds: TimeInterval) -> String {
     let whole = max(0, Int(seconds.rounded(.down)))
@@ -911,7 +913,7 @@ struct RecordingIndicatorView: View {
 /// app the user is dictating into. It takes key status while the user types a
 /// Dictate Prompt instruction (while the quick-action list is up) — non-activating, so
 /// the target app stays frontmost. While Read Aloud plays the pill takes key focus
-/// (non-activating): Space or ↩ pause/resume, ←/→ 10 s, Esc stop; any other key or a click
+/// (non-activating): Space or ↩ pause/resume, ←/→ 5 s, Esc stop; any other key or a click
 /// elsewhere hands focus back.
 private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
@@ -1473,11 +1475,11 @@ final class RecordingIndicatorManager {
           return true
         case 123:
           if !event.isARepeat { DebugLogger.log("READ-ALOUD-KEYS: ←") }
-          self.onSkip?(-RecordingIndicatorView.skipInterval)
+          self.onSkip?(-RecordingIndicatorView.keySkipInterval)
           return true
         case 124:
           if !event.isARepeat { DebugLogger.log("READ-ALOUD-KEYS: →") }
-          self.onSkip?(RecordingIndicatorView.skipInterval)
+          self.onSkip?(RecordingIndicatorView.keySkipInterval)
           return true
         case 53:
           if event.isARepeat { return true }
