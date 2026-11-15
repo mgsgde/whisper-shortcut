@@ -21,13 +21,20 @@ enum DockIconPreference {
 
   /// Applies the stored choice to the running app. Safe to call repeatedly.
   ///
+  /// Re-setting the policy at launch kept the pill out of fullscreen Spaces of other apps, so it
+  /// changes only when the desired policy differs.
+  ///
   /// `.regular` does not make the app quit when its last window closes —
   /// `applicationShouldTerminateAfterLastWindowClosed` returns `false` (FullApp.swift), so the
   /// menu-bar item and the background work survive.
   @MainActor
   static func apply(activate: Bool = false) {
     let enabled = isEnabled
-    NSApp.setActivationPolicy(enabled ? .regular : .accessory)
+    let desired: NSApplication.ActivationPolicy = enabled ? .regular : .accessory
+    let changed = NSApp.activationPolicy() != desired
+    if changed {
+      NSApp.setActivationPolicy(desired)
+    }
     if enabled && activate {
       // Switching to .regular can leave the app inactive; bring it (and the Settings window the
       // toggle lives in) to the front. Not done at launch, which must stay unobtrusive.
@@ -37,6 +44,7 @@ enum DockIconPreference {
         break
       }
     }
-    DebugLogger.log("DOCK-ICON: activation policy → \(enabled ? "regular (Dock icon shown)" : "accessory (menu bar only)")")
+    let label = enabled ? "regular (Dock icon shown)" : "accessory (menu bar only)"
+    DebugLogger.log("DOCK-ICON: activation policy → \(label) (\(changed ? "changed" : "unchanged"))")
   }
 }
