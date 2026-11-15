@@ -1,10 +1,13 @@
 #!/bin/bash
 
-# Weekly usage-review job for WhisperShortcut.
+# Monthly usage-review job for WhisperShortcut.
 #
 # Reads a week of real usage off this Mac — the interaction logs and the outcome-signal stream in
 # the app's container — and turns recurring failures into at most three concrete proposals in
-# plans/improvement-ledger.md. Then it says so, by mail with a macOS notification as fallback.
+# plans/improvement-ledger.md. Success is not mailed; the digest
+# (business/usage-reviews/LATEST.md) and ledger rows are presented by the Claude Desktop
+# scheduled task "WhisperShortcut: Nutzungs-Review" (same day, 10:30). Only failures are mailed,
+# with a macOS notification as fallback.
 #
 # It runs locally and not as a cloud routine for one unavoidable reason: the data only exists here.
 # The JSONL lives in the sandboxed container under ~/Library/Containers, is never committed, and
@@ -19,12 +22,12 @@
 # pass reads only that copy — bash has the Full Disk Access grant, claude's sandboxed Bash tool does
 # not, and a read it is not allowed to make hangs rather than failing. See section 1.
 #
-# Installed via ~/Library/LaunchAgents/com.whispershortcut.usage-review.plist (Mondays 08:47).
+# Installed via ~/Library/LaunchAgents/com.whispershortcut.usage-review.plist (day 1 of the month, 08:47).
 # Costs well under a dollar per run — no web research, one local reading pass.
 
 # Usage: usage-review-job.sh [--dry-run] [--days N]
 #   --dry-run   summarise what would be reviewed, skip the Claude pass (no ledger writes)
-#   --days N    review window in days (default 7)
+#   --days N    review window in days (default 31: the job runs monthly)
 set -uo pipefail
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -50,11 +53,11 @@ REVIEW_EFFORT="${REVIEW_EFFORT:-high}"
 REVIEW_BUDGET_USD="${REVIEW_BUDGET_USD:-3}"
 
 DRY_RUN=0
-DAYS=7
+DAYS=31
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
-    --days) shift; DAYS="${1:-7}" ;;
+    --days) shift; DAYS="${1:-31}" ;;
     *) echo "unknown flag: $1"; exit 2 ;;
   esac
   shift
@@ -235,7 +238,7 @@ fi
 PROMPT_FILE="$(mktemp -t wsusagereview)"
 trap 'rm -f "$PROMPT_FILE" "${KILLED_MARKER:-}"' EXIT
 cat > "$PROMPT_FILE" <<EOF
-You are the weekly usage-review job for WhisperShortcut (repo: $REPO).
+You are the monthly usage-review job for WhisperShortcut (repo: $REPO).
 
 Your job is to turn one week of this user's ACTUAL usage into at most three concrete, evidence-backed
 proposals for making the app better to use. You are not writing code today.
@@ -271,7 +274,7 @@ no Full Disk Access grant, and a read there does not fail cleanly, it HANGS. A p
 19 hours and its whole budget retrying one directory listing. If a command against that path stalls
 or reports "Interrupted system call", do not retry it: use $STAGING, which is a complete copy.
 
-Review the last $DAYS days. This week: $INTERACTIONS interactions, $SIGNALS signals.
+Review the last $DAYS days. In that window: $INTERACTIONS interactions, $SIGNALS signals.
 
 ## How to weigh evidence
 
@@ -307,7 +310,7 @@ back for the notification and the mail subject:
 
 Then: what the numbers were (interaction and signal counts by mode, restart rate, paste rate), the
 proposals with their evidence, and anything observed but under the evidence bar. Keep it tight — it
-is read once a week by one person deciding whether to act.
+is read once a month by one person deciding whether to act.
 
 ## Hard constraints
 
@@ -408,7 +411,7 @@ VERDICT="$(head -1 "$DIGEST" | sed 's/^VERDICT:[[:space:]]*//')"
 # the groomer reads origin/main, saw no OPEN gap and filed the instrumentation rows as ASK. The
 # helper commits ONLY the paths named here, on main only, and never forces (scripts/loop-commit.sh).
 # The digest lives in the private parent repo; the ledger rows in this one. Best-effort: a commit
-# that fails is a WARN in the log, the output stays in the working copy, the mail still goes out.
+# that fails is a WARN in the log and the output stays in the working copy.
 COMMIT_MSG="usage-review $STAMP: ${VERDICT:0:72}"
 bash "$REPO/scripts/loop-commit.sh" --repo "$REPO" --message "$COMMIT_MSG" -- \
   plans/improvement-ledger.md plans/instrumentation-gaps.md \
@@ -418,16 +421,6 @@ BUSINESS_REL="$(basename "$BUSINESS_DIR")"
 bash "$REPO/scripts/loop-commit.sh" --repo "$PARENT_REPO" --message "$COMMIT_MSG" -- \
   "$BUSINESS_REL/usage-reviews/$STAMP-review.md" "$BUSINESS_REL/usage-reviews/LATEST.md" \
   || echo "WARN: could not commit the digest in $PARENT_REPO — it stays in the working copy."
-# The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
-# characters, which pushed the one thing a phone notification has to show — whether this needs you —
-# past where every mail client truncates. It still leads the mail itself ("In one line:"), and the
-# notification below still speaks it.
-report_out "WhisperShortcut usage review ($STAMP)" "$DIGEST" \
-  --verdict proposals --proposals-file "$IMPLEMENTER_PROPOSAL_FILE" \
-  --title "Usage review $STAMP" \
-  --meta "Job=usage-review (weekly)" --meta "Window=last ${DAYS} days" \
-  --meta "Data=$INTERACTIONS interactions, $SIGNALS signals" --meta "Digest=$DIGEST"
-notify "WhisperShortcut usage review" "$VERDICT"
 echo "VERDICT: $VERDICT"
 echo "Digest: $DIGEST"
 echo "=== Usage review finished: $(date '+%Y-%m-%d %H:%M:%S') ==="

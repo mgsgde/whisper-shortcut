@@ -12,9 +12,10 @@
 # It deliberately does NOT change code. Model migrations are a decision, not a cron job; the
 # report ends with a recommendation the user applies (or ignores) in an interactive session.
 #
-# The result is emailed (subject carries the one-line verdict, raw measurements attached), with a
-# macOS notification as the fallback when mail cannot go out. Failures are reported the same way —
-# an audit that silently stops running is worse than none, because it looks like all is well.
+# Success is not mailed any more. The report lands in plans/model-audits/ (LATEST.md) and the
+# Claude Desktop scheduled task "WhisperShortcut: Modell-Audit" (same day, 09:00) presents it to
+# Magnus as a conversation. Failures are still mailed (macOS notification as fallback), because
+# an audit that silently stops running is worse than none.
 #
 # Installed via ~/Library/LaunchAgents/com.whispershortcut.model-audit.plist.
 # Costs a few cents in API calls per run (~400 short transcription requests).
@@ -231,12 +232,12 @@ bash "$REPO/scripts/implementer/proposal-prompt.sh" model-audit >>"$PROMPT_FILE"
   || echo "WARN: could not append the implementer-proposal block — this run reports only."
 
 
-# A launchd job nobody is watching must say something when it finishes — and especially when it
-# fails. Silence is indistinguishable from "never ran".
+# A launchd job nobody is watching must say something when it fails. Silence is
+# indistinguishable from "never ran".
 #
-# Email is the primary channel: it reaches the user off the Mac, and the report is worth reading
-# in full rather than as a one-line banner. The macOS notification stays as the fallback for the
-# case the mail cannot go out — most likely the login Keychain being locked at 09:17, which is a
+# Mail is only for failures. A successful audit is not emailed: the report is on disk and the
+# Claude Desktop scheduled task presents it. The macOS notification stays as the fallback when a
+# failure mail cannot go out — most likely the login Keychain being locked at 09:17, which is a
 # normal morning condition, not an error worth failing the whole job over.
 AUDIT_MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"
 
@@ -307,21 +308,10 @@ VERDICT="$(head -1 "$REPORT" | sed 's/^VERDICT:[[:space:]]*//')"
 
 # Delivered = committed (loop-ledger L10). The report and its raw measurements are tracked under
 # plans/model-audits/; commit exactly this run's files, on main only, never forced
-# (scripts/loop-commit.sh). Best-effort: a failed commit is a WARN and the mail still goes out.
+# (scripts/loop-commit.sh). Best-effort: a failed commit is a WARN and the report stays on disk.
 bash "$REPO/scripts/loop-commit.sh" --repo "$REPO" --message "model-audit $STAMP: ${VERDICT:0:72}" -- \
   "plans/model-audits/$STAMP-audit.md" "plans/model-audits/$STAMP-measurements.txt" plans/model-audits/LATEST.md \
   || echo "WARN: could not commit the audit report — it stays in the working copy."
-# The verdict goes in the subject so it is readable from a phone lock screen without opening
-# the mail; the report is the body, the raw measurements are attached for anything questionable.
-# The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
-# characters, which pushed the one thing a phone notification has to show — whether this needs you —
-# past where every mail client truncates. It still leads the mail itself ("In one line:"), and the
-# notification below still speaks it.
-report_out "WhisperShortcut model audit ($STAMP)" "$REPORT" --attach "$RAW" \
-  --verdict proposals --proposals-file "$IMPLEMENTER_PROPOSAL_FILE" \
-  --title "Model audit $STAMP" \
-  --meta "Job=model-audit (monthly)" --meta "Report=$REPORT" \
-  --meta "Raw measurements=attached"
 echo "VERDICT: $VERDICT"
 echo "Report: $REPORT"
 echo "=== Model audit finished: $(date '+%Y-%m-%d %H:%M:%S') ==="
