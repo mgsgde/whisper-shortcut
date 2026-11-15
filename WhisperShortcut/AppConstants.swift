@@ -99,7 +99,7 @@ Facts: Keep every fact exactly as written — names, dates, times, numbers, coun
   /// instruction dictates" made Qwen3-4B and Granite echo the dictation and skip the practice's
   /// Anamnese / Befund / Therapie sections (benchmark, 2026-10-09).
   static let dictatePromptComposeMarker =
-    "NO SELECTED TEXT (nothing was selected; the result will be inserted at the cursor). The VOICE INSTRUCTION below is dictated content: turn it into the finished text exactly as the system prompt specifies (structure, sections, style). Use only facts that were spoken; never copy content from the system prompt's examples."
+    "NO SELECTED TEXT (nothing was selected; the result will be inserted at the cursor). The VOICE INSTRUCTION below is dictated content: turn it into the finished text exactly as the system prompt specifies (structure, sections, style). Use only facts that were spoken; never copy content from the system prompt's examples. If the voice instruction refers to text it expects to already be there (for example \"this\", \"that\", \"das\", \"dessen\", \"den Text\", \"summarize this\", \"read this\", \"translate that\") and no \"TEXT FIELD THE RESULT WILL BE INSERTED INTO\" or \"Front window of the app the user is writing in\" block in this request supplies it, do not guess and do not fetch other content with tools: reply with only one short sentence, in the language of the voice instruction, saying that nothing was selected and to select the text and try again (German: \"Nichts markiert. Markier den Text und versuch es nochmal.\")."
 
   /// Labels the copied selection in every Dictate Prompt request. It is written into the live
   /// request by each provider path *and* replayed by `PromptConversationHistory` when prior turns

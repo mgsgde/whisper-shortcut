@@ -281,8 +281,12 @@ enum QuickActionContext: Equatable {
   case selection(text: String, fromClipboard: Bool)
   /// Nothing came through: the run writes new text.
   case nothingSelected
+  /// Nothing came through because a WhisperShortcut window was in front at press time.
+  case nothingSelectedOwnWindow
   /// Screenshot-selection mode: the model reads the selection off the screen.
   case screenshot
+
+  var isNothingSelected: Bool { self == .nothingSelected || self == .nothingSelectedOwnWindow }
 }
 
 private enum QuickActionCardMetrics {
@@ -512,7 +516,7 @@ private struct QuickActionCardView: View {
       Image(systemName: fromClipboard ? "doc.on.clipboard" : "text.quote")
         .font(.system(size: 11, weight: .semibold))
         .foregroundColor(.white.opacity(0.6))
-    case .nothingSelected:
+    case .nothingSelected, .nothingSelectedOwnWindow:
       Image(systemName: "exclamationmark.triangle.fill")
         .font(.system(size: 11, weight: .semibold))
         .foregroundColor(Self.warning)
@@ -541,6 +545,12 @@ private struct QuickActionCardView: View {
       Text("Nothing selected \u{2014} writes new text")
         .font(.system(size: 11, weight: .semibold))
         .foregroundColor(Self.warning)
+    case .nothingSelectedOwnWindow:
+      Text("Nothing selected \u{2014} a WhisperShortcut window was in front")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(Self.warning)
+        .lineLimit(1)
+        .truncationMode(.tail)
     case .screenshot:
       Text("Reads the selection from a screenshot")
         .font(.system(size: 11, weight: .medium))
@@ -569,7 +579,7 @@ private struct QuickActionCardView: View {
 
   /// Editing actions mean little without text to edit; they stay clickable but step back.
   private func isMuted(_ action: QuickAction) -> Bool {
-    isTyping || (context == .nothingSelected && action.isEdit)
+    isTyping || (context.isNothingSelected && action.isEdit)
   }
 
   private func actionRow(index: Int, action: QuickAction) -> some View {
@@ -1190,7 +1200,7 @@ final class RecordingIndicatorManager {
     guard model.quickActionsVisible else { return }
     model.quickActionContext = context
     // An edit entry has nothing to act on: the preselected repeat gives way to the field.
-    if context == .nothingSelected, let index = model.quickActionIndex,
+    if context.isNothingSelected, let index = model.quickActionIndex,
       model.quickActions.indices.contains(index), model.quickActions[index].isEdit
     {
       model.quickActionIndex = nil

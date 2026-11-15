@@ -14129,6 +14129,16 @@
         }
       }
     },
+    "Nothing selected — a WhisperShortcut window was in front" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts markiert – ein WhisperShortcut-Fenster war im Vordergrund"
+          }
+        }
+      }
+    },
     "Nothing selected — writes new text" : {
       "localizations" : {
         "de" : {

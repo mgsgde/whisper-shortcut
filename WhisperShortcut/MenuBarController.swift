@@ -1001,7 +1001,8 @@ class MenuBarController: NSObject {
       // A later recording has its own capture; this answer belongs to the one that asked.
       guard let self, self.recording?.promptSelection === capture else { return }
       RecordingIndicatorManager.shared.updateQuickActionContext(
-        text.map { .selection(text: $0, fromClipboard: fromClipboard) } ?? .nothingSelected)
+        text.map { .selection(text: $0, fromClipboard: fromClipboard) }
+          ?? (capture.ownAppWasFrontmost ? .nothingSelectedOwnWindow : .nothingSelected))
     }
   }
 
@@ -3955,7 +3956,12 @@ class MenuBarController: NSObject {
     // Snapshot before the synthetic ⌘C, not after: from here on the pasteboard holds the
     // user's selection, so a later snapshot would "restore" that instead of what they copied.
     captureClipboardRestorePointIfEnabled()
-    let selection = DictatePromptSelectionCapture()
+    // At press time, on the main actor: a WhisperShortcut window in front receives the ⌘C.
+    let ownAppFrontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier
+    if ownAppFrontmost {
+      DebugLogger.log("\(logPrefix): WhisperShortcut window was frontmost at press — ⌘C cannot see the other app's selection")
+    }
+    let selection = DictatePromptSelectionCapture(ownAppWasFrontmost: ownAppFrontmost)
     #if !APP_STORE
     // The field as it is at shortcut press, before ⌘C moves the selection. Counts and the
     // bundle id only — the text itself is never logged.

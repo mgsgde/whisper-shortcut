@@ -188,6 +188,10 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
   /// Dictate Prompt must not switch to screenshot-selection mode and ignore it.
   let isFromService: Bool
 
+  /// True when a WhisperShortcut window was frontmost at shortcut press. The synthetic ⌘C
+  /// then lands in our window and cannot copy another app's selection.
+  let ownAppWasFrontmost: Bool
+
   private let lock = NSLock()
   private var isResolved = false
   private var text: String?
@@ -206,8 +210,9 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
     let allowsWindowImage: Bool
   }
 
-  init(isFromService: Bool = false) {
+  init(isFromService: Bool = false, ownAppWasFrontmost: Bool = false) {
     self.isFromService = isFromService
+    self.ownAppWasFrontmost = ownAppWasFrontmost
   }
 
   /// Already decided at creation (the App Store clipboard path).

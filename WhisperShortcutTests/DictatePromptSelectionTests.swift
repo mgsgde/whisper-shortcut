@@ -228,4 +228,18 @@ struct DictatePromptSelectionTests {
     #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
       customData: Data([0x01, 0x02, 0x03, 0xff]), vscodeEditorData: "hello"))
   }
+
+  @Test("A compose marker with no supplied text must not invent content or call tools")
+  func composeMarkerRefusesInventedContent() {
+    let marker = AppConstants.dictatePromptComposeMarker
+    #expect(marker.contains("nothing was selected"))
+    #expect(marker.contains("do not fetch other content with tools"))
+  }
+
+  @Test("Both empty-selection indicator states count as nothing selected")
+  func nothingSelectedIncludesOwnWindow() {
+    #expect(QuickActionContext.nothingSelectedOwnWindow.isNothingSelected == true)
+    #expect(QuickActionContext.nothingSelected.isNothingSelected == true)
+    #expect(QuickActionContext.reading.isNothingSelected == false)
+  }
 }
