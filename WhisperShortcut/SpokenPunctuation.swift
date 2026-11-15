@@ -209,6 +209,14 @@ enum SpokenPunctuation {
       #"[ \t,;]*(?<=\b(?:zu|ein|in|einen)[ \t])\bpunkt\b(?![ \t]*(?:\d|(?:\#(punktNumberWords))\b|mehr\b|weniger\b|(?!(?:\#(punktFunctionWordAlternation))\b)(?-i:\p{Lu})))[ \t,.;]*"#,
       ". \u{1}"),
     rule(#"[ \t,;]*\bkomma\b[ \t,.;]*"#, ", "),
+    // A hyphen between two plain digit groups is a spoken "Schrägstrich" Parakeet swallowed: for
+    // "sechs Schrägstrich fünfundzwanzig", "zwölf Schrägstrich vierundzwanzig" and "vier
+    // Schrägstrich fünf" the benchmark's raw output was "6-25", "12-24", "4-5" (word gone, so the
+    // rules above never see it). Ranges are spoken "bis" (raw "3 bis 4"). Accepted cost: a spoken
+    // "Strich" between numbers ("drei Strich vier", raw "3-4" for one voice) also becomes "/".
+    // Both groups must be digits only, bounded by non-letters and not part of a longer chain, so
+    // "COVID-19", "L4-L5", "A1-B2", "B-12" and "2025-11-15" stay.
+    rule(#"(?<![\p{L}\d-])(\d+)-(?=\d+(?![\p{L}\d]|-\d))"#, "$1/"),
   ]
 
   /// Removes the marks an offline model guessed on its own, for `PunctuationMode.spokenOnly`:
