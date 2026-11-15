@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ (recommended)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (empfohlen)"
+          }
+        }
+      }
+    },
     "1 change, backed by at least 2 of your messages." : {
       "localizations" : {
         "de" : {
@@ -37,6 +47,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen ändern:"
+          }
+        }
+      }
+    },
+    "Continue with %@ (less accurate)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit %@ fortfahren (ungenauer)"
           }
         }
       }
@@ -81,6 +101,26 @@
         }
       }
     },
+    "End review" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung beenden"
+          }
+        }
+      }
+    },
+    "End review and continue with %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung beenden und mit %@ weitermachen"
+          }
+        }
+      }
+    },
     "Front window picture is on but does nothing without it." : {
       "localizations" : {
         "de" : {
@@ -111,12 +151,32 @@
         }
       }
     },
-    "Improve is running with %@. Your usual chat model stays as it is." : {
+    "Improve finished. Continuing with %@." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verbessern läuft mit %@. Ihr gewohntes Chat-Modell bleibt unverändert."
+            "value" : "Verbessern beendet. Weiter mit %@."
+          }
+        }
+      }
+    },
+    "Improve is running with %1$@: the review needs a strong model and costs a few cents. Your chat model (%2$@) stays as it is. Switch or end the review with the chip next to the model picker." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbessern läuft mit %1$@: Die Prüfung braucht ein starkes Modell und kostet ein paar Cent. Ihr Chat-Modell (%2$@) bleibt unverändert. Über den Chip neben der Modellauswahl können Sie wechseln oder die Prüfung beenden."
+          }
+        }
+      }
+    },
+    "Improve is running with %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbessern läuft mit %@."
           }
         }
       }
@@ -127,6 +187,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbessern funktioniert am besten mit Gemini 3.1 Pro, Claude Sonnet 5.5 oder GPT-6 Sol. Hinterlegen Sie in den Einstellungen einen API-Schlüssel für eines davon, um eine zuverlässigere Prüfung zu erhalten."
+          }
+        }
+      }
+    },
+    "Improve: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbessern: %@"
           }
         }
       }
@@ -147,6 +217,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Damit kann Verbessern aus Ihren Diktaten lernen und Namen und Formulierungen korrigieren, die immer wieder falsch erkannt werden. Die Daten bleiben auf diesem Mac."
+          }
+        }
+      }
+    },
+    "Model for Improve" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Verbessern"
           }
         }
       }
@@ -217,6 +297,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Empfohlen ist %@."
+          }
+        }
+      }
+    },
+    "The review runs on this model. Click to switch." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Prüfung läuft mit diesem Modell. Klicken zum Wechseln."
           }
         }
       }

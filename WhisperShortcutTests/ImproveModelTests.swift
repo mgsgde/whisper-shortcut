@@ -34,6 +34,40 @@ struct ImproveModelTests {
     #expect(c == .use(.claudeSonnet55))
   }
 
+  @Test func rememberedCapableWithKeyBeatsEarlierPreferred() {
+    let c = ChatViewModel.improveModelChoice(
+      current: .grok43,
+      remembered: .grok47,
+      hasCredential: { $0 == .grok47 || $0 == .gemini31Pro })
+    #expect(c == .use(.grok47))
+  }
+
+  @Test func rememberedEqualToWeakCurrentKeeps() {
+    let c = ChatViewModel.improveModelChoice(
+      current: .grok43,
+      remembered: .grok43,
+      hasCredential: { $0 == .grok43 || $0 == .gemini31Pro })
+    #expect(c == .keep)
+  }
+
+  @Test func rememberedWithoutKeyFallsToPreferred() {
+    let c = ChatViewModel.improveModelChoice(
+      current: .grok43,
+      remembered: .grok47,
+      hasCredential: { $0 == .claudeSonnet55 })
+    #expect(c == .use(.claudeSonnet55))
+  }
+
+  @Test func improveModelOptionsOrdersPreferredThenRemainingChatModels() {
+    let withKey: Set<PromptModel> = [
+      .gemini31Pro, .openaiGPT6Sol, .grok47, .claudeOpus55, .customOpenAIEndpoint,
+    ]
+    let options = ChatViewModel.improveModelOptions(hasCredential: { withKey.contains($0) })
+    // Preferred first (Sonnet has no key). Grok 4.7 precedes GPT-6 Sol in `chatModels`,
+    // so this order only holds when preferred models are pulled out first.
+    #expect(options == [.gemini31Pro, .openaiGPT6Sol, .grok47, .claudeOpus55])
+  }
+
   @Test func effectiveModelNilIsGlobal() {
     let m = ChatViewModel.effectiveModel(override: nil, global: .grok47, hasCredential: { _ in true })
     #expect(m == .grok47)
