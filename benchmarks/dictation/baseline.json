@@ -1,6 +1,6 @@
 {
   "parakeet-ultra": {
-    "corpusHash": "c5ecf724eaa1",
+    "corpusHash": "cfc63746345a",
     "tiers": {
       "real": {
         "audioFingerprint": "f8fe487633ee",
@@ -44,20 +44,20 @@
         },
         "missing": [],
         "spokenOnly": {
-          "exact": 0.733,
+          "exact": 0.756,
           "glossary": 1,
           "noGuessedMarks": 0.978,
-          "spokenMarksKept": 0.902,
+          "spokenMarksKept": 0.922,
           "tag.fillers": 0,
           "tag.glossary": 0.769,
           "tag.guess": 0.75,
           "tag.joined": 0.75,
           "tag.noMarks": 0.857,
-          "tag.numbers": 0.667,
+          "tag.numbers": 0.75,
           "tag.pause": 0,
-          "tag.spokenMarks": 0.656,
+          "tag.spokenMarks": 0.688,
           "tag.wordsStay": 1,
-          "wordAccuracy": 0.911
+          "wordAccuracy": 0.925
         }
       },
       "say-Eddy": {
@@ -73,20 +73,20 @@
         },
         "missing": [],
         "spokenOnly": {
-          "exact": 0.511,
+          "exact": 0.533,
           "glossary": 0.846,
           "noGuessedMarks": 1,
-          "spokenMarksKept": 0.824,
+          "spokenMarksKept": 0.843,
           "tag.fillers": 0,
           "tag.glossary": 0.615,
           "tag.guess": 0.5,
           "tag.joined": 0.5,
           "tag.noMarks": 0.643,
-          "tag.numbers": 0.417,
+          "tag.numbers": 0.5,
           "tag.pause": 1,
-          "tag.spokenMarks": 0.438,
+          "tag.spokenMarks": 0.469,
           "tag.wordsStay": 1,
-          "wordAccuracy": 0.766
+          "wordAccuracy": 0.779
         }
       }
     }

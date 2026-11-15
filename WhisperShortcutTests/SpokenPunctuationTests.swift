@@ -319,7 +319,12 @@ struct SpokenPunctuationTableTests {
     (.spoken, "Lendenwirbel L4-5", "Lendenwirbel L4/5"),
     (.spoken, "Halswirbel C5-6", "Halswirbel C5/6"),
     (.spoken, "LWK 4-5", "LWK 4/5"),
-    (.spoken, "Raum AB12-34", "Raum AB12-34"),
+    (.spoken, "Raum AB12-34", "Raum AB12/34"),
+    (.spoken, "Lendenwirbel LWK4-5", "Lendenwirbel LWK4/5"),
+    (.spoken, "HWS3-4", "HWS3/4"),
+    (.spoken, "Impfung Covid19-20", "Impfung Covid19-20"),
+    (.spoken, "Notiz abc4-5", "Notiz abc4-5"),
+    (.spoken, "Raum ABCDE12-34", "Raum ABCDE12-34"),
     (.spoken, "Aktenzeichen 12-24-3", "Aktenzeichen 12/24/3"),
     (.spoken, "Aktenzeichen 12 - 24 - 3", "Aktenzeichen 12/24/3"),
     // Half-converted by the model: one side a digit group, the other a number word.

@@ -439,7 +439,7 @@ enum SpokenPunctuation {
 
   // swiftlint:disable:next force_try
   private static let digitHyphenChainRegex = try! NSRegularExpression(
-    pattern: #"(?:(?<![\p{L}\d])|(?<=(?<!\p{L})\p{Lu}))\d+(?:[ ]?[-–−][ ]?\d+)+(?![\p{L}\d])"#)
+    pattern: #"(?:(?<![\p{L}\d])|(?<=(?<!\p{L})\p{Lu}{1,4}))\d+(?:[ ]?[-–−][ ]?\d+)+(?![\p{L}\d])"#)
   // swiftlint:disable:next force_try
   private static let isoDateRegex = try! NSRegularExpression(
     pattern: #"^\d{4}-\d{2}-\d{2}$"#)
@@ -452,9 +452,9 @@ enum SpokenPunctuation {
   /// Schrägstrich vierundzwanzig" and "vier Schrägstrich fünf" the benchmark's raw output was
   /// "6-25", "12-24", "4-5" (word gone, so the rules never see it). Ranges are spoken "bis" (raw
   /// "3 bis 4"). Accepted cost: a spoken "Strich" between numbers ("drei Strich vier", raw "3-4"
-  /// for one voice) also becomes "/". Chains become "12/24/3"; an ISO date stays. One capital
-  /// letter may stand directly before the first group ("L4-5", "C5-6"); "COVID-19", "L4-L5",
-  /// "A1-B2", "B-12" and "AB12-34" stay. Also "6-fünfundzwanzig" / "sechs-25": one side a digit
+  /// for one voice) also becomes "/". Chains become "12/24/3"; an ISO date stays. An all-caps
+  /// prefix of 1-4 letters may stand directly before the first group ("L4-5", "LWK4-5",
+  /// "AB12-34"); "Covid19-20", "abc4-5", "COVID-19", "L4-L5", "A1-B2" and "B-12" stay. Also "6-fünfundzwanzig" / "sechs-25": one side a digit
   /// group, the other a number word (`GermanNumberWords`), both then digits. Nil when unchanged.
   private static func slashBetweenNumbers(_ text: String) -> String? {
     var result = text
