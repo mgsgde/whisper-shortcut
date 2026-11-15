@@ -24,6 +24,20 @@ struct ParakeetPunctuationTimingTests {
     ]
   }
 
+  @Test("a hyphen between two digit groups is reported with its timing, never its text")
+  func digitHyphen() {
+    let tokens = [
+      word("Bescheid", 0.0, 0.5), word("vom", 0.5, 0.7), word("6", 0.8, 1.0),
+      mark("-", 1.3, 1.35), mark("2", 1.4, 1.5), mark("5", 1.5, 1.6),
+    ]
+    let found = ParakeetPunctuationTiming.digitHyphens(in: tokens)
+    #expect(found == [.init(ownToken: true, durationMs: 50, gapMs: 400, leftDigits: 1, rightDigits: 2)])
+    #expect(found.first?.logLine == "LIVE-DICTATE: digit-hyphen own=true durMs=50 gapMs=400 left=1 right=2")
+    // Letter-bound or word hyphens are not reported.
+    #expect(ParakeetPunctuationTiming.digitHyphens(in: [word("Covid", 0, 0.4), mark("-", 0.4, 0.45), mark("19", 0.45, 0.6)]).isEmpty)
+    #expect(ParakeetPunctuationTiming.digitHyphens(in: [word("L4", 0, 0.4), mark("-", 0.4, 0.45), word("L5", 0.5, 0.6)]).isEmpty)
+  }
+
   @Test("a mid-text comma or question mark needs a 200 ms pause to count as spoken")
   func markGap() {
     // (tokens, spoken?, text to filter, expected filtered text, label)

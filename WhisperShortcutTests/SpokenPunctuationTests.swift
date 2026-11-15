@@ -312,6 +312,21 @@ struct SpokenPunctuationTableTests {
     (.spoken, "Raum A1-B2", "Raum A1-B2"),
     (.spoken, "Vitamin B-12", "Vitamin B-12"),
     (.spoken, "am 2025-11-15", "am 2025-11-15"),
+    (.spoken, "Bescheid vom 6 - 25", "Bescheid vom 6/25"),
+    (.spoken, "Bescheid vom 6 – 25", "Bescheid vom 6/25"),
+    (.spoken, "Bescheid vom 6\u{2212}25", "Bescheid vom 6/25"),
+    (.spoken, "Bescheid vom 6–25.", "Bescheid vom 6/25."),
+    (.spoken, "Lendenwirbel L4-5", "Lendenwirbel L4/5"),
+    (.spoken, "Halswirbel C5-6", "Halswirbel C5/6"),
+    (.spoken, "LWK 4-5", "LWK 4/5"),
+    (.spoken, "Raum AB12-34", "Raum AB12-34"),
+    (.spoken, "Aktenzeichen 12-24-3", "Aktenzeichen 12/24/3"),
+    (.spoken, "Aktenzeichen 12 - 24 - 3", "Aktenzeichen 12/24/3"),
+    // Half-converted by the model: one side a digit group, the other a number word.
+    (.spoken, "Bescheid vom 6-fünfundzwanzig", "Bescheid vom 6/25"),
+    (.spoken, "Bescheid vom sechs-25", "Bescheid vom 6/25"),
+    (.automatic, "Bescheid vom sechs-25", "Bescheid vom sechs-25"),
+    (.spoken, "ein Sechs-Wochen-Plan", "ein Sechs-Wochen-Plan"),
     (.spoken, "Bescheid vom 6.25", "Bescheid vom 6.25"),
   ])
   func hyphenBetweenDigits(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }

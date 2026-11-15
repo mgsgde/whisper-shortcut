@@ -209,14 +209,6 @@ enum SpokenPunctuation {
       #"[ \t,;]*(?<=\b(?:zu|ein|in|einen)[ \t])\bpunkt\b(?![ \t]*(?:\d|(?:\#(punktNumberWords))\b|mehr\b|weniger\b|(?!(?:\#(punktFunctionWordAlternation))\b)(?-i:\p{Lu})))[ \t,.;]*"#,
       ". \u{1}"),
     rule(#"[ \t,;]*\bkomma\b[ \t,.;]*"#, ", "),
-    // A hyphen between two plain digit groups is a spoken "Schrägstrich" Parakeet swallowed: for
-    // "sechs Schrägstrich fünfundzwanzig", "zwölf Schrägstrich vierundzwanzig" and "vier
-    // Schrägstrich fünf" the benchmark's raw output was "6-25", "12-24", "4-5" (word gone, so the
-    // rules above never see it). Ranges are spoken "bis" (raw "3 bis 4"). Accepted cost: a spoken
-    // "Strich" between numbers ("drei Strich vier", raw "3-4" for one voice) also becomes "/".
-    // Both groups must be digits only, bounded by non-letters and not part of a longer chain, so
-    // "COVID-19", "L4-L5", "A1-B2", "B-12" and "2025-11-15" stay.
-    rule(#"(?<![\p{L}\d-])(\d+)-(?=\d+(?![\p{L}\d]|-\d))"#, "$1/"),
   ]
 
   /// Removes the marks an offline model guessed on its own, for `PunctuationMode.spokenOnly`:
@@ -445,6 +437,57 @@ enum SpokenPunctuation {
     return changed ? result : nil
   }
 
+  // swiftlint:disable:next force_try
+  private static let digitHyphenChainRegex = try! NSRegularExpression(
+    pattern: #"(?:(?<![\p{L}\d])|(?<=(?<!\p{L})\p{Lu}))\d+(?:[ ]?[-–−][ ]?\d+)+(?![\p{L}\d])"#)
+  // swiftlint:disable:next force_try
+  private static let isoDateRegex = try! NSRegularExpression(
+    pattern: #"^\d{4}-\d{2}-\d{2}$"#)
+  // swiftlint:disable:next force_try
+  private static let halfConvertedHyphenRegex = try! NSRegularExpression(
+    pattern: #"(?<![\p{L}\d])(\d+|\p{L}+)[ ]?[-–−][ ]?(\d+|\p{L}+)(?![\p{L}\d])"#)
+
+  /// A hyphen (or en dash, minus sign, with single spaces around) between plain digit groups is a
+  /// spoken "Schrägstrich" Parakeet swallowed: for "sechs Schrägstrich fünfundzwanzig", "zwölf
+  /// Schrägstrich vierundzwanzig" and "vier Schrägstrich fünf" the benchmark's raw output was
+  /// "6-25", "12-24", "4-5" (word gone, so the rules never see it). Ranges are spoken "bis" (raw
+  /// "3 bis 4"). Accepted cost: a spoken "Strich" between numbers ("drei Strich vier", raw "3-4"
+  /// for one voice) also becomes "/". Chains become "12/24/3"; an ISO date stays. One capital
+  /// letter may stand directly before the first group ("L4-5", "C5-6"); "COVID-19", "L4-L5",
+  /// "A1-B2", "B-12" and "AB12-34" stay. Also "6-fünfundzwanzig" / "sechs-25": one side a digit
+  /// group, the other a number word (`GermanNumberWords`), both then digits. Nil when unchanged.
+  private static func slashBetweenNumbers(_ text: String) -> String? {
+    var result = text
+    var changed = false
+    let chains = digitHyphenChainRegex.matches(
+      in: result, range: NSRange(location: 0, length: (result as NSString).length))
+    for match in chains.reversed() {
+      let chain = (result as NSString).substring(with: match.range)
+      if regexMatches(isoDateRegex, chain) { continue }
+      let digits = chain.split(whereSeparator: { !$0.isNumber }).map(String.init)
+      guard let range = Range(match.range, in: result) else { continue }
+      result.replaceSubrange(range, with: digits.joined(separator: "/"))
+      changed = true
+    }
+    let ns = result as NSString
+    let halves = halfConvertedHyphenRegex.matches(
+      in: result, range: NSRange(location: 0, length: ns.length))
+    for match in halves.reversed() where match.numberOfRanges == 3 {
+      let left = ns.substring(with: match.range(at: 1))
+      let right = ns.substring(with: match.range(at: 2))
+      let leftIsDigits = left.allSatisfy(\.isNumber)
+      let rightIsDigits = right.allSatisfy(\.isNumber)
+      guard leftIsDigits != rightIsDigits,
+        let l = leftIsDigits ? Int(left) : GermanNumberWords.value(of: left),
+        let r = rightIsDigits ? Int(right) : GermanNumberWords.value(of: right),
+        let range = Range(match.range, in: result)
+      else { continue }
+      result.replaceSubrange(range, with: "\(l)/\(r)")
+      changed = true
+    }
+    return changed ? result : nil
+  }
+
   private static func regexMatches(_ regex: NSRegularExpression, _ text: String) -> Bool {
     let range = NSRange(text.startIndex..., in: text)
     return regex.firstMatch(in: text, range: range) != nil
@@ -473,6 +516,10 @@ enum SpokenPunctuation {
     var changed = false
     if mode == .spokenOnly, let decimals = decimalCommaBetweenNumberWords(result) {
       result = decimals
+      changed = true
+    }
+    if mode == .spokenOnly, let slashes = slashBetweenNumbers(result) {
+      result = slashes
       changed = true
     }
     if mode == .spokenOnly, let slashes = slashBetweenNumberWords(result) {
