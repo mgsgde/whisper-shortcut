@@ -462,8 +462,18 @@ enum ModelSelectionReconciler {
   /// Cloud Read Aloud models in preference order. Not `readAloudModels`: that list is filtered by
   /// Offline Mode and starts with the macOS voice.
   private static let readAloudCloudPreference: [TTSModel] = [
-    .gemini38FlashLiteTTS, .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
+    .gemini38FlashLiteTTS, .gemini38FlashTTS, .grokVoiceTTS,
   ]
+
+  /// Where a retired Read Aloud model moves. The 2026-11-03 audit's option A: Gemini 3.8
+  /// Flash-Lite TTS is measured and free of the shutdown; an OpenAI-only user gets the macOS
+  /// voice. xAI was not measured as a stand-in. Nil for every model still offered.
+  nonisolated static func retiredReadAloudReplacement(
+    for model: TTSModel, hasKey: (TTSProvider) -> Bool
+  ) -> TTSModel? {
+    guard model == .openAIGpt4oMiniTTS else { return nil }
+    return hasKey(.gemini) ? .gemini38FlashLiteTTS : .systemMacOS
+  }
 
   /// Where Read Aloud goes once a cloud key exists after the macOS-voice fallback, or nil while
   /// none does: the previous selection if its provider is keyed again, else the first keyed cloud
@@ -492,6 +502,13 @@ enum ModelSelectionReconciler {
     let recordKey = UserDefaultsKeys.keylessReadAloudFallback
     let raw = UserDefaults.standard.string(forKey: key) ?? SettingsDefaults.readAloudModel.rawValue
     let current = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(raw)) ?? SettingsDefaults.readAloudModel
+    if let replacement = retiredReadAloudReplacement(for: current, hasKey: { hasKey($0) }) {
+      UserDefaults.standard.set(replacement.rawValue, forKey: key)
+      UserDefaults.standard.removeObject(forKey: recordKey)
+      DebugLogger.log(
+        "MODEL-RECONCILE: \(key): gpt-4o-mini-tts → \(replacement.rawValue) (retired, shutdown 2027-01-06)")
+      return
+    }
     let storedPrevious = UserDefaults.standard.string(forKey: recordKey)
     // The macOS voice has no key, so without the record a later cloud key would never move the
     // slot off the fallback. A slot the user changed drops its record, so a later manual pick of

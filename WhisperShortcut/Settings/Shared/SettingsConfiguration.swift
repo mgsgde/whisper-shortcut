@@ -1156,6 +1156,8 @@ enum TTSModel: String, CaseIterable {
   // 3.1 / 2.5 selections forward via migrateLegacyReadAloudRawValue.
   case gemini38FlashLiteTTS = "gemini-3.8-flash-lite-tts"
   case gemini38FlashTTS = "gemini-3.8-flash-tts"
+  // Retired from pickers 2026-11 (shutdown 2027-01-06, no speech-endpoint successor). Case kept
+  // so stored values parse and `ModelSelectionReconciler.reconcileReadAloud` can move them.
   case openAIGpt4oMiniTTS = "gpt-4o-mini-tts"
   case grokVoiceTTS = "grok-voice-tts-1.0"
   /// On-device macOS voices (`AVSpeechSynthesizer`). Automatic Offline Mode choice.
@@ -1323,7 +1325,7 @@ enum TTSModel: String, CaseIterable {
   /// the tiles would end in a multi-gigabyte download the model then cannot run.
   static var readAloudModels: [TTSModel] {
     [.systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice, .gemini38FlashLiteTTS,
-     .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS, .ownServerTTS]
+     .gemini38FlashTTS, .grokVoiceTTS, .ownServerTTS]
       .filter(\.isSelectableUnderOfflineMode)
       .filter { $0.qwen3ModelType?.isOfferable ?? true }
   }

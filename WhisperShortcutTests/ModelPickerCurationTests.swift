@@ -153,7 +153,7 @@ struct ModelPickerCurationTests {
   func openAIOnly() {
     let dictate = Self.dictate([.openAI], selected: .openAIGPTTranscribe)
     #expect(Self.model(dictate, badge: .recommended) == .openAIGPTTranscribe)
-    #expect(Self.model(dictate, badge: .fastest) == .openAIGPT4oTranscribe)
+    #expect(Self.model(dictate, badge: .fastest) == .openAIGPT4oMiniTranscribe)
 
     let chat = Self.chat([.openai], selected: .openaiGPT6Sol)
     #expect(Self.model(chat, badge: .recommended) == .openaiGPT6Sol)
