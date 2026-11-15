@@ -1314,6 +1314,12 @@ final class RecordingIndicatorManager {
     // (a stray `window.level = .floating` on the key window) would otherwise stick for good.
     panel.level = .statusBar
     panel.orderFrontRegardless()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+      guard let self, let panel = self.panel, panel.isVisible else { return }
+      DebugLogger.log(
+        "PILL: ordered front — onActiveSpace=\(panel.isOnActiveSpace) visible=\(panel.isVisible) policy=\(NSApp.activationPolicy().rawValue)"
+      )
+    }
     isVisible = true
     takeKeyFocusIfListed(panel)
     NSAnimationContext.runAnimationGroup { context in
