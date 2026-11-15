@@ -482,9 +482,7 @@ class ChatViewModel: ObservableObject {
   }
 
   /// The composer's model picker writes the global model itself; a pick there must also end this
-  /// chat's `/improve` override, or the label would keep naming the override and ignore the click.
-  var hasModelOverride: Bool { session.modelOverride != nil }
-
+  /// chat's `/improve` review model, or the next turn would still run on the review model.
   func clearModelOverride() {
     guard session.modelOverride != nil else { return }
     session.modelOverride = nil
@@ -1746,13 +1744,71 @@ class ChatViewModel: ObservableObject {
   ]
   enum ImproveModelChoice: Equatable { case keep; case use(PromptModel); case noneAvailable }
 
+  /// UserDefaults key for the model the user last picked during an `/improve` review.
+  private static let improveReviewModelKey = "improveReviewModel"
+
+  /// Last explicit `/improve` model, including "continue with my chat model" (stored as that
+  /// model). Nil when the key is absent or holds an unknown raw value; setting nil removes it.
+  static var rememberedImproveModel: PromptModel? {
+    get {
+      guard let raw = UserDefaults.standard.string(forKey: improveReviewModelKey),
+            let model = PromptModel(rawValue: raw) else { return nil }
+      return model
+    }
+    set {
+      if let newValue {
+        UserDefaults.standard.set(newValue.rawValue, forKey: improveReviewModelKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: improveReviewModelKey)
+      }
+    }
+  }
+
+  /// Which model runs `/improve`. `remembered` is the user's last pick from the review chip.
   static func improveModelChoice(
-    current: PromptModel, hasCredential: (PromptModel) -> Bool
+    current: PromptModel, remembered: PromptModel? = nil,
+    hasCredential: (PromptModel) -> Bool
   ) -> ImproveModelChoice {
     if improveCapable.contains(current), hasCredential(current) { return .keep }
+    // "Continue with my model": stay even when that model would otherwise be replaced.
+    if let remembered, remembered == current { return .keep }
+    if let remembered, improveCapable.contains(remembered), hasCredential(remembered) {
+      return .use(remembered)
+    }
     if let m = improvePreferred.first(where: hasCredential) { return .use(m) }
     return .noneAvailable
   }
+
+  /// Capable models the review can switch to: preferred order, then the rest as `chatModels` lists them.
+  static func improveModelOptions(hasCredential: (PromptModel) -> Bool) -> [PromptModel] {
+    func eligible(_ model: PromptModel) -> Bool {
+      improveCapable.contains(model) && model.supportsTextChat && hasCredential(model)
+    }
+    var ordered: [PromptModel] = []
+    for model in improvePreferred where eligible(model) {
+      ordered.append(model)
+    }
+    for model in PromptModel.chatModels where eligible(model) && !ordered.contains(model) {
+      ordered.append(model)
+    }
+    return ordered
+  }
+
+  var improveModelOptions: [PromptModel] {
+    Self.improveModelOptions(hasCredential: { $0.provider.hasCredential })
+  }
+
+  /// The review model shown on the chip: the session override when it resolves to something
+  /// other than the global chat model.
+  var improveReviewModel: PromptModel? {
+    guard session.modelOverride != nil else { return nil }
+    let resolved = Self.effectiveModel(override: session.modelOverride, global: Self.openChatModel)
+    return resolved == Self.openChatModel ? nil : resolved
+  }
+
+  /// Text of the `/improve` request just sent, so switching model can re-run that request
+  /// when it is still the newest user message.
+  private var lastImproveRequestText: String?
 
   static func improveAction(offlineMode: Bool, localModel: Bool = false) -> ImproveAction {
     if offlineMode { return .offline }
@@ -1795,18 +1851,26 @@ class ChatViewModel: ObservableObject {
     {
     case .ask(let request):
       switch Self.improveModelChoice(
-        current: currentChatModel, hasCredential: { $0.provider.hasCredential })
+        current: currentChatModel,
+        remembered: Self.rememberedImproveModel,
+        hasCredential: { $0.provider.hasCredential })
       {
       case .keep:
         break
       case .use(let m):
+        // First run explains why and what it costs; after the user has picked once, one line.
+        let firstRun = Self.rememberedImproveModel == nil
         session.modelOverride = m.rawValue  // persisted by appendModelMessage's store.save
-        appendModelMessage(verbatim: String(localized: "Improve is running with \(m.displayName). Your usual chat model stays as it is."))
+        objectWillChange.send()  // `session` is not published; the composer chip reads it
+        appendModelMessage(verbatim: firstRun
+          ? String(localized: "Improve is running with \(m.displayName): the review needs a strong model and costs a few cents. Your chat model (\(Self.openChatModel.displayName)) stays as it is. Switch or end the review with the chip next to the model picker.")
+          : String(localized: "Improve is running with \(m.displayName)."))
       case .noneAvailable:
         appendModelMessage(verbatim: String(localized: "Improve works best with Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol. Add an API key for one of them in Settings to get a more reliable review."))
       }
       // `sendMessage` only dispatches slash commands; plain text goes out through `sendComposed`.
       guard validateCredential(for: currentChatModel) else { return }
+      lastImproveRequestText = request
       await sendComposed(finalContent: request, attachedParts: [])
     case .offline:
       appendModelMessage(verbatim: Self.improveOfflineMessage(
@@ -1816,6 +1880,50 @@ class ChatViewModel: ObservableObject {
       appendModelMessage(verbatim: Self.improveOfflineMessage(
         findings: improveFindings(),
         footer: String(localized: "To learn from your dictations, pick an online model with /model and try /improve again.")))
+    }
+  }
+
+  /// `nil` means "continue with the global chat model" and remembers that model.
+  func switchImproveModel(to model: PromptModel?) {
+    Self.rememberedImproveModel = model ?? Self.openChatModel
+    // `session` is not published. `clearModelOverride` only writes and saves; the chip reads
+    // `improveReviewModel`, so publish here or a switch that does not re-run stays invisible.
+    objectWillChange.send()
+    session.modelOverride = model?.rawValue
+    store.save(session)
+    let label = model?.rawValue ?? "global \(Self.openChatModel.rawValue)"
+    DebugLogger.log("CHAT: /improve switch review model to \(label)")
+    rerunImproveRequestIfNewest()
+  }
+
+  /// Ends the review: drop this chat's override and say which model continues.
+  func endImproveReview() {
+    clearModelOverride()
+    lastImproveRequestText = nil
+    appendModelMessage(
+      verbatim: String(localized: "Improve finished. Continuing with \(Self.openChatModel.displayName)."))
+  }
+
+  /// Re-sends the `/improve` request when it is still the newest user message.
+  /// `retryMessage` refuses while a turn is in flight, so Stop runs first. The in-flight
+  /// task is captured before cancel: `performSend`'s defer clears `isSending` as that task
+  /// finishes, one MainActor turn after `cancel()` returns.
+  private func rerunImproveRequestIfNewest() {
+    guard let requestText = lastImproveRequestText else { return }
+    guard let newest = messages.last(where: { $0.role == .user }),
+          newest.content == requestText else { return }
+    guard isSending else {
+      retryMessage(id: newest.id)
+      return
+    }
+    let task = sendTasks[session.id]
+    cancelSend()
+    Task { @MainActor in
+      await task?.value
+      if isSending { await Task.yield() }
+      guard let newest = messages.last(where: { $0.role == .user }),
+            newest.content == lastImproveRequestText else { return }
+      retryMessage(id: newest.id)
     }
   }
 
@@ -4977,6 +5085,63 @@ struct ChatInputAreaView: View {
     .pointerCursorOnHover()
   }
 
+  /// Shown while an `/improve` review runs on a model other than the user's chat model: names
+  /// that model, offers the other capable ones (first = recommended) or the user's own, and ends
+  /// the review with ✕. The model picker beside it keeps showing the user's choice.
+  private func improveReviewChip(_ reviewModel: PromptModel) -> some View {
+    let options = viewModel.improveModelOptions
+    let ownModel = resolvedOpenGeminiModel
+    return HStack(spacing: 0) {
+      Menu {
+        Section("Model for Improve") {
+          ForEach(options, id: \.self) { model in
+            Toggle(
+              model == options.first
+                ? String(localized: "\(model.displayName) (recommended)") : model.displayName,
+              isOn: Binding(
+                get: { model == reviewModel },
+                set: { _ in if model != reviewModel { viewModel.switchImproveModel(to: model) } }))
+          }
+        }
+        Button(String(localized: "Continue with \(ownModel.displayName) (less accurate)")) {
+          viewModel.switchImproveModel(to: nil)
+        }
+        Divider()
+        Button("End review") { viewModel.endImproveReview() }
+      } label: {
+        HStack(spacing: 4) {
+          Image(systemName: "wand.and.stars").font(.caption)
+          Text("Improve: \(reviewModel.displayName)").font(.caption)
+        }
+        .foregroundColor(ChatTheme.secondaryText)
+        .padding(.leading, 8)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+      }
+      .menuStyle(.borderlessButton)
+      .menuIndicator(.hidden)
+      .fixedSize()
+      .help("The review runs on this model. Click to switch.")
+
+      Button(action: { viewModel.endImproveReview() }) {
+        Image(systemName: "xmark")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundColor(ChatTheme.secondaryText)
+          .frame(width: 20, height: 20)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .help("End review and continue with \(ownModel.displayName)")
+      .accessibilityLabel("End review")
+      .pointerCursorOnHover()
+    }
+    .padding(.trailing, 2)
+    .background(
+      Capsule().fill(ChatTheme.controlBackground))
+    .overlay(
+      Capsule().stroke(ChatTheme.secondaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1))
+  }
+
   private var inputHeight: CGFloat {
     min(Self.inputMaxHeight, max(Self.inputMinHeight, composer.measuredHeight))
   }
@@ -4995,8 +5160,7 @@ struct ChatInputAreaView: View {
   /// power text chat; superseded models resolve to their replacement so the label always
   /// matches an entry in the picker.
   private var resolvedOpenGeminiModel: PromptModel {
-    // `/improve` can run this one chat on another model; the label must name the model that answers.
-    if viewModel.hasModelOverride { return viewModel.currentChatModel }
+    // Always the user's own choice: an `/improve` review model shows on its own chip instead.
     let migratedRaw = PromptModel.migrateLegacyPromptRawValue(selectedChatModelRaw)
     let resolved = PromptModel(rawValue: migratedRaw)
       .map { PromptModel.migrateIfDeprecated($0) }
@@ -5389,6 +5553,10 @@ struct ChatInputAreaView: View {
           action: { viewModel.handleMeetingButtonTap() })
 
         Spacer()
+
+        if let reviewModel = viewModel.improveReviewModel {
+          improveReviewChip(reviewModel)
+        }
 
         Menu {
           // Grouped by provider with a native checkmark on the active model. A provider without
