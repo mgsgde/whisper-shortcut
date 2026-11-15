@@ -96,20 +96,20 @@ enum SpokenPunctuation {
     rule(#"\#(openGuard)[ \t,.;]*\#(closingParen)"#, ")"),
     // A comma before a spoken paragraph break is the ASR marking the pause; the sentence ended.
     // No capital marker: this stays ".\n\n", and the next word keeps the case it was spoken with.
-    // "Neuerabsatz" / "Neuenabsatz" are the glued forms (no space).
+    // "Neuerabsatz" / "Neuenabsatz" / "Neuabsatz" are the glued forms (no space).
     // With token timing (`timed`) a leftover comma is a spoken one ("Herren, neuer Absatz" is the
     // salutation's comma): it stays, as ",\n\n", and the break rule does not turn it into a period.
-    rule(#"[ \t]*,[ \t]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, timed ? ",\n\n" : ".\n\n"),
+    rule(#"[ \t]*,[ \t]*\bneu(?:e[rn])?[ \t]*absatz\b[ \t,.;:!?]*"#, timed ? ",\n\n" : ".\n\n"),
     // The model already ended the sentence ("Anamnese. Neuer Absatz, die Klägerin"): the next word
     // starts the new paragraph or line, so it gets a capital (marker, `capitalizeAfterGluedColon`).
     // "Neuzeile" / "Neuezeile" are "neue Zeile" glued into one word. "Neuzeilen" does not match.
-    rule(#"(?<=[.!?])[ \t]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    rule(#"(?<=[.!?])[ \t]*\bneu(?:e[rn])?[ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
     rule(#"(?<=[.!?])[ \t]*\#(zeile)\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
     // Paragraph break without a sentence mark before it. The next word still starts the new
     // paragraph, so it gets a capital too. A comma before "neuer Absatz" never reaches this rule —
     // the rule above already turned it into a period — so the comma in the prefix only restores
     // the old pattern.
-    rule(#"[ \t,;]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    rule(#"[ \t,;]*\bneu(?:e[rn])?[ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
     // A comma or semicolon before "neue Zeile" is the pause Parakeet wrote. Token timing keeps
     // those pause commas in "Only when spoken", so eating them here is what stops
     // "Befund, neue Zeile Inspektion" from staying "Befund,\nInspektion". No capital marker: the

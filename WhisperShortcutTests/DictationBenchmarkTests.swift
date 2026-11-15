@@ -162,7 +162,8 @@ enum DictationBenchmarkScoring {
 
 /// Cuts a recording into pieces the way Dictate Live does (`ChunkedDictateRecorder.RotationPolicy.live`):
 /// a piece is at least 1.5 s long and is cut after 0.6 s below −45 dB, which is three evaluations
-/// spaced 0.2 s apart. Windows are counted from the start of the recording, like the recorder's
+/// spaced 0.2 s apart; from 5 s on, two evaluations (0.4 s) below −35 dB cut (the soft rule,
+/// `ChunkedDictateRecorder.silenceCriterion`). Windows are counted from the start of the recording, like the recorder's
 /// `meteringTickCount`, and a piece whose loudest window stays below −45 dB is silent.
 ///
 /// It approximates the recorder's live metering offline (RMS of a 50 ms window vs
@@ -173,7 +174,8 @@ enum LivePieceSplitter {
   private static let minPieceSeconds = 1.5
   private static let silenceThresholdDB: Float = -45
   private static let evaluationStride = 4
-  private static let silentEvaluationsToCut = 3
+  private static let evaluationInterval = 0.2
+  private static let policy = ChunkedDictateRecorder.RotationPolicy.live
   private static let outputSampleRate = 16_000.0
 
   private struct SplitError: LocalizedError {
@@ -200,9 +202,12 @@ enum LivePieceSplitter {
       let power = windowPower(samples[offset..<end])
       peak = max(peak, power)
       if windowNumber % evaluationStride == 0, end - pieceStart >= minSamples {
-        if power < silenceThresholdDB {
+        let criterion = ChunkedDictateRecorder.silenceCriterion(
+          policy: policy, pieceDuration: Double(end - pieceStart) / sampleRate,
+          baseThresholdDB: silenceThresholdDB, decisionInterval: evaluationInterval)
+        if power < criterion.thresholdDB {
           silentCount += 1
-          if silentCount >= silentEvaluationsToCut {
+          if silentCount >= criterion.decisionsNeeded {
             ranges.append((start: pieceStart, end: end, peak: peak))
             pieceStart = end
             peak = -Float.infinity
@@ -701,7 +706,7 @@ struct DictationBenchmarkTests {
 
     var jsonTiers: [String: Any] = [:]
     print(
-      "BENCH-NOTE\trun\tdictations are cut into live pieces offline (≥1.5 s, 0.6 s below −45 dB)")
+      "BENCH-NOTE\trun\tdictations are cut into live pieces offline (≥1.5 s, 0.6 s below −45 dB; from 5 s on two 0.2 s steps below −35 dB)")
 
     for tier in config.tiers {
       var missing: [String] = []
