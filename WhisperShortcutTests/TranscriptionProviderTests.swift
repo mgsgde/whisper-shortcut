@@ -19,11 +19,13 @@ struct TranscriptionProviderTests {
     #expect(!TranscriptionModel.selectableForDictation.contains(.gemini31Pro))
 
     // Everything else stays offerable, except the two Whisper sizes turbo supersedes (hidden unless on
-    // disk) and Qwen3-ASR (offered only on machines with enough RAM), so the count is an exclusion set.
+    // disk), Qwen3-ASR (offered only on machines with enough RAM), and gpt-4o-transcribe (hidden,
+    // forwarded to gpt-transcribe), so the count is an exclusion set.
     let hidden = Set(
       TranscriptionModel.allCases.filter { !$0.isSelectableForDictation })
     #expect(
-      hidden.subtracting([.whisperMedium, .whisperLarge, .qwen3ASR]) == [.gemini4Argon, .gemini31Pro])
+      hidden.subtracting([.whisperMedium, .whisperLarge, .qwen3ASR])
+        == [.gemini4Argon, .gemini31Pro, .openAIGPT4oTranscribe])
     #expect(TranscriptionModel.qwen3ASR.isSelectableForDictation == Qwen3ModelType.asr.isOfferable)
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperMedium))
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperLarge))

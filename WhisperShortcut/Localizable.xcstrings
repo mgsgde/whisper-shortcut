@@ -980,12 +980,12 @@
         }
       }
     },
-    "%@ ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured." : {
+    "%@ ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Mini Transcribe if you want the prompt honoured." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ ignoriert den System-Prompt unten, es ist ein reines Spracherkennungsmodell und nimmt keine Anweisungen an. Regeln zu Füllwörtern, Satzzeichen und Formatierung wirken nicht; Ihr Glossar gilt weiterhin, als Stichwort-Hinweise. Wählen Sie ein Gemini-Modell oder GPT-4o Transcribe, wenn der Prompt beachtet werden soll."
+            "value" : "%@ ignoriert den System-Prompt unten, es ist ein reines Spracherkennungsmodell und nimmt keine Anweisungen an. Regeln zu Füllwörtern, Satzzeichen und Formatierung wirken nicht; Ihr Glossar gilt weiterhin, als Stichwort-Hinweise. Wählen Sie ein Gemini-Modell oder GPT-4o Mini Transcribe, wenn der Prompt beachtet werden soll."
           }
         }
       }
@@ -6463,12 +6463,12 @@
         }
       }
     },
-    "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 short terms, far fewer long ones such as German medical terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning." : {
+    "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Mini Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 short terms, far fewer long ones such as German medical terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kommagetrennte Liste schwer zu schreibender Begriffe (Namen, Fachwörter, Produktnamen). Geht an jeden Anbieter, auf dem Weg, den er unterstützt: Offline-Parakeet achtet im Audio darauf, Offline-Whisper bekommt sie als Vorgabetext, GPT Transcribe als eigene Stichwort-Hinweise, bei Gemini, GPT-4o Transcribe und xAI Grok werden sie an die Anweisungen angehängt. Offline-Whisper nimmt höchstens 224 Tokens — etwa 150 kurze Begriffe, weit weniger lange, zum Beispiel deutsche medizinische Fachbegriffe — und lässt den Rest weg; tragen Sie also nur Wörter ein, die wirklich falsch geschrieben werden. Leer lassen für keine Vorgabe."
+            "value" : "Kommagetrennte Liste schwer zu schreibender Begriffe (Namen, Fachwörter, Produktnamen). Geht an jeden Anbieter, auf dem Weg, den er unterstützt: Offline-Parakeet achtet im Audio darauf, Offline-Whisper bekommt sie als Vorgabetext, GPT Transcribe als eigene Stichwort-Hinweise, bei Gemini, GPT-4o Mini Transcribe und xAI Grok werden sie an die Anweisungen angehängt. Offline-Whisper nimmt höchstens 224 Tokens — etwa 150 kurze Begriffe, weit weniger lange, zum Beispiel deutsche medizinische Fachbegriffe — und lässt den Rest weg; tragen Sie also nur Wörter ein, die wirklich falsch geschrieben werden. Leer lassen für keine Vorgabe."
           }
         }
       }
@@ -28220,12 +28220,12 @@
         }
       }
     },
-    "Added to the built-in transcription instructions, which always apply. Describe yourself and your preferences, not the task. Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter; GPT Transcribe, your own server and offline models ignore it. Single terms go in the Glossary." : {
+    "Added to the built-in transcription instructions, which always apply. Describe yourself and your preferences, not the task. Used by Gemini, GPT-4o Mini Transcribe, xAI Grok and OpenRouter; GPT Transcribe, your own server and offline models ignore it. Single terms go in the Glossary." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wird an die eingebauten Anweisungen für die Transkription angehängt, die immer gelten. Beschreiben Sie sich und Ihre Vorlieben, nicht die Aufgabe. Genutzt von Gemini, GPT-4o Transcribe, xAI Grok und OpenRouter; GPT Transcribe, Ihr eigener Server und Offline-Modelle ignorieren sie. Einzelne Begriffe gehören ins Glossar."
+            "value" : "Wird an die eingebauten Anweisungen für die Transkription angehängt, die immer gelten. Beschreiben Sie sich und Ihre Vorlieben, nicht die Aufgabe. Genutzt von Gemini, GPT-4o Mini Transcribe, xAI Grok und OpenRouter; GPT Transcribe, Ihr eigener Server und Offline-Modelle ignorieren sie. Einzelne Begriffe gehören ins Glossar."
           }
         }
       }

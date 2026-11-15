@@ -25,7 +25,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 ## What it does
 
 **Dictation**
-- **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right.
+- **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right. Settings → Dictate offers one-click starter lists of German specialist terms (orthopedics, psychiatry/psychotherapy, expert reports).
 - **Dictate Live**: text appears at the cursor after every short pause while you keep talking (on-device, Apple silicon).
 - **Dictation only**: a mode for people who only want to dictate. It hides Chat, meetings, Dictate Prompt, Read Aloud and the other features; nothing is deleted, and switching it off in Settings → General brings them back. Picked on the first screen of the welcome tour, it also sets up offline dictation with spoken punctuation and walks through a test dictation.
 - **Offline dictation**: [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) transcribes 25 European languages on your Mac in a fraction of a second; Whisper covers the rest.
@@ -38,6 +38,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 
 **Chat and meetings**
 - **Chat**: a chat window (⌥Space) with every supported model, screenshots, files, web search and YouTube videos. It works with Google Calendar, Tasks and Gmail, Trello, IMAP mailboxes and folders you share, including your `AGENTS.md` / `CLAUDE.md` context files.
+- **Improve**: type `/improve` or click Improve in an empty chat. The Chat reviews your settings (features that are off, missing permissions, models) and, with "Save usage data" on, your recent dictations, and suggests one change at a time, a setting, a glossary term or a rule, which you approve before it changes anything. It runs on a strong model (Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol, whichever you have a key for) while the review lasts; your usual chat model stays as it is. A chip next to the model picker shows the review model: switch to another one there, continue with your own, or end the review with ✕. Your pick is remembered for the next review.
 - **Live Meeting**: records your meeting (with headphones too), transcribes it as it goes, writes live notes into the chat and answers questions about anything said so far.
 - **Claude, Claude Code and Codex over MCP**: connect them with one click. They read your meetings, even the one running right now, and tune your dictation from your logs, one glossary term or rule at a time that you approve. Examples at [whispershortcut.com/mcp](https://whispershortcut.com/mcp).
 
@@ -78,7 +79,7 @@ All of them can be changed in Settings → General; F1–F20 can be bound withou
 | Provider | Used for |
 |---|---|
 | None (on-device) | Parakeet Ultra and Whisper dictation; Dictate Prompt and Chat on MLX models (Qwen3, Gemma); macOS and Qwen3 voices |
-| OpenAI | GPT Transcribe (the default dictation model), GPT chat, Dictate Prompt, Read Aloud |
+| OpenAI | GPT Transcribe (the default dictation model), GPT chat, Dictate Prompt |
 | Google Gemini | Dictation, Dictate Prompt, Chat, Read Aloud, meetings, YouTube videos |
 | xAI | Grok Speech-to-Text, Grok chat with X search, Grok voices |
 | Anthropic | Claude chat |

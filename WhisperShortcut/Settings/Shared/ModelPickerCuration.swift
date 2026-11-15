@@ -176,22 +176,20 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
 // MARK: - Transcription (Dictate, Meeting Transcription)
 
 extension TranscriptionModel: PickerCuratedModel {
-  /// Median latency order on a 1.3 s clip, `plans/model-audits/2026-10-03-audit.md`
-  /// (Transcription benchmark): grok-stt 424 ms · gpt-4o-transcribe 645 · gpt-4o-mini 654 ·
-  /// gpt-transcribe 673 · 3.1 Flash-Lite 968 · 3.5 Flash-Lite 973 · 3.8 Flash 1286.
+  /// Median latency order on a 1.3 s clip, `plans/model-audits/2026-11-03-audit.md`.
+  /// gpt-4o-transcribe is no longer offered (dominated; shutdown 2027-02-26).
   /// Re-rank when the monthly audit's table moves.
   var pickerSpeedRank: Int? {
     switch self {
     case .xaiTranscribe: return 1
-    case .openAIGPT4oTranscribe: return 2
-    case .openAIGPT4oMiniTranscribe: return 3
-    case .openAIGPTTranscribe: return 4
-    case .gemini31FlashLite: return 5
-    case .gemini35FlashLite: return 6
-    case .gemini38Flash: return 7
-    case .gemini4Argon, .gemini31Pro, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
-         .whisperLarge, .whisperLargeTurbo, .parakeetUltra, .qwen3ASR, .selfHostedTranscription,
-         .openRouterTranscription:
+    case .openAIGPT4oMiniTranscribe: return 2
+    case .openAIGPTTranscribe: return 3
+    case .gemini31FlashLite: return 4
+    case .gemini35FlashLite: return 5
+    case .gemini38Flash: return 6
+    case .openAIGPT4oTranscribe, .gemini4Argon, .gemini31Pro, .whisperTiny, .whisperBase,
+         .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo, .parakeetUltra,
+         .qwen3ASR, .selfHostedTranscription, .openRouterTranscription:
       return nil
     }
   }

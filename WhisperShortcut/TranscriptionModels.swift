@@ -56,7 +56,9 @@ enum TranscriptionTuning {
 // family (gemini-2.5-flash / -flash-lite, shutdown 2026-10-16) → gemini-3.8-flash /
 // gemini-3.1-flash-lite; gemini-3-flash-preview (deprecated-pending) → gemini-3.8-flash;
 // gemini-3.5-flash and gemini-3.6-flash (removed 2026-10-19, dominated by 3.7) → gemini-3.8-flash;
-// gemini-3.7-flash (removed 2026-10-21 because Google routes it to 3.8) → gemini-3.8-flash.
+// gemini-3.7-flash (removed 2026-10-21 because Google routes it to 3.8) → gemini-3.8-flash;
+// openai-gpt-4o-transcribe (hidden 2026-11, dominated by gpt-transcribe, shutdown 2027-02-26)
+// → openai-gpt-transcribe.
 // Do not offer a Pro tier for dictation without benchmarking the 1.3 s case first.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
@@ -93,11 +95,12 @@ enum TranscriptionModel: String, CaseIterable {
   case qwen3ASR = "qwen3-asr-1.7b"
 
   // OpenAI transcription models (cloud, OpenAI API key required).
-  // `gpt-transcribe` is OpenAI's recommended starting model; the gpt-4o pair is explicitly
-  // "not the recommended starting model for a new transcription integration"
-  // (https://developers.openai.com/api/docs/guides/transcription). All three stay: the gpt-4o
-  // family follows instructions in `prompt` (which gpt-transcribe does not) and mini is the
-  // cheapest tier, so neither is dominated.
+  // `gpt-transcribe` is OpenAI's recommended starting model
+  // (https://developers.openai.com/api/docs/guides/transcription). gpt-4o-transcribe is hidden
+  // and stored selections forward to it: the 2026-11-03 audit measured it as dominated
+  // ($0.006 vs $0.0045/min, silence leaks 9/9 vs 0/9, glossary 57% vs 82%, slower on every clip)
+  // and OpenAI shuts it down 2027-02-26. gpt-4o-mini stays as the cheapest OpenAI tier and the
+  // OpenAI model that follows the Dictation prompt.
   case openAIGPTTranscribe = "openai-gpt-transcribe"
   case openAIGPT4oTranscribe = "openai-gpt-4o-transcribe"
   case openAIGPT4oMiniTranscribe = "openai-gpt-4o-mini-transcribe"
@@ -199,6 +202,8 @@ enum TranscriptionModel: String, CaseIterable {
   var isSelectableForDictation: Bool {
     switch self {
     case .gemini4Argon, .gemini31Pro: return false
+    // Dominated by gpt-transcribe in the 2026-11-03 audit; stored selections forward to it.
+    case .openAIGPT4oTranscribe: return false
     // Whisper Medium and Large v3 are superseded by turbo (see `OfflineModelType.isSuperseded`).
     // Unlike the Gemini exclusions these are not broken, only dominated, so a user who already
     // downloaded one keeps it offered — hiding a model that is on disk and working would take a
@@ -450,7 +455,7 @@ enum TranscriptionModel: String, CaseIterable {
   var systemPromptIgnoredReason: String? {
     switch self {
     case .openAIGPTTranscribe:
-      return String(localized: "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured.")
+      return String(localized: "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Mini Transcribe if you want the prompt honoured.")
     // Provider-wide rather than case-by-case: this list was spelled out per model and
     // `whisperLargeTurbo` was added to the enum without being added here, so the newest — and
     // recommended — offline model was the one showing an inert prompt editor with no warning.
@@ -564,6 +569,10 @@ enum TranscriptionModel: String, CaseIterable {
     case "gemini-3.5-flash":
       // Removed 2026-10-19: dominated by 3.7 on price and tier. Forwards to 3.8 with 3.7.
       return TranscriptionModel.gemini38Flash.rawValue
+    case "openai-gpt-4o-transcribe":
+      // Dominated by gpt-transcribe (price, silence, glossary, latency); see the 2026-11-03 audit.
+      // Case kept so the raw value still parses; pickers hide it.
+      return TranscriptionModel.openAIGPTTranscribe.rawValue
     default:
       return raw
     }

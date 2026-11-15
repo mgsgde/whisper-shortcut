@@ -194,7 +194,7 @@ struct SpeechToTextSettingsTab: View {
     SystemPromptSectionEditor(
       title: "Additional Instructions",
       systemImage: "text.alignleft",
-      subtitle: "Added to the built-in transcription instructions, which always apply. Describe yourself and your preferences, not the task. Used by Gemini, GPT-4o Transcribe, xAI Grok and OpenRouter; GPT Transcribe, your own server and offline models ignore it. Single terms go in the Glossary.",
+      subtitle: "Added to the built-in transcription instructions, which always apply. Describe yourself and your preferences, not the task. Used by Gemini, GPT-4o Mini Transcribe, xAI Grok and OpenRouter; GPT Transcribe, your own server and offline models ignore it. Single terms go in the Glossary.",
       section: .dictationAdditions,
       defaultContent: "",
       builtInCore: AppConstants.defaultTranscriptionSystemPrompt,
@@ -203,7 +203,7 @@ struct SpeechToTextSettingsTab: View {
   }
 
   private var glossaryEditor: some View {
-    glossaryEditor(subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 short terms, far fewer long ones such as German medical terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.")
+    glossaryEditor(subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Mini Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 short terms, far fewer long ones such as German medical terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.")
   }
 
   @ViewBuilder
