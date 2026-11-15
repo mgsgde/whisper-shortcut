@@ -533,6 +533,22 @@ struct LiveDictationTests {
   }
 }
 
+@Suite("Dictate Live — Schrägstrich between numbers")
+struct LiveSlashBetweenNumbersTests {
+  @Test("a spoken Schrägstrich between two numbers gives 6/25, whatever Parakeet wrote", arguments: [
+    ("sechs Schrägstrich fünfundzwanzig", "6/25"),
+    ("6 Schrägstrich 25", "6/25"),
+    ("6 Schrägstrich fünfundzwanzig", "6/25"),
+    ("sechs-Schrägstrich-fünfundzwanzig", "6/25"),
+    ("6-Schrägstrich-25", "6/25"),
+    ("6Schrägstrich25", "6/25"),
+    ("Bescheid vom sechs Schrägstrich fünfundzwanzig Punkt", "Bescheid vom 6/25."),
+  ])
+  func slashBetweenNumbers(raw: String, expected: String) {
+    #expect(LiveDictation.finishPiece(raw, mode: .spokenOnly) == expected)
+  }
+}
+
 @Suite("Dictate Live — glued trailing Punkt")
 struct LiveGluedPunktTests {
   private static let key = "liveDisableGluedPunktSplit"

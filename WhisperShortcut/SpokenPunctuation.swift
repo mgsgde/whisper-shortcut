@@ -156,7 +156,10 @@ enum SpokenPunctuation {
     // it go; a period stays ("usw. Schrägstrich b" → "usw./b"). "Schrägstriche" (plural) does not
     // match; the glued form ("Schrägstrichsage") does. Spoken-only: in automatic mode, and in
     // Dictate Prompt instructions ("ersetze jeden Schrägstrich …"), the word is an ordinary noun.
-    rule(#"[ \t,;]*\bschr(?:ä|ae|e)(?:g|ck)[ \t-]?strich\b[ \t,.;]*"#, "/"),
+    // Parakeet also hyphen-joins the word to neighbouring numbers ("6-Schrägstrich-25"): the hyphens
+    // go with it. A number glued on both sides ("6Schrägstrich25") is a slash too.
+    rule(#"[ \t,;-]*\bschr(?:ä|ae|e)(?:g|ck)[ \t-]?strich\b[ \t,.;-]*"#, "/"),
+    rule(#"(?<=\d)schr(?:ä|ae|e)(?:g|ck)[ \t-]?strich(?=\d)"#, "/"),
     rule(#"[ \t,;]*\bschr(?:ä|ae|e)(?:g|ck)[ \t-]?strich(?!(?:e|en|es|s)\b)(?=\p{L})"#, "/"),
     // Parakeet glues the word onto the word before it: "Arbeitsmarktschrägstrich im ADL" →
     // "Arbeitsmarkt/im ADL". Needs a letter directly before, so it never overlaps the rules above.
@@ -409,6 +412,31 @@ enum SpokenPunctuation {
     return changed ? result : nil
   }
 
+  // swiftlint:disable:next force_try
+  private static let slashBetweenNumberWordsRegex = try! NSRegularExpression(
+    pattern: #"\b(\p{L}+)[ \t-]*\bschr(?:ä|ae|e)(?:g|ck)[ \t-]?strich\b[ \t-]*(\p{L}+)\b"#,
+    options: [.caseInsensitive])
+
+  /// "sechs Schrägstrich fünfundzwanzig" → "6/25" (a date, a reference, a fraction). Both sides
+  /// must be German cardinal words (`GermanNumberWords`); anything else is left to the plain
+  /// slash rules. Nil when nothing matched.
+  private static func slashBetweenNumberWords(_ text: String) -> String? {
+    let ns = text as NSString
+    let matches = slashBetweenNumberWordsRegex.matches(
+      in: text, range: NSRange(location: 0, length: ns.length))
+    var result = text
+    var changed = false
+    for match in matches.reversed() where match.numberOfRanges == 3 {
+      guard let left = GermanNumberWords.value(of: ns.substring(with: match.range(at: 1))),
+        let right = GermanNumberWords.value(of: ns.substring(with: match.range(at: 2))),
+        let range = Range(match.range, in: result)
+      else { continue }
+      result.replaceSubrange(range, with: "\(left)/\(right)")
+      changed = true
+    }
+    return changed ? result : nil
+  }
+
   private static func regexMatches(_ regex: NSRegularExpression, _ text: String) -> Bool {
     let range = NSRange(text.startIndex..., in: text)
     return regex.firstMatch(in: text, range: range) != nil
@@ -437,6 +465,10 @@ enum SpokenPunctuation {
     var changed = false
     if mode == .spokenOnly, let decimals = decimalCommaBetweenNumberWords(result) {
       result = decimals
+      changed = true
+    }
+    if mode == .spokenOnly, let slashes = slashBetweenNumberWords(result) {
+      result = slashes
       changed = true
     }
     let activeRules: [Rule]
