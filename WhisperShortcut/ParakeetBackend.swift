@@ -181,6 +181,9 @@ extension ParakeetBackend {
     let tokens = (result.tokenTimings ?? []).map {
       ParakeetPunctuationTiming.Token(text: $0.token, start: $0.startTime, end: $0.endTime)
     }
+    for hyphen in ParakeetPunctuationTiming.digitHyphens(in: tokens) {
+      DebugLogger.log(hyphen.logLine)
+    }
     if let duration = try? AudioDuration.avAudioFileSeconds(audioURL),
       let filtered = ParakeetPunctuationTiming.filter(
         text: text, tokens: tokens, audioDuration: duration)

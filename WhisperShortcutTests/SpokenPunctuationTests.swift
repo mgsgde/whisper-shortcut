@@ -300,6 +300,42 @@ struct SpokenPunctuationTableTests {
   ])
   func slash(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
 
+  @Test("A hyphen between two digit groups is a swallowed Schrägstrich in spoken-only mode only", arguments: [
+    (SPPipe.spoken, "Bescheid vom 6-25.", "Bescheid vom 6/25."),
+    (.spoken, "Lendenwirbel 4-5", "Lendenwirbel 4/5"),
+    (.spoken, "Aktenzeichen 12-24", "Aktenzeichen 12/24"),
+    (.automatic, "Bescheid vom 6-25.", "Bescheid vom 6-25."),
+    (.plain, "Aktenzeichen 12-24", "Aktenzeichen 12-24"),
+    (.spoken, "Das COVID-19 Risiko", "Das COVID-19 Risiko"),
+    (.spoken, "Covid-19 Impfung", "Covid-19 Impfung"),
+    (.spoken, "Lendenwirbel L4-L5", "Lendenwirbel L4-L5"),
+    (.spoken, "Raum A1-B2", "Raum A1-B2"),
+    (.spoken, "Vitamin B-12", "Vitamin B-12"),
+    (.spoken, "am 2025-11-15", "am 2025-11-15"),
+    (.spoken, "Bescheid vom 6 - 25", "Bescheid vom 6/25"),
+    (.spoken, "Bescheid vom 6 – 25", "Bescheid vom 6/25"),
+    (.spoken, "Bescheid vom 6\u{2212}25", "Bescheid vom 6/25"),
+    (.spoken, "Bescheid vom 6–25.", "Bescheid vom 6/25."),
+    (.spoken, "Lendenwirbel L4-5", "Lendenwirbel L4/5"),
+    (.spoken, "Halswirbel C5-6", "Halswirbel C5/6"),
+    (.spoken, "LWK 4-5", "LWK 4/5"),
+    (.spoken, "Raum AB12-34", "Raum AB12/34"),
+    (.spoken, "Lendenwirbel LWK4-5", "Lendenwirbel LWK4/5"),
+    (.spoken, "HWS3-4", "HWS3/4"),
+    (.spoken, "Impfung Covid19-20", "Impfung Covid19-20"),
+    (.spoken, "Notiz abc4-5", "Notiz abc4-5"),
+    (.spoken, "Raum ABCDE12-34", "Raum ABCDE12-34"),
+    (.spoken, "Aktenzeichen 12-24-3", "Aktenzeichen 12/24/3"),
+    (.spoken, "Aktenzeichen 12 - 24 - 3", "Aktenzeichen 12/24/3"),
+    // Half-converted by the model: one side a digit group, the other a number word.
+    (.spoken, "Bescheid vom 6-fünfundzwanzig", "Bescheid vom 6/25"),
+    (.spoken, "Bescheid vom sechs-25", "Bescheid vom 6/25"),
+    (.automatic, "Bescheid vom sechs-25", "Bescheid vom sechs-25"),
+    (.spoken, "ein Sechs-Wochen-Plan", "ein Sechs-Wochen-Plan"),
+    (.spoken, "Bescheid vom 6.25", "Bescheid vom 6.25"),
+  ])
+  func hyphenBetweenDigits(pipe: SPPipe, input: String, expected: String) { expectRow(pipe, input, expected) }
+
   @Test("Three dots: spoken and glued forms become an ellipsis; \"drei Punkte\" and automatic mode stay", arguments: [
     (SPPipe.spoken, "Gesamt GdB drei Pünktchen und", "Gesamt GdB… und"),
     (.spoken, "Gesamt GdB drei Puenktchen und", "Gesamt GdB… und"),

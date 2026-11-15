@@ -45,6 +45,54 @@ enum ParakeetPunctuationTiming {
     var dropped: Int
   }
 
+  /// A hyphen, en dash or minus sign directly between two digits in the token run: Parakeet's
+  /// stand-in for a spoken word between two numbers (usually "Schrägstrich"). Numbers only, never
+  /// the text; they tell whether the dash is a token of its own and how long the speaker paused.
+  struct DigitHyphen: Equatable {
+    var ownToken: Bool
+    var durationMs: Int
+    /// End of the token before the dash to start of the token after it (the left group's last and
+    /// the right group's first token when the dash is its own token).
+    var gapMs: Int
+    var leftDigits: Int
+    var rightDigits: Int
+
+    var logLine: String {
+      "LIVE-DICTATE: digit-hyphen own=\(ownToken) durMs=\(durationMs) gapMs=\(gapMs) "
+        + "left=\(leftDigits) right=\(rightDigits)"
+    }
+  }
+
+  private static let dashCharacters: Set<Character> = ["-", "\u{2013}", "\u{2212}"]
+
+  static func digitHyphens(in tokens: [Token]) -> [DigitHyphen] {
+    var characters: [(character: Character, token: Int)] = []
+    for (index, token) in tokens.enumerated() {
+      for character in token.text.replacingOccurrences(of: "\u{2581}", with: " ") {
+        characters.append((character, index))
+      }
+    }
+    func isDigit(_ i: Int) -> Bool { characters[i].character.isASCII && characters[i].character.isNumber }
+    var found: [DigitHyphen] = []
+    for k in characters.indices where dashCharacters.contains(characters[k].character) {
+      guard k > 0, k + 1 < characters.count, isDigit(k - 1), isDigit(k + 1) else { continue }
+      var left = 0
+      while k - 1 - left >= 0, isDigit(k - 1 - left) { left += 1 }
+      var right = 0
+      while k + 1 + right < characters.count, isDigit(k + 1 + right) { right += 1 }
+      let token = tokens[characters[k].token]
+      let before = tokens[characters[k - 1].token]
+      let after = tokens[characters[k + 1].token]
+      found.append(
+        DigitHyphen(
+          ownToken: bare(token).count == 1,
+          durationMs: Int(((token.end - token.start) * 1000).rounded()),
+          gapMs: Int(((after.start - before.end) * 1000).rounded()),
+          leftDigits: left, rightDigits: right))
+    }
+    return found
+  }
+
   private static let markCharacters: Set<Character> = [",", ".", "?", "!"]
 
   /// The token without SentencePiece's word marker and surrounding whitespace.
