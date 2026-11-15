@@ -3045,7 +3045,7 @@ class MenuBarController: NSObject {
       holdsPeriods: punctuationMode != .spokenOnly,
       caret: caret)
     DebugLogger.log("LIVE-DICTATE: Starting (target \(target?.bundleId ?? "none"))")
-    beginAudioCapture(mode: .transcription, rotation: .live)
+    beginAudioCapture(mode: .transcription, rotation: .currentLive())
     recording?.isLiveDictation = true
     return isDictationRecordingActive()
   }

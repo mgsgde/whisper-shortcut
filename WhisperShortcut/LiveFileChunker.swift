@@ -26,7 +26,8 @@ enum LiveFileChunker {
   ///
   /// Silence counts only once the current piece is already `minDuration` long, matching the
   /// recorder's early return. A run of at least `silenceDuration` below the threshold ends the
-  /// piece at that window. The remainder is the tail piece. A cut is never emitted at the last
+  /// piece at that window; from `softCutAfter` on, the soft rule applies (see
+  /// `ChunkedDictateRecorder.silenceCriterion`). The remainder is the tail piece. A cut is never emitted at the last
   /// sample, so the tail is never empty.
   static func chunks(
     samples: [Float], sampleRate: Double, policy: ChunkedDictateRecorder.RotationPolicy
@@ -44,7 +45,6 @@ enum LiveFileChunker {
     }
 
     let threshold = ChunkedDictateRecorder.adaptiveSilenceThreshold(noiseFloorDB: tenthPercentile(levels))
-    let silenceWindowsNeeded = max(1, Int(ceil(policy.silenceDuration / windowDuration - 1e-9)))
 
     var result: [Chunk] = []
     var chunkStart = 0
@@ -56,10 +56,13 @@ enum LiveFileChunker {
         consecutiveSilence = 0
         continue
       }
-      if levels[index] < threshold {
+      let criterion = ChunkedDictateRecorder.silenceCriterion(
+        policy: policy, pieceDuration: chunkDuration, baseThresholdDB: threshold,
+        decisionInterval: windowDuration)
+      if levels[index] < criterion.thresholdDB {
         consecutiveSilence += 1
         let cut = boundaries[index + 1]
-        if consecutiveSilence >= silenceWindowsNeeded, cut < samples.count {
+        if consecutiveSilence >= criterion.decisionsNeeded, cut < samples.count {
           result.append(
             Chunk(
               range: boundaries[chunkStart]..<cut,

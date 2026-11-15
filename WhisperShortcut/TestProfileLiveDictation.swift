@@ -41,7 +41,7 @@ enum TestProfileLiveDictation {
       let sampleRate = try fileSampleRate(source)
       let (_, samples) = try AudioFileMonoLoader.loadMonoSamples(from: source, targetRate: sampleRate)
       let rate = Double(sampleRate)
-      let pieces = LiveFileChunker.chunks(samples: samples, sampleRate: rate, policy: .live)
+      let pieces = LiveFileChunker.chunks(samples: samples, sampleRate: rate, policy: .currentLive())
       DebugLogger.log("LIVE-FILE: started chunks=\(pieces.count) samples=\(samples.count) rate=\(sampleRate)")
 
       var urls: [(url: URL, isSilent: Bool, seconds: Double)] = []

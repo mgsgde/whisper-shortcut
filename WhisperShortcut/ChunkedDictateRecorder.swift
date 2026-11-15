@@ -6,8 +6,12 @@ import Foundation
 /// Records through double-buffered AVAudioRecorders that rotate ONLY at silence
 /// boundaries (≥ `AppConstants.dictateChunkSilenceDuration` below the threshold, after
 /// `AppConstants.dictateChunkMinDuration`), mirroring LiveMeetingRecorder's proven
-/// pattern. The rotation silence threshold is relative to the measured noise floor (+10 dB, clamped -45…-30 dB). There is deliberately no max-duration cut: continuous speech simply keeps
-/// growing the current chunk, so seams only ever sit inside real pauses.
+/// pattern. The rotation silence threshold is relative to the measured noise floor (+10 dB, clamped -45…-30 dB).
+/// `.standard` has deliberately no max-duration cut: continuous speech simply keeps growing the
+/// current chunk, so seams only ever sit inside real pauses. `.live` adds a soft rule: once the
+/// piece is `softCutAfter` long, a single quiet 0.2 s decision under a relaxed threshold
+/// (`+softCutThresholdBoostDB`, capped at -20 dB) cuts, so fluent speech without a clean 0.6 s
+/// pause still arrives in pieces of about five seconds instead of 13–30 s lumps.
 ///
 /// In this slice the chunks are merged back into a single WAV on stop and delivered
 /// through the same `AudioRecorderDelegate` contract as `AudioRecorder` — externally
@@ -37,13 +41,55 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   struct RotationPolicy: Equatable {
     let minDuration: TimeInterval
     let silenceDuration: TimeInterval
+    /// Soft rule: once the piece is this long, `softCutSilenceDuration` below the threshold raised by
+    /// `softCutThresholdBoostDB` cuts. nil = no soft rule.
+    var softCutAfter: TimeInterval? = nil
+    var softCutSilenceDuration: TimeInterval = 0.2
+    var softCutThresholdBoostDB: Float = 10
 
     static let standard = RotationPolicy(
       minDuration: AppConstants.dictateChunkMinDuration,
       silenceDuration: AppConstants.dictateChunkSilenceDuration)
     /// Dragon-like: a piece after ~0.6 s of silence (three 0.2 s samples), never shorter than 1.5 s
     /// — Parakeet rejects audio under 0.3 s, and a fragment of a word decodes badly.
-    static let live = RotationPolicy(minDuration: 1.5, silenceDuration: 0.6)
+    static let liveWithoutSoftCut = RotationPolicy(minDuration: 1.5, silenceDuration: 0.6)
+    /// Live plus the soft rule: from 5 s on, one quiet decision under (threshold + 10 dB) cuts.
+    static let live = RotationPolicy(
+      minDuration: 1.5, silenceDuration: 0.6,
+      softCutAfter: 5.0, softCutSilenceDuration: 0.2, softCutThresholdBoostDB: 10)
+
+    /// Kill switch: UserDefaults bool `liveSoftCutDisabled` makes Dictate Live cut as before.
+    static func currentLive(defaults: UserDefaults = .standard) -> RotationPolicy {
+      defaults.bool(forKey: UserDefaultsKeys.liveSoftCutDisabled) ? .liveWithoutSoftCut : .live
+    }
+  }
+
+  /// What counts as a silent decision for a piece of this length: the threshold, how many
+  /// consecutive 0.2 s decisions cut, and whether the soft rule is the one in force. Pure, shared
+  /// by the recorder and both offline splitters so the benchmark measures what the app does.
+  struct SilenceCriterion: Equatable {
+    let thresholdDB: Float
+    let decisionsNeeded: Int
+    let isSoft: Bool
+  }
+
+  /// Never relax the threshold past this: it must stay below speech level.
+  static let maxSoftCutThresholdDB: Float = -20
+
+  static func silenceCriterion(
+    policy: RotationPolicy, pieceDuration: TimeInterval, baseThresholdDB: Float,
+    decisionInterval: TimeInterval
+  ) -> SilenceCriterion {
+    func needed(_ duration: TimeInterval) -> Int {
+      max(1, Int(ceil(duration / decisionInterval - 1e-9)))
+    }
+    if let after = policy.softCutAfter, pieceDuration + 1e-6 >= after {
+      return SilenceCriterion(
+        thresholdDB: min(baseThresholdDB + policy.softCutThresholdBoostDB, maxSoftCutThresholdDB),
+        decisionsNeeded: needed(policy.softCutSilenceDuration), isSoft: true)
+    }
+    return SilenceCriterion(
+      thresholdDB: baseThresholdDB, decisionsNeeded: needed(policy.silenceDuration), isSoft: false)
   }
 
   /// The policy for the next recording. Set before `startRecording`; every recording's stop puts it
@@ -367,13 +413,21 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     meterSampleCount += 1
     noiseFloorDB = Self.updatedNoiseFloor(current: noiseFloorDB, sample: power)
 
-    guard isSessionActive, let wallStart = currentChunkWallStart,
-      Date().timeIntervalSince(wallStart) >= sessionRotationPolicy.minDuration
-    else { return }
+    guard isSessionActive, let wallStart = currentChunkWallStart else { return }
+    let pieceDuration = Date().timeIntervalSince(wallStart)
+    guard pieceDuration >= sessionRotationPolicy.minDuration else { return }
 
-    if power < currentSilenceThresholdDB {
+    let criterion = Self.silenceCriterion(
+      policy: sessionRotationPolicy, pieceDuration: pieceDuration,
+      baseThresholdDB: currentSilenceThresholdDB,
+      decisionInterval: Self.meteringInterval * Double(Self.silenceSampleDecimation))
+    if power < criterion.thresholdDB {
       consecutiveSilenceSamples += 1
-      if consecutiveSilenceSamples >= Self.rotationSilenceSamplesNeeded(for: sessionRotationPolicy) {
+      if consecutiveSilenceSamples >= criterion.decisionsNeeded {
+        if criterion.isSoft {
+          DebugLogger.log(
+            "LIVE-DICTATE: soft-cut pieceSec=\(String(format: "%.1f", pieceDuration)) levelDB=\(String(format: "%.1f", power)) thresholdDB=\(String(format: "%.1f", criterion.thresholdDB))")
+        }
         rotateChunk()
       }
     } else {

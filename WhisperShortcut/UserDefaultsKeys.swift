@@ -3,6 +3,8 @@ import Foundation
 /// Centralized UserDefaults keys for type-safe access throughout the app
 /// This prevents typos and makes refactoring easier
 enum UserDefaultsKeys {
+  /// Kill switch for Dictate Live's soft max piece length (`ChunkedDictateRecorder.RotationPolicy.live`).
+  static let liveSoftCutDisabled = "liveSoftCutDisabled"
   // MARK: - Chat Window Settings
   static let chatCloseOnFocusLoss = "geminiCloseOnFocusLoss"
   static let chatSidebarVisible = "geminiSidebarVisible"
