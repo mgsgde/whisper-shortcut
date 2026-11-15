@@ -19,6 +19,13 @@ struct SpokenPunctuationTests {
         == "Patient klagt über Schmerzen.\n\nBefund unauffällig")
   }
 
+  @Test("\"Neuabsatz\" (glued, no ending) is a paragraph break too")
+  func neuabsatz() {
+    #expect(
+      SpokenPunctuation.apply(to: "Termin ist geplant. Neuabsatz mit freundlichen Grüßen")
+        == "Termin ist geplant.\n\nMit freundlichen Grüßen")
+  }
+
   @Test("\"neue Zeile\" becomes a line break and capitalises the next line")
   func lineBreak() {
     // A spoken break starts the next line even without ".!?" before it, so the next word
