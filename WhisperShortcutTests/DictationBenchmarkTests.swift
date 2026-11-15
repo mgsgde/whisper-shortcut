@@ -162,7 +162,7 @@ enum DictationBenchmarkScoring {
 
 /// Cuts a recording into pieces the way Dictate Live does (`ChunkedDictateRecorder.RotationPolicy.live`):
 /// a piece is at least 1.5 s long and is cut after 0.6 s below −45 dB, which is three evaluations
-/// spaced 0.2 s apart; from 5 s on, one evaluation below −35 dB cuts (the soft rule,
+/// spaced 0.2 s apart; from 5 s on, two evaluations (0.4 s) below −35 dB cut (the soft rule,
 /// `ChunkedDictateRecorder.silenceCriterion`). Windows are counted from the start of the recording, like the recorder's
 /// `meteringTickCount`, and a piece whose loudest window stays below −45 dB is silent.
 ///
@@ -706,7 +706,7 @@ struct DictationBenchmarkTests {
 
     var jsonTiers: [String: Any] = [:]
     print(
-      "BENCH-NOTE\trun\tdictations are cut into live pieces offline (≥1.5 s, 0.6 s below −45 dB; from 5 s on one 0.2 s step below −35 dB)")
+      "BENCH-NOTE\trun\tdictations are cut into live pieces offline (≥1.5 s, 0.6 s below −45 dB; from 5 s on two 0.2 s steps below −35 dB)")
 
     for tier in config.tiers {
       var missing: [String] = []

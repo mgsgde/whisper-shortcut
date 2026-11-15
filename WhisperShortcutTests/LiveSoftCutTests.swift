@@ -25,11 +25,11 @@ struct LiveSoftCutTests {
     #expect(c.thresholdDB == -45)
   }
 
-  @Test("From 5 s one decision under threshold plus 10 dB cuts")
+  @Test("From 5 s two decisions under threshold plus 10 dB cut")
   func afterSoftCut() {
     let c = criterion(.live, 5.0)
     #expect(c.isSoft)
-    #expect(c.decisionsNeeded == 1)
+    #expect(c.decisionsNeeded == 2)
     #expect(c.thresholdDB == -35)
   }
 
@@ -70,7 +70,7 @@ struct LiveSoftCutTests {
     func murmur(_ s: Double) -> [Float] {
       (0..<Int(s * rate)).map { 0.014 * sin(Float($0) * 0.1) }
     }
-    let samples = tone(5.4) + murmur(0.2) + tone(3)
+    let samples = tone(5.4) + murmur(0.4) + tone(3)
     let soft = LiveFileChunker.chunks(samples: samples, sampleRate: rate, policy: .live)
     let old = LiveFileChunker.chunks(samples: samples, sampleRate: rate, policy: .liveWithoutSoftCut)
     #expect(soft.count == 2)

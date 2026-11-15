@@ -9,7 +9,7 @@ import Foundation
 /// pattern. The rotation silence threshold is relative to the measured noise floor (+10 dB, clamped -45…-30 dB).
 /// `.standard` has deliberately no max-duration cut: continuous speech simply keeps growing the
 /// current chunk, so seams only ever sit inside real pauses. `.live` adds a soft rule: once the
-/// piece is `softCutAfter` long, a single quiet 0.2 s decision under a relaxed threshold
+/// piece is `softCutAfter` long, two quiet 0.2 s decisions (0.4 s) under a relaxed threshold
 /// (`+softCutThresholdBoostDB`, capped at -20 dB) cuts, so fluent speech without a clean 0.6 s
 /// pause still arrives in pieces of about five seconds instead of 13–30 s lumps.
 ///
@@ -56,7 +56,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     /// Live plus the soft rule: from 5 s on, one quiet decision under (threshold + 10 dB) cuts.
     static let live = RotationPolicy(
       minDuration: 1.5, silenceDuration: 0.6,
-      softCutAfter: 5.0, softCutSilenceDuration: 0.2, softCutThresholdBoostDB: 10)
+      softCutAfter: 5.0, softCutSilenceDuration: 0.4, softCutThresholdBoostDB: 10)
 
     /// Kill switch: UserDefaults bool `liveSoftCutDisabled` makes Dictate Live cut as before.
     static func currentLive(defaults: UserDefaults = .standard) -> RotationPolicy {
