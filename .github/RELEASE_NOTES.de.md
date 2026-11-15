@@ -1,18 +1,23 @@
-## Nur Diktat
-- **Neuer Modus für alle, die nur diktieren wollen.** Er blendet Chat, Meetings, Dictate Prompt, Read Aloud und die übrigen Funktionen aus. Gelöscht wird nichts, der Schalter unter Einstellungen → Allgemein holt alles zurück.
-- **Eigener Willkommensrundgang.** Der erste Bildschirm fragt, wie Sie WhisperShortcut nutzen möchten. „Nur Diktat“ richtet das Offline-Diktat mit gesprochenen Satzzeichen ein, lädt das Sprachmodell sofort und führt durch ein kurzes Testdiktat und Ihr erstes Glossar-Wort.
-- Wer den Modus verlässt, bekommt die Einstellungen zurück, die der Rundgang geändert hat.
-
 ## Diktat
-- **Eigene Anweisungen statt eines ersetzten Prompts.** In den Einstellungen für Diktat und Dictate Prompt steht jetzt nur noch, was Sie ergänzen möchten; die eingebauten Anweisungen bleiben erhalten und werden mit Updates besser. Bestehende eigene Prompts funktionieren weiter und lassen sich mit einem Klick umwandeln.
-- **Glossar-Startlisten:** Fachbegriffe für Orthopädie, Psychiatrie/Psychotherapie oder Gutachten mit einem Klick hinzufügen (Einstellungen → Dictate).
-- Das Offline-Diktat mit Glossar ändert seltener Wörter falsch: „kein Metoprolol“ behält sein „kein“, gegensätzliche Vorsilben werden nicht mehr vertauscht, und echte Verhörer wie „Rötenbild“ → „Röntgenbild“ werden jetzt korrigiert.
-- Dictate Live mit gesprochenen Satzzeichen trennt ein am Wortende angeklebtes „punkt“ ab und setzt einen Punkt; echte Wörter wie „Treffpunkt“ bleiben.
+- **Gesprochener Schrägstrich zwischen Zahlen:** In Dictate Live mit der Satzzeichen-Einstellung „Nur gesprochen“ wird „sechs Schrägstrich fünfundzwanzig“ jetzt zu „6/25“ statt „6-25“, etwa für Datum, Aktenzeichen oder „LWK 4/5“.
+- Behoben: Wer Fn und eine weitere Taste sehr schnell hintereinander drückte, konnte das Diktat bis zum Neustart der App blockieren.
 
 ## Chat
-- **„Immer erlauben“** für das Anlegen und Ändern von Terminen, Aufgaben und Trello-Karten. Löschen und andere Aktionen fragen weiterhin jedes Mal. Einstellungen → Konten zeigt, was Sie erlaubt haben, mit „Entfernen“.
+- **Verbessern:** Klicken Sie im leeren Chat auf „Verbessern“ oder tippen Sie `/improve`. Der Chat prüft Ihre Einstellungen, Berechtigungen, Modelle und (bei eingeschaltetem „Nutzungsdaten speichern“) Ihre letzten Diktate und schlägt jeweils eine Änderung vor, die Sie bestätigen. Für die Prüfung läuft er auf einem starken Modell; ein Chip „Verbessern: <Modell> ✕“ neben der Modellauswahl wechselt oder beendet sie.
+- Ein Prompt ohne markierten Text sagt das jetzt, statt Inhalte zu erfinden.
+
+## Vorlesen
+- Return und Enter pausieren und setzen fort, wie die Leertaste. Die Pfeiltasten springen 5 Sekunden, die Knöpfe ⏪/⏩ weiterhin 10.
+- Nach einer Pause bleibt die Tastatursteuerung erhalten, ein zweites Return setzt fort.
+
+## Schreibstil
+- Vorschläge für Ihr Schreibstil-Profil öffnen kein Fenster mehr. Ein Punkt am Menüleisten-Symbol und „Schreibstil-Vorschlag prüfen…“ im Menü zeigen sie an, höchstens alle 14 Tage. Jede Änderung nennt die Zitate aus Ihren eigenen Nachrichten, auf die sie sich stützt.
+
+## Sonstiges
+- Das Aufnahme-Panel erscheint jetzt auch über Apps im Vollbild.
+- Abgelöste Modelle: gpt-4o-transcribe wird nicht mehr angeboten (GPT Transcribe übernimmt). Die OpenAI-Vorlesestimme gpt-4o-mini-tts, die OpenAI im Januar 2027 abschaltet, wird durch Gemini 3.8 Flash-Lite TTS ersetzt, wenn ein Gemini-Schlüssel hinterlegt ist, sonst durch die macOS-Stimme.
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.91...v8.92
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.92...v8.93
