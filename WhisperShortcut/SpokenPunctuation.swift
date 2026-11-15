@@ -284,13 +284,13 @@ enum SpokenPunctuation {
   }
 
   /// Lower-case forms of function words and adverbs that are never nouns. "sie", "ihr" and "ihnen"
-  /// are omitted on purpose — see `lowercasingFunctionWord`.
+  /// are omitted on purpose — see `lowercasingFunctionWord`. "ich" is in: never a noun.
   static let functionWords: Set<String> = [
     "und", "oder", "aber", "sondern", "denn", "weil", "dass", "ob", "wenn", "als", "wie",
     "mit", "bei", "nach", "von", "vor", "zu", "zum", "zur", "aus", "auf", "an", "am",
     "im", "in", "über", "unter", "seit", "für", "durch", "gegen", "ohne", "um", "bis",
     "ist", "sind", "war", "waren", "hat", "haben", "wird", "wurde", "sich", "nicht",
-    "auch", "noch", "schon", "sehr", "er", "es", "wir", "man",
+    "auch", "noch", "schon", "sehr", "ich", "er", "es", "wir", "man",
     "der", "die", "das", "den", "dem", "des",
     "ein", "eine", "einen", "einem", "einer",
     "diese", "dieser", "diesen", "diesem", "dieses",
