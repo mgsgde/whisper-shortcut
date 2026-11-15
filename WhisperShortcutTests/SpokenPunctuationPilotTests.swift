@@ -367,6 +367,19 @@ struct SpokenPunctuationPilotTests {
     Self.check(["Befund", "neue Zeile vielen Dank"], "Befund\nVielen Dank", label: "5f no mark")
   }
 
+  @Test func ichAfterSalutationCommaIsLowercaseAtPieceSeam() {
+    Self.check(
+      ["Sehr geehrte Damen und Herren,", "Ich nehme Stellung."],
+      "Sehr geehrte Damen und Herren, ich nehme Stellung.", label: "6a same line")
+    Self.check(
+      ["Sehr geehrte Damen und Herren,", "neue Zeile Ich nehme Stellung."],
+      "Sehr geehrte Damen und Herren,\nich nehme Stellung.", label: "6b after line break")
+    Self.check(
+      ["Sehr geehrte Damen und Herren.", "Ich nehme Stellung."],
+      "Sehr geehrte Damen und Herren. Ich nehme Stellung.", label: "6c after period")
+    #expect(SpokenPunctuation.lowercasingFunctionWord("Ich") == "ich")
+  }
+
   @Test func nounAfterSalutationBreakKeepsCapital() {
     Self.check(
       ["Guten Tag,", "neue Zeile Herr Schmidt kommt"], "Guten Tag,\nHerr Schmidt kommt",
