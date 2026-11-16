@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Opens the "Report a Problem with Your Last Dictation" window.
+/// Opens the "Report a Problem" window for the newest result.
 ///
 /// The plain Send Feedback entries only know the app and macOS version, so a report about a bad
 /// dictation started with a round-trip ("which model? which version? what exactly came out?").
@@ -16,7 +16,11 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
 
   /// One window at a time: a second click brings the open one forward instead of stacking a
   /// copy whose text the user has not edited.
-  func show(details: String) {
+  func show(candidates: [ResultReport.Candidate]) {
+    guard let details = candidates.first?.details else {
+      DebugLogger.logWarning("DICTATION-REPORT: Open requested with no candidates")
+      return
+    }
     if let window {
       window.makeKeyAndOrderFront(nil)
       NSApp.activate(ignoringOtherApps: true)
@@ -26,7 +30,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
       backing: .buffered, defer: false)
-    window.title = String(localized: "Report a Problem with a Dictation")
+    window.title = String(localized: "Report a Problem")
     window.contentView = NSHostingView(rootView: DictationReportView(
       details: details,
       onSend: { [weak self] channel, context in self?.send(channel, context: context) },
