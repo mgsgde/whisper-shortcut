@@ -325,7 +325,7 @@ private enum QuickActionCardMetrics {
 /// from the start, and the recording controls.
 ///
 /// The list holds the user's own quick prompts in their fixed order (⌃n always runs the same one),
-/// or, when they have none, the instructions last run from the card, most recent first. Three rows
+/// or, when they have none, the instructions last run from the card, in fixed slots. Three rows
 /// show at once; longer lists scroll inside them, with a "9 prompts · ⌃1–⌃9 · ↑↓" line underneath. When the
 /// last run picked an entry, the card opens with it highlighted (scrolled into view), so ↩ runs it
 /// again; otherwise the field is selected and ↩ on it means the same as ✓ — stop and use what was

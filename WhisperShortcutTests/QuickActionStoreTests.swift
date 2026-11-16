@@ -217,7 +217,7 @@ struct QuickActionStoreTests {
       includeLearned: true,
       counts: counts)
     #expect(actions.count == QuickActionStore.cardEntries)
-    #expect(actions.map(\.text) == ["Prompt 9", "Prompt 1", "Prompt 2"])
+    #expect(actions.map(\.text) == ["Prompt 1", "Prompt 2", "Prompt 9"])
     #expect(actions.contains { $0.text == "Prompt 12" } == false)
   }
 
@@ -287,7 +287,7 @@ struct QuickActionStoreTests {
       custom: custom, learned: [], forceFallback: false, includeLearned: true)
     let card = QuickActionStore.card(
       custom: custom, recent: ["kürzer", "Korrigiere, formuliere neu."], ranked: ranked,
-      preselect: true)
+      preselect: true, slots: [])
     #expect(card.actions.map(\.text) == Array(custom.prefix(QuickActionStore.cardEntries)))
     #expect(card.preselectIndex == 2)
   }
@@ -298,21 +298,34 @@ struct QuickActionStoreTests {
     let ranked = QuickActionStore.combined(
       custom: custom, learned: [], forceFallback: false, includeLearned: true)
     #expect(
-      QuickActionStore.card(custom: custom, recent: ["Kürzer"], ranked: ranked, preselect: false)
-        .preselectIndex == nil)
+      QuickActionStore.card(
+        custom: custom, recent: ["Kürzer"], ranked: ranked, preselect: false, slots: []
+      ).preselectIndex == nil)
     #expect(
-      QuickActionStore.card(custom: custom, recent: ["Übersetze"], ranked: ranked, preselect: true)
-        .preselectIndex == nil)
+      QuickActionStore.card(
+        custom: custom, recent: ["Übersetze"], ranked: ranked, preselect: true, slots: []
+      ).preselectIndex == nil)
   }
 
   @Test("Without own prompts the card stays recent-first, three entries, first highlighted")
   func cardWithoutOwnPrompts() {
     let ranked = QuickActionStore.ranked(from: [], forceFallback: true)
     let card = QuickActionStore.card(
-      custom: [" "], recent: ["Übersetze ins Englische"], ranked: ranked, preselect: true)
+      custom: [" "], recent: ["Übersetze ins Englische"], ranked: ranked, preselect: true,
+      slots: [])
     #expect(card.actions.count == QuickActionStore.cardEntries)
     #expect(card.actions.first?.text == "Übersetze ins Englische")
     #expect(card.preselectIndex == 0)
+  }
+
+  @Test("Without own prompts the card keeps slot order and highlights the last run where it stands")
+  func cardWithoutOwnPromptsUsesSlots() {
+    let ranked = QuickActionStore.ranked(from: [], forceFallback: true)
+    let card = QuickActionStore.card(
+      custom: [], recent: ["B", "A", "C"], ranked: ranked, preselect: true,
+      slots: ["A", "B", "C"])
+    #expect(card.actions.map(\.text) == ["A", "B", "C"])
+    #expect(card.preselectIndex == 1)
   }
 
   @Test("Recording a use moves it to the front, drops its duplicate, keeps three")
@@ -328,18 +341,44 @@ struct QuickActionStoreTests {
     #expect(QuickActionStore.updatedRecent(recent, using: long) == recent)
   }
 
-  @Test("The most-used own prompt leads the card")
-  func countsReorderOwnPrompts() {
+  @Test("Re-using an entry leaves the slot order unchanged")
+  func updatedSlotsKeepsOrderOnReuse() {
+    #expect(
+      QuickActionStore.updatedSlots(["A", "B", "C"], recent: ["C", "A", "B"])
+        == ["A", "B", "C"])
+  }
+
+  @Test("A new entry replaces the least recent one in its slot")
+  func updatedSlotsReplacesLeastRecentInPlace() {
+    #expect(
+      QuickActionStore.updatedSlots(["A", "B", "C"], recent: ["D", "C", "A"])
+        == ["A", "D", "C"])
+  }
+
+  @Test("Empty slots take the recent list")
+  func updatedSlotsEmptyMatchesRecent() {
+    #expect(QuickActionStore.updatedSlots([], recent: ["A", "B", "C"]) == ["A", "B", "C"])
+  }
+
+  @Test("A spelling variant keeps the slot text")
+  func updatedSlotsKeepsSlotSpelling() {
+    #expect(
+      QuickActionStore.updatedSlots(["Korrigiere."], recent: ["korrigiere"])
+        == ["Korrigiere."])
+  }
+
+  @Test("Usage never reorders own prompts")
+  func usageNeverReordersOwnPrompts() {
     let actions = QuickActionStore.combined(
       custom: ["Alpha", "Beta", "Gamma"],
       learned: [],
       forceFallback: false,
       includeLearned: true,
       counts: ["gamma": 5])
-    #expect(actions.map(\.text) == ["Gamma", "Alpha", "Beta"])
+    #expect(actions.map(\.text) == ["Alpha", "Beta", "Gamma"])
   }
 
-  @Test("A more-used learned prompt leads and the least-used own prompt drops off")
+  @Test("A more-used learned prompt joins the card after the own prompts, and the least-used own prompt drops off")
   func learnedUsePushesUnusedOwnOffCard() {
     let learnedText = "Übersetze ins Englische"
     let learnedKey = QuickActionStore.normalizeKey(learnedText)
@@ -349,7 +388,7 @@ struct QuickActionStoreTests {
       forceFallback: false,
       includeLearned: true,
       counts: [learnedKey: 4])
-    #expect(actions.map(\.text) == ["Übersetze ins Englische", "A", "B"])
+    #expect(actions.map(\.text) == ["A", "B", "Übersetze ins Englische"])
   }
 
   @Test("A learned prompt whose kind matches an earlier entry is left off the card")

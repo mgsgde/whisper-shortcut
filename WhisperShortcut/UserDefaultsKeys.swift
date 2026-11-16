@@ -296,10 +296,15 @@ enum UserDefaultsKeys {
   /// blank entries while editing; readers drop them.
   static let dictatePromptCustomQuickActions = "dictatePromptCustomQuickActions"
   /// Dictate Prompt instructions last run from the card (an entry or typed text), most recent
-  /// first. `[String]`, at most `QuickActionStore.cardEntries`. Leads the card's list.
+  /// first. `[String]`, at most `QuickActionStore.cardEntries`. Recency for the slot list.
   static let dictatePromptRecentQuickActions = "dictatePromptRecentQuickActions"
+  /// Display order of Dictate Prompt quick actions when the user has no prompts of their own.
+  /// `[String]`, at most `QuickActionStore.cardEntries`. A slot stays put while its instruction
+  /// is still recent; a new one fills the slot of the instruction that dropped out. Empty on
+  /// the first run after this key exists, which shows the recent list instead.
+  static let dictatePromptQuickActionSlots = "dictatePromptQuickActionSlots"
   /// Whether the last Dictate Prompt run picked a list entry. `Bool`. True → the card opens with
-  /// the first (most recent) entry highlighted; false or unset → on the text field.
+  /// the last-run entry highlighted where it stands; false or unset → on the text field.
   static let dictatePromptPreselectRecent = "dictatePromptPreselectRecent"
   /// JSON-encoded `[DictationTemplate]`. Absent means no templates (today's behaviour).
   static let dictationTemplates = "dictationTemplates"
