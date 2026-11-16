@@ -608,10 +608,10 @@ struct LiveGluedPunktTests {
     #expect(LiveDictation.splittingGluedTrailingPunkt("Kein Juckreizpunkt?!") == "Kein Juckreiz Punkt?!")
   }
 
-  @Test("Only the last word is looked at")
+  @Test("The trailing split ignores a mid-piece glue; spoken punctuation still splits it")
   func midPieceUntouched() {
     #expect(LiveDictation.splittingGluedTrailingPunkt("Kniepunkt und Hüfte") == "Kniepunkt und Hüfte")
-    #expect(spoken("Kniepunkt und Hüfte").contains("Kniepunkt"))
+    #expect(spoken("Kniepunkt und Hüfte") == "Knie. Und Hüfte")
   }
 
   @Test("Automatic mode is not touched by the split")
