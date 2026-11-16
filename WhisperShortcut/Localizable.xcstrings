@@ -20425,6 +20425,16 @@
         }
       }
     },
+    "Template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage „%@“"
+          }
+        }
+      }
+    },
     "Template" : {
       "localizations" : {
         "de" : {
