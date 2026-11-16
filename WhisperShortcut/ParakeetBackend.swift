@@ -243,14 +243,24 @@ private actor VocabularyBooster {
       // taken from the glossary text here and passes the guard without the similarity floor.
       let misheardForms = ParakeetVocabularyGuard.misheardForms(
         fromGlossary: SystemPromptsStore.shared.loadWhisperGlossary())
+      // Rule (m): NSSpellChecker is main-thread only and this is an actor, so the verdicts for
+      // the candidate spans are computed in one `await MainActor.run` (the actor suspends, the
+      // main thread never waits on it, no deadlock) and the guard gets a pure lookup.
+      let spans = Set(candidates.compactMap { ParakeetVocabularyGuard.singleWord(of: $0.originalSpan) })
+      let knownWords = await MainActor.run { () -> Set<String> in
+        guard GlossaryFastLearner.dictationDictionariesAvailable() else { return [] }
+        return spans.filter(GlossaryFastLearner.isKnownWordInDictationLanguages)
+      }
+      let isKnownWord: (String) -> Bool = { knownWords.contains($0) }
       let applied = ParakeetVocabularyGuard.apply(
         to: result.text, replacements: candidates, glossaryTerms: terms,
-        misheardForms: misheardForms)
+        misheardForms: misheardForms, isKnownWord: isKnownWord)
       // The span is dictated text (possibly patient data): only a test profile may log it.
       for candidate in candidates {
         guard
           let reason = ParakeetVocabularyGuard.rejectionReason(
-            candidate, glossaryTerms: terms, misheardForms: misheardForms)
+            candidate, glossaryTerms: terms, misheardForms: misheardForms,
+            isKnownWord: isKnownWord)
         else { continue }
         if TestProfile.isActive {
           DebugLogger.log(

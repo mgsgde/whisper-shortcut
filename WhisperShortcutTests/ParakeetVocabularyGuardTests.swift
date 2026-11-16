@@ -412,4 +412,54 @@ struct ParakeetVocabularyGuardTests {
     let listedDigits = ParakeetVocabularyGuard.misheardForms(fromGlossary: "Lasègue (not \"Lasse 7,2\")")
     #expect(!ParakeetVocabularyGuard.accepts(digits, glossaryTerms: terms, misheardForms: listedDigits))
   }
+
+  @Test("A real German or English word is never replaced by the booster (rule m)")
+  func rejectsRealWord() {
+    let known: (String) -> Bool = { ["lumbar", "Daten", "Lasse"].contains($0) }
+    let terms = ["lumbalen", "Datev", "Lasègue"]
+    let lumbar = ParakeetVocabularyGuard.Replacement(originalSpan: "lumbar", term: "lumbalen")
+    // Without the dictionary the old behaviour (similarity 0.63) accepts it: the bug.
+    #expect(ParakeetVocabularyGuard.rejectionReason(lumbar, glossaryTerms: terms) == nil)
+    #expect(
+      ParakeetVocabularyGuard.rejectionReason(lumbar, glossaryTerms: terms, isKnownWord: known)
+        == "real-word")
+    let daten = ParakeetVocabularyGuard.Replacement(originalSpan: "Daten", term: "Datev")
+    #expect(
+      ParakeetVocabularyGuard.rejectionReason(daten, glossaryTerms: terms, isKnownWord: known)
+        == "real-word")
+    let applied = ParakeetVocabularyGuard.apply(
+      to: "Known lumbar spondylosis.", replacements: [lumbar], glossaryTerms: terms,
+      isKnownWord: known)
+    #expect(applied.text == "Known lumbar spondylosis.")
+    #expect(applied.rejected == 1)
+  }
+
+  @Test("An unknown word is not touched by rule m; a listed misheard form that is a real word still passes")
+  func realWordRuleSkipsUnknownAndListed() {
+    let known: (String) -> Bool = { ["lumbar", "Lasse"].contains($0) }
+    let terms = ["Lasègue"]
+    let lasseg = ParakeetVocabularyGuard.Replacement(originalSpan: "Lasseg", term: "Lasègue")
+    // Unknown "Lasseg" never trips rule m (it falls to the similarity floor 0.57 as before),
+    // and with its listed misheard form it is accepted.
+    #expect(
+      ParakeetVocabularyGuard.rejectionReason(lasseg, glossaryTerms: terms, isKnownWord: known)
+        != "real-word")
+    let listedLasseg = ParakeetVocabularyGuard.misheardForms(fromGlossary: "Lasègue (not \"Lasseg\")")
+    #expect(
+      ParakeetVocabularyGuard.rejectionReason(
+        lasseg, glossaryTerms: terms, misheardForms: listedLasseg, isKnownWord: known) == nil)
+    let lasse = ParakeetVocabularyGuard.Replacement(originalSpan: "Lasse", term: "Lasègue")
+    #expect(
+      ParakeetVocabularyGuard.rejectionReason(lasse, glossaryTerms: terms, isKnownWord: known)
+        == "real-word")
+    let listed = ParakeetVocabularyGuard.misheardForms(fromGlossary: "Lasègue (not \"Lasse\")")
+    #expect(
+      ParakeetVocabularyGuard.rejectionReason(
+        lasse, glossaryTerms: terms, misheardForms: listed, isKnownWord: known) == nil)
+    // A pure casing fix of a real word is not a replacement by a different word.
+    let ace = ParakeetVocabularyGuard.Replacement(originalSpan: "Ace", term: "ACE")
+    #expect(
+      ParakeetVocabularyGuard.rejectionReason(ace, glossaryTerms: ["ACE"], isKnownWord: { _ in true })
+        == nil)
+  }
 }
