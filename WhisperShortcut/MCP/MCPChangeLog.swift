@@ -3,7 +3,7 @@ import Foundation
 /// One change an AI app made to the configuration (directly or through an accepted proposal).
 struct MCPChange: Codable, Identifiable {
   enum Kind: String, Codable {
-    case glossaryAdd, systemPrompt, writingStyle, saveCommand, deleteCommand, settings
+    case glossaryAdd, systemPrompt, writingStyle, saveCommand, deleteCommand, saveTemplate, deleteTemplate, settings
   }
 
   let id: String
@@ -202,6 +202,24 @@ final class MCPChangeLog: ObservableObject {
 
   private func restore(_ change: MCPChange) throws {
     switch change.kind {
+    case .saveTemplate, .deleteTemplate:
+      guard let id = UUID(uuidString: change.target) else {
+        throw MCPConfigError(message: String(localized: "Could not write the template."))
+      }
+      var templates = targets.loadTemplates()
+      if let previous = MCPTemplateSnapshot.decode(change.previousContent) {
+        if let index = templates.firstIndex(where: { $0.id == id }) {
+          templates[index].name = previous.name
+          templates[index].instructions = previous.instructions
+        } else {
+          templates.append(DictationTemplate(
+            id: id, name: previous.name, instructions: previous.instructions, shortcut: previous.shortcut))
+        }
+      } else {
+        // The AI app created this template; remove it again.
+        templates.removeAll { $0.id == id }
+      }
+      targets.saveTemplates(templates)
     case .settings:
       // Handled by `undoSettings` before `undo(_:)` reaches this generic path.
       break
