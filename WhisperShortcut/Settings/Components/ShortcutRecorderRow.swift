@@ -105,6 +105,14 @@ struct ShortcutRecorderRow: View {
       stopRecording()
       clearPending()
     }
+    // A held conflict is only true while the other row still owns the key. Any save of the app
+    // shortcuts or the template list (clear, change, reassign elsewhere) re-checks it.
+    .onReceive(
+      NotificationCenter.default.publisher(for: .shortcutsChanged)
+        .merge(with: NotificationCenter.default.publisher(for: .dictationTemplatesChanged))
+    ) { _ in
+      revalidatePendingConflict()
+    }
   }
 
   // MARK: - Subviews
@@ -345,6 +353,26 @@ struct ShortcutRecorderRow: View {
     onChanged?()
   }
 
+  /// Re-runs the conflict lookup for the held shortcut. Free now: the other binding was cleared
+  /// or moved, so the pending key is assigned as the user intended. Still taken, possibly by a
+  /// different row: the caption follows the current owner.
+  private func revalidatePendingConflict() {
+    guard let pending = pendingShortcut, let held = pendingConflict else { return }
+    let now = findConflict?(pending, focusedField)
+    switch PendingConflictResolution.resolve(held: held, now: now) {
+    case .keep:
+      break
+    case .update(let conflict):
+      pendingConflict = conflict
+    case .assign:
+      pendingShortcut = nil
+      pendingConflict = nil
+      shortcut = pending
+      NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
+      onChanged?()
+    }
+  }
+
   private func clearPending() {
     let hadPending = pendingConflict != nil
     pendingShortcut = nil
@@ -352,5 +380,21 @@ struct ShortcutRecorderRow: View {
     if hadPending {
       NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
     }
+  }
+}
+
+/// What to do with a conflict the recorder row is holding after some shortcut changed elsewhere.
+/// Kept outside the view so the rule is testable.
+enum PendingConflictResolution: Equatable {
+  /// The same row still owns the key: leave the warning.
+  case keep
+  /// Another row owns it now: show that one.
+  case update(ShortcutConflict)
+  /// Nobody owns it any more: assign the pending shortcut.
+  case assign
+
+  static func resolve(held: ShortcutConflict, now: ShortcutConflict?) -> PendingConflictResolution {
+    guard let now else { return .assign }
+    return now == held ? .keep : .update(now)
   }
 }
