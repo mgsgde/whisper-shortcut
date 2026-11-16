@@ -1105,6 +1105,23 @@ class MenuBarController: NSObject {
       }
     }
 
+    // A finished meeting summary titles the meeting's chat session even when no chat window is
+    // open. ChatView's own sink covers the open-window case; the window auto-closes on focus
+    // loss, so without this observer every meeting whose summary lands while Chat is closed
+    // stayed untitled until the user opened the meeting tab by hand.
+    NotificationCenter.default.addObserver(
+      forName: .chatMeetingSummaryReady, object: nil, queue: .main
+    ) { note in
+      guard let stem = note.userInfo?["stem"] as? String,
+        let summary = note.userInfo?["summary"] as? String,
+        let sessionId = ChatSessionStore.shared.allSessions()
+          .first(where: { $0.isMeeting && $0.meetingStem == stem })?.id
+      else { return }
+      MainActor.assumeIsolated {
+        Task { await MeetingTitleService.generateAndPersistTitle(sessionId: sessionId, summary: summary) }
+      }
+    }
+
     // Listen for API key updates and shortcut changes
     NotificationCenter.default.addObserver(
       self,

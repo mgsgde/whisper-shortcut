@@ -266,8 +266,9 @@ class ChatViewModel: ObservableObject {
 
   /// Returns true if the given session has an in-flight request (for tab spinner).
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
-  /// Maximum length for auto-generated session title from first user message.
-  private static let maxSessionTitleLength = 50
+  /// Maximum length for auto-generated session title from first user message. Internal for
+  /// `MeetingTitleService`, which applies the same cap app-level.
+  static let maxSessionTitleLength = 50
   /// Commands are slash-only (e.g. /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
   static let screenshotCommand = "/screenshot"
@@ -2539,22 +2540,15 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Titles a meeting chat (by session id) from its summary, unless it's already titled.
+  /// The generation itself lives in `MeetingTitleService` — shared with the menu-bar
+  /// observer, which titles meetings while no chat window is open. This wrapper only
+  /// syncs the UI of the chat that happens to be on screen.
   private func generateMeetingTitle(targetId: UUID, summary: String) async {
-    guard let target = store.session(by: targetId), Self.meetingTitleNeedsGeneration(target) else { return }
-    let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !summaryText.isEmpty else { return }
-    let prompt = """
-      \(ChatDateContext.stableLine())
-
-      Give this meeting a short title (2–4 words) that captures its main topic. \
-      Begin with a single emoji that fits the topic, then one space, then the words. \
-      Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
-      Example: 🤝 Vendor Negotiation
-
-      Meeting summary:
-      \(String(summaryText.prefix(1200)))
-      """
-    await generateAndApplyTitle(targetId: targetId, prompt: prompt, overwriteExisting: false, logLabel: "Meeting")
+    guard let title = await MeetingTitleService.generateAndPersistTitle(
+      sessionId: targetId, summary: summary)
+    else { return }
+    if targetId == session.id { session.title = title }
+    refreshRecentSessions()
   }
 
   // MARK: - Local model messages (slash commands)
