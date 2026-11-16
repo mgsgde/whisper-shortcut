@@ -41,14 +41,35 @@ enum ParakeetVocabularyGuard {
   ///     into the whole term: "Hüfte" → "Hüft-TEP" would add a "TEP" nobody said. The speaker
   ///     says the compound in pieces ("Hüft TEP", two words) when they mean it.
   ///
+  /// (m) a single-word span that is a correctly spelled German or English word (`isKnownWord`,
+  ///     `GlossaryFastLearner.isKnownWordInDictationLanguages`) is not replaced, unless it is a
+  ///     pure casing fix of the term. The CTC booster is language-blind and proposes any term
+  ///     that sounds alike; a real word in either dictation language is far more likely what
+  ///     was meant than a glossary term that merely resembles it ("lumbar" → "lumbalen" 0.63,
+  ///     "Daten" → "Datev"). A listed misheard form (`Lasègue (not "Lasse")`) bypasses it with
+  ///     the other spelling checks, since the user declared that word wrong. NSSpellChecker is main-thread only, so callers
+  ///     precompute the verdicts and pass a pure lookup; the default (no dictionary) skips (m).
+  ///
   /// A span the glossary lists as a misheard form of exactly this term (`Lasègue (not "Lasse")`,
   /// `misheardForms`) is the user's own statement that the engine writes it wrongly, so the
   /// spelling checks (d, f, g, h, i, j, k, l) are skipped for it; digits (a), another glossary
   /// term (b) and spoken-punctuation command words (e) still apply.
   static func accepts(
-    _ replacement: Replacement, glossaryTerms: [String], misheardForms: [String: Set<String>] = [:]
+    _ replacement: Replacement, glossaryTerms: [String], misheardForms: [String: Set<String>] = [:],
+    isKnownWord: (String) -> Bool = { _ in false }
   ) -> Bool {
-    rejectionReason(replacement, glossaryTerms: glossaryTerms, misheardForms: misheardForms) == nil
+    rejectionReason(
+      replacement, glossaryTerms: glossaryTerms, misheardForms: misheardForms,
+      isKnownWord: isKnownWord) == nil
+  }
+
+  /// The single word of a span (punctuation stripped), or nil for a multi-word or empty span.
+  /// Callers use it to precompute `isKnownWord` verdicts on the main thread.
+  static func singleWord(of span: String) -> String? {
+    let words = span.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+    guard words.count == 1 else { return nil }
+    let word = words[0].trimmingCharacters(in: .punctuationCharacters)
+    return word.isEmpty ? nil : word
   }
 
   /// Misheard forms per term from the glossary text: folded term -> folded forms of every
@@ -65,7 +86,8 @@ enum ParakeetVocabularyGuard {
   /// Runs the checks of `accepts` in the same order and names the first one that fails
   /// ("digits", "similarity 0.55<0.60", ...), or nil when the replacement is accepted.
   static func rejectionReason(
-    _ replacement: Replacement, glossaryTerms: [String], misheardForms: [String: Set<String>] = [:]
+    _ replacement: Replacement, glossaryTerms: [String], misheardForms: [String: Set<String>] = [:],
+    isKnownWord: (String) -> Bool = { _ in false }
   ) -> String? {
     let original = replacement.originalSpan
     let term = replacement.term
@@ -90,6 +112,12 @@ enum ParakeetVocabularyGuard {
         if SpokenPunctuation.commandWords.contains(stripped) { return "command-word" }
       }
       return nil
+    }
+
+    if let word = singleWord(of: original), GlossaryDocument.fold(word) != GlossaryDocument.fold(term),
+      isKnownWord(word)
+    {
+      return "real-word"
     }
 
     let spelledOut = squashed(original) == squashed(term)
@@ -339,13 +367,18 @@ enum ParakeetVocabularyGuard {
     to original: String,
     replacements: [Replacement],
     glossaryTerms: [String],
-    misheardForms: [String: Set<String>] = [:]
+    misheardForms: [String: Set<String>] = [:],
+    isKnownWord: (String) -> Bool = { _ in false }
   ) -> (text: String, accepted: Int, rejected: Int) {
     var text = original
     var accepted = 0
     var rejected = 0
     for replacement in replacements {
-      guard accepts(replacement, glossaryTerms: glossaryTerms, misheardForms: misheardForms) else {
+      guard
+        accepts(
+          replacement, glossaryTerms: glossaryTerms, misheardForms: misheardForms,
+          isKnownWord: isKnownWord)
+      else {
         rejected += 1
         continue
       }
