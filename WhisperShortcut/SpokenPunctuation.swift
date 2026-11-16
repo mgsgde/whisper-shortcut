@@ -147,10 +147,14 @@ enum SpokenPunctuation {
     "eins|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf"
 
   /// Whole words (lowercase) that really end in "Punkt". A spoken "Punkt" glued onto the previous
-  /// word ("Rollatorpunkt") is the command; these are not. A stem ending in "s" (Fugen-s,
-  /// "…ungspunkt") is treated as a compound too, in the rule, so it need not be listed.
-  /// The second group is every compound Dictate Live already refuses to split on a trailing word,
-  /// so this rule does not turn a kept "Schwachpunkt" into "Schwach."
+  /// word ("Rollatorpunkt") is the command; these are not. A stem ending in a real Fugen-s
+  /// (`(?:ung|ion|heit|keit|tät|t|g|ch)s`, case-insensitive: "…ungspunkt", "…tspunkt", "…gspunkt")
+  /// is treated as a compound too, in the rule, so it need not be listed. A stem that only ends in
+  /// "s" ("Diabetespunkt", "Ergebnispunkt") is the command. "ruhepunkt" is left out on purpose:
+  /// in dictation "in Ruhe Punkt" is far likelier than the word.
+  /// Dictate Live's trailing split uses this same list. The second group is every compound that
+  /// split already refuses to cut on a trailing word, so this rule does not turn a kept
+  /// "Schwachpunkt" into "Schwach."
   static let realPunktCompounds: Set<String> = [
     "schwerpunkt", "zeitpunkt", "standpunkt", "höhepunkt", "mittelpunkt", "treffpunkt",
     "ausgangspunkt", "gesichtspunkt", "wendepunkt", "knackpunkt", "brennpunkt", "tiefpunkt",
@@ -224,11 +228,12 @@ enum SpokenPunctuation {
     // Parakeet glues a spoken "Punkt" onto the word before it ("Rollatorpunkt", "anpunkt",
     // "Wirbelsäulepunkt" at the end of the text). The stem (two letters or more) stays, the
     // period is the command, and the next word is capitalised. A listed compound
-    // (`realPunktCompounds`) or a Fugen-s ("…ungspunkt", stem ends in "s") stays a word.
+    // (`realPunktCompounds`) or a real Fugen-s (`(?:ung|ion|heit|keit|tät|t|g|ch)s`,
+    // "…ungspunkt") stays a word. A stem that only ends in "s" ("Diabetespunkt") is the command.
     // Inflections ("Punkte", "Punkten", "Punktes") do not end in "punkt". "Doppelpunkt" is
     // already a colon (rules above, and it is listed); "Strichpunkt" was just converted.
     rule(
-      #"\b(?!(?:\#(realPunktCompoundAlternation))\b)(\p{L}{2,}(?<![sS]))punkt\b[ \t,.;]*"#,
+      #"\b(?!(?:\#(realPunktCompoundAlternation))\b)(\p{L}{2,}(?<!(?:ung|ion|heit|keit|tät|t|g|ch)s))punkt\b[ \t,.;]*"#,
       "$1. \u{1}"),
     // "drei Pünktchen", "drei Puenktchen", "Auslassungspunkte" → "…", attached to the previous
     // word. Spaces and a stray comma or semicolon before it go; comma, period and semicolon after

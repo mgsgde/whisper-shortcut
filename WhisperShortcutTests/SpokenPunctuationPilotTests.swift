@@ -462,6 +462,20 @@ struct SpokenPunctuationPilotTests {
     Self.check(["die Frakturpunkt"], "die Fraktur.", label: "Frakturpunkt")
   }
 
+  @Test func fugenSOnlyKeepsRealCompounds() {
+    Self.check(["Diabetespunkt"], "Diabetes.", label: "Diabetespunkt")
+    Self.check(["Ergebnispunkt"], "Ergebnis.", label: "Ergebnispunkt")
+    for text in [
+      "Anhaltspunkt",
+      "Gesichtspunkt",
+      "Einstiegspunkt",
+      "Orientierungspunkt",
+      "ein Diskussionspunkt",
+    ] {
+      Self.check([text], text, label: text)
+    }
+  }
+
   @Test func realPunktCompoundsInflectionsAndDoppelpunktStay() {
     for text in [
       "Der Zeitpunkt der Operation",

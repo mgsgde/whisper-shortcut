@@ -118,10 +118,10 @@ enum LiveDictation {
   /// («Die Haut ist trockenpunkt»), so the spoken-punctuation rules never see the command. This
   /// splits it back to «trocken Punkt». Only the piece's last word is looked at (in ~20 live
   /// samples the glue was always on the last word, never mid-piece). Real "-punkt" compounds
-  /// ("Triggerpunkt", "Zeitpunkt") stay via `realPunktCompounds` (last word equal to an entry; an
-  /// explicit allow-list is used because Apple's spell checker calls "Kniepunkt" correct and
-  /// "Triggerpunkt" wrong). Not a suffix match: a glued "stechend"/"Blutdruck"/"Fleck" + "punkt"
-  /// would end in a listed word ("endpunkt", "druckpunkt", "eckpunkt") and stay unsplit.
+  /// ("Triggerpunkt", "Zeitpunkt") stay via `SpokenPunctuation.realPunktCompounds` (last word equal
+  /// to an entry; an explicit allow-list is used because Apple's spell checker calls "Kniepunkt"
+  /// correct and "Triggerpunkt" wrong). Not a suffix match: a glued "stechend"/"Blutdruck"/"Fleck"
+  /// + "punkt" would end in a listed word ("endpunkt", "druckpunkt", "eckpunkt") and stay unsplit.
   /// Kill switch: UserDefaults bool `liveDisableGluedPunktSplit` (default false = step active).
   static func splittingGluedTrailingPunkt(_ text: String) -> String {
     if UserDefaults.standard.bool(forKey: "liveDisableGluedPunktSplit") { return text }
@@ -133,7 +133,7 @@ enum LiveDictation {
     let word = String(text[wordRange])
     let lower = word.lowercased()
     if lower == "punkt" || lower == "doppelpunkt" || lower == "strichpunkt" { return text }
-    if realPunktCompounds.contains(lower) { return text }
+    if SpokenPunctuation.realPunktCompounds.contains(lower) { return text }
     let stem = String(text[stemRange])
     DebugLogger.log("LIVE-PUNKT: split glued «\(word)»")
     return text.replacingCharacters(in: wordRange, with: stem + " Punkt")
@@ -142,30 +142,6 @@ enum LiveDictation {
   // swiftlint:disable:next force_try
   private static let gluedPunktRegex = try! NSRegularExpression(
     pattern: #"((\p{L}{2,})punkt)[.,;:!?…]*\s*$"#, options: [.caseInsensitive])
-
-  /// Lowercase real German words ending in "punkt" (plus the Dictate-relevant medical ones); a last
-  /// word equal to one of these is not split (exact match, not suffix; see
-  /// `splittingGluedTrailingPunkt`). "ruhepunkt" is left out on purpose: in dictation "in Ruhe
-  /// Punkt" is far likelier than the word.
-  static let realPunktCompounds: Set<String> = [
-    "zeitpunkt", "schwerpunkt", "standpunkt", "mittelpunkt", "höhepunkt", "treffpunkt",
-    "ausgangspunkt", "druckpunkt", "triggerpunkt", "tenderpunkt", "akupunkturpunkt",
-    "akupressurpunkt", "schmerzpunkt", "messpunkt", "tiefpunkt", "wendepunkt", "knotenpunkt",
-    "endpunkt", "startpunkt", "nullpunkt", "siedepunkt", "gefrierpunkt", "schmelzpunkt",
-    "blickpunkt", "brennpunkt", "gesichtspunkt", "anhaltspunkt", "kernpunkt", "hauptpunkt",
-    "kritikpunkt", "programmpunkt", "tagesordnungspunkt", "pluspunkt", "minuspunkt",
-    "streitpunkt", "knackpunkt", "schnittpunkt", "bezugspunkt", "fixpunkt", "haltepunkt",
-    "sammelpunkt", "stützpunkt", "ankerpunkt", "kontrollpunkt", "umkehrpunkt", "scheitelpunkt",
-    "drehpunkt", "angelpunkt", "aussichtspunkt", "berührungspunkt", "eckpunkt", "fluchtpunkt",
-    "gipfelpunkt", "grenzpunkt", "kontaktpunkt", "sternpunkt", "zielpunkt", "zugangspunkt",
-    "einstichpunkt", "insertionspunkt", "ansatzpunkt", "auslösepunkt",
-    "maximalpunkt", "sattelpunkt", "lotpunkt", "fußpunkt", "reizpunkt", "druckschmerzpunkt",
-    "knickpunkt", "taupunkt",
-    "schwachpunkt", "schlusspunkt", "kontrapunkt", "diskussionspunkt", "anknüpfungspunkt",
-    "prüfpunkt", "hochpunkt", "lichtpunkt", "einstiegspunkt", "verbindungspunkt",
-    "orientierungspunkt", "höchstpunkt", "gesprächspunkt", "verhandlungspunkt", "abschlusspunkt",
-    "wiedereinstiegspunkt", "kreuzungspunkt",
-  ]
 
   /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
   /// one comma, period or semicolon glued on, and the spaces around them. "Um", "ah", "aha",
