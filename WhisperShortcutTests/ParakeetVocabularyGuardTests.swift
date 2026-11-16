@@ -392,4 +392,24 @@ struct ParakeetVocabularyGuardTests {
     #expect(
       ParakeetVocabularyGuard.accepts(.init(originalSpan: "GDB", term: "GdB"), glossaryTerms: terms))
   }
+
+  @Test("A listed misheard form passes below the similarity floor; unlisted it does not")
+  func listedMisheardFormSkipsSimilarity() {
+    let terms = ["Lasègue", "HVLA"]
+    let text = "On examination, the Lasse sign was positive."
+    let r = ParakeetVocabularyGuard.Replacement(originalSpan: "Lasse", term: "Lasègue")
+    #expect(!ParakeetVocabularyGuard.accepts(r, glossaryTerms: terms))
+    let listed = ParakeetVocabularyGuard.misheardForms(fromGlossary: "HVLA\nLasègue (not \"Lasse\")")
+    #expect(ParakeetVocabularyGuard.accepts(r, glossaryTerms: terms, misheardForms: listed))
+    let applied = ParakeetVocabularyGuard.apply(
+      to: text, replacements: [r], glossaryTerms: terms, misheardForms: listed)
+    #expect(applied.text == "On examination, the Lasègue sign was positive.")
+    // Listed for another term only: no effect.
+    let other = ParakeetVocabularyGuard.misheardForms(fromGlossary: "HVLA (not \"Lasse\")")
+    #expect(!ParakeetVocabularyGuard.accepts(r, glossaryTerms: terms, misheardForms: other))
+    // Digits and command words still veto a listed form.
+    let digits = ParakeetVocabularyGuard.Replacement(originalSpan: "Lasse 7,2", term: "Lasègue")
+    let listedDigits = ParakeetVocabularyGuard.misheardForms(fromGlossary: "Lasègue (not \"Lasse 7,2\")")
+    #expect(!ParakeetVocabularyGuard.accepts(digits, glossaryTerms: terms, misheardForms: listedDigits))
+  }
 }

@@ -239,12 +239,18 @@ private actor VocabularyBooster {
         return ParakeetVocabularyGuard.Replacement(
           originalSpan: replacement.originalWord, term: term)
       }
+      // The CTC booster knows no aliases: a span the glossary lists as `Term (not "span")` is
+      // taken from the glossary text here and passes the guard without the similarity floor.
+      let misheardForms = ParakeetVocabularyGuard.misheardForms(
+        fromGlossary: SystemPromptsStore.shared.loadWhisperGlossary())
       let applied = ParakeetVocabularyGuard.apply(
-        to: result.text, replacements: candidates, glossaryTerms: terms)
+        to: result.text, replacements: candidates, glossaryTerms: terms,
+        misheardForms: misheardForms)
       // The span is dictated text (possibly patient data): only a test profile may log it.
       for candidate in candidates {
         guard
-          let reason = ParakeetVocabularyGuard.rejectionReason(candidate, glossaryTerms: terms)
+          let reason = ParakeetVocabularyGuard.rejectionReason(
+            candidate, glossaryTerms: terms, misheardForms: misheardForms)
         else { continue }
         if TestProfile.isActive {
           DebugLogger.log(
