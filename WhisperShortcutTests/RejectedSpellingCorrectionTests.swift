@@ -123,14 +123,28 @@ struct NonWordMisheardTests {
     #expect(run("the Laseg sign") == "the Lasègue sign")
   }
 
-  @Test("Near non-word variant is rewritten")
+  @Test("A weak near variant (0.6) is not rewritten")
+  func nearTooWeak() {
+    let c = [(correct: "Lasègue", rejected: ["Laseg"])]
+    #expect(run("the Lasse sign", c) == "the Lasse sign")
+  }
+
+  @Test("Near non-word variant at >= 0.75 is rewritten")
   func near() {
-    #expect(run("the Lasse sign") == "the Lasègue sign")
+    let c = [(correct: "Pantoprazol", rejected: ["Pantoprazohl"])]
+    #expect(run("er nimmt Pantoprazoll täglich", c) == "er nimmt Pantoprazol täglich")
+  }
+
+  @Test("A four-letter word is never rewritten fuzzily")
+  func shortNeverFuzzy() {
+    let c = [(correct: "Lasègue", rejected: ["Lase"])]
+    #expect(run("the Lasa sign", c) == "the Lasa sign")
   }
 
   @Test("A known near word stays")
   func nearKnown() {
-    #expect(run("the Lasse sign", known: ["lasse"]) == "the Lasse sign")
+    let c = [(correct: "Pantoprazol", rejected: ["Pantoprazohl"])]
+    #expect(run("Pantoprazoll", c, known: ["pantoprazoll"]) == "Pantoprazoll")
   }
 
   @Test("Known rejected word is left to the title rule")
@@ -159,22 +173,20 @@ struct NonWordMisheardTests {
 
   @Test("A word near forms of two different terms is unchanged")
   func ambiguous() {
-    let c = [(correct: "Lasègue", rejected: ["Laseg"]), (correct: "Lasour", rejected: ["Lasur"])]
-    #expect(run("the Lasse sign", c) == "the Lasse sign")
+    let c = [(correct: "Lasègue", rejected: ["Lasegg"]), (correct: "Lasour", rejected: ["Lasegt"])]
+    #expect(run("the Lasegk sign", c) == "the Lasegk sign")
   }
 
   @Test("A glossary term itself is never rewritten")
   func termProtected() {
-    let c = [(correct: "Lasègue", rejected: ["Laseg"]), (correct: "Lasse", rejected: [])]
-    #expect(run("the Lasse sign", c) == "the Lasse sign")
+    let c = [(correct: "Lasègue", rejected: ["Laseg"]), (correct: "Lasegg", rejected: [])]
+    #expect(run("the Lasegg sign", c) == "the Lasegg sign")
   }
 
   @Test("Strict checker: Laseg is no word, Daten is (real NSSpellChecker)")
   @MainActor
   func strictChecker() throws {
-    try #require(
-      GlossaryFastLearner.isKnownWordInDictationLanguages("Daten"),
-      "German/English dictionaries missing")
+    guard GlossaryFastLearner.dictationDictionariesAvailable() else { return }  // skip, not fail
     #expect(!GlossaryFastLearner.isKnownWordInDictationLanguages("Laseg"))
   }
 }

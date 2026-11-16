@@ -411,9 +411,10 @@ class SpeechService {
   ///   anywhere (judged against German and English only, `isKnownWordInDictationLanguages`: the
   ///   auto-detecting checker accepts "Laseg" as some foreign word), so it is rewritten wherever it stands (`Lasègue (not "Laseg")`: "the Laseg sign").
   ///   Offline engines rarely repeat the exact misheard form: the same audio that gave "Laseg"
-  ///   gives "Lasse" next time. So a transcript word that is also unknown, shares the first letter
-  ///   and is >= 0.6 similar to a listed form of exactly one term is rewritten too
-  ///   (`replacingNonWordMisheard`). Known words never take part in either rule.
+  ///   gives "Lasse" next time. So a transcript word of >= 5 letters that is also unknown, shares
+  ///   the first letter and is >= 0.75 similar to a listed form of exactly one term is rewritten
+  ///   too (`replacingNonWordMisheard`). Known words never take part in either rule. Without the
+  ///   German and English dictionaries both rules are off (`dictationDictionariesAvailable`).
   ///
   /// Every rule fails toward changing nothing, i.e. toward the behaviour before this existed.
   private func correctingRejectedSpellings(in text: String) async -> String {
@@ -441,15 +442,21 @@ class SpeechService {
     // NSSpellChecker is main-thread only. This function is async, so the whole (pure, fast)
     // rewrite hops to the main actor in one `await`: the caller suspends instead of blocking, and
     // the main thread never waits on anything here, so it cannot deadlock.
-    let nonWord = await MainActor.run {
-      Self.replacingNonWordMisheard(
+    let nonWord = await MainActor.run { () -> (text: String, exact: Int, near: Int)? in
+      guard GlossaryFastLearner.dictationDictionariesAvailable() else { return nil }
+      return Self.replacingNonWordMisheard(
         in: result, corrections: pairs, extraTerms: terms,
         isKnownWord: GlossaryFastLearner.isKnownWordInDictationLanguages)
     }
+    guard let nonWord else {
+      DebugLogger.log("GLOSSARY-CORRECT: non-word rules off (German/English dictionary missing)")
+      return result
+    }
+    let before = result
     result = nonWord.text
-    if result != text {
+    if result != before {
       DebugLogger.log(
-        "GLOSSARY-CORRECT: rewrote rejected spelling(s) in transcript (non-word exact=\(nonWord.exact), near=\(nonWord.near))")
+        "GLOSSARY-CORRECT: rewrote misheard form(s) (non-word exact=\(nonWord.exact), near=\(nonWord.near))")
     }
     return result
   }
@@ -458,8 +465,8 @@ class SpeechService {
   /// `correctingRejectedSpellings`). Pure and injectable so tests need no spell checker.
   /// Exact rule: a word whose folded form equals a listed one-word rejected form of exactly one
   /// single-word term, and which is not a known word. Near rule: otherwise, a non-known word with
-  /// the same folded first letter and `ParakeetVocabularyGuard.similarity` >= 0.6 to a listed
-  /// one-word form of exactly one term. Glossary terms themselves and exact rejected forms of
+  /// the same folded first letter, at least 5 letters and `ParakeetVocabularyGuard.similarity`
+  /// >= 0.75 to a listed one-word form of exactly one term. Glossary terms themselves and exact rejected forms of
   /// several terms are never touched.
   static func replacingNonWordMisheard(
     in text: String, corrections: [(correct: String, rejected: [String])],
@@ -504,9 +511,9 @@ class SpeechService {
         if allRejected.contains(folded) { continue }
         let nearTerms = Set(
           forms.filter {
-            $0.folded.first == first && ParakeetVocabularyGuard.similarity(word, $0.folded) >= 0.6
+            $0.folded.first == first && ParakeetVocabularyGuard.similarity(word, $0.folded) >= 0.75
           }.map(\.term))
-        guard nearTerms.count == 1, !isKnownWord(word) else { continue }
+        guard folded.count >= 5, nearTerms.count == 1, !isKnownWord(word) else { continue }
         replacement = nearTerms.first
         near += 1
       }
