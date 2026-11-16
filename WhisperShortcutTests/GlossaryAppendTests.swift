@@ -47,4 +47,21 @@ struct GlossaryAppendTests {
     #expect(store.appendToWhisperGlossary(sentence, source: .glossaryShortcut) == .notATerm(sentence))
     #expect(store.appendToWhisperGlossary("   ", source: .glossaryShortcut) == .notATerm(""))
   }
+
+  @Test("Appending to a line-based glossary starts a new line; a comma list stays comma-joined")
+  func appendPlacement() {
+    #expect(SystemPromptsStore.appendingEntry("Lasègue", to: "") == "Lasègue")
+    #expect(SystemPromptsStore.appendingEntry("Lasègue", to: "HVLA, Gödde") == "HVLA, Gödde, Lasègue")
+    let annotated = "Supraspinatus (not \"Super Spinatus\")"
+    let a = SystemPromptsStore.appendingEntry("Lasègue", to: annotated)
+    #expect(a == annotated + "\nLasègue")
+    let doc = GlossaryDocument.parse(a)
+    #expect(doc.entries.map(\.term) == ["Supraspinatus", "Lasègue"])
+    #expect(doc.entries[1].rejectedSpellings.isEmpty)
+    // The transcription path builds its correction from the line text: it must not become
+    // "Supraspinatus, Lasègue" (one bogus CTC keyword, one bogus tie-breaker).
+    #expect(a.components(separatedBy: "\n").map(GlossaryDocument.lineTermText) == ["Supraspinatus", "Lasègue"])
+    let multi = "HVLA\nGödde"
+    #expect(SystemPromptsStore.appendingEntry("Lasègue", to: multi) == multi + "\nLasègue")
+  }
 }

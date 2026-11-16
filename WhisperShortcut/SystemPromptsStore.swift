@@ -268,10 +268,22 @@ final class SystemPromptsStore {
       return .budgetExceeded(term)
     }
 
-    let updated = existing.isEmpty ? term : existing + ", " + term
+    let updated = Self.appendingEntry(term, to: existing)
     updateSection(.whisperGlossary, content: updated, source: source)
     DebugLogger.log("GLOSSARY: Added \(DebugLogger.redacted(term)) (\(updated.count) chars total)")
     return .added(term)
+  }
+
+  /// Joins a new entry onto the glossary text. A plain comma list stays comma-joined; a
+  /// line-based glossary (any newline, or a last line carrying a `(not …)` annotation) gets the
+  /// entry on its own line, because after `Supraspinatus (not "Super Spinatus"), Lasègue` the
+  /// parser would hand the new term the previous line's misheard forms.
+  static func appendingEntry(_ entry: String, to existing: String) -> String {
+    if existing.isEmpty { return entry }
+    let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lastLine = trimmed.components(separatedBy: .newlines).last ?? trimmed
+    let lineBased = trimmed.contains("\n") || GlossaryDocument.carriesAnnotation(lastLine)
+    return lineBased ? trimmed + "\n" + entry : trimmed + ", " + entry
   }
 
   /// Trims the selection to what belongs in a vocabulary list: no surrounding whitespace, no
