@@ -1109,9 +1109,11 @@ struct TTSVoice: Identifiable, Hashable {
     TTSVoice(id: "Sulafat", gender: "w", descriptor: "Warm"),
   ]
 
-  // OpenAI gpt-4o-mini-tts voices (https://platform.openai.com/docs/guides/text-to-speech).
-  // alloy first — it is the OpenAI default (TTSModel.defaultVoice). marin/cedar are OpenAI's
-  // recommended highest-quality voices for this model.
+  // OpenAI Realtime voices (https://developers.openai.com/api/docs/guides/realtime-conversations
+  // → "Voice options"). alloy first — it is the OpenAI default (`TTSModel.defaultVoice`). marin
+  // and cedar are OpenAI's recommended voices. The retired gpt-4o-mini-tts voice list differed
+  // (fable, nova, onyx are not in the Realtime list; shimmer is Realtime-only) — the picker
+  // follows the model it offers, which since the 2026-11 retirement is the Realtime one.
   // OpenAI does not publish a gender per voice; the m/w hints below follow the widely-reported
   // community perception (alloy is the intentionally neutral/androgynous voice).
   static let openAIVoices: [TTSVoice] = [
@@ -1120,9 +1122,6 @@ struct TTSVoice: Identifiable, Hashable {
     TTSVoice(id: "ballad", gender: "m", descriptor: ""),
     TTSVoice(id: "coral", gender: "w", descriptor: ""),
     TTSVoice(id: "echo", gender: "m", descriptor: ""),
-    TTSVoice(id: "fable", gender: "m", descriptor: ""),
-    TTSVoice(id: "nova", gender: "w", descriptor: ""),
-    TTSVoice(id: "onyx", gender: "m", descriptor: ""),
     TTSVoice(id: "sage", gender: "w", descriptor: ""),
     TTSVoice(id: "shimmer", gender: "w", descriptor: ""),
     TTSVoice(id: "verse", gender: "m", descriptor: ""),
@@ -1156,8 +1155,14 @@ enum TTSModel: String, CaseIterable {
   // 3.1 / 2.5 selections forward via migrateLegacyReadAloudRawValue.
   case gemini38FlashLiteTTS = "gemini-3.8-flash-lite-tts"
   case gemini38FlashTTS = "gemini-3.8-flash-tts"
-  // Retired from pickers 2026-11 (shutdown 2027-01-06, no speech-endpoint successor). Case kept
-  // so stored values parse and `ModelSelectionReconciler.reconcileReadAloud` can move them.
+  // OpenAI's named replacement for the retired /v1/audio/speech models (tts-1, tts-1-hd,
+  // gpt-4o-mini-tts, shutdown 2027-01-06 — https://developers.openai.com/api/docs/deprecations).
+  // gpt-realtime-2.1-mini speaks only the Realtime API (WebSocket); its model page marks
+  // v1/audio/speech "Not supported". See `SpeechService.synthesizeOpenAIRealtimeTTS`.
+  case openAIRealtimeMiniTTS = "gpt-realtime-2.1-mini"
+  // Retired from pickers 2026-11 (shutdown 2027-01-06; OpenAI's named replacement is
+  // `gpt-realtime-2.1-mini` above, via the Realtime API). Case kept so stored values parse and
+  // `ModelSelectionReconciler.reconcileReadAloud` can move them.
   case openAIGpt4oMiniTTS = "gpt-4o-mini-tts"
   case grokVoiceTTS = "grok-voice-tts-1.0"
   /// On-device macOS voices (`AVSpeechSynthesizer`). Automatic Offline Mode choice.
@@ -1174,7 +1179,7 @@ enum TTSModel: String, CaseIterable {
   var provider: TTSProvider {
     switch self {
     case .gemini38FlashLiteTTS, .gemini38FlashTTS: return .gemini
-    case .openAIGpt4oMiniTTS: return .openai
+    case .openAIRealtimeMiniTTS, .openAIGpt4oMiniTTS: return .openai
     case .grokVoiceTTS: return .xai
     case .systemMacOS: return .system
     case .qwen3VoiceDesign, .qwen3CustomVoice: return .localMLX
@@ -1186,6 +1191,7 @@ enum TTSModel: String, CaseIterable {
     switch self {
     case .gemini38FlashLiteTTS: return "Gemini 3.8 Flash-Lite TTS"
     case .gemini38FlashTTS: return "Gemini 3.8 Flash TTS"
+    case .openAIRealtimeMiniTTS: return "GPT-Realtime 2.1 mini TTS"
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
     case .grokVoiceTTS: return "Grok Voice TTS"
     case .systemMacOS: return String(localized: "macOS (On-Device)")
@@ -1210,6 +1216,8 @@ enum TTSModel: String, CaseIterable {
       return String(localized: "Google's Gemini 3.8 Flash-Lite TTS • Fastest start, lowest cost • 100+ languages • Recommended")
     case .gemini38FlashTTS:
       return String(localized: "Google's Gemini 3.8 Flash TTS • Highest voice quality • Slower to start than Flash-Lite")
+    case .openAIRealtimeMiniTTS:
+      return String(localized: "OpenAI's GPT-Realtime 2.1 mini • Official successor to the retired OpenAI TTS models • Reads via the Realtime API • Needs an OpenAI API key")
     case .openAIGpt4oMiniTTS:
       return String(localized: "OpenAI's GPT-4o mini TTS • Natural, steerable speech • Needs an OpenAI API key")
     case .grokVoiceTTS:
@@ -1235,6 +1243,11 @@ enum TTSModel: String, CaseIterable {
   /// the note there. `.system` has no network endpoint. `.custom` is the shared own-server base
   /// URL with `/audio/speech` appended (empty when the user has not set a URL yet).
   var apiEndpoint: String {
+    // The Realtime model has no REST endpoint: it speaks a WebSocket (see
+    // `SpeechService.synthesizeOpenAIRealtimeTTS`), so the wss URL is what this property reports.
+    if self == .openAIRealtimeMiniTTS {
+      return "\(AppConstants.openAIRealtimeEndpoint)?model=\(rawValue)"
+    }
     switch provider {
     case .gemini:
       return "https://generativelanguage.googleapis.com/v1beta/models/\(rawValue):streamGenerateContent?alt=sse"
@@ -1325,7 +1338,7 @@ enum TTSModel: String, CaseIterable {
   /// the tiles would end in a multi-gigabyte download the model then cannot run.
   static var readAloudModels: [TTSModel] {
     [.systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice, .gemini38FlashLiteTTS,
-     .gemini38FlashTTS, .grokVoiceTTS, .ownServerTTS]
+     .gemini38FlashTTS, .openAIRealtimeMiniTTS, .grokVoiceTTS, .ownServerTTS]
       .filter(\.isSelectableUnderOfflineMode)
       .filter { $0.qwen3ModelType?.isOfferable ?? true }
   }
@@ -1337,6 +1350,10 @@ enum TTSModel: String, CaseIterable {
       // 2.5 previews shut down 2026-10-16; 3.1 preview replaced 2026-09-29 by the cheaper, faster,
       // stable 3.8 Flash-Lite TTS (see the TTSModel note).
       return TTSModel.gemini38FlashLiteTTS.rawValue
+    case "gpt-4o-mini-tts":
+      // Deprecated 2026-10-01, shutdown 2027-01-06. OpenAI's named replacement is
+      // gpt-realtime-2.1-mini via the Realtime API (see the TTSModel note).
+      return TTSModel.openAIRealtimeMiniTTS.rawValue
     default:
       return raw
     }

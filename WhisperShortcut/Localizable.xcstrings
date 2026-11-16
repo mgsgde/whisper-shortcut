@@ -29452,6 +29452,66 @@
           }
         }
       }
+    },
+    "OpenAI's GPT-Realtime 2.1 mini • Official successor to the retired OpenAI TTS models • Reads via the Realtime API • Needs an OpenAI API key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAIs GPT-Realtime 2.1 mini • Offizieller Nachfolger der eingestellten OpenAI-TTS-Modelle • Liest über die Realtime API • OpenAI-API-Schlüssel erforderlich"
+          }
+        }
+      }
+    },
+    "OpenAI Realtime TTS stream stalled after %llds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-Realtime-TTS-Stream stockte nach %lld s"
+          }
+        }
+      }
+    },
+    "OpenAI Realtime TTS connection failed: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-Realtime-TTS-Verbindung fehlgeschlagen: %@"
+          }
+        }
+      }
+    },
+    "OpenAI Realtime TTS response ended with status %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-Realtime-TTS-Antwort endete mit Status %@"
+          }
+        }
+      }
+    },
+    "OpenAI Realtime TTS error: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-Realtime-TTS-Fehler: %@"
+          }
+        }
+      }
+    },
+    "OpenAI Realtime TTS returned no audio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-Realtime-TTS hat kein Audio zurückgegeben"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

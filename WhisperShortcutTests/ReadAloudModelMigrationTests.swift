@@ -11,6 +11,9 @@ struct ReadAloudModelMigrationTests {
     }
     // Current and non-Gemini selections are left alone.
     #expect(TTSModel.migrateLegacyReadAloudRawValue("gemini-3.8-flash-tts") == "gemini-3.8-flash-tts")
-    #expect(TTSModel.migrateLegacyReadAloudRawValue("gpt-4o-mini-tts") == "gpt-4o-mini-tts")
+    // The retired OpenAI TTS model forwards to its named Realtime replacement.
+    #expect(
+      TTSModel.migrateLegacyReadAloudRawValue("gpt-4o-mini-tts")
+        == TTSModel.openAIRealtimeMiniTTS.rawValue)
   }
 }
