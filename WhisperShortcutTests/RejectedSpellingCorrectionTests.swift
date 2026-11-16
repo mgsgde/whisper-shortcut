@@ -99,3 +99,73 @@ struct RejectedNameAfterTitleTests {
     #expect(SpeechService.replacingRejectedNameAfterTitle("Daten", with: "Datev", in: text) == text)
   }
 }
+
+
+/// A one-word rejected form that is not a real word is rewritten anywhere, and so are near
+/// variants of it; a known word keeps the title-only rule.
+@Suite("Non-word misheard forms")
+struct NonWordMisheardTests {
+
+  private let lasegue = [(correct: "Lasègue", rejected: ["Laseg"])]
+
+  private func run(
+    _ text: String, _ corrections: [(correct: String, rejected: [String])]? = nil,
+    known: Set<String> = []
+  ) -> String {
+    SpeechService.replacingNonWordMisheard(
+      in: text, corrections: corrections ?? lasegue,
+      isKnownWord: { known.contains(GlossaryDocument.fold($0)) }
+    ).text
+  }
+
+  @Test("Exact non-word form is rewritten anywhere")
+  func exact() {
+    #expect(run("the Laseg sign") == "the Lasègue sign")
+  }
+
+  @Test("Near non-word variant is rewritten")
+  func near() {
+    #expect(run("the Lasse sign") == "the Lasègue sign")
+  }
+
+  @Test("A known near word stays")
+  func nearKnown() {
+    #expect(run("the Lasse sign", known: ["lasse"]) == "the Lasse sign")
+  }
+
+  @Test("Known rejected word is left to the title rule")
+  func knownRejected() {
+    let c = [(correct: "Läuffer", rejected: ["Läufer"])]
+    #expect(run("Der Läufer", c, known: ["laufer"]) == "Der Läufer")
+    #expect(run("Frau Läufer", c, known: ["laufer"]) == "Frau Läufer")  // title rule runs separately
+    #expect(SpeechService.replacingRejectedNameAfterTitle("Läufer", with: "Läuffer", in: "Frau Läufer")
+      == "Frau Läuffer")
+  }
+
+  @Test("Trailing punctuation is kept")
+  func punctuation() {
+    #expect(run("positive Laseg.") == "positive Lasègue.")
+  }
+
+  @Test("Different first letter is not rewritten")
+  func firstLetter() {
+    #expect(run("the Kaseg sign") == "the Kaseg sign")
+  }
+
+  @Test("Substring of a longer word is not rewritten")
+  func substring() {
+    #expect(run("Lasegmentation and unLaseg") == "Lasegmentation and unLaseg")
+  }
+
+  @Test("A word near forms of two different terms is unchanged")
+  func ambiguous() {
+    let c = [(correct: "Lasègue", rejected: ["Laseg"]), (correct: "Lasour", rejected: ["Lasur"])]
+    #expect(run("the Lasse sign", c) == "the Lasse sign")
+  }
+
+  @Test("A glossary term itself is never rewritten")
+  func termProtected() {
+    let c = [(correct: "Lasègue", rejected: ["Laseg"]), (correct: "Lasse", rejected: [])]
+    #expect(run("the Lasse sign", c) == "the Lasse sign")
+  }
+}

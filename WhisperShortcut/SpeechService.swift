@@ -407,6 +407,12 @@ class SpeechService {
   /// - A one-word rejected form is rewritten only when the correct form is itself one capitalised
   ///   word and a personal title stands immediately before the mishearing (`Frau Dr. Läufer` →
   ///   `Läuffer`). Bare nouns stay ("Der Läufer", "die Daten").
+  /// - A one-word rejected form that the spell checker does NOT know is not a legitimate word
+  ///   anywhere, so it is rewritten wherever it stands (`Lasègue (not "Laseg")`: "the Laseg sign").
+  ///   Offline engines rarely repeat the exact misheard form: the same audio that gave "Laseg"
+  ///   gives "Lasse" next time. So a transcript word that is also unknown, shares the first letter
+  ///   and is >= 0.6 similar to a listed form of exactly one term is rewritten too
+  ///   (`replacingNonWordMisheard`). Known words never take part in either rule.
   ///
   /// Every rule fails toward changing nothing, i.e. toward the behaviour before this existed.
   private func correctingRejectedSpellings(in text: String) -> String {
@@ -429,10 +435,84 @@ class SpeechService {
           rejected, with: correction.correct, in: result)
       }
     }
+    let pairs = corrections.map { (correct: $0.correct, rejected: $0.rejected) }
+    // NSSpellChecker is main-thread only; this runs on whatever thread transcribed.
+    let known: (String) -> Bool = { word in
+      Thread.isMainThread
+        ? GlossaryFastLearner.isKnownWord(word)
+        : DispatchQueue.main.sync { GlossaryFastLearner.isKnownWord(word) }
+    }
+    let nonWord = Self.replacingNonWordMisheard(
+      in: result, corrections: pairs, extraTerms: parsedGlossary().terms, isKnownWord: known)
+    result = nonWord.text
     if result != text {
-      DebugLogger.log("GLOSSARY-CORRECT: rewrote rejected spelling(s) in transcript")
+      DebugLogger.log(
+        "GLOSSARY-CORRECT: rewrote rejected spelling(s) in transcript (non-word exact=\(nonWord.exact), near=\(nonWord.near))")
     }
     return result
+  }
+
+  /// Word-bounded rewrite of non-word misheard forms (rules described on
+  /// `correctingRejectedSpellings`). Pure and injectable so tests need no spell checker.
+  /// Exact rule: a word whose folded form equals a listed one-word rejected form of exactly one
+  /// single-word term, and which is not a known word. Near rule: otherwise, a non-known word with
+  /// the same folded first letter and `ParakeetVocabularyGuard.similarity` >= 0.6 to a listed
+  /// one-word form of exactly one term. Glossary terms themselves and exact rejected forms of
+  /// several terms are never touched.
+  static func replacingNonWordMisheard(
+    in text: String, corrections: [(correct: String, rejected: [String])],
+    extraTerms: [String] = [], isKnownWord: (String) -> Bool
+  ) -> (text: String, exact: Int, near: Int) {
+    let eligible = corrections.filter { !$0.correct.contains(" ") && !$0.correct.isEmpty }
+    guard !eligible.isEmpty,
+      let regex = try? NSRegularExpression(pattern: #"(?<![\p{L}\p{N}])\p{L}[\p{L}\p{N}]*"#)
+    else { return (text, 0, 0) }
+
+    typealias Form = (term: String, folded: String)
+    var forms: [Form] = []
+    for c in eligible {
+      for r in c.rejected where !r.contains(" ") && !r.isEmpty {
+        forms.append((c.correct, GlossaryDocument.fold(r)))
+      }
+    }
+    guard !forms.isEmpty else { return (text, 0, 0) }
+    var protectedWords = Set((corrections.map(\.correct) + extraTerms).map(GlossaryDocument.fold))
+    protectedWords.remove("")
+    let allRejected = Set(
+      corrections.flatMap { $0.rejected }.map(GlossaryDocument.fold))
+
+    let source = text as NSString
+    var result = text
+    var exact = 0
+    var near = 0
+    for match in regex.matches(in: text, range: NSRange(location: 0, length: source.length))
+      .reversed()
+    {
+      let word = source.substring(with: match.range)
+      let folded = GlossaryDocument.fold(word)
+      guard !protectedWords.contains(folded), let first = folded.first else { continue }
+
+      let exactTerms = Set(forms.filter { $0.folded == folded }.map(\.term))
+      var replacement: String?
+      if !exactTerms.isEmpty {
+        guard exactTerms.count == 1, !isKnownWord(word) else { continue }
+        replacement = exactTerms.first
+        exact += 1
+      } else {
+        if allRejected.contains(folded) { continue }
+        let nearTerms = Set(
+          forms.filter {
+            $0.folded.first == first && ParakeetVocabularyGuard.similarity(word, $0.folded) >= 0.6
+          }.map(\.term))
+        guard nearTerms.count == 1, !isKnownWord(word) else { continue }
+        replacement = nearTerms.first
+        near += 1
+      }
+      if let replacement {
+        result = (result as NSString).replacingCharacters(in: match.range, with: replacement)
+      }
+    }
+    return (result, exact, near)
   }
 
   /// Internal rather than private so `RejectedSpellingCorrectionTests` can pin the two guards
