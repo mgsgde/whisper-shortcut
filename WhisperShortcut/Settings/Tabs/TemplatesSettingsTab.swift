@@ -47,6 +47,14 @@ struct TemplatesSettingsTab: View {
         templates.contains { $0.id == id } ? id : nil
       } ?? templates.first?.id
     }
+    // A change from outside the tab (an AI app over MCP) shows up without reopening Settings.
+    .onReceive(NotificationCenter.default.publisher(for: .dictationTemplatesChanged)) { _ in
+      let stored = DictationTemplateStore.load()
+      if stored != templates {
+        templates = stored
+        if !templates.contains(where: { $0.id == selectedID }) { selectedID = templates.first?.id }
+      }
+    }
     .onChange(of: templates) { _, newValue in
       // Only real edits are written: a user who just opens Settings keeps the key absent.
       guard newValue != DictationTemplateStore.load() else { return }
