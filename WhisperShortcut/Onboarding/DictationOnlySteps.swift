@@ -673,7 +673,7 @@ struct DictationOnlyGlossaryStep: View {
   @ViewBuilder
   private func resultLine(_ result: SystemPromptsStore.GlossaryAppendResult) -> some View {
     switch result {
-    case .added(let term):
+    case .added(let term), .learned(let term, _):
       Label("Saved. From now on WhisperShortcut writes “\(term)”.", systemImage: "checkmark.circle.fill")
         .foregroundStyle(.green)
         .font(DictationOnlyFont.body)
@@ -707,6 +707,7 @@ private extension SystemPromptsStore.GlossaryAppendResult {
   var logLabel: String {
     switch self {
     case .added: return "added"
+    case .learned: return "learned"
     case .duplicate: return "duplicate"
     case .notATerm: return "notATerm"
     case .budgetExceeded: return "budgetExceeded"

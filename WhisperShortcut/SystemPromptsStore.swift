@@ -224,6 +224,8 @@ final class SystemPromptsStore {
   /// the user sees, so every outcome carries the term it is talking about.
   enum GlossaryAppendResult: Equatable {
     case added(String)
+    /// Added together with the spelling the engine produced instead (`Term (not "misheard")`).
+    case learned(String, misheard: String)
     case duplicate(String)
     /// The selection was not a term: empty, a whole sentence, or an implausible length.
     case notATerm(String)
@@ -232,7 +234,7 @@ final class SystemPromptsStore {
 
     var termIfAny: String? {
       switch self {
-      case .added(let t), .duplicate(let t), .notATerm(let t), .budgetExceeded(let t): return t
+      case .added(let t), .learned(let t, _), .duplicate(let t), .notATerm(let t), .budgetExceeded(let t): return t
       }
     }
   }
@@ -251,10 +253,14 @@ final class SystemPromptsStore {
 
   /// Adds a user-selected spelling to the Glossary, if it is a term and not already there.
   ///
-  /// Deliberately dumb: no model, no fuzzy matching, no network. The user has told the app the
-  /// correct spelling by selecting it — the app's job is to store it verbatim, which is also what
-  /// makes this usable in Offline Mode, where every model-driven learning path is switched off.
-  func appendToWhisperGlossary(_ raw: String, source: PromptHistorySource) -> GlossaryAppendResult {
+  /// Deliberately dumb: no model, no network, no fuzzy matching of its own. The user has told the app the correct spelling by
+  /// selecting it — the app stores it verbatim, which is also what makes this usable in Offline
+  /// Mode, where every model-driven learning path is switched off. `misheard`, when the caller
+  /// found what the engine heard instead, is stored as `Term (not "misheard")` so the offline
+  /// vocabulary guard rewrites it even below its similarity threshold.
+  func appendToWhisperGlossary(
+    _ raw: String, misheard rawMisheard: String? = nil, source: PromptHistorySource
+  ) -> GlossaryAppendResult {
     let term = Self.normaliseTerm(raw)
     guard !term.isEmpty, term.count <= Self.maxTermCharacters,
       term.split(separator: " ").count <= Self.maxTermWords
@@ -262,16 +268,47 @@ final class SystemPromptsStore {
       return .notATerm(term.isEmpty ? raw.trimmingCharacters(in: .whitespacesAndNewlines) : term)
     }
 
+    var misheard = rawMisheard.map(Self.normaliseTerm)
+    if let m = misheard, m.isEmpty || m.contains(where: { "\",()".contains($0) })
+      || GlossaryDocument.fold(m) == GlossaryDocument.fold(term)
+    {
+      misheard = nil
+    }
+
     let existing = loadWhisperGlossary()
-    if Self.glossaryContains(term, in: existing) { return .duplicate(term) }
-    guard existing.count + term.count + 2 <= Self.glossaryCharBudget else {
+    if Self.glossaryContains(term, in: existing) {
+      // Already there as a bare term: the new knowledge is only the misheard form.
+      if let misheard, let updated = GlossaryMisheard.addingMisheard(misheard, for: term, to: existing),
+        updated.count <= Self.glossaryCharBudget
+      {
+        updateSection(.whisperGlossary, content: updated, source: source)
+        DebugLogger.log("GLOSSARY: Added a misheard form to an existing term (\(updated.count) chars total)")
+        return .learned(term, misheard: misheard)
+      }
+      return .duplicate(term)
+    }
+    let entry = misheard.map { "\(term) (not \"\($0)\")" } ?? term
+    guard existing.count + entry.count + 2 <= Self.glossaryCharBudget else {
       return .budgetExceeded(term)
     }
 
-    let updated = existing.isEmpty ? term : existing + ", " + term
+    let updated = Self.appendingEntry(entry, to: existing)
     updateSection(.whisperGlossary, content: updated, source: source)
     DebugLogger.log("GLOSSARY: Added \(DebugLogger.redacted(term)) (\(updated.count) chars total)")
+    if let misheard { return .learned(term, misheard: misheard) }
     return .added(term)
+  }
+
+  /// Joins a new entry onto the glossary text. A plain comma list stays comma-joined; a
+  /// line-based glossary (any newline, or a last line carrying a `(not …)` annotation) gets the
+  /// entry on its own line, because after `Supraspinatus (not "Super Spinatus"), Lasègue` the
+  /// parser would hand the new term the previous line's misheard forms.
+  static func appendingEntry(_ entry: String, to existing: String) -> String {
+    if existing.isEmpty { return entry }
+    let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lastLine = trimmed.components(separatedBy: .newlines).last ?? trimmed
+    let lineBased = trimmed.contains("\n") || GlossaryDocument.carriesAnnotation(lastLine)
+    return lineBased ? trimmed + "\n" + entry : trimmed + ", " + entry
   }
 
   /// Trims the selection to what belongs in a vocabulary list: no surrounding whitespace, no
