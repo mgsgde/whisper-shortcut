@@ -61,6 +61,46 @@
         }
       }
     },
+    "Could not write the template." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Vorlage konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Delete Template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage löschen"
+          }
+        }
+      }
+    },
+    "Delete template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage „%@“ löschen"
+          }
+        }
+      }
+    },
+    "Deleted template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage „%@“ gelöscht"
+          }
+        }
+      }
+    },
     "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works." : {
       "localizations" : {
         "de" : {
@@ -231,6 +271,16 @@
         }
       }
     },
+    "New template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Vorlage „%@“"
+          }
+        }
+      }
+    },
     "Press Fn to dictate, with no shortcut to remember." : {
       "localizations" : {
         "de" : {
@@ -291,6 +341,16 @@
         }
       }
     },
+    "Template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage „%@“"
+          }
+        }
+      }
+    },
     "The recommended model is %@." : {
       "localizations" : {
         "de" : {
@@ -317,6 +377,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Um aus Ihren Diktaten zu lernen, wählen Sie mit /model ein Online-Modell und versuchen Sie /improve erneut."
+          }
+        }
+      }
+    },
+    "Unknown template." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbekannte Vorlage."
           }
         }
       }

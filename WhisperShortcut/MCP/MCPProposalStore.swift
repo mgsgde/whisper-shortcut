@@ -8,7 +8,9 @@ extension Notification.Name {
 
 /// A change an AI app asked for that waits for the user's decision.
 struct MCPProposal: Codable, Identifiable {
-  enum Kind: String, Codable { case systemPrompt, writingStyle, saveCommand, deleteCommand, problemReport, settings }
+  enum Kind: String, Codable {
+    case systemPrompt, writingStyle, saveCommand, deleteCommand, saveTemplate, deleteTemplate, problemReport, settings
+  }
   enum Status: String, Codable { case pending, accepted, declined }
   /// Who asked for the change. Optional on the proposal so older JSONL lines still decode.
   enum Origin: String, Codable { case aiApp, writingStyle }
@@ -25,6 +27,10 @@ struct MCPProposal: Codable, Identifiable {
   var commandScope: String?
   var commandLabel: String?
   var commandDescription: String?
+  /// Template id (UUID string) and the template's name for `.saveTemplate` / `.deleteTemplate`.
+  /// The template's instructions travel in `previousContent` / `proposedContent`.
+  var templateID: String? = nil
+  var templateName: String? = nil
   /// What is there when the proposal was made (for the diff). nil = did not exist.
   var previousContent: String?
   /// The proposed text (command body for `.saveCommand`). nil for `.deleteCommand`.
@@ -103,7 +109,8 @@ final class MCPProposalStore: ObservableObject {
     kind: MCPProposal.Kind, title: String? = nil, section: String? = nil, commandName: String? = nil,
     commandScope: String? = nil, commandLabel: String? = nil, commandDescription: String? = nil,
     previousContent: String? = nil, proposedContent: String? = nil, rationale: String,
-    settingsChanges: [MCPSettingsChangeItem]? = nil, origin: MCPProposal.Origin? = nil
+    settingsChanges: [MCPSettingsChangeItem]? = nil, origin: MCPProposal.Origin? = nil,
+    templateID: String? = nil, templateName: String? = nil
   ) throws -> MCPProposal {
     try MCPMain.run {
       // A newer proposal for the same target replaces the older one.
@@ -114,6 +121,7 @@ final class MCPProposalStore: ObservableObject {
         case .systemPrompt: return q.section == section
         case .writingStyle: return true
         case .saveCommand, .deleteCommand: return q.commandName == commandName
+        case .saveTemplate, .deleteTemplate: return q.templateID == templateID
         case .problemReport: return false
         // One pending settings proposal at a time: a later one supersedes it wholesale.
         case .settings: return true
@@ -128,8 +136,8 @@ final class MCPProposalStore: ObservableObject {
       let proposal = MCPProposal(
         id: UUID().uuidString, createdAt: Date(), kind: kind, title: title, section: section,
         commandName: commandName, commandScope: commandScope, commandLabel: commandLabel,
-        commandDescription: commandDescription, previousContent: previousContent,
-        proposedContent: proposedContent, rationale: rationale, status: .pending, edited: false,
+        commandDescription: commandDescription, templateID: templateID, templateName: templateName,
+        previousContent: previousContent, proposedContent: proposedContent, rationale: rationale, status: .pending, edited: false,
         settingsChanges: settingsChanges, origin: origin)
       all.append(proposal)
       commit()
@@ -139,7 +147,8 @@ final class MCPProposalStore: ObservableObject {
 
   /// save and delete of one command name target the same file.
   private static func sameTargetGroup(_ a: MCPProposal.Kind, _ b: MCPProposal.Kind) -> Bool {
-    (a == .saveCommand || a == .deleteCommand) && (b == .saveCommand || b == .deleteCommand)
+    ((a == .saveCommand || a == .deleteCommand) && (b == .saveCommand || b == .deleteCommand))
+      || ((a == .saveTemplate || a == .deleteTemplate) && (b == .saveTemplate || b == .deleteTemplate))
   }
 
   /// What the target holds now, in the form `previousContent` was captured at create time.
@@ -154,6 +163,10 @@ final class MCPProposalStore: ObservableObject {
     case .saveCommand, .deleteCommand:
       applier.targets.commands.reload()
       return applier.targets.commands.commands.first { $0.name == proposal.commandName }?.body
+    case .saveTemplate, .deleteTemplate:
+      return proposal.templateID.flatMap(UUID.init(uuidString:)).flatMap { id in
+        applier.targets.loadTemplates().first { $0.id == id }?.instructions
+      }
     case .problemReport, .settings:
       // `.settings` is compared per-item in `accept()`, not here.
       return nil
@@ -198,7 +211,7 @@ final class MCPProposalStore: ObservableObject {
         }
         return result
       }
-      if proposal.kind != .deleteCommand, let editedContent, editedContent != proposal.proposedContent {
+      if proposal.kind != .deleteCommand, proposal.kind != .deleteTemplate, let editedContent, editedContent != proposal.proposedContent {
         proposal.proposedContent = editedContent
         proposal.edited = true
       }
@@ -237,6 +250,18 @@ final class MCPProposalStore: ObservableObject {
       case .deleteCommand:
         result = applier.applyDeleteCommand(
           name: proposal.commandName ?? "", rationale: proposal.rationale, viaProposal: true)
+      case .saveTemplate:
+        guard let id = proposal.templateID.flatMap(UUID.init(uuidString:)) else {
+          return .failure(MCPConfigError(message: String(localized: "Unknown template.")))
+        }
+        result = applier.applySaveTemplate(
+          id: id, name: proposal.templateName ?? "", text: content, rationale: proposal.rationale,
+          viaProposal: true)
+      case .deleteTemplate:
+        guard let id = proposal.templateID.flatMap(UUID.init(uuidString:)) else {
+          return .failure(MCPConfigError(message: String(localized: "Unknown template.")))
+        }
+        result = applier.applyDeleteTemplate(id: id, rationale: proposal.rationale, viaProposal: true)
       case .problemReport, .settings:
         // problemReport is accepted above, before any applier call; settings returns early at the
         // top of this function. Both arms are unreachable here and only keep the switch exhaustive.

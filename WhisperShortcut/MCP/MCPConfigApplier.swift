@@ -72,6 +72,10 @@ struct MCPConfigTargets {
   let systemPrompts: SystemPromptsStore
   let writingStyle: WritingStyleStore
   let commands: UserCommandStore
+  /// Dictation templates live in UserDefaults; tests swap these for an in-memory list.
+  var loadTemplates: () -> [DictationTemplate] = { DictationTemplateStore.load() }
+  var saveTemplates: ([DictationTemplate]) -> Void = { DictationTemplateStore.save($0) }
+  var loadTemplatePicker: () -> ShortcutDefinition? = { DictationTemplateStore.loadPickerShortcut() }
 
   static var live: MCPConfigTargets {
     MCPConfigTargets(
@@ -90,6 +94,11 @@ struct MCPConfigTargets {
       return FileManager.default.fileExists(atPath: writingStyle.profileURL.path) ? text : nil
     case .saveCommand, .deleteCommand:
       return try? String(contentsOf: commands.fileURL(forName: target), encoding: .utf8)
+    case .saveTemplate, .deleteTemplate:
+      // `target` is the template id; the content is its name + instructions snapshot.
+      return UUID(uuidString: target)
+        .flatMap { id in loadTemplates().first { $0.id == id } }
+        .map { MCPTemplateSnapshot.encode($0, includeShortcut: false) }
     case .settings:
       // `.settings` batches are compared per-item in `MCPChangeLog.undoSettings`, not here.
       return nil
@@ -185,5 +194,70 @@ struct MCPConfigApplier {
         viaProposal: viaProposal)
       return .success(change.id)
     }
+  }
+
+  /// Creates the template with this id, or replaces its name and instructions. A template's own
+  /// shortcut is never touched.
+  func applySaveTemplate(
+    id: UUID, name: String, text: String, rationale: String, viaProposal: Bool
+  ) -> Result<String, Error> {
+    MCPMain.run {
+      var templates = targets.loadTemplates()
+      let existing = templates.firstIndex { $0.id == id }
+      let previous = existing.map { MCPTemplateSnapshot.encode(templates[$0], includeShortcut: false) }
+      if let existing {
+        templates[existing].name = name
+        templates[existing].instructions = text
+      } else {
+        templates.append(DictationTemplate(id: id, name: name, instructions: text))
+      }
+      targets.saveTemplates(templates)
+      guard let written = templates.first(where: { $0.id == id }) else {
+        return .failure(MCPConfigError(message: "Could not write the template."))
+      }
+      let change = changeLog.record(
+        kind: .saveTemplate, target: id.uuidString, previous: previous,
+        new: MCPTemplateSnapshot.encode(written, includeShortcut: false), rationale: rationale,
+        viaProposal: viaProposal)
+      return .success(change.id)
+    }
+  }
+
+  func applyDeleteTemplate(id: UUID, rationale: String, viaProposal: Bool) -> Result<String, Error> {
+    MCPMain.run {
+      var templates = targets.loadTemplates()
+      guard let index = templates.firstIndex(where: { $0.id == id }) else {
+        return .failure(MCPConfigError(message: "No template with that id."))
+      }
+      // The shortcut goes into the snapshot so Undo brings the template back complete.
+      let previous = MCPTemplateSnapshot.encode(templates[index], includeShortcut: true)
+      templates.remove(at: index)
+      targets.saveTemplates(templates)
+      let change = changeLog.record(
+        kind: .deleteTemplate, target: id.uuidString, previous: previous, new: nil,
+        rationale: rationale, viaProposal: viaProposal)
+      return .success(change.id)
+    }
+  }
+}
+
+/// A template as the change log stores it: name and instructions as JSON, plus the template's own
+/// shortcut only when a delete must be fully undoable.
+struct MCPTemplateSnapshot: Codable {
+  var name: String
+  var instructions: String
+  var shortcut: ShortcutDefinition?
+
+  static func encode(_ template: DictationTemplate, includeShortcut: Bool) -> String {
+    let snapshot = MCPTemplateSnapshot(
+      name: template.name, instructions: template.instructions,
+      shortcut: includeShortcut ? template.shortcut : nil)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+    return (try? encoder.encode(snapshot)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+  }
+
+  static func decode(_ json: String?) -> MCPTemplateSnapshot? {
+    json.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONDecoder().decode(MCPTemplateSnapshot.self, from: $0) }
   }
 }
