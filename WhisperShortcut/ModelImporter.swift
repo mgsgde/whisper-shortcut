@@ -124,6 +124,48 @@ enum ModelImporter {
   /// smaller margin: an import's size is measured exactly, a download's is only estimated.
   private static let spaceMargin = 1.1
 
+  // MARK: - Existing-weights discovery
+
+  /// The default folders a user's existing weights live in: the Hugging Face cache and LM
+  /// Studio's models directory, when they exist. Same candidates as the import picker's
+  /// starting directory (`ModelImportSection.defaultImportDirectory`).
+  static var defaultSearchFolders: [URL] {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    return [".cache/huggingface/hub", ".lmstudio/models"]
+      .map { home.appendingPathComponent($0) }
+      .filter { FileManager.default.fileExists(atPath: $0.path) }
+  }
+
+  /// An import plan for exactly `model` from the default caches, or nil when the user does not
+  /// already have it on this Mac. This is what the Download button asks about before starting a
+  /// multi-gigabyte download the user may not need. Cheap (a handful of stat calls on the
+  /// expected snapshot paths, no byte counting until a plan is built) but not free — call it
+  /// off the main thread.
+  static func existingWeightsPlan<M: DownloadableModel>(for model: M) -> ModelImportPlan? {
+    let folders = defaultSearchFolders
+    guard !folders.isEmpty else { return nil }
+    let roots = folders.flatMap { searchRoots(for: $0) }
+    let live = ModelImportRoots.live
+    switch model {
+    case let type as OfflineModelType:
+      guard type.engine == .whisperKit else { return nil }
+      let destination = whisperDestination(for: type, in: live)
+      guard !isComplete(at: destination, family: .whisper(type)) else { return nil }
+      return whisperPlan(
+        for: type, in: roots, destination: destination)
+    case let type as LocalLLMModelType:
+      let destination = mlxDestination(for: type, in: live)
+      guard !isComplete(at: destination, family: .mlx(type)) else { return nil }
+      return mlxPlan(for: type, in: roots, destination: destination)
+    case let type as Qwen3ModelType:
+      let destination = qwen3Destination(for: type, in: live)
+      guard !isComplete(at: destination, family: .qwen3(type)) else { return nil }
+      return qwen3Plan(for: type, in: roots, destination: destination)
+    default:
+      return nil
+    }
+  }
+
   // MARK: - Discovery
 
   /// Every model this app can use that sits in `folder`, in catalogue order. Models already fully

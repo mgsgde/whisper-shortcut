@@ -29452,6 +29452,36 @@
           }
         }
       }
+    },
+    "Already on this Mac" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits auf diesem Mac"
+          }
+        }
+      }
+    },
+    "%@ was found in your Hugging Face cache or LM Studio folder (%@). Import it instead of downloading it again?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde in deinem Hugging-Face-Cache oder LM-Studio-Ordner gefunden (%@). Stattdessen importieren statt erneut herunterladen?"
+          }
+        }
+      }
+    },
+    "Download Anyway" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trotzdem herunterladen"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

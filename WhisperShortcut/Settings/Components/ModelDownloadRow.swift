@@ -12,8 +12,12 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   let onError: (String) -> Void
   @ViewBuilder let badge: () -> Badge
 
+  /// Import-in-flight state, mirroring the download states above it.
+  @State private var isImporting = false
+  @State private var importProgress: Double = 0
+
   var body: some View {
-    let isDownloading = store.downloadingModels.contains(model)
+    let isDownloading = !isImporting && store.downloadingModels.contains(model)
     // Only check availability when not downloading (prevents a "Downloaded / 0 MB" glitch).
     let isAvailable = !isDownloading && store.isModelAvailable(model)
     // Only when it is going to be shown: `getModelSize` enumerates the whole model directory —
@@ -32,7 +36,14 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
 
           HStack(spacing: 12) {
             HStack(spacing: 4) {
-              if isDownloading {
+              if isImporting {
+                Image(systemName: "square.and.arrow.down.circle.fill")
+                  .foregroundColor(.blue)
+                  .font(.caption)
+                Text("Importing…")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              } else if isDownloading {
                 Image(systemName: "arrow.down.circle.fill")
                   .foregroundColor(.blue)
                   .font(.caption)
@@ -64,7 +75,25 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
 
         Spacer()
 
-        if isDownloading {
+        if isImporting {
+          HStack(spacing: 8) {
+            if importProgress > 0 {
+              ProgressView(value: importProgress)
+                .progressViewStyle(.linear)
+                .frame(width: 90)
+              Text("\(Int(importProgress * 100))%")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .monospacedDigit()
+            } else {
+              ProgressView()
+                .scaleEffect(0.8)
+            }
+            Text("Importing…")
+              .font(.caption)
+              .foregroundColor(.secondary)
+          }
+        } else if isDownloading {
           HStack(spacing: 8) {
             if let fraction = store.downloadProgress[model], fraction > 0 {
               ProgressView(value: fraction)
@@ -113,6 +142,24 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
 
   private func download() {
     Task {
+      // Before a multi-gigabyte download, check the default caches (Hugging Face, LM Studio)
+      // off the main thread — the user may already have these weights on this Mac.
+      let existing = await Task.detached(priority: .userInitiated) {
+        ModelImporter.existingWeightsPlan(for: model)
+      }.value
+
+      if let existing {
+        switch importAlert(for: existing) {
+        case .import:
+          importExisting(existing)
+          return
+        case .cancel:
+          return
+        case .downloadAnyway:
+          break
+        }
+      }
+
       do {
         try await store.downloadModel(model)
         DebugLogger.logSuccess("\(store.logPrefix): UI download finished for \(model.displayName)")
@@ -130,6 +177,78 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
         DebugLogger.logError("\(store.logPrefix): UI download failed for \(model.displayName): \(error.logDescription)")
         onError(String(localized: "Failed to download \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))"))
       }
+    }
+  }
+
+  /// What the user picked in the "already on this Mac" alert.
+  private enum ExistingWeightsChoice {
+    case `import`
+    case downloadAnyway
+    case cancel
+  }
+
+  /// Asks whether to import weights that are already on this Mac instead of downloading them
+  /// again. Import is the default: it is faster and uses no network.
+  private func importAlert(for plan: ModelImportPlan) -> ExistingWeightsChoice {
+    let alert = NSAlert()
+    alert.messageText = String(localized: "Already on this Mac")
+    alert.informativeText = String(
+      localized:
+        "\(plan.displayName) was found in your Hugging Face cache or LM Studio folder (\(plan.sizeLabel)). Import it instead of downloading it again?"
+    )
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: String(localized: "Import"))
+    alert.addButton(withTitle: String(localized: "Download Anyway"))
+    alert.addButton(withTitle: String(localized: "Cancel"))
+    switch alert.runModal() {
+    case .alertFirstButtonReturn: return .import
+    case .alertSecondButtonReturn: return .downloadAnyway
+    default: return .cancel
+    }
+  }
+
+  /// Copies `plan` into the app container with the row's own progress UI, then refreshes the
+  /// store so the row flips to "Downloaded" without a Settings restart.
+  private func importExisting(_ plan: ModelImportPlan) {
+    isImporting = true
+    importProgress = 0
+    Task.detached(priority: .userInitiated) {
+      do {
+        try ModelImporter.perform(plan) { fraction in
+          Task { @MainActor in importProgress = fraction }
+        }
+        await MainActor.run {
+          isImporting = false
+          notifyStore(for: plan.family)
+          PopupNotificationWindow.showInfo(
+            verbatim: String(
+              localized:
+                "\(plan.displayName) was imported. The first use may take a moment to load the model into memory."
+            ),
+            title: "Model Imported",
+            customDisplayDuration: 10
+          )
+        }
+      } catch is CancellationError {
+        await MainActor.run { isImporting = false }
+      } catch {
+        await MainActor.run {
+          isImporting = false
+          onError(error.localizedDescription)
+        }
+      }
+    }
+  }
+
+  /// The imported model's store does not touch its own `@Published` state during an import, so
+  /// this row (bound via `@ObservedObject`) would not otherwise notice the model is now on disk.
+  /// Same switch as `ModelImportSection.notifyStore`.
+  @MainActor
+  private func notifyStore(for family: ModelImportPlan.Family) {
+    switch family {
+    case .whisper: ModelManager.shared.objectWillChange.send()
+    case .mlx: LocalLLMModelManager.shared.objectWillChange.send()
+    case .qwen3: Qwen3ModelManager.shared.objectWillChange.send()
     }
   }
 
