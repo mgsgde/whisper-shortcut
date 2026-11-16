@@ -168,4 +168,13 @@ struct NonWordMisheardTests {
     let c = [(correct: "Lasègue", rejected: ["Laseg"]), (correct: "Lasse", rejected: [])]
     #expect(run("the Lasse sign", c) == "the Lasse sign")
   }
+
+  @Test("Strict checker: Laseg is no word, Daten is (real NSSpellChecker)")
+  @MainActor
+  func strictChecker() throws {
+    try #require(
+      GlossaryFastLearner.isKnownWordInDictationLanguages("Daten"),
+      "German/English dictionaries missing")
+    #expect(!GlossaryFastLearner.isKnownWordInDictationLanguages("Laseg"))
+  }
 }

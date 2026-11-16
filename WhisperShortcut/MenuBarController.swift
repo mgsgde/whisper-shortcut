@@ -4039,7 +4039,7 @@ class MenuBarController: NSObject {
         if let last = TranscriptionHistoryStore.shared.mostRecent {
           misheard = GlossaryMisheard.misheardForm(
             correct: SystemPromptsStore.normaliseTerm(selection), dictation: last.text,
-            dictationDate: last.ts, isKnownWord: GlossaryFastLearner.isKnownWord)
+            dictationDate: last.ts, isKnownWord: GlossaryFastLearner.isKnownWordInDictationLanguages)
         }
         self.reportGlossaryAppend(
           SystemPromptsStore.shared.appendToWhisperGlossary(

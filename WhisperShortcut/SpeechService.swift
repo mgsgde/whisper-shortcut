@@ -408,14 +408,15 @@ class SpeechService {
   ///   word and a personal title stands immediately before the mishearing (`Frau Dr. Läufer` →
   ///   `Läuffer`). Bare nouns stay ("Der Läufer", "die Daten").
   /// - A one-word rejected form that the spell checker does NOT know is not a legitimate word
-  ///   anywhere, so it is rewritten wherever it stands (`Lasègue (not "Laseg")`: "the Laseg sign").
+  ///   anywhere (judged against German and English only, `isKnownWordInDictationLanguages`: the
+  ///   auto-detecting checker accepts "Laseg" as some foreign word), so it is rewritten wherever it stands (`Lasègue (not "Laseg")`: "the Laseg sign").
   ///   Offline engines rarely repeat the exact misheard form: the same audio that gave "Laseg"
   ///   gives "Lasse" next time. So a transcript word that is also unknown, shares the first letter
   ///   and is >= 0.6 similar to a listed form of exactly one term is rewritten too
   ///   (`replacingNonWordMisheard`). Known words never take part in either rule.
   ///
   /// Every rule fails toward changing nothing, i.e. toward the behaviour before this existed.
-  private func correctingRejectedSpellings(in text: String) -> String {
+  private func correctingRejectedSpellings(in text: String) async -> String {
     guard !text.isEmpty else { return text }
     let corrections = parsedGlossary().corrections
     guard !corrections.isEmpty else { return text }
@@ -436,14 +437,15 @@ class SpeechService {
       }
     }
     let pairs = corrections.map { (correct: $0.correct, rejected: $0.rejected) }
-    // NSSpellChecker is main-thread only; this runs on whatever thread transcribed.
-    let known: (String) -> Bool = { word in
-      Thread.isMainThread
-        ? GlossaryFastLearner.isKnownWord(word)
-        : DispatchQueue.main.sync { GlossaryFastLearner.isKnownWord(word) }
+    let terms = parsedGlossary().terms
+    // NSSpellChecker is main-thread only. This function is async, so the whole (pure, fast)
+    // rewrite hops to the main actor in one `await`: the caller suspends instead of blocking, and
+    // the main thread never waits on anything here, so it cannot deadlock.
+    let nonWord = await MainActor.run {
+      Self.replacingNonWordMisheard(
+        in: result, corrections: pairs, extraTerms: terms,
+        isKnownWord: GlossaryFastLearner.isKnownWordInDictationLanguages)
     }
-    let nonWord = Self.replacingNonWordMisheard(
-      in: result, corrections: pairs, extraTerms: parsedGlossary().terms, isKnownWord: known)
     result = nonWord.text
     if result != text {
       DebugLogger.log(
@@ -655,7 +657,7 @@ class SpeechService {
         self.noteEchoStrip(original: transcript, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
       }
-      return self.correctingRejectedSpellings(in: stripped)
+      return await self.correctingRejectedSpellings(in: stripped)
     }
 
     if cancellable {
@@ -2419,7 +2421,7 @@ class SpeechService {
         noteEchoStrip(original: spoken, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
       }
-      let transcript = correctingRejectedSpellings(in: stripped)
+      let transcript = await correctingRejectedSpellings(in: stripped)
       instruction = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
