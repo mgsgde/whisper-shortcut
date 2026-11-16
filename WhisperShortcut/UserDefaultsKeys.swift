@@ -381,6 +381,11 @@ enum UserDefaultsKeys {
   static let mcpServerEnabled = "mcpServerEnabled"
   /// Optional override of the MCP server's loopback port. Unset/0 → MCPServer.defaultPort.
   static let mcpServerPort = "mcpServerPort"
+  /// Last port the MCP server bound after falling back from the default (another macOS user held it).
+  /// Sticky so connected clients keep working across restarts. Removed when the default is bound again.
+  static let mcpServerBoundPort = "mcpServerBoundPort"
+  /// Kill switch for the MCP port fallback. Unset → on; only an explicit false disables the fallback.
+  static let mcpPortFallbackEnabled = "mcpPortFallbackEnabled"
   /// Kill switch for MCPClientInstaller.repairStaleTokens. Unset → on; only an explicit false disables it.
   static let mcpAutoRepairClientTokens = "mcpAutoRepairClientTokens"
   /// Prefix + `MCPClient.rawValue`: app-scoped security bookmark of the client's config folder.
