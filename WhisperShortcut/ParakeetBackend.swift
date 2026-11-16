@@ -211,6 +211,12 @@ extension ParakeetBackend {
   }
 }
 
+/// SPIKE ONLY (parakeet-booster-aliases): test hooks, not for main.
+enum ParakeetBoosterSpike {
+  nonisolated(unsafe) static var glossaryText: String?
+  nonisolated(unsafe) static var aliases = false
+}
+
 /// CTC vocabulary boosting for one glossary at a time.
 ///
 /// Building a session tokenises every term and loads the CTC model (~100 MB), so it is built on
@@ -221,6 +227,7 @@ private actor VocabularyBooster {
   /// otherwise both pass a nil check across the `await` and load the ~100 MB model twice.
   private var ctcLoad: Task<CtcModels, Error>?
   private var session: (terms: [String], session: VocabularyBoostingSession)?
+  private var spikeKey = ""
 
   /// The rescored transcript, or the plain one when boosting cannot run — a missing CTC model or
   /// a glossary with no usable term must cost the Glossary, never the dictation.
@@ -229,6 +236,9 @@ private actor VocabularyBooster {
       let session = try await session(for: terms)
       let rescored = await session.rescore(
         text: result.text, tokenTimings: result.tokenTimings ?? [], audioSamples: samples)
+      if ParakeetBoosterSpike.glossaryText != nil {
+        print("SPIKEDIAG modified=\(rescored?.wasModified as Any) repl=\((rescored?.replacements ?? []).map { "\($0.originalWord)->\($0.replacementWord ?? "nil") should=\($0.shouldReplace)" })")
+      }
       guard let rescored, rescored.wasModified else {
         return ParakeetVocabularyGuard.restoreGlossaryCasing(
           in: result.text, glossaryTerms: terms)
@@ -242,7 +252,8 @@ private actor VocabularyBooster {
       // The CTC booster knows no aliases: a span the glossary lists as `Term (not "span")` is
       // taken from the glossary text here and passes the guard without the similarity floor.
       let misheardForms = ParakeetVocabularyGuard.misheardForms(
-        fromGlossary: SystemPromptsStore.shared.loadWhisperGlossary())
+        fromGlossary: ParakeetBoosterSpike.glossaryText
+          ?? SystemPromptsStore.shared.loadWhisperGlossary())
       let applied = ParakeetVocabularyGuard.apply(
         to: result.text, replacements: candidates, glossaryTerms: terms,
         misheardForms: misheardForms)
@@ -277,7 +288,8 @@ private actor VocabularyBooster {
   }
 
   private func session(for terms: [String]) async throws -> VocabularyBoostingSession {
-    if let cached = session, cached.terms == terms { return cached.session }
+    let key = "\(ParakeetBoosterSpike.aliases)|\(ParakeetBoosterSpike.glossaryText ?? "")"
+    if let cached = session, cached.terms == terms, key == spikeKey { return cached.session }
     let load = ctcLoad ?? Task {
       // Same network rule as the transcriber: the CTC model goes through FluidAudio's ModelHub.
       _ = ParakeetBackend.networkShutByDefault
@@ -291,7 +303,15 @@ private actor VocabularyBooster {
       ctcLoad = nil  // retry on the next dictation rather than caching the failure
       throw error
     }
-    let context = CustomVocabularyContext(terms: terms.map { CustomVocabularyTerm(text: $0) })
+    let forms = ParakeetVocabularyGuard.misheardForms(
+      fromGlossary: ParakeetBoosterSpike.glossaryText
+        ?? SystemPromptsStore.shared.loadWhisperGlossary())
+    let context = CustomVocabularyContext(
+      terms: terms.map { term in
+        let aliases = ParakeetBoosterSpike.aliases
+          ? forms[GlossaryDocument.fold(term)].map { Array($0).sorted() } : nil
+        return CustomVocabularyTerm(text: term, aliases: aliases?.isEmpty == true ? nil : aliases)
+      })
     // FluidAudio's default similarity floor is 0, so its spotter rescue can swap up to four
     // unrelated words for a term ("weitere Einschränkungen liegen nicht vor" became "Diarrhöe nicht
     // vor" with only "Diarrhoe" in the glossary). `itnDefaultConfig` carries the floors FluidAudio
@@ -300,6 +320,7 @@ private actor VocabularyBooster {
     let built = try await VocabularyBoostingSession(
       vocabulary: context, ctcModels: ctcModels, config: VocabularyBoostingSession.itnDefaultConfig)
     session = (terms, built)
+    spikeKey = key
     DebugLogger.log("LOCAL-SPEECH: Parakeet vocabulary built from \(terms.count) glossary term(s)")
     return built
   }
