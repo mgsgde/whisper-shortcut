@@ -160,22 +160,29 @@ enum DictationBenchmarkScoring {
 
 // MARK: - Live pieces
 
-/// Cuts a recording into pieces the way Dictate Live does (`ChunkedDictateRecorder.RotationPolicy.live`):
-/// a piece is at least 1.5 s long and is cut after 0.6 s below −45 dB, which is three evaluations
-/// spaced 0.2 s apart; from 5 s on, two evaluations (0.4 s) below −35 dB cut (the soft rule,
-/// `ChunkedDictateRecorder.silenceCriterion`). Windows are counted from the start of the recording, like the recorder's
-/// `meteringTickCount`, and a piece whose loudest window stays below −45 dB is silent.
+/// Cuts a recording into pieces with the same pause rule Dictate Live uses
+/// (`ChunkedDictateRecorder.RotationPolicy`, default `.live`): a piece is at least `minDuration`
+/// long and is cut after `silenceDuration` below the base threshold, which is three evaluations
+/// spaced 0.2 s apart at the `.live` numbers; from `softCutAfter` on, the soft rule in
+/// `ChunkedDictateRecorder.silenceCriterion` cuts sooner. Windows are counted from the start of
+/// the recording, like the recorder's `meteringTickCount`, and a piece whose loudest window stays
+/// below −45 dB is silent.
 ///
-/// It approximates the recorder's live metering offline (RMS of a 50 ms window vs
-/// AVAudioRecorder's averagePower), so a pause near the 0.6 s / −45 dB edge may cut differently
-/// than the app.
+/// This over-cuts a live session. The splitter scores a raw 50 ms RMS against a fixed −45 dB.
+/// `ChunkedDictateRecorder.sampleMetering` scores `AVAudioRecorder.averagePower` (one 50 ms
+/// metering tick, every fourth tick) against `adaptiveSilenceThreshold`: the noise floor from
+/// `updatedNoiseFloor` falls at once and rises by at most 0.05 dB per 0.2 s sample, and the
+/// threshold is that floor plus 10 dB, clamped to −45…−30 dB. The soft rule then adds its own
+/// boost, capped at −20 dB. On the long-form sessions the floor sat near −60 dB, so the clamp
+/// held the live threshold at −45 dB and the soft line at −35 dB, the same numbers used here.
+/// The raw RMS of the parallel wav is still quieter than that live meter, so the same rule cuts
+/// more often. The cut rule is unchanged: copying the noise-floor clamp would not move the
+/// threshold off −45 dB on this material, and matching `averagePower` is not a small correction.
 enum LivePieceSplitter {
   private static let windowSeconds = 0.05
-  private static let minPieceSeconds = 1.5
   private static let silenceThresholdDB: Float = -45
   private static let evaluationStride = 4
   private static let evaluationInterval = 0.2
-  private static let policy = ChunkedDictateRecorder.RotationPolicy.live
   private static let outputSampleRate = 16_000.0
 
   private struct SplitError: LocalizedError {
@@ -184,12 +191,15 @@ enum LivePieceSplitter {
   }
 
   /// Pieces in order. A recording with no cut returns the original URL as its one piece.
-  static func split(_ url: URL, into dir: URL) throws -> [(url: URL, isSilent: Bool)] {
+  /// `seconds` is the piece length in the source recording.
+  static func split(
+    _ url: URL, into dir: URL, policy: ChunkedDictateRecorder.RotationPolicy = .live
+  ) throws -> [(url: URL, isSilent: Bool, seconds: Double)] {
     let (samples, sampleRate) = try readMono(url)
-    guard !samples.isEmpty, sampleRate > 0 else { return [(url: url, isSilent: true)] }
+    guard !samples.isEmpty, sampleRate > 0 else { return [(url: url, isSilent: true, seconds: 0)] }
 
     let window = max(1, Int((windowSeconds * sampleRate).rounded()))
-    let minSamples = Int((minPieceSeconds * sampleRate).rounded())
+    let minSamples = Int((policy.minDuration * sampleRate).rounded())
     var ranges: [(start: Int, end: Int, peak: Float)] = []
     var pieceStart = 0
     var peak = -Float.infinity
@@ -222,19 +232,43 @@ enum LivePieceSplitter {
     if pieceStart < samples.count {
       ranges.append((start: pieceStart, end: samples.count, peak: peak))
     }
-    if ranges.isEmpty { return [(url: url, isSilent: true)] }
+    if ranges.isEmpty { return [(url: url, isSilent: true, seconds: 0)] }
     if ranges.count == 1, ranges[0].start == 0, ranges[0].end == samples.count {
-      return [(url: url, isSilent: ranges[0].peak < silenceThresholdDB)]
+      return [(
+        url: url, isSilent: ranges[0].peak < silenceThresholdDB,
+        seconds: Double(samples.count) / sampleRate)]
     }
 
-    let base = url.deletingPathExtension().lastPathComponent
-    var pieces: [(url: URL, isSilent: Bool)] = []
-    pieces.reserveCapacity(ranges.count)
-    for (index, range) in ranges.enumerated() {
-      let pieceURL = dir.appendingPathComponent("\(base)-live\(index + 1).wav")
-      try writeWAV(Array(samples[range.start..<range.end]), sampleRate: sampleRate, to: pieceURL)
-      pieces.append((url: pieceURL, isSilent: range.peak < silenceThresholdDB))
+    return try writePieces(
+      samples: samples, sampleRate: sampleRate, source: url, into: dir,
+      spans: ranges.map { (start: $0.start, end: $0.end, isSilent: $0.peak < silenceThresholdDB) })
+  }
+
+  /// Writes the wav sliced at sample ranges. Empty ranges are omitted. `seconds` is the source length.
+  static func split(
+    _ url: URL, into dir: URL, spans: [(start: Int, end: Int, isSilent: Bool)]
+  ) throws -> [(url: URL, isSilent: Bool, seconds: Double)] {
+    let (samples, sampleRate) = try readMono(url)
+    guard !samples.isEmpty, sampleRate > 0 else { return [(url: url, isSilent: true, seconds: 0)] }
+    return try writePieces(samples: samples, sampleRate: sampleRate, source: url, into: dir, spans: spans)
+  }
+
+  private static func writePieces(
+    samples: [Float], sampleRate: Double, source: URL, into dir: URL,
+    spans: [(start: Int, end: Int, isSilent: Bool)]
+  ) throws -> [(url: URL, isSilent: Bool, seconds: Double)] {
+    let base = source.deletingPathExtension().lastPathComponent
+    var pieces: [(url: URL, isSilent: Bool, seconds: Double)] = []
+    pieces.reserveCapacity(spans.count)
+    for span in spans {
+      let lower = min(max(span.start, 0), samples.count)
+      let upper = min(max(span.end, lower), samples.count)
+      guard upper > lower else { continue }
+      let pieceURL = dir.appendingPathComponent("\(base)-live\(pieces.count + 1).wav")
+      try writeWAV(Array(samples[lower..<upper]), sampleRate: sampleRate, to: pieceURL)
+      pieces.append((url: pieceURL, isSilent: span.isSilent, seconds: Double(upper - lower) / sampleRate))
     }
+    if pieces.isEmpty { return [(url: source, isSilent: true, seconds: 0)] }
     return pieces
   }
 
@@ -502,7 +536,7 @@ struct DictationBenchmarkScoringTests {
 
   private func splitFixture(
     _ samples: [Float],
-    _ check: (URL, [(url: URL, isSilent: Bool)]) throws -> Void
+    _ check: (URL, [(url: URL, isSilent: Bool, seconds: Double)]) throws -> Void
   ) throws {
     let dir = URL(fileURLWithPath: NSTemporaryDirectory())
       .appendingPathComponent("live-piece-\(UUID().uuidString)", isDirectory: true)
