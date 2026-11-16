@@ -837,6 +837,16 @@
         }
       }
     },
+    "\"%@\" added to your Glossary (heard as \"%@\")." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%1$@“ wurde ins Glossar übernommen (gehört als „%2$@“)."
+          }
+        }
+      }
+    },
     "\"%@\" added to your Glossary." : {
       "localizations" : {
         "de" : {

@@ -4022,10 +4022,12 @@ class MenuBarController: NSObject {
   #if !APP_STORE
   /// Appends whatever the user has selected to the Glossary.
   ///
-  /// The deliberate non-feature here is intelligence: no model, no fuzzy matching against past
-  /// transcripts, no diff window. The user has already decided what the correct spelling is by
-  /// selecting it, so the app stores it verbatim. That is what makes this the one glossary path
-  /// that still works in Offline Mode, where every model-driven learning route is switched off.
+  /// Still no model and no network, so it works in Offline Mode, where every model-driven learning
+  /// route is switched off. The selection is the correct spelling and is stored verbatim. New: the
+  /// last dictation (`TranscriptionHistoryStore.mostRecent`, at most 10 minutes old) is searched
+  /// for the word most similar to a single-word selection (`GlossaryMisheard`); that word is what
+  /// the engine heard and is stored as `Term (not "heard")`, which the Parakeet vocabulary guard
+  /// accepts below its 0.6 similarity floor ("Lasse" for "Lasègue").
   @objc internal func addSelectionToGlossary() {
     guard AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .glossary) else { return }
     captureClipboardRestorePointIfEnabled()
@@ -4033,7 +4035,15 @@ class MenuBarController: NSObject {
     Task { @MainActor in
       switch await self.copySelection(logPrefix: "GLOSSARY") {
       case .selected(let selection):
-        self.reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(selection, source: .glossaryShortcut))
+        var misheard: String?
+        if let last = TranscriptionHistoryStore.shared.mostRecent {
+          misheard = GlossaryMisheard.misheardForm(
+            correct: SystemPromptsStore.normaliseTerm(selection), dictation: last.text,
+            dictationDate: last.ts, isKnownWord: GlossaryFastLearner.isKnownWord)
+        }
+        self.reportGlossaryAppend(
+          SystemPromptsStore.shared.appendToWhisperGlossary(
+            selection, misheard: misheard, source: .glossaryShortcut))
         // `restorePendingSnapshot()` compares against our own last write. A synthetic ⌘C is
         // another app's write, so that guard can never pass — name the foreign change count.
         if self.clipboardManager.restorePendingSnapshot(
@@ -4057,6 +4067,11 @@ class MenuBarController: NSObject {
     case .added(let term):
       TelemetryService.shared.count(.glossaryAdd, .used)
       PopupNotificationWindow.showInfo("\"\(term)\" added to your Glossary.", title: "Glossary")
+    case .learned(let term, let misheard):
+      TelemetryService.shared.count(.glossaryAdd, .used)
+      PopupNotificationWindow.showInfo(
+        "\"\(term)\" added to your Glossary (heard as \"\(misheard)\").",
+        title: "Glossary")
     case .duplicate(let term):
       PopupNotificationWindow.showInfo("\"\(term)\" is already in your Glossary.", title: "Glossary")
     case .notATerm(let text):

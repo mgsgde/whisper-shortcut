@@ -264,7 +264,7 @@ final class GlossaryFastLearner {
 
   /// True when the system spell checker (all active languages, plus learned/Contacts
   /// vocabulary) accepts the word. Main thread only.
-  private static func isKnownWord(_ word: String) -> Bool {
+  static func isKnownWord(_ word: String) -> Bool {
     let checker = NSSpellChecker.shared
     checker.automaticallyIdentifiesLanguages = true
     return checker.checkSpelling(of: word, startingAt: 0).location == NSNotFound
