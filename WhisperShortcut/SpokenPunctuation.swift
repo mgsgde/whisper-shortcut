@@ -146,15 +146,20 @@ enum SpokenPunctuation {
   private static let punktNumberWords =
     "eins|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf"
 
-  /// Whole words (lowercase) that really end in "Punkt". A spoken "Punkt" glued onto the previous
-  /// word ("Rollatorpunkt") is the command; these are not. A stem ending in a real Fugen-s
+  /// Lowercase words that really end in "Punkt". A spoken "Punkt" glued onto the previous
+  /// word ("Rollatorpunkt") is the command; these are not. A word that ends in one of these
+  /// stays whole too ("Untersuchungszeitpunkt", "Behandlungsschwerpunkt"), so a longer compound
+  /// is covered without being listed. `wholeWordOnlyPunktCompounds` are the exception: they match
+  /// only as the whole word, because a glued "stechend"/"Blutdruck"/"Fleck"/"Juckreiz" + "punkt"
+  /// ends in "endpunkt"/"druckpunkt"/"eckpunkt"/"reizpunkt" (and "hochpunkt"/"lichtpunkt" are the
+  /// same trap) and must still split. A stem ending in a real Fugen-s
   /// (`(?:ung|ion|heit|keit|tät|t|g|ch)s`, case-insensitive: "…ungspunkt", "…tspunkt", "…gspunkt")
   /// is treated as a compound too, in the rule, so it need not be listed. A stem that only ends in
   /// "s" ("Diabetespunkt", "Ergebnispunkt") is the command. "ruhepunkt" is left out on purpose:
   /// in dictation "in Ruhe Punkt" is far likelier than the word.
-  /// Dictate Live's trailing split uses this same list. The second group is every compound that
-  /// split already refuses to cut on a trailing word, so this rule does not turn a kept
-  /// "Schwachpunkt" into "Schwach."
+  /// Dictate Live's trailing split uses this same list (`isRealPunktCompound`). The second group
+  /// is every compound that split already refuses to cut on a trailing word, so this rule does
+  /// not turn a kept "Schwachpunkt" into "Schwach."
   static let realPunktCompounds: Set<String> = [
     "schwerpunkt", "zeitpunkt", "standpunkt", "höhepunkt", "mittelpunkt", "treffpunkt",
     "ausgangspunkt", "gesichtspunkt", "wendepunkt", "knackpunkt", "brennpunkt", "tiefpunkt",
@@ -174,8 +179,33 @@ enum SpokenPunctuation {
     "einstiegspunkt", "verbindungspunkt", "orientierungspunkt", "gesprächspunkt",
     "verhandlungspunkt", "abschlusspunkt", "wiedereinstiegspunkt", "kreuzungspunkt",
   ]
-  private static let realPunktCompoundAlternation =
-    realPunktCompounds.sorted().map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+  /// In `realPunktCompounds`, but a longer word that only ends in one of these is still the
+  /// command. "stechendpunkt", "Blutdruckpunkt", "Fleckpunkt" and "Juckreizpunkt" end in
+  /// "endpunkt", "druckpunkt", "eckpunkt" and "reizpunkt"; "hochpunkt" and "lichtpunkt" are the
+  /// same kind of ending.
+  static let wholeWordOnlyPunktCompounds: Set<String> = [
+    "endpunkt", "druckpunkt", "eckpunkt", "hochpunkt", "lichtpunkt", "reizpunkt",
+  ]
+
+  /// True when `word` must stay unsplit: it equals a `realPunktCompounds` entry, or it ends in
+  /// one that is not `wholeWordOnlyPunktCompounds`.
+  static func isRealPunktCompound(_ word: String) -> Bool {
+    let lower = word.lowercased()
+    if realPunktCompounds.contains(lower) { return true }
+    return realPunktCompounds.contains { compound in
+      lower.count > compound.count && lower.hasSuffix(compound)
+        && !wholeWordOnlyPunktCompounds.contains(compound)
+    }
+  }
+
+  private static let wholeWordOnlyPunktCompoundAlternation =
+    wholeWordOnlyPunktCompounds.sorted().map { NSRegularExpression.escapedPattern(for: $0) }
+      .joined(separator: "|")
+  /// Every compound a longer word may end in. The whole-word-only entries are absent, so
+  /// "Blutdruckpunkt" is not kept just because it ends in "druckpunkt".
+  private static let realPunktCompoundSuffixAlternation =
+    realPunktCompounds.subtracting(wholeWordOnlyPunktCompounds).sorted()
+      .map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
   /// "ein/zu/in/einen Punkt" followed by one of these is still the command. Not part of
   /// `functionWords`: that set also lower-cases a word at a piece seam, which would turn
   /// "Sehr geehrte Frau X, Ihre …" into "ihre".
@@ -227,13 +257,15 @@ enum SpokenPunctuation {
     rule(#"[ \t,]*\b(?:semikolon|strichpunkt)\b[ \t,.;]*"#, "; "),
     // Parakeet glues a spoken "Punkt" onto the word before it ("Rollatorpunkt", "anpunkt",
     // "Wirbelsäulepunkt" at the end of the text). The stem (two letters or more) stays, the
-    // period is the command, and the next word is capitalised. A listed compound
-    // (`realPunktCompounds`) or a real Fugen-s (`(?:ung|ion|heit|keit|tät|t|g|ch)s`,
-    // "…ungspunkt") stays a word. A stem that only ends in "s" ("Diabetespunkt") is the command.
-    // Inflections ("Punkte", "Punkten", "Punktes") do not end in "punkt". "Doppelpunkt" is
-    // already a colon (rules above, and it is listed); "Strichpunkt" was just converted.
+    // period is the command, and the next word is capitalised. A listed compound stays a word,
+    // including when a longer word ends in it (`realPunktCompounds`, see `isRealPunktCompound`);
+    // `wholeWordOnlyPunktCompounds` stay only as the whole word. A real Fugen-s
+    // (`(?:ung|ion|heit|keit|tät|t|g|ch)s`, "…ungspunkt") stays a word too. A stem that only ends
+    // in "s" ("Diabetespunkt") is the command. Inflections ("Punkte", "Punkten", "Punktes") do
+    // not end in "punkt". "Doppelpunkt" is already a colon (rules above, and it is listed);
+    // "Strichpunkt" was just converted.
     rule(
-      #"\b(?!(?:\#(realPunktCompoundAlternation))\b)(\p{L}{2,}(?<!(?:ung|ion|heit|keit|tät|t|g|ch)s))punkt\b[ \t,.;]*"#,
+      #"\b(?!(?:\#(wholeWordOnlyPunktCompoundAlternation))\b)(?!\p{L}*(?:\#(realPunktCompoundSuffixAlternation))\b)(\p{L}{2,}(?<!(?:ung|ion|heit|keit|tät|t|g|ch)s))punkt\b[ \t,.;]*"#,
       "$1. \u{1}"),
     // "drei Pünktchen", "drei Puenktchen", "Auslassungspunkte" → "…", attached to the previous
     // word. Spaces and a stray comma or semicolon before it go; comma, period and semicolon after

@@ -100,8 +100,11 @@ enum LiveDictation {
   /// (`ParakeetPunctuationTiming`, done in the decode for "Only when spoken"). Strip then removes
   /// only semicolons; a "?" or "!" the timing kept stays. Without timings, model "?" and "!" are
   /// still dropped.
-  /// Last, quantity number words become digits (`GermanNumberWords`): after the spoken commands, so
-  /// "drei Pünktchen" is already "…" and "zwei Komma fünf" already "2,5" when it runs.
+  /// Last, the GdB token is normalised (`GdBSpelling`) and quantity number words become digits
+  /// (`GermanNumberWords`). Spelling runs first, in every punctuation mode, so "EinzelgdB" is
+  /// already the token "GdB" (the value rule compares case-insensitively, and a hyphen is not a
+  /// letter, so "Einzel-GdB" still exposes it) when the value rule looks for it. Spoken commands
+  /// have already run, so "drei Pünktchen" is already "…" and "zwei Komma fünf" already "2,5".
   static func finishPiece(_ text: String, mode: PunctuationMode, timedMarks: Bool = false) -> String {
     let withoutFillers = removingFillers(text)
     let unglued = mode == .spokenOnly ? splittingGluedTrailingPunkt(withoutFillers) : withoutFillers
@@ -111,17 +114,21 @@ enum LiveDictation {
       : unglued
     let punctuated = SpokenPunctuation.apply(
       to: source, mode: mode, keepsEdgeBreaks: true, timedMarks: timedMarks)
-    return GermanNumberWords.digitizingQuantities(in: punctuated)
+    let spelled = GdBSpelling.normalize(punctuated)
+    return GermanNumberWords.digitizingQuantities(in: spelled)
   }
 
   /// Parakeet glues a spoken "Punkt" before a pause onto the last word of the piece
   /// («Die Haut ist trockenpunkt»), so the spoken-punctuation rules never see the command. This
   /// splits it back to «trocken Punkt». Only the piece's last word is looked at (in ~20 live
   /// samples the glue was always on the last word, never mid-piece). Real "-punkt" compounds
-  /// ("Triggerpunkt", "Zeitpunkt") stay via `SpokenPunctuation.realPunktCompounds` (last word equal
-  /// to an entry; an explicit allow-list is used because Apple's spell checker calls "Kniepunkt"
-  /// correct and "Triggerpunkt" wrong). Not a suffix match: a glued "stechend"/"Blutdruck"/"Fleck"
-  /// + "punkt" would end in a listed word ("endpunkt", "druckpunkt", "eckpunkt") and stay unsplit.
+  /// ("Triggerpunkt", "Zeitpunkt", also "Untersuchungszeitpunkt") stay via
+  /// `SpokenPunctuation.isRealPunktCompound`: a last word that ends in `realPunktCompounds` stays.
+  /// An explicit allow-list is used because Apple's spell checker calls "Kniepunkt" correct and
+  /// "Triggerpunkt" wrong. Not a suffix match for `wholeWordOnlyPunktCompounds`: a glued
+  /// "stechend"/"Blutdruck"/"Fleck"/"Juckreiz" + "punkt" would end in a listed word ("endpunkt",
+  /// "druckpunkt", "eckpunkt", "reizpunkt"; "hochpunkt" and "lichtpunkt" are the same trap) and
+  /// stay unsplit.
   /// Kill switch: UserDefaults bool `liveDisableGluedPunktSplit` (default false = step active).
   static func splittingGluedTrailingPunkt(_ text: String) -> String {
     if UserDefaults.standard.bool(forKey: "liveDisableGluedPunktSplit") { return text }
@@ -133,7 +140,7 @@ enum LiveDictation {
     let word = String(text[wordRange])
     let lower = word.lowercased()
     if lower == "punkt" || lower == "doppelpunkt" || lower == "strichpunkt" { return text }
-    if SpokenPunctuation.realPunktCompounds.contains(lower) { return text }
+    if SpokenPunctuation.isRealPunktCompound(lower) { return text }
     let stem = String(text[stemRange])
     DebugLogger.log("LIVE-PUNKT: split glued «\(word)»")
     return text.replacingCharacters(in: wordRange, with: stem + " Punkt")

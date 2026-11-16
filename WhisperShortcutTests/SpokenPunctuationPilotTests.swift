@@ -476,6 +476,19 @@ struct SpokenPunctuationPilotTests {
     }
   }
 
+  @Test func longerPunktCompoundsStayAGluedBlutdruckSplits() {
+    for text in [
+      "Untersuchungszeitpunkt",
+      "Behandlungsschwerpunkt",
+      "zum Operationszeitpunkt",
+    ] {
+      Self.check([text], text, label: text)
+    }
+    Self.check(
+      ["Blutdruckpunkt Die Patientin"],
+      "Blutdruck. Die Patientin", label: "Blutdruckpunkt")
+  }
+
   @Test func realPunktCompoundsInflectionsAndDoppelpunktStay() {
     for text in [
       "Der Zeitpunkt der Operation",
