@@ -1,23 +1,20 @@
-## Diktat
-- **Gesprochener Schrägstrich zwischen Zahlen:** In Dictate Live mit der Satzzeichen-Einstellung „Nur gesprochen“ wird „sechs Schrägstrich fünfundzwanzig“ jetzt zu „6/25“ statt „6-25“, etwa für Datum, Aktenzeichen oder „LWK 4/5“.
-- Behoben: Wer Fn und eine weitere Taste sehr schnell hintereinander drückte, konnte das Diktat bis zum Neustart der App blockieren.
+## Dictate Live
+- **Text kommt schneller:** Der Live-Text erscheint jetzt alle 5 bis 12 Sekunden statt in langen Blöcken von bis zu 50 Sekunden.
+- Ein gesprochenes „Punkt“, das am Wort davor klebte („Rollatorpunkt“), wird jetzt zum Satzpunkt. Echte Zusammensetzungen wie „Zeitpunkt“ bleiben erhalten.
+- „Neue Absatz“ beginnt jetzt einen neuen Absatz, wie „neuer Absatz“.
+- GdB wird einheitlich geschrieben: „Einzel-GdB 30“, „Gesamt-GdB“, „GdB 10“.
+- „ich“ nach einem Komma am Anfang eines neuen Abschnitts wird nicht mehr großgeschrieben.
 
-## Chat
-- **Verbessern:** Klicken Sie im leeren Chat auf „Verbessern“ oder tippen Sie `/improve`. Der Chat prüft Ihre Einstellungen, Berechtigungen, Modelle und (bei eingeschaltetem „Nutzungsdaten speichern“) Ihre letzten Diktate und schlägt jeweils eine Änderung vor, die Sie bestätigen. Für die Prüfung läuft er auf einem starken Modell; ein Chip „Verbessern: <Modell> ✕“ neben der Modellauswahl wechselt oder beendet sie.
-- Ein Prompt ohne markierten Text sagt das jetzt, statt Inhalte zu erfinden.
+## Dictate Prompt
+- Die Schnellaktionen auf der ⌘2-Karte (⌃1 bis ⌃3) bleiben an ihrem Platz, statt nach jedem Durchlauf die Reihenfolge zu wechseln.
 
-## Vorlesen
-- Return und Enter pausieren und setzen fort, wie die Leertaste. Die Pfeiltasten springen 5 Sekunden, die Knöpfe ⏪/⏩ weiterhin 10.
-- Nach einer Pause bleibt die Tastatursteuerung erhalten, ein zweites Return setzt fort.
-
-## Schreibstil
-- Vorschläge für Ihr Schreibstil-Profil öffnen kein Fenster mehr. Ein Punkt am Menüleisten-Symbol und „Schreibstil-Vorschlag prüfen…“ im Menü zeigen sie an, höchstens alle 14 Tage. Jede Änderung nennt die Zitate aus Ihren eigenen Nachrichten, auf die sie sich stützt.
+## Feedback
+- Feedback senden ▸ **Problem mit letztem Ergebnis melden…** deckt jetzt auch die letzte Antwort von Dictate Prompt und das letzte Vorlesen ab, nicht nur das letzte Diktat. **Etwas anderes melden** wechselt zwischen ihnen.
 
 ## Sonstiges
-- Das Aufnahme-Panel erscheint jetzt auch über Apps im Vollbild.
-- Abgelöste Modelle: gpt-4o-transcribe wird nicht mehr angeboten (GPT Transcribe übernimmt). Die OpenAI-Vorlesestimme gpt-4o-mini-tts, die OpenAI im Januar 2027 abschaltet, wird durch Gemini 3.8 Flash-Lite TTS ersetzt, wenn ein Gemini-Schlüssel hinterlegt ist, sonst durch die macOS-Stimme.
+- Der MCP-Server weicht auf einen freien Port aus, wenn 47823 schon belegt ist, etwa durch WhisperShortcut in einem zweiten macOS-Benutzer.
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.92...v8.93
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.93...v8.94
