@@ -270,6 +270,37 @@ final class GlossaryFastLearner {
     return checker.checkSpelling(of: word, startingAt: 0).location == NSNotFound
   }
 
+  /// True only when the word is correct in German OR English, the languages dictated here. The
+  /// auto-detecting `isKnownWord` accepts "Laseg" and "Lasek" as words of some foreign language
+  /// (Lasek is Polish), which made every non-word rule a no-op. Language and auto flag are set
+  /// per call and restored afterwards. Main thread only.
+  /// True when NSSpellChecker has both the German and the English dictionary. Without them
+  /// `isKnownWordInDictationLanguages` calls every word unknown, so the non-word rewrite rules
+  /// must stay off. Main thread only.
+  static func dictationDictionariesAvailable() -> Bool {
+    let languages = Set(NSSpellChecker.shared.availableLanguages.map { $0.lowercased() })
+    func has(_ code: String) -> Bool {
+      languages.contains { $0 == code || $0.hasPrefix(code + "_") || $0.hasPrefix(code + "-") }
+    }
+    return has("de") && has("en")
+  }
+
+  static func isKnownWordInDictationLanguages(_ word: String) -> Bool {
+    let checker = NSSpellChecker.shared
+    let previousAuto = checker.automaticallyIdentifiesLanguages
+    let previousLanguage = checker.language()
+    defer {
+      checker.setLanguage(previousLanguage)
+      checker.automaticallyIdentifiesLanguages = previousAuto
+    }
+    checker.automaticallyIdentifiesLanguages = false
+    for language in ["de", "en"] {
+      guard checker.setLanguage(language) else { continue }
+      if checker.checkSpelling(of: word, startingAt: 0).location == NSNotFound { return true }
+    }
+    return false
+  }
+
   private func tokenize(_ text: String) -> [String] {
     text.split(whereSeparator: { !$0.isLetter }).map(String.init)
   }

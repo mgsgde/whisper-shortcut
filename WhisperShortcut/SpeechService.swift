@@ -407,9 +407,17 @@ class SpeechService {
   /// - A one-word rejected form is rewritten only when the correct form is itself one capitalised
   ///   word and a personal title stands immediately before the mishearing (`Frau Dr. Läufer` →
   ///   `Läuffer`). Bare nouns stay ("Der Läufer", "die Daten").
+  /// - A one-word rejected form that the spell checker does NOT know is not a legitimate word
+  ///   anywhere (judged against German and English only, `isKnownWordInDictationLanguages`: the
+  ///   auto-detecting checker accepts "Laseg" as some foreign word), so it is rewritten wherever it stands (`Lasègue (not "Laseg")`: "the Laseg sign").
+  ///   Offline engines rarely repeat the exact misheard form: the same audio that gave "Laseg"
+  ///   gives "Lasse" next time. So a transcript word of >= 5 letters that is also unknown, shares
+  ///   the first letter and is >= 0.75 similar to a listed form of exactly one term is rewritten
+  ///   too (`replacingNonWordMisheard`). Known words never take part in either rule. Without the
+  ///   German and English dictionaries both rules are off (`dictationDictionariesAvailable`).
   ///
   /// Every rule fails toward changing nothing, i.e. toward the behaviour before this existed.
-  private func correctingRejectedSpellings(in text: String) -> String {
+  private func correctingRejectedSpellings(in text: String) async -> String {
     guard !text.isEmpty else { return text }
     let corrections = parsedGlossary().corrections
     guard !corrections.isEmpty else { return text }
@@ -429,10 +437,91 @@ class SpeechService {
           rejected, with: correction.correct, in: result)
       }
     }
-    if result != text {
-      DebugLogger.log("GLOSSARY-CORRECT: rewrote rejected spelling(s) in transcript")
+    let pairs = corrections.map { (correct: $0.correct, rejected: $0.rejected) }
+    let terms = parsedGlossary().terms
+    // NSSpellChecker is main-thread only. This function is async, so the whole (pure, fast)
+    // rewrite hops to the main actor in one `await`: the caller suspends instead of blocking, and
+    // the main thread never waits on anything here, so it cannot deadlock.
+    let nonWord = await MainActor.run { () -> (text: String, exact: Int, near: Int)? in
+      guard GlossaryFastLearner.dictationDictionariesAvailable() else { return nil }
+      return Self.replacingNonWordMisheard(
+        in: result, corrections: pairs, extraTerms: terms,
+        isKnownWord: GlossaryFastLearner.isKnownWordInDictationLanguages)
+    }
+    guard let nonWord else {
+      DebugLogger.log("GLOSSARY-CORRECT: non-word rules off (German/English dictionary missing)")
+      return result
+    }
+    let before = result
+    result = nonWord.text
+    if result != before {
+      DebugLogger.log(
+        "GLOSSARY-CORRECT: rewrote misheard form(s) (non-word exact=\(nonWord.exact), near=\(nonWord.near))")
     }
     return result
+  }
+
+  /// Word-bounded rewrite of non-word misheard forms (rules described on
+  /// `correctingRejectedSpellings`). Pure and injectable so tests need no spell checker.
+  /// Exact rule: a word whose folded form equals a listed one-word rejected form of exactly one
+  /// single-word term, and which is not a known word. Near rule: otherwise, a non-known word with
+  /// the same folded first letter, at least 5 letters and `ParakeetVocabularyGuard.similarity`
+  /// >= 0.75 to a listed one-word form of exactly one term. Glossary terms themselves and exact rejected forms of
+  /// several terms are never touched.
+  static func replacingNonWordMisheard(
+    in text: String, corrections: [(correct: String, rejected: [String])],
+    extraTerms: [String] = [], isKnownWord: (String) -> Bool
+  ) -> (text: String, exact: Int, near: Int) {
+    let eligible = corrections.filter { !$0.correct.contains(" ") && !$0.correct.isEmpty }
+    guard !eligible.isEmpty,
+      let regex = try? NSRegularExpression(pattern: #"(?<![\p{L}\p{N}])\p{L}[\p{L}\p{N}]*"#)
+    else { return (text, 0, 0) }
+
+    typealias Form = (term: String, folded: String)
+    var forms: [Form] = []
+    for c in eligible {
+      for r in c.rejected where !r.contains(" ") && !r.isEmpty {
+        forms.append((c.correct, GlossaryDocument.fold(r)))
+      }
+    }
+    guard !forms.isEmpty else { return (text, 0, 0) }
+    var protectedWords = Set((corrections.map(\.correct) + extraTerms).map(GlossaryDocument.fold))
+    protectedWords.remove("")
+    let allRejected = Set(
+      corrections.flatMap { $0.rejected }.map(GlossaryDocument.fold))
+
+    let source = text as NSString
+    var result = text
+    var exact = 0
+    var near = 0
+    for match in regex.matches(in: text, range: NSRange(location: 0, length: source.length))
+      .reversed()
+    {
+      let word = source.substring(with: match.range)
+      let folded = GlossaryDocument.fold(word)
+      guard !protectedWords.contains(folded), let first = folded.first else { continue }
+
+      let exactTerms = Set(forms.filter { $0.folded == folded }.map(\.term))
+      var replacement: String?
+      if !exactTerms.isEmpty {
+        guard exactTerms.count == 1, !isKnownWord(word) else { continue }
+        replacement = exactTerms.first
+        exact += 1
+      } else {
+        if allRejected.contains(folded) { continue }
+        let nearTerms = Set(
+          forms.filter {
+            $0.folded.first == first && ParakeetVocabularyGuard.similarity(word, $0.folded) >= 0.75
+          }.map(\.term))
+        guard folded.count >= 5, nearTerms.count == 1, !isKnownWord(word) else { continue }
+        replacement = nearTerms.first
+        near += 1
+      }
+      if let replacement {
+        result = (result as NSString).replacingCharacters(in: match.range, with: replacement)
+      }
+    }
+    return (result, exact, near)
   }
 
   /// Internal rather than private so `RejectedSpellingCorrectionTests` can pin the two guards
@@ -575,7 +664,7 @@ class SpeechService {
         self.noteEchoStrip(original: transcript, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
       }
-      return self.correctingRejectedSpellings(in: stripped)
+      return await self.correctingRejectedSpellings(in: stripped)
     }
 
     if cancellable {
@@ -2339,7 +2428,7 @@ class SpeechService {
         noteEchoStrip(original: spoken, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
       }
-      let transcript = correctingRejectedSpellings(in: stripped)
+      let transcript = await correctingRejectedSpellings(in: stripped)
       instruction = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
