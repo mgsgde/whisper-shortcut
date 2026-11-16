@@ -46,6 +46,23 @@ enum ShortcutValidation {
     return nil
   }
 
+  /// The template shortcut (the generic one, or one template's own) already on `key`/`modifiers`;
+  /// nil = free. Named the way `get_configuration` names them.
+  static func templateOwner(
+    key: Key, modifiers: NSEvent.ModifierFlags, templates: [DictationTemplate],
+    picker: ShortcutDefinition?
+  ) -> String? {
+    if let picker, picker.isEnabled, picker.key == key, picker.modifiers == modifiers {
+      return "the Template shortcut"
+    }
+    for template in templates {
+      guard let shortcut = template.shortcut, shortcut.isEnabled, shortcut.key == key,
+        shortcut.modifiers == modifiers else { continue }
+      return "the template \"\(template.displayName)\""
+    }
+    return nil
+  }
+
   /// The slot name already using `key`/`modifiers` in `config`, other than `excluding`; nil = free.
   static func conflictingSlot(
     key: Key, modifiers: NSEvent.ModifierFlags, in config: ShortcutConfig, excluding: String
@@ -185,6 +202,10 @@ enum MCPSettingsCatalog {
     }
     var loadShortcutConfig: () -> ShortcutConfig = { ShortcutConfigManager.shared.loadConfiguration() }
     var saveShortcutConfig: (ShortcutConfig) -> Void = { ShortcutConfigManager.shared.saveConfiguration($0) }
+    /// Template shortcuts and the generic Template shortcut share the key space with the app
+    /// shortcuts, so a key one of them holds is not free for `shortcuts.*` either.
+    var loadTemplates: () -> [DictationTemplate] = { DictationTemplateStore.load() }
+    var loadTemplatePicker: () -> ShortcutDefinition? = { DictationTemplateStore.loadPickerShortcut() }
     var postNotification: (Notification.Name, Any?) -> Void = { name, object in
       NotificationCenter.default.post(name: name, object: object)
     }
@@ -1027,6 +1048,12 @@ enum MCPSettingsCatalog {
             key: def.key, modifiers: def.modifiers, in: deps.loadShortcutConfig(), excluding: slot)
           {
             return "That shortcut is already used by \(conflict)."
+          }
+          if let owner = ShortcutValidation.templateOwner(
+            key: def.key, modifiers: def.modifiers, templates: deps.loadTemplates(),
+            picker: deps.loadTemplatePicker())
+          {
+            return "That shortcut is already used by \(owner)."
           }
           return nil
         },

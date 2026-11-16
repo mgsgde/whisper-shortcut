@@ -47,13 +47,7 @@ struct MCPConfigEnvironment {
         return out
       },
       shortcuts: {
-        ShortcutConfigManager.shared.loadConfiguration().assistantFacingRows.map { row in
-          [
-            "action": row.action,
-            "shortcut": row.definition.displayStringWithSeparator,
-            "enabled": row.definition.isEnabled,
-          ]
-        }
+        MCPConfigTools.appShortcutRows(config: ShortcutConfigManager.shared.loadConfiguration())
       },
       writingStyleEnabled: { defaults.bool(forKey: UserDefaultsKeys.writingStyleEnabled) },
       appVersion: AppConstants.appVersion,
@@ -69,6 +63,53 @@ struct MCPConfigTools {
   static let maxRationaleCharacters = 300
   static let maxFieldCharacters = 1_500
   static let maxGlossaryTermsPerCall = 50
+  /// Templates are meant for long formats, so far above the ~2,000 characters of a prompt
+  /// addition. The Templates tab has no limit of its own; this one only bounds what an AI app sends.
+  static let maxTemplateInstructionsCharacters = 8_000
+  static let maxTemplateNameCharacters = 60
+
+  private static func shortcutRow(_ action: String, _ definition: ShortcutDefinition) -> [String: Any] {
+    ["action": action, "shortcut": definition.displayStringWithSeparator, "enabled": definition.isEnabled]
+  }
+
+  /// Every global shortcut the app binds in this build: the assistant-facing list plus Add to
+  /// Glossary and Dictate Live, which that list leaves out (the App Store build ships neither).
+  static func appShortcutRows(
+    config: ShortcutConfig, isAppStore: Bool = ShortcutConfigManager.isAppStoreBuild
+  ) -> [[String: Any]] {
+    var rows = config.assistantFacingRows.map { shortcutRow($0.action, $0.definition) }
+    if !isAppStore {
+      rows.append(shortcutRow("Add to Glossary", config.addToGlossary))
+      rows.append(shortcutRow("Dictate Live", config.liveDictate))
+    }
+    return rows
+  }
+
+  /// The shortcut that starts the last-used template, and one row per template that has a key of
+  /// its own. A template without a key has no row here (see `templates` in get_configuration).
+  static func templateShortcutRows(
+    templates: [DictationTemplate], picker: ShortcutDefinition?
+  ) -> [[String: Any]] {
+    var rows: [[String: Any]] = []
+    if let picker { rows.append(shortcutRow("Template (starts the last-used template)", picker)) }
+    for template in templates {
+      guard let shortcut = template.shortcut else { continue }
+      var row = shortcutRow("Template: \(template.displayName)", shortcut)
+      row["template_id"] = template.id.uuidString
+      rows.append(row)
+    }
+    return rows
+  }
+
+  static func templateRow(_ template: DictationTemplate, includeText: Bool) -> [String: Any] {
+    var row: [String: Any] = [
+      "id": template.id.uuidString, "name": template.displayName,
+      "text_length": template.instructions.count,
+      "shortcut": template.shortcut.map { $0.isEnabled ? $0.displayStringWithSeparator : "Disabled" } ?? "Not set",
+    ]
+    if includeText { row["text"] = template.instructions }
+    return row
+  }
 
   /// Model-facing section names, in display order.
   static let sections: [(name: String, section: SystemPromptSection)] = [
@@ -96,7 +137,8 @@ struct MCPConfigTools {
   ]
   static let writeToolNames: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "report_problem", "update_settings",
+    "delete_command", "create_template", "update_template", "delete_template", "report_problem",
+    "update_settings",
   ]
 
   func handles(_ name: String) -> Bool {
@@ -115,12 +157,12 @@ struct MCPConfigTools {
     [
       "name": "get_configuration",
       "description":
-        "Overview of how WhisperShortcut is configured: version, models, shortcuts, which system prompt sections are customized, writing style, commands, quick prompts with how often each was used in 30 days, the access level AI apps have, and the recipe for tuning WhisperShortcut to the user. Call this first when the user wants WhisperShortcut improved.",
+        "Overview of how WhisperShortcut is configured: version, models, every global shortcut (including Dictate Live and each template's own key, so check it before proposing a free key), templates (id, name, length, key), which system prompt sections are customized, writing style, commands, quick prompts with how often each was used in 30 days, the access level AI apps have, and the recipe for tuning WhisperShortcut to the user. Call this first when the user wants WhisperShortcut improved.",
       "inputSchema": [
         "type": "object",
         "properties": [
           "include": [
-            "type": "array", "items": ["type": "string", "enum": ["system_prompts", "writing_style", "commands"]],
+            "type": "array", "items": ["type": "string", "enum": ["system_prompts", "writing_style", "commands", "templates"]],
             "description": "Also return these full texts inline (for clients without MCP resources).",
           ]
         ],
@@ -181,7 +223,7 @@ struct MCPConfigTools {
     "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\" in WhisperShortcut Settings, in which case it creates a proposal the user reviews there."
     + " " + InteractionLogTool.tuningRules
   private static let updateSystemPromptDescription: String =
-    "Replaces one system prompt section with the full new text (at most about 2,000 characters beyond the built-in default). For dictation and dictate_prompt the section holds only additional instructions (context, vocabulary, style) on top of a fixed built-in prompt that cannot be changed; never restate the task or write a whole prompt there, and empty content clears those two. dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible: keep every existing rule and glossary line, add or edit the one that fixes what the logs show."
+    "Replaces one system prompt section with the full new text (at most about 2,000 characters beyond the built-in default). For dictation and dictate_prompt the section holds only additional instructions (context, vocabulary, style) on top of a fixed built-in prompt that cannot be changed; never restate the task or write a whole prompt there, and empty content clears those two. A fixed output format for one job (a note layout) is a template, not a dictate_prompt addition: templates have their own shortcut and do not run via Dictate Prompt; use create_template for those. dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible: keep every existing rule and glossary line, add or edit the one that fixes what the logs show."
     + " " + InteractionLogTool.tuningRules
 
   static let writeToolDefinitions: [[String: Any]] = [
@@ -222,6 +264,27 @@ struct MCPConfigTools {
     write(
       "delete_command", "Delete Command", "Moves a chat command to the Trash.",
       ["name": ["type": "string"]], required: ["name"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+    write(
+      "create_template", "Create Template",
+      "Creates a dictation template: a fixed output format (a note layout, a report) with its own global shortcut that the user sets in Settings → Templates. A template does not run through Dictate Prompt; the user presses the template's own shortcut (or the generic Template shortcut), speaks, and the result comes back in this format. Put the whole format description in text (at most \(maxTemplateInstructionsCharacters) characters). Does not set a shortcut. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\", in which case it creates a proposal.",
+      [
+        "name": ["type": "string", "description": "Short name, max \(maxTemplateNameCharacters) characters."],
+        "text": ["type": "string", "description": "The format instructions, max \(maxTemplateInstructionsCharacters) characters."],
+      ], required: ["name", "text"],
+      annotations: ["readOnlyHint": false, "destructiveHint": false, "openWorldHint": false]),
+    write(
+      "update_template", "Update Template",
+      "Changes the name and/or the full text of an existing template (id from get_configuration). Read it first with get_configuration include [\"templates\"]; text replaces the whole format. The template's shortcut is not changed.",
+      [
+        "id": ["type": "string", "description": "Template id from get_configuration."],
+        "name": ["type": "string", "description": "New name, max \(maxTemplateNameCharacters) characters. Optional."],
+        "text": ["type": "string", "description": "The complete new format instructions, max \(maxTemplateInstructionsCharacters) characters. Optional."],
+      ], required: ["id"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+    write(
+      "delete_template", "Delete Template", "Deletes a dictation template (id from get_configuration), including its own shortcut. Can be undone from the change history in WhisperShortcut.",
+      ["id": ["type": "string", "description": "Template id from get_configuration."]], required: ["id"],
       annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     [
       "name": "report_problem",
@@ -287,6 +350,9 @@ struct MCPConfigTools {
     case "update_writing_style_profile": return updateWritingStyle(arguments)
     case "save_command": return saveCommand(arguments)
     case "delete_command": return deleteCommand(arguments)
+    case "create_template": return saveTemplate(arguments, creating: true)
+    case "update_template": return saveTemplate(arguments, creating: false)
+    case "delete_template": return deleteTemplate(arguments)
     case "report_problem": return reportProblem(arguments)
     case "get_proposal_status": return getProposalStatus(arguments)
     case "get_settings": return getSettings(arguments)
@@ -375,11 +441,14 @@ struct MCPConfigTools {
     for key in Self.settingsKeys.keys { if let v = settings[key] { models[key] = v } }
     let profile = env.targets.writingStyle.loadProfile()
     let commands = loadCommands()
+    let templates = env.targets.loadTemplates()
     var out: [String: Any] = [
       "app_version": env.appVersion,
       "models": models,
       "settings": "call get_settings",
-      "shortcuts": env.shortcuts(),
+      "shortcuts": env.shortcuts()
+        + Self.templateShortcutRows(templates: templates, picker: env.targets.loadTemplatePicker()),
+      "templates": templates.map { Self.templateRow($0, includeText: false) },
       "system_prompts": sectionInfo(),
       "writing_style": ["enabled": env.writingStyleEnabled(), "profile_length": profile.count],
       "commands": commands.map { ["name": $0.name, "scope": $0.scope.rawValue] },
@@ -402,6 +471,9 @@ struct MCPConfigTools {
       out["system_prompt_texts"] = texts
     }
     if include.contains("writing_style") { out["writing_style_profile"] = profile }
+    if include.contains("templates") {
+      out["template_texts"] = templates.map { Self.templateRow($0, includeText: true) }
+    }
     if include.contains("commands") {
       out["command_texts"] = commands.map { ["name": $0.name, "scope": $0.scope.rawValue, "text": $0.body] }
     }
@@ -708,6 +780,111 @@ struct MCPConfigTools {
       }
       return appliedResult(
         env.applier.applyDeleteCommand(name: name, rationale: r.value!, viaProposal: false),
+        tool: tool, len: 0)
+    }
+  }
+
+  // MARK: - templates
+
+  private func templateID(_ args: [String: Any], tool: String) -> (id: UUID?, error: MCPToolResult?) {
+    guard let raw = (args["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+      let id = UUID(uuidString: raw)
+    else { return (nil, reject(tool, "invalid id", "id must be a template id from get_configuration.")) }
+    return (id, nil)
+  }
+
+  private func saveTemplate(_ args: [String: Any], creating: Bool) -> MCPToolResult {
+    let tool = creating ? "create_template" : "update_template"
+    let r = rationale(args, tool: tool)
+    if let e = r.error { return e }
+    var existingID: UUID?
+    if !creating {
+      let parsed = templateID(args, tool: tool)
+      if let e = parsed.error { return e }
+      existingID = parsed.id
+    }
+    let rawName = (args["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let rawText = args["text"] as? String
+    if creating {
+      guard let rawName, !rawName.isEmpty else { return reject(tool, "empty name", "name must be the template's name.") }
+      guard let rawText, !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return reject(tool, "empty text", "text must be the template's format instructions.")
+      }
+    } else if rawName == nil && rawText == nil {
+      return reject(tool, "nothing to change", "Send name, text or both.")
+    }
+    if let rawName {
+      guard !rawName.isEmpty else { return reject(tool, "empty name", "name must not be empty.") }
+      guard rawName.count <= Self.maxTemplateNameCharacters else {
+        return reject(tool, "name too long", "name is \(rawName.count) characters; the limit is \(Self.maxTemplateNameCharacters).")
+      }
+    }
+    if let rawText {
+      guard !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return reject(tool, "empty text", "text must not be empty. Use delete_template to remove a template.")
+      }
+      guard rawText.count <= Self.maxTemplateInstructionsCharacters else {
+        return reject(tool, "too long", "text is \(rawText.count) characters; the limit is \(Self.maxTemplateInstructionsCharacters). Shorten it.")
+      }
+    }
+    return MCPMain.run {
+      let existing = existingID.flatMap { id in env.targets.loadTemplates().first { $0.id == id } }
+      if !creating && existing == nil {
+        return reject(tool, "not found", "No template with that id. Call get_configuration for the ids.")
+      }
+      let id = existing?.id ?? UUID()
+      let name = rawName ?? existing?.name ?? ""
+      let text = rawText ?? existing?.instructions ?? ""
+      if let existing, existing.name == name,
+        MCPConfigTargets.normalized(existing.instructions) == MCPConfigTargets.normalized(text) {
+        log(tool, "applied", "no-op", len: text.count)
+        return (json(["status": "no_change", "message": "The template already has this name and text."]), false)
+      }
+      if env.accessLevel() == .propose {
+        do {
+          let p = try env.proposals.create(
+            kind: .saveTemplate, previousContent: existing?.instructions, proposedContent: text,
+            rationale: r.value!, templateID: id.uuidString, templateName: name)
+          log(tool, "proposed", len: text.count)
+          return pendingResult(p.id)
+        } catch {
+          return reject(tool, "too many pending", error.localizedDescription)
+        }
+      }
+      switch env.applier.applySaveTemplate(id: id, name: name, text: text, rationale: r.value!, viaProposal: false) {
+      case .success(let changeID):
+        log(tool, "applied", len: text.count)
+        return (json(["status": "applied", "change_id": changeID, "id": id.uuidString]), false)
+      case .failure(let error):
+        return reject(tool, "write failed", error.localizedDescription)
+      }
+    }
+  }
+
+  private func deleteTemplate(_ args: [String: Any]) -> MCPToolResult {
+    let tool = "delete_template"
+    let r = rationale(args, tool: tool)
+    if let e = r.error { return e }
+    let parsed = templateID(args, tool: tool)
+    if let e = parsed.error { return e }
+    let id = parsed.id!
+    return MCPMain.run {
+      guard let existing = env.targets.loadTemplates().first(where: { $0.id == id }) else {
+        return reject(tool, "not found", "No template with that id. Call get_configuration for the ids.")
+      }
+      if env.accessLevel() == .propose {
+        do {
+          let p = try env.proposals.create(
+            kind: .deleteTemplate, previousContent: existing.instructions, proposedContent: nil,
+            rationale: r.value!, templateID: id.uuidString, templateName: existing.displayName)
+          log(tool, "proposed")
+          return pendingResult(p.id)
+        } catch {
+          return reject(tool, "too many pending", error.localizedDescription)
+        }
+      }
+      return appliedResult(
+        env.applier.applyDeleteTemplate(id: id, rationale: r.value!, viaProposal: false),
         tool: tool, len: 0)
     }
   }
