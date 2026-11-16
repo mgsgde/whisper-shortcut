@@ -95,11 +95,13 @@ enum MCPClientInstaller {
 
   // MARK: - Stale token repair (pure)
 
-  /// New config bytes when `existing` holds our entry for `url` with a token that is neither
-  /// `readToken` nor `writeToken`; nil when nothing should change (no entry, foreign url, current
-  /// token, unparseable file).
+  /// New config bytes when `existing` holds our entry (`ownURL`) and the token is stale or the
+  /// found url differs from `url`. Nil when nothing should change: no entry, a url `ownURL`
+  /// rejects, the found url already equal to `url` with a current token, or an unparseable file.
+  /// The written entry always uses `url`.
   static func repairedConfig(
     client: MCPClient, existing: Data, serverName: String, url: String,
+    ownURL: (String) -> Bool,
     readToken: String, writeToken: String, tokenKind: MCPTokenKind, executablePath: String
   ) -> Data? {
     let wanted = tokenKind == .read ? readToken : writeToken
@@ -111,14 +113,14 @@ enum MCPClientInstaller {
         let entry = servers[serverName] as? [String: Any]
       else { return nil }
       if client == .claudeCode {
-        guard entry["url"] as? String == url else { return nil }
+        guard let foundURL = entry["url"] as? String, ownURL(foundURL) else { return nil }
         let header = (entry["headers"] as? [String: Any])?["Authorization"] as? String
-        if let header, valid.contains(header) { return nil }
+        if foundURL == url, let header, valid.contains(header) { return nil }
         return try? mergeClaudeCode(existing: existing, serverName: serverName, url: url, token: wanted)
       }
       let env = entry["env"] as? [String: Any]
-      guard env?[MCPStdioBridge.urlEnv] as? String == url else { return nil }
-      if let auth = env?[MCPStdioBridge.authEnv] as? String, valid.contains(auth) { return nil }
+      guard let foundURL = env?[MCPStdioBridge.urlEnv] as? String, ownURL(foundURL) else { return nil }
+      if foundURL == url, let auth = env?[MCPStdioBridge.authEnv] as? String, valid.contains(auth) { return nil }
       var command = executablePath
       if let existingCommand = entry["command"] as? String, FileManager.default.fileExists(atPath: existingCommand) {
         command = existingCommand
@@ -136,10 +138,26 @@ enum MCPClientInstaller {
           tableURL = String(t[t.index(after: q1)..<q2])
         }
       }
-      guard tableURL == url else { return nil }
-      if valid.contains(where: { table.contains($0) }) { return nil }
+      guard let tableURL, ownURL(tableURL) else { return nil }
+      if tableURL == url, valid.contains(where: { table.contains($0) }) { return nil }
       return Data(mergeCodex(existing: text, serverName: serverName, url: url, token: wanted).utf8)
     }
+  }
+
+  /// True when `s` is exactly `http://127.0.0.1:<p>/mcp` or `http://localhost:<p>/mcp` and `p` lies
+  /// in `MCPServer.defaultPort` ... `defaultPort + fallbackPortCount`. An override outside that
+  /// window is matched by equality with the current url instead.
+  static func isOwnLoopbackMCPURL(_ s: String) -> Bool {
+    let suffix = "/mcp"
+    let prefixes = ["http://127.0.0.1:", "http://localhost:"]
+    guard s.hasSuffix(suffix), let prefix = prefixes.first(where: { s.hasPrefix($0) }) else { return false }
+    let portStart = s.index(s.startIndex, offsetBy: prefix.count)
+    let portEnd = s.index(s.endIndex, offsetBy: -suffix.count)
+    guard portStart < portEnd else { return false }
+    let portText = s[portStart..<portEnd]
+    guard let port = UInt16(portText), portText == String(port) else { return false }
+    let last = MCPServer.defaultPort + MCPServer.fallbackPortCount
+    return (MCPServer.defaultPort...last).contains(port)
   }
 
   /// Lines of the `[mcp_servers.<name>]` table (plain or quoted name), without sub-tables. Nil when absent.
@@ -186,8 +204,9 @@ enum MCPClientInstaller {
     UserDefaults.standard.removeObject(forKey: tokenKindKey(client))
   }
 
-  /// Rewrites stale tokens in configs of clients connected earlier (a stored folder bookmark).
-  /// Silent: never shows UI, never adds an entry, errors are logged and skipped.
+  /// Rewrites a stale token or a previous loopback URL in configs of clients connected earlier
+  /// (a stored folder bookmark). Silent: never shows UI, never adds an entry, errors are logged
+  /// and skipped.
   @MainActor
   static func repairStaleTokens(url: String, readToken: String, writeToken: String, serverName: String) {
     let defaults = UserDefaults.standard
@@ -209,11 +228,12 @@ enum MCPClientInstaller {
         let existing = try Data(contentsOf: file)
         guard let output = repairedConfig(
           client: client, existing: existing, serverName: serverName, url: url,
+          ownURL: { $0 == url || isOwnLoopbackMCPURL($0) },
           readToken: readToken, writeToken: writeToken, tokenKind: kind,
           executablePath: (try? stableExecutablePath(Bundle.main.executablePath)) ?? "")
         else { continue }
         try writeConfigAtomically(output, to: file)
-        DebugLogger.logSuccess("MCP-INSTALL: repaired stale token for \(client.displayName)")
+        DebugLogger.logSuccess("MCP-INSTALL: repaired stale token or URL for \(client.displayName)")
       } catch {
         DebugLogger.logError("MCP-INSTALL: token repair for \(client.displayName) failed: \(error.localizedDescription)")
       }
