@@ -90,8 +90,8 @@ class MenuBarController: NSObject {
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
   /// Live in the Send Feedback submenu, which `menu.item(withTag:)` does not search.
-  private var reportDictationItem: NSMenuItem?
-  private var reportDictationSeparator: NSMenuItem?
+  private var reportResultItem: NSMenuItem?
+  private var reportResultSeparator: NSMenuItem?
   private var blinkTimer: Timer?
   private var feedbackResetTask: Task<Void, Never>?
 
@@ -607,19 +607,20 @@ class MenuBarController: NSObject {
     // most-used surface, and three permanent contact rows in it would read as nagging.
     let feedbackItem = createMenuItem("Send Feedback", action: nil, tag: .sendFeedback)
     let feedbackMenu = NSMenu()
-    // First, because a report about a concrete dictation is the one the developer can act on
-    // without asking back. Hidden while there is no dictation to report.
+    // First, because a report about a concrete result (the last dictation, prompt answer or
+    // reading) is the one the developer can act on without asking back. Hidden while there is
+    // nothing to report.
     let reportItem = NSMenuItem(
-      title: String(localized: "Report a Problem with Last Dictation…"),
-      action: #selector(reportLastDictation), keyEquivalent: "")
+      title: String(localized: "Report a Problem with Last Result…"),
+      action: #selector(reportLastResult), keyEquivalent: "")
     reportItem.target = self
     reportItem.toolTip = String(
-      localized: "Send the last dictation with its model and version, after you check it")
+      localized: "Send your last dictation, prompt answer or reading with its model and version, after you check it")
     let reportSeparator = NSMenuItem.separator()
     feedbackMenu.addItem(reportItem)
     feedbackMenu.addItem(reportSeparator)
-    reportDictationItem = reportItem
-    reportDictationSeparator = reportSeparator
+    reportResultItem = reportItem
+    reportResultSeparator = reportSeparator
     for channel in FeedbackLinks.Channel.allCases {
       let item = NSMenuItem(
         title: channel.menuTitle, action: #selector(sendFeedback(_:)), keyEquivalent: "")
@@ -1518,8 +1519,11 @@ class MenuBarController: NSObject {
   private func updateTranscriptionHistoryItems(_ menu: NSMenu) {
     let entries = TranscriptionHistoryStore.shared.entries
     menu.item(withTag: MenuTag.copyLastTranscription.rawValue)?.isHidden = entries.isEmpty
-    reportDictationItem?.isHidden = entries.isEmpty
-    reportDictationSeparator?.isHidden = entries.isEmpty
+    let hasReportableResult = !entries.isEmpty
+      || LastResultStore.shared.lastPrompt != nil
+      || LastResultStore.shared.lastReadAloud != nil
+    reportResultItem?.isHidden = !hasReportableResult
+    reportResultSeparator?.isHidden = !hasReportableResult
 
     // Drops away once the retained file is gone (recovered, or replaced by a newer cancellation).
     let hasCancelled = cancelledRecordingURL.map {
@@ -2490,15 +2494,18 @@ class MenuBarController: NSObject {
     DebugLogger.log("FEEDBACK: Opened \(channel.rawValue) from the status menu")
   }
 
-  @objc private func reportLastDictation() {
-    guard let entry = TranscriptionHistoryStore.shared.mostRecent else {
-      DebugLogger.logWarning("DICTATION-REPORT: Requested but history is empty")
+  @objc private func reportLastResult() {
+    let candidates = ResultReport.candidates(
+      dictation: TranscriptionHistoryStore.shared.mostRecent,
+      glossaryTerms: speechService.glossaryTermsForReport(),
+      offlineMode: OfflineMode.isEnabled,
+      prompt: LastResultStore.shared.lastPrompt,
+      readAloud: LastResultStore.shared.lastReadAloud)
+    guard !candidates.isEmpty else {
+      DebugLogger.logWarning("DICTATION-REPORT: Requested but there is no result to report")
       return
     }
-    let details = DictationReport.body(
-      entry: entry, glossaryTerms: speechService.glossaryTermsForReport(),
-      offlineMode: OfflineMode.isEnabled)
-    DictationReportWindowController.shared.show(details: details)
+    DictationReportWindowController.shared.show(candidates: candidates)
   }
 
   @objc private func rateApp() {
@@ -3826,6 +3833,11 @@ class MenuBarController: NSObject {
     ContextLogger.shared.logReadAloud(
       text: text, model: readAloudModel.rawValue, voice: ReadAloudPreferences.voice(for: readAloudModel),
       app: frontmost.flatMap { isOwnApp ? nil : InteractionTargetApp(bundleId: $0.bundleIdentifier, name: $0.localizedName) })
+    LastResultStore.shared.recordReadAloud(.init(
+      ts: Date(),
+      text: text,
+      model: readAloudModel.rawValue,
+      voice: ReadAloudPreferences.voice(for: readAloudModel)))
     readAloudRequestIsOpen = true
     let playbackGeneration = ttsPlayback.begin(expectedCharacters: text.count)
 

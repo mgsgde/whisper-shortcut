@@ -76,3 +76,104 @@ enum DictationReport {
     return false
   }
 }
+
+/// Report bodies for the last dictation, the last Prompt answer and the last Read Aloud.
+/// Plain English and not localized, because the developer reads them. Each kind contributes at
+/// most its latest result. App version and macOS are appended later by `FeedbackLinks.messageBody`.
+enum ResultReport {
+
+  enum Kind: String, Equatable {
+    case dictation, prompt, readAloud
+  }
+
+  struct Candidate: Equatable {
+    let kind: Kind
+    let ts: Date
+    let preview: String
+    let details: String
+  }
+
+  /// Newest first. Each kind at most once (its latest). Nil inputs are left out.
+  static func candidates(
+    dictation: TranscriptionHistoryStore.Entry?,
+    glossaryTerms: [String],
+    offlineMode: Bool,
+    prompt: LastResultStore.PromptResult?,
+    readAloud: LastResultStore.ReadAloudResult?
+  ) -> [Candidate] {
+    var list: [Candidate] = []
+    if let dictation {
+      list.append(Candidate(
+        kind: .dictation,
+        ts: dictation.ts,
+        preview: preview(dictation.text),
+        details: DictationReport.body(
+          entry: dictation, glossaryTerms: glossaryTerms, offlineMode: offlineMode)))
+    }
+    if let prompt {
+      list.append(Candidate(
+        kind: .prompt,
+        ts: prompt.ts,
+        preview: preview(prompt.instruction),
+        details: promptBody(prompt, offlineMode: offlineMode)))
+    }
+    if let readAloud {
+      list.append(Candidate(
+        kind: .readAloud,
+        ts: readAloud.ts,
+        preview: preview(readAloud.text),
+        details: readAloudBody(readAloud)))
+    }
+    return list.sorted { $0.ts > $1.ts }
+  }
+
+  static func promptBody(_ result: LastResultStore.PromptResult, offlineMode: Bool) -> String {
+    var lines = ["Instruction:", result.instruction, ""]
+    if let selected = result.selectedText,
+      !selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      lines.append("Selected text (excerpt):")
+      lines.append(selected)
+      lines.append("")
+    }
+    lines.append("Answer:")
+    lines.append(result.response)
+    lines.append("")
+    lines.append("Answered: \(timestamp(result.ts))")
+    lines.append("Mode: Prompt")
+    if let model = result.model { lines.append("Model: \(model)") }
+    if let provider = result.provider { lines.append("Provider: \(provider)") }
+    lines.append("Screenshot: \(result.hadScreenshot ? "yes" : "no")")
+    lines.append("Offline Mode: \(offlineMode ? "on" : "off")")
+    return lines.joined(separator: "\n")
+  }
+
+  static func readAloudBody(_ result: LastResultStore.ReadAloudResult) -> String {
+    var lines = [
+      "Text read aloud:", result.text, "",
+      "Read: \(timestamp(result.ts))",
+      "Mode: Read Aloud",
+    ]
+    if let model = result.model { lines.append("Voice model: \(model)") }
+    if let voice = result.voice { lines.append("Voice: \(voice)") }
+    return lines.joined(separator: "\n")
+  }
+
+  /// First 40 characters, one line. Newlines become spaces; a longer line is cut and marked with "…".
+  private static func preview(_ text: String) -> String {
+    let singleLine = text
+      .replacingOccurrences(of: "\r\n", with: " ")
+      .replacingOccurrences(of: "\n", with: " ")
+      .replacingOccurrences(of: "\r", with: " ")
+    let limit = 40
+    guard singleLine.count > limit else { return singleLine }
+    return String(singleLine.prefix(limit)) + "…"
+  }
+
+  private static func timestamp(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+    return formatter.string(from: date)
+  }
+}

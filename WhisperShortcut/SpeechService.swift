@@ -1773,6 +1773,14 @@ class SpeechService {
         modelResponse: normalizedText
       )
     }
+    LastResultStore.shared.recordPrompt(.init(
+      ts: Date(),
+      instruction: userInstruction,
+      selectedText: clipboardContext,
+      response: normalizedText,
+      model: model,
+      provider: providerLabel,
+      hadScreenshot: hadScreenshot))
     ContextLogger.shared.logPrompt(
       mode: mode,
       selectedText: clipboardContext,
