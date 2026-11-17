@@ -173,6 +173,17 @@ struct HubSnapshotLayout {
     return contents.contains { $0.hasSuffix(".safetensors") }
   }
 
+  /// `models/<repoID>`, the folder a download writes. A finished snapshot may also sit at
+  /// `snapshots/<hash>` under that folder; `localDirectory` accepts both, an import writes here.
+  func importDestination(for repoID: String) -> URL {
+    Self.importDestination(for: repoID, under: root)
+  }
+
+  /// Same path under an explicit root, so discovery can aim at a temp folder in tests.
+  static func importDestination(for repoID: String, under root: URL) -> URL {
+    root.appendingPathComponent("models").appendingPathComponent(repoID)
+  }
+
   /// Delete the repo, not just the snapshot folder — otherwise the blobs stay on disk while
   /// Settings reports the space as reclaimed.
   func deletionTarget(for modelPath: URL) -> URL {
@@ -250,6 +261,10 @@ final class LocalLLMModelManager: ModelStore<LocalLLMModelType> {
 
   override nonisolated func resolveModelPath(for type: LocalLLMModelType) -> URL? {
     MLXModelPaths.localDirectory(for: type)
+  }
+
+  override nonisolated func importDestination(for type: LocalLLMModelType) -> URL {
+    MLXModelPaths.layout.importDestination(for: type.huggingFaceID)
   }
 
   /// Delete the repo, not just the snapshot. `resolveModelPath` may land on
