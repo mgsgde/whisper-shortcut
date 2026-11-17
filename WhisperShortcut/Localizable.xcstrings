@@ -101,6 +101,26 @@
         }
       }
     },
+    "Dictate Live works with the offline Parakeet Ultra model (about 700 MB, downloaded once). It is selected as soon as the download finishes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra (ca. 700 MB, einmaliger Download). Es wird ausgewählt, sobald der Download fertig ist."
+          }
+        }
+      }
+    },
+    "Dictate Live works with the offline Parakeet Ultra model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra."
+          }
+        }
+      }
+    },
     "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works." : {
       "localizations" : {
         "de" : {
@@ -137,6 +157,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren ist direkt nach dem Start Ihres Macs bereit."
+          }
+        }
+      }
+    },
+    "Download Parakeet Ultra" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet Ultra laden"
           }
         }
       }
@@ -337,6 +367,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen → Berechtigungen & Datenschutz"
+          }
+        }
+      }
+    },
+    "Switching back to Dictate selects %@ again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Wechsel zurück zu Diktieren wird wieder %@ verwendet."
           }
         }
       }
@@ -2628,16 +2668,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tastenkürzel: Live diktieren"
-          }
-        }
-      }
-    },
-    "Dictate Live works with the offline Parakeet Ultra model. Select it below." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra. Wählen Sie es unten aus."
           }
         }
       }
