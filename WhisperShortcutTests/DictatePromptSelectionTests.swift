@@ -124,9 +124,12 @@ struct DictatePromptSelectionTests {
     }
   }
 
-  @Test("A filler-only instruction is fillers, punctuation, or a lone 0")
+  @Test("A filler-only instruction is fillers, punctuation, a lone 0, or no speech")
   func fillerOnlyInstruction() {
-    let fillers = ["Mhm.", "Ah.", "Oh.", "0", "Äh, ähm.", "hmm", ".", "…"]
+    let fillers = [
+      "Mhm.", "Ah.", "Oh.", "0", "Äh, ähm.", "hmm", ".", "…",
+      SpeechService.noSpokenInstructionMarker,
+    ]
     let notFillers = [
       "",
       "Korrigiere",

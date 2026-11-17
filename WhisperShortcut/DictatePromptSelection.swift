@@ -125,11 +125,13 @@ enum DictatePromptSelectionDecision {
       && (isEditQuickAction || isBareEditCommand(instruction))
   }
 
-  /// True when the spoken instruction is only a filler ("Mhm.", "Äh, ähm.") or a lone "0"
-  /// (what the transcriber writes for a breath). Nothing was asked, so the turn must not paste.
+  /// True when the spoken instruction is only a filler ("Mhm.", "Äh, ähm."), a lone "0"
+  /// (what the transcriber writes for a breath), or `SpeechService.noSpokenInstructionMarker`
+  /// (the history transcription heard nothing). Nothing was asked, so the turn must not paste.
   /// Empty input is not a filler: that is the timeout placeholder's neighbor, and a real
-  /// instruction ("Korrigiere", "Oh, kürze das") stays false.
+  /// instruction ("Korrigiere", "Oh, kürze das") stays false. The timeout placeholder stays false.
   static func isFillerOnlyInstruction(_ instruction: String) -> Bool {
+    if instruction == SpeechService.noSpokenInstructionMarker { return true }
     let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard !trimmed.isEmpty else { return false }
     let stripped = trimmed
