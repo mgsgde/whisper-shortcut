@@ -2591,9 +2591,15 @@ class SpeechService {
     if reply.count != combined.count {
       DebugLogger.log("PROMPT-MODE-LOCAL: Stripped reasoning block(s) (\(combined.count - reply.count) chars)")
     }
+    // Qwen3-4B writes Cyrillic look-alikes inside German words. Fold them before the paste.
+    // A word that is only Cyrillic is left alone.
+    let homoglyphs = TextProcessingUtility.foldingCyrillicHomoglyphs(reply)
+    if homoglyphs.folded > 0 {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Folded \(homoglyphs.folded) Cyrillic look-alike letter(s)")
+    }
 
     let normalizedText = Self.applyingSpokenLayout(
-      PromptReplyCleanup.normalize(reply), when: spokenOffline)
+      PromptReplyCleanup.normalize(homoglyphs.text), when: spokenOffline)
     try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-LOCAL")
     if offlineMode {
       flagUnsupportedWords(in: normalizedText, instruction: instruction, selection: clipboardContext)
