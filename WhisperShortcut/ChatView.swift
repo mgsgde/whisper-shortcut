@@ -228,11 +228,10 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var summaryRevision: UInt = 0
   /// True while a missing meeting summary is being regenerated, so the Notes tab can show progress.
   @Published private(set) var isRecoveringMeetingSummary: Bool = false
-  /// Disk-read notes of the ended meeting currently being viewed, keyed by stem and the notes
-  /// file's modification date. A resume writes the same `.notes.md`; without the date a later
-  /// hand edit would save the pre-resume list and drop the notes taken after it. See
-  /// `meetingNotesForDisplay`.
-  private var endedNotesCache: (stem: String, modified: Date?, notes: [LiveMeetingNote])?
+  /// Disk-read notes of the ended meeting currently being viewed. Dropped by
+  /// `invalidateEndedNotesCache()` whenever a start, resume, stop, chat switch or hand edit
+  /// rewrites `.notes.md`. See `meetingNotesForDisplay`.
+  private var endedNotesCache: (stem: String, notes: [LiveMeetingNote])?
   /// Invalidation tick — intentionally never read. A hand edit of an ended meeting's note rewrites
   /// the `.notes.md` file and bumps this so SwiftUI re-evaluates `meetingNotesForDisplay`, which
   /// then re-reads the file. Disk stays the source of truth.
@@ -2060,9 +2059,7 @@ class ChatViewModel: ObservableObject {
   /// memory and app-config tools, shared folders and what we learned about them.
   private func toolAndWorkspaceInstructions(
     for s: ChatSession,
-    // Same value as `openChatModel.supportsGrounding`. `Self` is illegal in a default
-    // argument, and that property is main-actor-isolated.
-    webSearch: Bool = PromptModel.loadSelectedChatModel().supportsGrounding
+    webSearch: Bool
   ) -> String {
     var text = ""
     // Order matters for provider prompt caching (Anthropic cache_control, OpenAI/Gemini implicit
@@ -2149,9 +2146,7 @@ class ChatViewModel: ObservableObject {
   /// Gmail invents both. Memory and meeting context still apply — they need no tool.
   private func buildSystemInstruction(
     for target: ChatSession? = nil, offline: Bool = false,
-    // Same value as `openChatModel.supportsGrounding`. `Self` is illegal in a default
-    // argument, and that property is main-actor-isolated.
-    webSearch: Bool = PromptModel.loadSelectedChatModel().supportsGrounding
+    webSearch: Bool
   ) -> [String: Any] {
     let s = target ?? session
     var text = offline
@@ -3058,14 +3053,10 @@ class ChatViewModel: ObservableObject {
     }
     guard let stem = session.meetingStem else { return [] }
     // The chat stream reads this on every layout pass, so an ended meeting's notes are read from
-    // disk once per stem and file generation. A rewrite (resume, an outside save) changes the
-    // modification date and misses the cache.
-    let modified = endedNotesModificationDate(stem: stem)
-    if let cached = endedNotesCache, cached.stem == stem, cached.modified == modified {
-      return cached.notes
-    }
+    // disk once per stem until invalidated.
+    if let cached = endedNotesCache, cached.stem == stem { return cached.notes }
     let notes = MeetingListService.shared.loadNotes(forStem: stem)
-    endedNotesCache = (stem, modified, notes)
+    endedNotesCache = (stem, notes)
     return notes
   }
 
@@ -3073,15 +3064,6 @@ class ChatViewModel: ObservableObject {
   private func invalidateEndedNotesCache() {
     endedNotesCache = nil
     notesRevision &+= 1
-  }
-
-  /// Modification date of `<stem>.notes.md`, when MeetingListService can point at that file.
-  /// Missing file → nil, which still participates in the cache key.
-  private func endedNotesModificationDate(stem: String) -> Date? {
-    let url = MeetingListService.notesURL(
-      transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
-    let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-    return attributes?[.modificationDate] as? Date
   }
 
   /// Saves a hand edit of one note. Works for both cases the Notes tab shows: while the meeting

@@ -12,8 +12,8 @@
 //    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
 //                 speed button (cycles 0.75×…2×) — ⏸ becomes a spinner while the next chunk is
 //                 loading. While Read Aloud plays the pill takes key focus (non-activating):
-//                 Space pause/resume, ←/→ 5 s, Esc stop; any other key or a click elsewhere
-//                 hands focus back.
+//                 Space pause/resume, ←/→ 5 s, Esc stop; any other key is passed on to the app,
+//                 and a click elsewhere hands focus back.
 //  On success the pill hides immediately — the pasted/copied text itself is the
 //  feedback, and lingering UI would cover whatever the user is working on.
 //
@@ -22,6 +22,7 @@
 //
 
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 // MARK: - Model
@@ -923,8 +924,8 @@ struct RecordingIndicatorView: View {
 /// app the user is dictating into. It takes key status while the user types a
 /// Dictate Prompt instruction (while the quick-action list is up) — non-activating, so
 /// the target app stays frontmost. While Read Aloud plays the pill takes key focus
-/// (non-activating): Space or ↩ pause/resume, ←/→ 5 s, Esc stop; any other key or a click
-/// elsewhere hands focus back.
+/// (non-activating): Space or ↩ pause/resume, ←/→ 5 s, Esc stop; any other key is passed on
+/// to the app, and a click elsewhere hands focus back.
 private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
   /// ⌃1–9 while the card has key focus. Returns true when the digit picked an entry.
@@ -1293,6 +1294,16 @@ final class RecordingIndicatorManager {
     keyFocusReturnApp = nil
   }
 
+  /// A key the Read Aloud pill does not handle belongs to the app the user is typing in: after
+  /// focus is handed back, the same key is posted again so it is not lost. Needs Accessibility
+  /// (the App Store build usually lacks it); without it the key is dropped as before.
+  private static func forwardToFrontApp(_ event: NSEvent) {
+    guard AXIsProcessTrusted(), let cgEvent = event.cgEvent?.copy() else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+      cgEvent.post(tap: .cghidEventTap)
+    }
+  }
+
   private func submitTyped() {
     let text = typedPrompt
     guard !text.isEmpty else { return }
@@ -1475,8 +1486,12 @@ final class RecordingIndicatorManager {
         !self.model.quickActionsVisible, self.panel?.acceptsKeyInput == true
       else { return false }
       let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-      // ⌘ shortcuts belong to the front app; leave the event for super.sendEvent.
-      if modifiers.contains(.command) { return false }
+      if modifiers.contains(.command) {
+        self.releaseKeyFocus()
+        Self.forwardToFrontApp(event)
+        DebugLogger.log("READ-ALOUD-KEYS: ⌘ shortcut, focus returned")
+        return true
+      }
       if modifiers.isEmpty {
         switch event.keyCode {
         case 49:
@@ -1509,6 +1524,7 @@ final class RecordingIndicatorManager {
         }
       }
       self.releaseKeyFocus()
+      Self.forwardToFrontApp(event)
       DebugLogger.log("READ-ALOUD-KEYS: Unhandled key, focus returned")
       return true
     }

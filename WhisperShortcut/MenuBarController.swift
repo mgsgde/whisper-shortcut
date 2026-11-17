@@ -2824,15 +2824,9 @@ class MenuBarController: NSObject {
         if clipboardManager.restorePendingSnapshot(afterForeignWriteAt: NSPasteboard.general.changeCount) {
           DebugLogger.log("READ-ALOUD-PROMPT: Restored the clipboard contents from before the selection copy")
         }
-        // `transitionToIdleAndCleanup` posts `ttsDidStop` when leaving a TTS state and drops the
-        // clipboard snapshot. The snapshot is already restored, and this job is a prompt, not
-        // Read Aloud, so idle is the same `finish()` that helper uses. A TTS state takes the
-        // success path instead, which does not post `ttsDidStop`.
-        if isTTSRunning {
-          appState = appState.showSuccess(String(localized: "Audio playback completed"))
-        } else {
-          appState = appState.finish()
-        }
+        // A prompt job, never a TTS state (Read Aloud is refused while it processes): straight to idle.
+        // The clipboard snapshot was restored above, so `transitionToIdleAndCleanup` is not used.
+        appState = appState.finish()
         cleanupAudioFile(at: audioURL)
         await deliver(result)
         return
