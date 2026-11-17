@@ -7,6 +7,8 @@
 
 """Snapshot and restore a narrow set of UserDefaults keys around a test run."""
 
+from __future__ import annotations
+
 import plistlib
 import subprocess
 import sys
