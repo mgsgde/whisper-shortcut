@@ -203,6 +203,9 @@ struct DictationOnlyGlobeKeyStep: View {
       // Freed here or in System Settings: the key is now meant for dictation.
       if usage == .doNothing {
         fnEnabled = true
+        // `apply` snapshotted Fn earlier. Without this, restore would see a value it did not
+        // record and leave the tour's `true` in place as if the user had chosen it.
+        DictationOnlyDefaults.recordApplied(key: UserDefaultsKeys.fnKeyDictation, value: true)
         freeFailed = false
         DebugLogger.log("ONBOARDING: dictation-only, 🌐 key free, Fn dictation on")
       }

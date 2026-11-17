@@ -224,6 +224,32 @@ enum ChatToolRegistry {
     }
   }
 
+  /// Glossary lines the append will offer to `mergeGlossary`. One invalid line refuses the
+  /// whole call, before anything is written.
+  private static func glossaryAppendLines(in text: String) -> (lines: [String], error: String?) {
+    var lines: [String] = []
+    for raw in text.components(separatedBy: .newlines) where !raw.trimmingCharacters(in: .whitespaces).isEmpty {
+      let parsed = MCPConfigTools.glossaryLine(for: raw)
+      guard let line = parsed.line else { return ([], parsed.error ?? "Not a glossary term.") }
+      lines.append(line)
+    }
+    return (lines, nil)
+  }
+
+  private static func glossaryMergeAdds(_ results: [SystemPromptsStore.GlossaryAppendResult]) -> Bool {
+    results.contains {
+      switch $0 {
+      case .added, .learned: return true
+      default: return false
+      }
+    }
+  }
+
+  private static func glossaryResultOverBudget(_ result: SystemPromptsStore.GlossaryAppendResult) -> Bool {
+    if case .budgetExceeded = result { return true }
+    return false
+  }
+
   /// Pure planning half of `update_app_instructions`: validates the call and computes the
   /// before/after text. Reads the store, never writes, so the approval card can show the exact
   /// diff the executor will apply.
@@ -270,16 +296,22 @@ enum ChatToolRegistry {
     switch action {
     case "append":
       if isGlossary {
-        var lines: [String] = []
-        for raw in text.components(separatedBy: .newlines) where !raw.trimmingCharacters(in: .whitespaces).isEmpty {
-          let parsed = MCPConfigTools.glossaryLine(for: raw)
-          guard let line = parsed.line else { return .refused(["error": parsed.error ?? "Not a glossary term."]) }
-          lines.append(line)
+        let parsedLines = Self.glossaryAppendLines(in: text)
+        if let message = parsedLines.error {
+          return .refused(["error": message])
         }
-        updated = GlossaryLearning.mergeAdditively(current: current, suggestion: lines.joined(separator: "\n"))
-        if updated == current.trimmingCharacters(in: .whitespacesAndNewlines) {
+        let lines = parsedLines.lines
+        let applied = SystemPromptsStore.applyingGlossaryTerms(lines, to: current)
+        if !Self.glossaryMergeAdds(applied.results) {
+          if applied.results.contains(where: Self.glossaryResultOverBudget) {
+            return .refused([
+              "error":
+                "That would grow the glossary past \(SystemPromptsStore.glossaryCharBudget) characters (budget \(SystemPromptsStore.glossaryCharBudget)). Add only the terms the user's recent dictations get wrong most often."
+            ])
+          }
           return .refused(["ok": false, "status": "no_change", "note": "Already in the glossary."])
         }
+        updated = applied.glossary
       } else {
         updated = current.isEmpty ? text : current + "\n" + text
       }
@@ -499,8 +531,9 @@ enum ChatToolRegistry {
   /// classification, which it does far more reliably than picking between similar tools.
   static let updateInstructionsToolName = "update_app_instructions"
 
-  /// Per-section ceiling, relative to the shipped default: the default's length plus
-  /// `instructionsSectionHeadroomChars`, never below `instructionsSectionLimitChars` (the floor).
+  /// Per-section ceiling for full-prompt sections, relative to the shipped default: the default's
+  /// length plus `instructionsSectionHeadroomChars`, never below `instructionsSectionLimitChars`
+  /// (the floor). Additions sections use `additionsSectionLimitChars` instead.
   /// A system prompt that grows without bound degrades every response in that mode, and unlike the
   /// glossary the damage is diffuse and hard to attribute. The old flat 5,000 ceiling stopped
   /// working once the defaults grew past it (Dictate Prompt ~5.4k, Chat ~6.7k), which refused every
@@ -509,10 +542,14 @@ enum ChatToolRegistry {
   static let instructionsSectionLimitChars = 5_000
   static let instructionsSectionHeadroomChars = 2_000
 
+  /// Additions sections hold only the user's own rules on top of a fixed core, so they get a flat
+  /// cap instead of default + headroom.
+  static let additionsSectionLimitChars = 2_000
+
   static func instructionsSectionLimit(for section: SystemPromptSection) -> Int {
     switch section {
     case .dictationAdditions, .promptModeAdditions:
-      return 2_000
+      return additionsSectionLimitChars
     default:
       return max(instructionsSectionLimitChars,
         MCPProposalWindows.defaultText(for: section).count + instructionsSectionHeadroomChars)
@@ -1668,6 +1705,38 @@ enum ChatToolRegistry {
       case .read(let section, let sectionKey, let current):
         return instructionsReadResult(section: section, sectionKey: sectionKey, current: current)
       case .edit(let section, let sectionKey, let action, let current, let updated):
+        // Glossary append re-reads under the store lock. Writing the preview from planning
+        // time would overwrite a term another writer added while the card was open.
+        if section == .whisperGlossary, action == "append" {
+          let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+          let parsedLines = glossaryAppendLines(in: text)
+          if let message = parsedLines.error {
+            return ["error": message]
+          }
+          let results = SystemPromptsStore.shared.mergeGlossary(parsedLines.lines, source: .chat)
+          let glossary = SystemPromptsStore.shared.loadWhisperGlossary()
+          if !glossaryMergeAdds(results) {
+            if results.contains(where: glossaryResultOverBudget) {
+              return [
+                "error":
+                  "That would grow the glossary past \(SystemPromptsStore.glossaryCharBudget) characters (budget \(SystemPromptsStore.glossaryCharBudget)). Add only the terms the user's recent dictations get wrong most often."
+              ]
+            }
+            return ["ok": false, "status": "no_change", "note": "Already in the glossary."]
+          }
+          DebugLogger.log(
+            "INSTRUCTIONS-EDIT: chat \(action) on \(sectionKey) (\(current.count) → \(glossary.count) chars)")
+          var result: [String: Any] = [
+            "ok": true, "status": action, "section": sectionKey,
+            "instructions": glossary,
+            "note": "Applied. Tell the user briefly what changed; it is editable in Settings and recorded in the prompt history.",
+          ]
+          let legacyActive = SystemPromptsStore.shared.legacyFullPrompt(for: section) != nil
+          let warnings = SystemPromptSectionGuide.warnings(
+            for: section, text: glossary, legacyActive: legacyActive)
+          if !warnings.isEmpty { result["warnings"] = warnings }
+          return result
+        }
         // The store appends the history row (source: chat), so a chat-made change is reviewable
         // and reversible: without it the app's behavior could drift with no trace of who changed what.
         SystemPromptsStore.shared.updateSection(section, content: updated, source: .chat)

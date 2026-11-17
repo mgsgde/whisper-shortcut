@@ -139,6 +139,10 @@ final class Qwen3ModelManager: ModelStore<Qwen3ModelType> {
     layout.localDirectory(for: type.huggingFaceID)
   }
 
+  override nonisolated func importDestination(for type: Qwen3ModelType) -> URL {
+    layout.importDestination(for: type.huggingFaceID)
+  }
+
   override nonisolated func deletionTarget(for modelPath: URL) -> URL {
     layout.deletionTarget(for: modelPath)
   }

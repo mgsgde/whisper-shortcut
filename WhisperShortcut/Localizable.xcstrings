@@ -23425,12 +23425,12 @@
         }
       }
     },
-    "You can also change this by asking in Chat — e.g. “when I say correct, never translate”. Edits made there land in this text." : {
+    "You can also change this by asking in Chat. Chat can edit dictation, Dictate Prompt, Chat and the glossary, for example “when I say correct, never translate”. Edits made there land in this text." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sie können das auch im Chat ändern lassen, z. B. „wenn ich ‚korrigieren‘ sage, nie übersetzen“. Änderungen dort landen in diesem Text."
+            "value" : "Sie können das auch im Chat ändern lassen. Der Chat kann Diktat, Dictate Prompt, Chat und das Glossar bearbeiten, z. B. „wenn ich ‚korrigieren‘ sage, nie übersetzen“. Änderungen dort landen in diesem Text."
           }
         }
       }
@@ -28026,6 +28026,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Glossar-Kurzbefehl"
+          }
+        }
+      }
+    },
+    "%@ is already being downloaded. Wait for it to finish, or cancel it, before importing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird bereits heruntergeladen. Warten Sie, bis der Download abgeschlossen ist, oder brechen Sie ihn ab, bevor Sie es importieren."
           }
         }
       }

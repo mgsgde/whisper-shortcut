@@ -150,18 +150,11 @@ enum LiveDictation {
   private static let gluedPunktRegex = try! NSRegularExpression(
     pattern: #"((\p{L}{2,})punkt)[.,;:!?…]*\s*$"#, options: [.caseInsensitive])
 
-  /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
-  /// one comma, period or semicolon glued on, and the spaces around them. "Um", "ah", "aha",
-  /// "achso" and "oh" stay — they are real German words. A piece of only fillers comes back "".
+  /// Drops a leading "Oh" before a spoken colon, then the shared filler filter.
   private static func removingFillers(_ text: String) -> String {
     let text = leadingOhRegex.stringByReplacingMatches(
       in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
-    let range = NSRange(text.startIndex..., in: text)
-    guard fillerRegex.firstMatch(in: text, range: range) != nil else { return text }
-    let replaced = fillerRegex.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
-    let collapsed = fillerSpaceRun.stringByReplacingMatches(
-      in: replaced, range: NSRange(replaced.startIndex..., in: replaced), withTemplate: " ")
-    return collapsed.trimmingCharacters(in: .whitespaces)
+    return TextProcessingUtility.removingFillers(text)
   }
 
   // Parakeet hears the breath before a lone spoken command as "Oh," ("Oh, Doppelpunkt." for a piece
@@ -171,15 +164,6 @@ enum LiveDictation {
   private static let leadingOhRegex = try! NSRegularExpression(
     pattern: #"^[ \t]*oh[,.]?[ \t]+(?=doppel[ \t-]?(?:punkt|gun)\b)"#,
     options: [.caseInsensitive])
-
-  // "hmm" is two or more m's; "hm" is the single one. Longer forms come first so a word boundary
-  // still decides, and "ähm" is not eaten as "äh".
-  // swiftlint:disable:next force_try
-  private static let fillerRegex = try! NSRegularExpression(
-    pattern: #"[ \t]*\b(?:mm-hmm|mmhmm|m-hm|mhm|hm{2,}|hm|ähm|äh|öhm|ehm)\b[,.;]?[ \t]*"#,
-    options: [.caseInsensitive])
-  // swiftlint:disable:next force_try
-  private static let fillerSpaceRun = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
 
   /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
   /// piece appears right after the pause; a cloud model would add a network round trip per piece.

@@ -521,6 +521,39 @@ struct LiveMeetingChunkPipelineTests {
     }
   }
 
+  @Test("A cancelled chunk settles its pending count")
+  func cancelledChunkSettlesPendingCount() async throws {
+    try await withPreservedRecordingMarker {
+      let store = LiveMeetingTranscriptStore.shared
+      store.clearForNewMeeting()
+      defer { store.clearForNewMeeting() }
+
+      let dir = try makeDirectory()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
+      let stem = file.deletingPathExtension().lastPathComponent
+      defer { MeetingAudioBacklog.remove(stem: stem) }
+      FileManager.default.createFile(atPath: file.path, contents: Data())
+      let audio = dir.appendingPathComponent("chunk.wav")
+      FileManager.default.createFile(atPath: audio.path, contents: Data([0]))
+
+      let transcripts = ChunkTranscripts()
+      defer { transcripts.resumeOutstanding(returning: "") }
+      let box = Counters()
+      let session = makeSession(transcripts: transcripts, box: box)
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      deliver(session, index: 0, start: 15, audio: audio)
+      #expect(await waitUntil { transcripts.waiterCount == 1 })
+      #expect(session.pendingChunkCount == 1)
+
+      transcripts.cancel(at: 0)
+      #expect(await waitUntil { session.pendingChunkCount == 0 })
+
+      session.stop()
+      session.stopSafetyNetForTesting?.perform()
+    }
+  }
+
   @Test("A stale stop safety net does not finish the next meeting")
   func staleStopSafetyNetDoesNotFinishTheNextMeeting() async throws {
     try await withPreservedRecordingMarker {

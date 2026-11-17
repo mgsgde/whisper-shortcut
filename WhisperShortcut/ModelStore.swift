@@ -88,6 +88,13 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     fatalError("subclass must override resolveModelPath(for:)")
   }
 
+  /// Where an import copies `model`: the canonical download layout this store owns.
+  /// `resolveModelPath` may also accept a legacy folder or a Hub `snapshots/<hash>`
+  /// directory; those are not where an import writes.
+  nonisolated func importDestination(for model: Model) -> URL {
+    fatalError("subclass must override importDestination(for:)")
+  }
+
   /// True only when the model can be loaded as it is on disk. The default treats "folder
   /// resolved" as complete; a family whose folder can exist half-written overrides this.
   nonisolated func isModelAvailable(_ model: Model) -> Bool {
@@ -132,6 +139,26 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// What `deleteModel` removes. MLX overrides this to delete the whole Hub repo, not just the
   /// snapshot `resolveModelPath` lands on.
   nonisolated func deletionTarget(for modelPath: URL) -> URL { modelPath }
+
+  /// Every directory `deleteModel` removes. One path by default. Parakeet overrides this:
+  /// its resolved path is the shared FluidAudio root, which also holds the Silero VAD model.
+  nonisolated func deletionTargets(for model: Model) -> [URL] {
+    guard let modelPath = resolveModelPath(for: model) else { return [] }
+    return [deletionTarget(for: modelPath)]
+  }
+
+  /// Hides Download for the duration of an import into `model`'s folder.
+  ///
+  /// The Download row already treats `downloadingModels` as busy. Clearing the set is also
+  /// the refresh: an import writes no other `@Published` state, and the row reads availability
+  /// from disk the next time this set changes.
+  func setImporting(_ model: Model, _ importing: Bool) {
+    if importing {
+      downloadingModels.insert(model)
+    } else {
+      downloadingModels.remove(model)
+    }
+  }
 
   // MARK: - Ready to use
 
@@ -365,25 +392,35 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// The file-system half of `deleteModel`, without the cancel — `makeReady`'s self-heal runs
   /// inside the very `readyTasks` entry that `cancelDownload` would cancel.
   private func removeFiles(of model: Model) throws {
-    guard let modelPath = resolveModelPath(for: model) else {
+    let targets = deletionTargets(for: model).filter { fileManager.fileExists(atPath: $0.path) }
+    guard !targets.isEmpty else {
       throw ModelStoreError.fileError(String(localized: "Model not found"))
     }
-    try fileManager.removeItem(at: deletionTarget(for: modelPath))
+    for target in targets {
+      try fileManager.removeItem(at: target)
+    }
   }
 
   // MARK: - Size
 
   nonisolated func getModelSize(_ model: Model) -> Int64? {
     guard let modelPath = resolveModelPath(for: model) else { return nil }
+    let totalSize = directorySize(at: modelPath)
+    return totalSize > 0 ? totalSize : nil
+  }
+
+  /// Bytes under `directory`, or 0 when it is missing. Parakeet sums its own folders with this
+  /// so the shared Silero VAD directory next to them is not included.
+  nonisolated func directorySize(at directory: URL) -> Int64 {
     var totalSize: Int64 = 0
-    if let enumerator = fileManager.enumerator(at: modelPath, includingPropertiesForKeys: [.fileSizeKey]) {
+    if let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey]) {
       for case let fileURL as URL in enumerator {
         if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
           totalSize += Int64(fileSize)
         }
       }
     }
-    return totalSize > 0 ? totalSize : nil
+    return totalSize
   }
 
   nonisolated func formatSize(_ bytes: Int64) -> String {
