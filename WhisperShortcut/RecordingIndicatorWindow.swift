@@ -34,6 +34,23 @@ enum RecordingIndicatorPhase: Equatable {
   case speaking
 }
 
+/// What ↩ does in the quick-action card right now. Decided once, by
+/// `RecordingIndicatorModel.returnAction`; the key handler performs it, the field's submit falls
+/// back to it, and the footer words it.
+enum QuickActionReturn: Equatable {
+  /// The template picker is open: ↩ takes the highlighted template and keeps recording.
+  case chooseTemplate(Int)
+  /// A template is bound and no picker is open (or nothing is typed or highlighted): ↩ stops and
+  /// uses what was spoken.
+  case stopAndProcess
+  /// The field holds an instruction: ↩ runs it instead of the speech.
+  case runTyped
+  /// The highlighted entry runs.
+  case runAction(Int)
+  /// The card is not up; ↩ belongs to whoever is underneath.
+  case notHandled
+}
+
 final class RecordingIndicatorModel: ObservableObject {
   static let barCount = 10
 
@@ -88,6 +105,31 @@ final class RecordingIndicatorModel: ObservableObject {
     guard templatePickerOpen, templateChoices.count > 1 else { return [] }
     if case .selection = quickActionContext { return [] }
     return templateChoices
+  }
+
+  /// The one place that answers "what does ↩ do". Plain values in, so it is unit-testable.
+  /// Order matters: the card being up, then a bound template (which hides the field, so it wins
+  /// over anything typed or highlighted), then typed text, then the highlighted entry, else stop.
+  /// An out-of-range `selectedIndex` counts as no highlight.
+  static func returnAction(
+    isVisible: Bool, templateBound: Bool, pickerChoiceCount: Int, pickerIndex: Int,
+    typedPrompt: String, selectedIndex: Int?, actionCount: Int
+  ) -> QuickActionReturn {
+    guard isVisible else { return .notHandled }
+    if templateBound {
+      return pickerChoiceCount > 0 ? .chooseTemplate(pickerIndex) : .stopAndProcess
+    }
+    if !typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .runTyped }
+    if let selectedIndex, (0..<actionCount).contains(selectedIndex) { return .runAction(selectedIndex) }
+    return .stopAndProcess
+  }
+
+  /// ↩ in the card, from the current state.
+  var returnAction: QuickActionReturn {
+    Self.returnAction(
+      isVisible: quickActionsVisible, templateBound: templateName != nil,
+      pickerChoiceCount: visibleTemplateChoices.count, pickerIndex: templateChoiceIndex,
+      typedPrompt: typedPrompt, selectedIndex: quickActionIndex, actionCount: quickActions.count)
   }
 
   func pushLevel(_ normalized: CGFloat) {
@@ -696,31 +738,45 @@ private struct QuickActionCardView: View {
 
   /// ↩ does what the footer says: the typed text, else the highlighted entry, else the speech.
   private func submit() {
-    if isTyping {
-      onSubmitTyped()
-    } else if let selectedIndex {
-      onSelect(selectedIndex)
-    } else {
-      onConfirm()
+    switch RecordingIndicatorModel.returnAction(
+      isVisible: true, templateBound: templateName != nil, pickerChoiceCount: templateChoices.count,
+      pickerIndex: templateChoiceIndex, typedPrompt: typedText, selectedIndex: selectedIndex,
+      actionCount: actions.count)
+    {
+    case .runTyped: onSubmitTyped()
+    case .runAction(let index): onSelect(index)
+    case .chooseTemplate(let index): onChooseTemplate(index)
+    case .stopAndProcess: onConfirm()
+    case .notHandled: break
     }
   }
 
   // MARK: Footer
 
   private var footerLabel: String {
-    if showsPicker { return String(localized: "Press a number to choose") }
-    if isTyping { return String(localized: "\u{21A9} runs what you typed") }
-    if let selectedIndex, actions.indices.contains(selectedIndex) {
-      return String(localized: "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}")
-    }
-    if showsTemplateHeader, templateEnabled, let templateName {
-      // The header names the template; the footer says what goes into it.
-      if case .selection(let text, _) = context {
-        return String(localized: "\u{21A9} formats the selection (\(text.count.formatted()) chars) as \u{201C}\(templateName)\u{201D}")
+    // Footer and key handler share one decision, so the label always words what ↩ does.
+    let action = RecordingIndicatorModel.returnAction(
+      isVisible: true, templateBound: showsPicker || templateName != nil,
+      pickerChoiceCount: showsPicker ? templateChoices.count : 0,
+      pickerIndex: templateChoiceIndex, typedPrompt: typedText, selectedIndex: selectedIndex,
+      actionCount: actions.count)
+    switch action {
+    case .chooseTemplate:
+      return String(localized: "Press a number to choose")
+    case .runTyped:
+      return String(localized: "\u{21A9} runs what you typed")
+    case .runAction(let index):
+      return String(localized: "\u{21A9} runs \u{201C}\(actions[index].text)\u{201D}")
+    case .stopAndProcess, .notHandled:
+      if showsTemplateHeader, templateEnabled, let templateName {
+        // The header names the template; the footer says what goes into it.
+        if case .selection(let text, _) = context {
+          return String(localized: "\u{21A9} formats the selection (\(text.count.formatted()) chars) as \u{201C}\(templateName)\u{201D}")
+        }
+        return String(localized: "\u{21A9} formats it as \u{201C}\(templateName)\u{201D}")
       }
-      return String(localized: "\u{21A9} formats it as \u{201C}\(templateName)\u{201D}")
+      return String(localized: "Speak your instruction")
     }
-    return String(localized: "Speak your instruction")
   }
 
   private var footer: some View {
@@ -1447,22 +1503,23 @@ final class RecordingIndicatorManager {
       return true
     }
     panel.onReturn = { [weak self] in
-      if let self, self.model.quickActionsVisible, self.model.templateName != nil {
-        // The picker: ↩ takes the highlighted template and keeps recording. Without it the
-        // card has no field to submit, so ↩ stops, as the footer says.
-        if !self.model.visibleTemplateChoices.isEmpty {
-          self.chooseTemplate(self.model.templateChoiceIndex, close: true)
-        } else {
-          self.onConfirm?()
-        }
-        return true
+      guard let self else { return false }
+      let action = self.model.returnAction
+      switch action {
+      case .notHandled:
+        return false
+      case .chooseTemplate(let index):
+        // The picker: ↩ takes the highlighted template and keeps recording.
+        self.chooseTemplate(index, close: true)
+      case .stopAndProcess:
+        // No picker and no field to submit, so ↩ stops, as the footer says.
+        self.onConfirm?()
+      case .runTyped:
+        self.submitTyped()
+      case .runAction(let index):
+        DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")
+        self.onQuickAction?(index)
       }
-      guard let self, self.model.quickActionsVisible,
-        self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-        let index = self.model.quickActionIndex, self.model.quickActions.indices.contains(index)
-      else { return false }
-      DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")
-      self.onQuickAction?(index)
       return true
     }
     panel.onTab = { [weak self] in
