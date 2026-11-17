@@ -860,7 +860,7 @@ class MenuBarController: NSObject {
       return
     }
     switch presentedState {
-    case .recording(.prompt) where activeMeetingSegment == nil:
+    case .recording(.prompt):
       offerQuickActionsIfNeeded()
       indicator.showRecording(label: AppState.RecordingMode.prompt.pillLabel)
     case .recording(let mode) where mode != .liveMeeting:
@@ -950,8 +950,8 @@ class MenuBarController: NSObject {
 
   // MARK: - Dictate Prompt quick actions
 
-  /// Shows the cached list once per prompt recording. A live-meeting segment never reaches
-  /// this — `updateRecordingIndicator` only calls it when no meeting segment is active.
+  /// Shows the cached list once per prompt recording. A prompt segment during a meeting gets
+  /// the card too (a template is never bound there).
   private func offerQuickActionsIfNeeded() {
     guard recording?.quickActionsOffered == false else { return }
     recording?.quickActionsOffered = true
@@ -1049,8 +1049,8 @@ class MenuBarController: NSObject {
     _ text: String, source: String, isEdit: Bool = false, fromQuickAction: Bool = false
   ) {
     guard recording?.quickActionRan == false else { return }
-    guard activeMeetingSegment == nil else { return }
     let recordingPrompt = appState.recordingMode == .prompt || pendingRecordingMode == .prompt
+      || (activeMeetingSegment == .prompt && !meetingSegmentIsProcessing)
     guard recordingPrompt else { return }
     recording?.quickActionRan = true
     recording?.quickActionInstruction = text
@@ -1910,12 +1910,8 @@ class MenuBarController: NSObject {
     let isMeeting = isLiveMeetingActive
     switch availability(.dictatePrompt) {
     case .stop:
-      if isMeeting {
-        DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment")
-        stopRecordingAfterTailDelay()
-      } else {
-        stopPromptOrRunTyped()
-      }
+      if isMeeting { DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment") }
+      stopPromptOrRunTyped()
     case .ignored(.otherMeetingSegmentActive):
       DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring prompt")
     case .cancelProcessing:
@@ -4560,6 +4556,8 @@ extension MenuBarController: AudioRecorderDelegate {
           case .prompt:
             await self.performPrompting(
               audioURL: audioURL, job: nil,
+              instruction: intent?.quickActionInstruction,
+              isEditQuickAction: intent?.isEditQuickAction ?? false,
               recordingWasSilent: self.audioRecorder.lastRecordingWasSilent,
               selection: intent?.promptSelection,
               speakResult: intent?.speakResult ?? false)
