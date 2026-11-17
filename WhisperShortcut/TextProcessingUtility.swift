@@ -12,7 +12,8 @@ enum TextProcessingUtility {
   
   // MARK: - Text Normalization
   static func normalizeTranscriptionText(_ text: String) -> String {
-    cleanTranscriptionText(normalizingWhitespace(text))
+    // A clip that was only fillers comes back empty. Callers already treat that as no speech.
+    removingFillers(cleanTranscriptionText(normalizingWhitespace(text)))
   }
 
   /// Trim, collapse runs of three or more newlines to two, and collapse spaces inside each line
@@ -138,7 +139,92 @@ enum TextProcessingUtility {
     
     return cleaned
   }
-  
+
+  /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
+  /// one comma, period or semicolon glued on, and the spaces around them. "Um", "ah", "aha",
+  /// "achso" and "oh" stay — they are real German words. A piece of only fillers comes back "".
+  /// A filler removed at the start, or right after ". ", "! ", "? " or a newline, uppercases the
+  /// next letter ("Ähm, ich komme" becomes "Ich komme"). Letters anywhere else stay as they are.
+  static func removingFillers(_ text: String) -> String {
+    let full = NSRange(text.startIndex..., in: text)
+    let matches = fillerRegex.matches(in: text, range: full)
+    guard !matches.isEmpty else { return text }
+
+    var rebuilt = ""
+    var cursor = text.startIndex
+    var capitalizeNext = false
+    for match in matches {
+      guard let matchRange = Range(match.range, in: text) else { return text }
+      if cursor < matchRange.lowerBound {
+        let gap = String(text[cursor..<matchRange.lowerBound])
+        rebuilt += capitalizeNext ? capitalizingFirstLetter(gap) : gap
+        capitalizeNext = false
+      }
+      // The match, including the spaces and one glued mark around the filler, becomes one space.
+      rebuilt += " "
+      if fillerRemovalStartsSentence(text, matchRange: matchRange) {
+        capitalizeNext = true
+      }
+      cursor = matchRange.upperBound
+    }
+    if cursor < text.endIndex {
+      let gap = String(text[cursor...])
+      rebuilt += capitalizeNext ? capitalizingFirstLetter(gap) : gap
+    }
+    let collapsed = fillerSpaceRun.stringByReplacingMatches(
+      in: rebuilt, range: NSRange(rebuilt.startIndex..., in: rebuilt), withTemplate: " ")
+    return collapsed.trimmingCharacters(in: .whitespaces)
+  }
+
+  /// True when this filler match sits at the start of `text` (whitespace aside) or right after
+  /// ". ", "! ", "? " or a newline. The spaces the filler pattern consumes count as the gap.
+  private static func fillerRemovalStartsSentence(_ text: String, matchRange: Range<String.Index>) -> Bool {
+    var wordStart = matchRange.lowerBound
+    while wordStart < matchRange.upperBound, text[wordStart] == " " || text[wordStart] == "\t" {
+      wordStart = text.index(after: wordStart)
+    }
+    if wordStart == text.startIndex { return true }
+
+    var index = wordStart
+    var sawSpace = false
+    while index > text.startIndex {
+      let previous = text.index(before: index)
+      let character = text[previous]
+      if character == " " || character == "\t" {
+        sawSpace = true
+        index = previous
+        continue
+      }
+      break
+    }
+    if index == text.startIndex { return true }
+    let boundary = text[text.index(before: index)]
+    if boundary == "\n" || boundary == "\r" { return true }
+    return sawSpace && (boundary == "." || boundary == "!" || boundary == "?")
+  }
+
+  /// Uppercases the first letter of `gap` when a filler just before it opened a sentence.
+  /// Leading whitespace, including newlines, stays. A gap that does not start with a letter
+  /// (once that whitespace is skipped) is returned unchanged.
+  private static func capitalizingFirstLetter(_ gap: String) -> String {
+    var index = gap.startIndex
+    while index < gap.endIndex, gap[index].isWhitespace {
+      index = gap.index(after: index)
+    }
+    guard index < gap.endIndex, gap[index].isLetter else { return gap }
+    let upper = String(gap[index]).uppercased()
+    return String(gap[..<index]) + upper + String(gap[gap.index(after: index)...])
+  }
+
+  // "hmm" is two or more m's; "hm" is the single one. Longer forms come first so a word boundary
+  // still decides, and "ähm" is not eaten as "äh".
+  // swiftlint:disable:next force_try
+  private static let fillerRegex = try! NSRegularExpression(
+    pattern: #"[ \t]*\b(?:mm-hmm|mmhmm|m-hm|mhm|hm{2,}|hm|ähm|äh|öhm|ehm)\b[,.;]?[ \t]*"#,
+    options: [.caseInsensitive])
+  // swiftlint:disable:next force_try
+  private static let fillerSpaceRun = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
+
   // MARK: - Hallucination Plausibility Gate
 
   /// Discards transcripts that are impossibly long for the recording duration. Flash-tier Gemini

@@ -115,7 +115,8 @@ struct LiveDictationTests {
   @Test("Standalone fillers are dropped; real words stay")
   func fillersDropped() {
     #expect(LiveDictation.finishPiece("Mm-hmm", mode: .automatic) == "")
-    #expect(LiveDictation.finishPiece("Hmm, was ist das", mode: .automatic) == "was ist das")
+    // A leading filler is dropped and the next word is capitalised, same as a cloud transcript.
+    #expect(LiveDictation.finishPiece("Hmm, was ist das", mode: .automatic) == "Was ist das")
     #expect(LiveDictation.finishPiece("Hmmm", mode: .automatic) == "")
     #expect(LiveDictation.finishPiece("Basistherapie ähm Punkt", mode: .spokenOnly) == "Basistherapie.")
     #expect(LiveDictation.finishPiece("Um zehn Uhr", mode: .automatic) == "Um zehn Uhr")
