@@ -10,7 +10,7 @@
 //
 //  Arguments (each optional):
 //    --onboarding-step <id>      open the Welcome Tour on that step. Dictation-only path: mode,
-//                                globe, language, permissions, download, test, glossary, done.
+//                                globe, language, permissions, download, test, done.
 //                                Full path: full-setup, full-permissions, full-try, full-done.
 //    --dictation-only on|off     the mode at launch, Welcome Tour closed (Settings, status menu).
 //    --settings-tab <tab>        open Settings on that tab at launch (general, dictate, permissions, about).
@@ -145,7 +145,6 @@ struct TestProfileOverrides: Equatable {
     case "permissions": return .dictationOnly(.permissions)
     case "download": return .dictationOnly(.download)
     case "test": return .dictationOnly(.test)
-    case "glossary": return .dictationOnly(.glossary)
     case "done": return .dictationOnly(.done)
     case "full-setup": return .full(.dictationSetup)
     case "full-permissions": return .full(.permissions)

@@ -71,6 +71,8 @@ struct ShortcutDisplayTests {
     (ShortcutDefinition(key: .y, modifiers: [.command], isEnabled: true, displayCharacter: "z"), "⌘Z",
      "printable character wins over key name"),
     (ShortcutDefinition(key: .one, modifiers: [.command]), "⌘1", "plain digit"),
+    (ShortcutDefinition(key: .k, modifiers: [.control, .option, .shift, .command]), "⌃⌥⇧⌘K",
+     "modifiers in macOS order"),
   ])
   func displayString(definition: ShortcutDefinition, expected: String, label: String) {
     #expect(definition.displayString == expected, "\(label)")

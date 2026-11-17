@@ -29,60 +29,101 @@ struct KeyboardShortcutsSection: View {
     return DictationOnlyMode.registersShortcut(slot, enabled: DictationOnlyMode.isEnabled)
   }
 
+  /// Rows that had no shortcut when the section appeared. They sit behind "More shortcuts" and
+  /// stay there for this visit, so a row does not jump out of the group the moment it is recorded.
+  @State private var collapsedAtAppear: Set<SettingsFocusField>?
+  @State private var showsMore = false
+
+  /// One shortcut row's data. The binding is a `SettingsData` field, not the `ShortcutConfig` key path.
+  private struct Entry {
+    let label: LocalizedStringKey
+    let binding: Binding<ShortcutDefinition?>
+    let field: SettingsFocusField
+  }
+
+  /// Every row after Dictate, in menu order, filtered by build and "Dictation only".
+  /// Literal keys, not `ShortcutAction.x.title`: interpolating the English `title` would leave the
+  /// name untranslated.
+  private var otherEntries: [Entry] {
+    var entries: [Entry] = []
+    if shows(.dictatePrompt) {
+      entries.append(Entry(label: "Dictate Prompt", binding: $viewModel.data.togglePrompting, field: .togglePrompting))
+    }
+    if shows(.screenshot) {
+      entries.append(Entry(label: "Screenshot", binding: $viewModel.data.screenshotCapture, field: .screenshotCapture))
+    }
+    // Selection-based shortcuts copy via ⌘C (Accessibility) — not in the App Store build.
+    if ShortcutAction.readAloud.isInThisBuild && shows(.readAloud) {
+      entries.append(Entry(label: "Read Aloud", binding: $viewModel.data.readAloud, field: .readAloudShortcut))
+      entries.append(Entry(
+        label: "Read Aloud Prompt", binding: $viewModel.data.readAloudPrompt, field: .readAloudPromptShortcut))
+    }
+    // Glossary is not a `ShortcutAction` (see that enum); Dictate Live pastes. Both: direct build only.
+    #if !APP_STORE
+    entries.append(Entry(label: "Add to Glossary", binding: $viewModel.data.addToGlossary, field: .addToGlossaryShortcut))
+    entries.append(Entry(label: "Dictate Live", binding: $viewModel.data.liveDictate, field: .liveDictateShortcut))
+    #endif
+    if shows(.chat) {
+      entries.append(Entry(label: "Open Chat", binding: $viewModel.data.openChat, field: .toggleChat))
+    }
+    entries.append(Entry(label: "Open Settings", binding: $viewModel.data.openSettings, field: .toggleSettings))
+    return entries
+  }
+
+  private static func isSet(_ shortcut: ShortcutDefinition?) -> Bool {
+    shortcut?.isEnabled == true
+  }
+
   var body: some View {
+    let entries = otherEntries
+    let collapsed = collapsedAtAppear ?? Set(entries.filter { !Self.isSet($0.binding.wrappedValue) }.map(\.field))
+    let visible = entries.filter { !collapsed.contains($0.field) }
+    let hidden = entries.filter { collapsed.contains($0.field) }
+
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Keyboard Shortcuts",
         systemImage: "keyboard",
-        subtitle: "Global shortcuts — they work from any app. Press a shortcut once to start, again to stop."
+        subtitle: "Work from any app. Press once to start, again to stop."
       )
 
-      // Labels keep the trailing colon, and Chat/Settings keep the "Open " the form has
-      // always used. The binding is a `SettingsData` field, not the `ShortcutConfig` key path.
-      // Literal keys, not `"\(ShortcutAction.x.title):"`: interpolating the English `title`
-      // looks up `%@:` and leaves the name untranslated.
-      row("Dictate:", $viewModel.data.toggleDictation, .toggleDictation)
-      if shows(.dictatePrompt) {
-        row("Dictate Prompt:", $viewModel.data.togglePrompting, .togglePrompting)
-      }
-      if shows(.screenshot) {
-        row("Screenshot:", $viewModel.data.screenshotCapture, .screenshotCapture)
-      }
-
-      // Selection-based shortcuts copy via ⌘C (Accessibility) — not in the App Store build.
-      if ShortcutAction.readAloud.isInThisBuild && shows(.readAloud) {
-        row("Read Aloud:", $viewModel.data.readAloud, .readAloudShortcut)
-        row("Read Aloud Prompt:", $viewModel.data.readAloudPrompt, .readAloudPromptShortcut)
-      }
-
-      // Glossary is not a `ShortcutAction` (see that enum). Same App Store exclusion as Read Aloud.
-      #if !APP_STORE
-      row("Add to Glossary:", $viewModel.data.addToGlossary, .addToGlossaryShortcut)
-      // Text at the cursor while speaking; pastes, so the same App Store exclusion.
-      row("Dictate Live:", $viewModel.data.liveDictate, .liveDictateShortcut)
-      #endif
-
-      if shows(.chat) {
-        row("Open Chat:", $viewModel.data.openChat, .toggleChat)
-      }
-      row("Open Settings:", $viewModel.data.openSettings, .toggleSettings)
-
+      // Dictate is what almost everyone uses, so it leads, with its second trigger (🌐) right
+      // under it instead of at the end of the list.
+      row(Entry(label: "Dictate", binding: $viewModel.data.toggleDictation, field: .toggleDictation))
       #if !APP_STORE
       fnKeyToggle
+        .padding(.leading, SettingsConstants.labelWidth + 16)
       #endif
+
+      ForEach(visible, id: \.field) { row($0) }
+
+      if !hidden.isEmpty {
+        DisclosureGroup(isExpanded: $showsMore) {
+          VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+            ForEach(hidden, id: \.field) { row($0) }
+          }
+          .padding(.top, 8)
+        } label: {
+          Text("More shortcuts")
+            .font(.callout)
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation { showsMore.toggle() } }
+        }
+      }
+    }
+    .onAppear {
+      collapsedAtAppear = Set(otherEntries.filter { !Self.isSet($0.binding.wrappedValue) }.map(\.field))
     }
     .onReceive(NotificationCenter.default.publisher(for: .dictationOnlyModeChanged)) { _ in
       modeRevision += 1
     }
   }
 
-  private func row(
-    _ label: LocalizedStringKey, _ shortcut: Binding<ShortcutDefinition?>, _ field: SettingsFocusField
-  ) -> some View {
+  private func row(_ entry: Entry) -> some View {
     ShortcutRecorderRow(
-      label: label,
-      shortcut: shortcut,
-      focusedField: field,
+      label: entry.label,
+      shortcut: entry.binding,
+      focusedField: entry.field,
       currentFocus: $focusedField,
       onChanged: { Task { await viewModel.saveSettings() } },
       findConflict: viewModel.findShortcutConflict,
@@ -91,16 +132,20 @@ struct KeyboardShortcutsSection: View {
   }
 
   #if !APP_STORE
-  /// Alternative trigger for Dictate. Last, so it does not break the scannable list of combinations.
-  /// On by default when the 🌐 key is free (`SettingsDefaults.fnKeyDictation`), so the notes below
-  /// say why an "on" toggle may still do nothing: no Accessibility yet, or macOS still owns 🌐.
+  /// Second trigger for Dictate, directly under its row. On by default when the 🌐 key is free
+  /// (`SettingsDefaults.fnKeyDictation`).
+  ///
+  /// The switch shows whether Fn *works*, not only the stored wish: on while Accessibility is
+  /// missing was a switch that lied (UX review 2026-11-17). The wish (`fnKeyDictation`) is kept,
+  /// so the switch turns on by itself once the permission arrives.
   private var fnKeyToggle: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    let wantsFn = viewModel.data.fnKeyDictation
+    return VStack(alignment: .leading, spacing: 6) {
       // The permission prompt lives in the binding's setter, not `onChange`: `onChange` also fires
       // when `data` is reloaded programmatically, which must never trigger a system prompt. The
       // setter only runs when the user flips this toggle.
       Toggle(isOn: Binding(
-        get: { viewModel.data.fnKeyDictation },
+        get: { wantsFn && hasAccessibility },
         set: { newValue in
           DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
           if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
@@ -112,32 +157,27 @@ struct KeyboardShortcutsSection: View {
           refreshFnStatus()
         }
       )) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Also dictate with 🌐 Fn")
-            .font(.callout)
-          Text("Press Fn once to start, again to stop. Needs Accessibility.")
+        Text("Also start with 🌐 Fn")
+          .font(.callout)
+      }
+      .toggleStyle(.switch)
+      .controlSize(.small)
+
+      if wantsFn && !hasAccessibility {
+        HStack(spacing: 8) {
+          Text("Needs Accessibility to notice the Fn key.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+          Button("Allow…") {
+            AccessibilityPermissionManager.requestAccessibilityAtOptIn(for: .fnKey)
+            refreshFnStatus()
+          }
+          .controlSize(.small)
+          .pointerCursorOnHover()
         }
       }
-      .toggleStyle(.switch)
-
-      if viewModel.data.fnKeyDictation {
-        if !hasAccessibility {
-          SettingsCallout(
-            symbol: "hand.raised.fill",
-            title: "Fn needs Accessibility",
-            detail: "Allow WhisperShortcut so it can notice the Fn key."
-          ) {
-            Button("Allow") {
-              AccessibilityPermissionManager.requestAccessibilityAtOptIn(for: .fnKey)
-              refreshFnStatus()
-            }
-            .buttonStyle(.borderedProminent)
-            .pointerCursorOnHover()
-          }
-        }
+      if wantsFn {
         GlobeKeyConflictCard()
       }
     }

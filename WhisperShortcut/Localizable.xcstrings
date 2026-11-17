@@ -1,6 +1,156 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Work from any app. Press once to start, again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktionieren in jeder App. Einmal drücken zum Starten, nochmal zum Beenden."
+          }
+        }
+      }
+    },
+    "More shortcuts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Tastenkürzel"
+          }
+        }
+      }
+    },
+    "Also start with 🌐 Fn" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auch mit 🌐 Fn starten"
+          }
+        }
+      }
+    },
+    "Needs Accessibility to notice the Fn key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht Bedienungshilfen, um die Fn-Taste zu erkennen."
+          }
+        }
+      }
+    },
+    "Type shortcut…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel drücken …"
+          }
+        }
+      }
+    },
+    "Click to record" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Aufnehmen klicken"
+          }
+        }
+      }
+    },
+    "Press the new shortcut. Esc cancels, Delete clears." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie das neue Tastenkürzel. Esc bricht ab, Löschen entfernt es."
+          }
+        }
+      }
+    },
+    "Click to record a new shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicken, um ein neues Tastenkürzel aufzunehmen"
+          }
+        }
+      }
+    },
+    "Key not working?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste funktioniert nicht?"
+          }
+        }
+      }
+    },
+    "Test with a button instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lieber per Klick testen"
+          }
+        }
+      }
+    },
+    "Your text appears here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier erscheint Ihr Text."
+          }
+        }
+      }
+    },
+    "Press 🌐, read the sentence aloud, then press 🌐 again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie 🌐, lesen Sie den Satz laut vor und drücken Sie dann noch einmal 🌐."
+          }
+        }
+      }
+    },
+    "Press %@ together, read the sentence aloud, then press them again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie %@ gleichzeitig, lesen Sie den Satz laut vor und drücken Sie die Tasten dann noch einmal."
+          }
+        }
+      }
+    },
+    "Press 🌐, say a sentence, then press 🌐 again. It works the same in every app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie 🌐, sprechen Sie einen Satz und drücken Sie dann noch einmal 🌐. So funktioniert es in jeder App."
+          }
+        }
+      }
+    },
+    "Press %@ together, say a sentence, then press them again. It works the same in every app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie %@ gleichzeitig, sprechen Sie einen Satz und drücken Sie die Tasten dann noch einmal. So funktioniert es in jeder App."
+          }
+        }
+      }
+    },
     "%@ (recommended)" : {
       "localizations" : {
         "de" : {

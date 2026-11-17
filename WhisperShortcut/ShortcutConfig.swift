@@ -432,10 +432,11 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
 
     var parts: [String] = []
 
-    if modifiers.contains(.command) { parts.append("⌘") }
-    if modifiers.contains(.option) { parts.append("⌥") }
+    // Apple HIG order: Control, Option, Shift, Command. Same order as the menu bar's own shortcut column.
     if modifiers.contains(.control) { parts.append("⌃") }
+    if modifiers.contains(.option) { parts.append("⌥") }
     if modifiers.contains(.shift) { parts.append("⇧") }
+    if modifiers.contains(.command) { parts.append("⌘") }
 
     if let ch = displayCharacter, Self.isPrintableCharacter(ch) {
       parts.append(ch.uppercased())
