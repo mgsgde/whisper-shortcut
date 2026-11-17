@@ -406,12 +406,13 @@ struct MCPConfigTools {
 
   private func sectionInfo() -> [String: Any] {
     var info: [String: Any] = [:]
+    let all = env.targets.systemPrompts.loadAllSections() ?? [:]
     for (name, section) in Self.sections {
-      let body = env.targets.systemPrompts.loadSection(section)
+      let body = all[section]
       let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       // The default's length lets an AI app see at a glance which customized section grew far
       // past what the app ships, the usual sign of rules piling up.
-      let legacy = env.targets.systemPrompts.legacyFullPrompt(for: section)
+      let legacy = SystemPromptsStore.legacyFullPrompt(for: section, in: all)
       var row: [String: Any] = [
         "customized": SystemPromptsStore.isCustomized(trimmed, for: section), "length": trimmed.count,
         "default_length": MCPProposalWindows.defaultText(for: section).count,

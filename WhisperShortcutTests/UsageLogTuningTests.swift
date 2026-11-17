@@ -74,13 +74,13 @@ struct UsageLogTuningTests {
   @Test("since accepts a day, a timestamp and a relative span; rejects prose")
   func sinceParsing() throws {
     let now = try #require(UserContextLog.timestamp("2026-11-02T12:00:00Z"))
-    let rel = try #require(InteractionLogQuery.parseSince("14d", now: now))
+    let rel = try #require(LogWindowArgs.parseSince("14d", now: now))
     #expect(abs(now.timeIntervalSince(rel) - 14 * 86_400) < 3_700)  // DST may shift by an hour
-    let hours = try #require(InteractionLogQuery.parseSince("48h", now: now))
+    let hours = try #require(LogWindowArgs.parseSince("48h", now: now))
     #expect(abs(now.timeIntervalSince(hours) - 48 * 3_600) < 3_700)
-    #expect(InteractionLogQuery.parseSince("2026-10-01T08:00:00Z", now: now) == UserContextLog.timestamp("2026-10-01T08:00:00Z"))
-    #expect(InteractionLogQuery.parseSince("2026-10-01", now: now) != nil)
-    #expect(InteractionLogQuery.parseSince("last tuesday", now: now) == nil)
+    #expect(LogWindowArgs.parseSince("2026-10-01T08:00:00Z", now: now) == UserContextLog.timestamp("2026-10-01T08:00:00Z"))
+    #expect(LogWindowArgs.parseSince("2026-10-01", now: now) != nil)
+    #expect(LogWindowArgs.parseSince("last tuesday", now: now) == nil)
     #expect(InteractionLogQuery.parse(["since": "soon"]).error != nil)
     #expect(InteractionLogQuery.parse(["mode": "chat"]).query?.mode == InteractionMode.chat.rawValue)
     #expect(InteractionLogQuery.parse(["limit": 500]).query?.limit == InteractionLogQuery.maxLimit)

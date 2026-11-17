@@ -58,34 +58,10 @@ struct InteractionLogQuery: Equatable {
     }
   }
 
-  /// `since` as a date: `2026-10-01`, a full ISO-8601 timestamp, or a relative `14d` / `48h`.
-  static func parseSince(_ raw: String, now: Date = Date()) -> Date? {
-    let text = raw.trimmingCharacters(in: .whitespaces).lowercased()
-    guard !text.isEmpty else { return nil }
-    if text.range(of: #"^\d{1,4}\s*[dh]$"#, options: .regularExpression) != nil,
-      let unit = text.last, let amount = Int(text.dropLast().trimmingCharacters(in: .whitespaces))
-    {
-      let component: Calendar.Component = unit == "d" ? .day : .hour
-      return Calendar.current.date(byAdding: component, value: -amount, to: now)
-    }
-    if let stamp = UserContextLog.timestamp(raw.trimmingCharacters(in: .whitespaces)) { return stamp }
-    if text.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil {
-      // A plain day means the start of that day where the user is.
-      let formatter = DateFormatter()
-      formatter.locale = Locale(identifier: "en_US_POSIX")
-      formatter.calendar = Calendar(identifier: .gregorian)
-      formatter.timeZone = .current
-      formatter.dateFormat = "yyyy-MM-dd"
-      return formatter.date(from: text)
-    }
-    return nil
-  }
-
   /// Reads the shared arguments. Returns an error message for the model when one is malformed,
   /// instead of silently widening the read.
   static func parse(_ args: [String: Any], now: Date = Date()) -> (query: InteractionLogQuery?, error: String?) {
     var q = InteractionLogQuery()
-    q.limit = min(max(ChatToolRegistry.intArgument(args, "limit", default: defaultLimit), 1), maxLimit)
     q.offset = max(ChatToolRegistry.intArgument(args, "offset", default: 0), 0)
     if let raw = args["mode"] as? String, !raw.trimmingCharacters(in: .whitespaces).isEmpty {
       guard let mode = modeValue(raw) else {
@@ -93,12 +69,10 @@ struct InteractionLogQuery: Equatable {
       }
       q.mode = mode
     }
-    if let raw = args["since"] as? String, !raw.trimmingCharacters(in: .whitespaces).isEmpty {
-      guard let date = parseSince(raw, now: now) else {
-        return (nil, "since must be a date (2026-10-01), an ISO-8601 timestamp, or a relative 14d / 48h.")
-      }
-      q.since = date
-    }
+    let parsedWindow = LogWindowArgs.parse(args, defaultLimit: defaultLimit, maxLimit: maxLimit, now: now)
+    guard let window = parsedWindow.value else { return (nil, parsedWindow.error) }
+    q.limit = window.limit
+    q.since = window.since
     if let raw = args["query"] as? String {
       let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
       q.query = trimmed.isEmpty ? nil : String(trimmed.prefix(200))
@@ -148,9 +122,7 @@ enum InteractionLogReader {
     let needle = query.query.map { Self.fold($0) }
     let matching = entries.reversed().filter { entry in
       if let mode = query.mode, entry.mode != mode { return false }
-      if let since = query.since {
-        guard let date = UserContextLog.timestamp(entry.ts), date >= since else { return false }
-      }
+      if !LogWindowArgs.isAtOrAfter(since: query.since, ts: entry.ts) { return false }
       if let needle, !searchableText(of: entry).contains(needle) { return false }
       return true
     }
@@ -169,7 +141,7 @@ enum InteractionLogReader {
   /// signals (content-free by contract, see `SignalLogEntry`) are passed through.
   static func item(_ record: Record, fieldCap: Int) -> [String: Any] {
     let e = record.entry
-    func cap(_ s: String) -> String { s.count > fieldCap ? String(s.prefix(fieldCap)) + "…" : s }
+    func cap(_ s: String) -> String { LogWindowArgs.cap(s, to: fieldCap) }
     var item: [String: Any] = ["ts": e.ts, "mode": e.mode]
     let texts: [(String, String?)] = [
       ("result", e.result), ("selectedText", e.selectedText), ("userInstruction", e.userInstruction),
