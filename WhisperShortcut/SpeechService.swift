@@ -1802,6 +1802,10 @@ class SpeechService {
   /// drift apart per provider — they did before, and only the Gemini path's version was ever
   /// checked when either changed.
   ///
+  /// Throws `TranscriptionError.noSpeechDetected` when the spoken instruction is only a filler
+  /// ("Mhm.", a lone "0"). The model has already answered; the throw stops that guess from being
+  /// pasted. A quick action's text is typed and a template turn formats its selection, so neither
+  /// is judged. The timeout placeholder is not a filler.
   /// Throws `TranscriptionError.noSelectedText` when a compose turn's instruction is only a bare
   /// edit command. The model has already answered by then; the throw is what stops the invented
   /// text from being pasted. A timed-out history transcription (`voiceInstructionPlaceholder`)
@@ -1830,6 +1834,20 @@ class SpeechService {
         DebugLogger.logWarning("\(logPrefix): History transcription timed out, using placeholder")
       }
       userInstruction = result ?? Self.voiceInstructionPlaceholder
+    }
+
+    // "Mhm.", "Äh." or a lone "0" (a breath) is not an instruction. The model would still edit
+    // the selection on a guess, so paste nothing. With or without a selection. A quick action's
+    // text is typed; only the edit quick action is flagged on this service.
+    if DictatePromptSelectionDecision.refusesFillerOnlyInstruction(
+      instruction: userInstruction, isQuickAction: promptIsEditQuickAction,
+      isTemplateTurn: promptTurnKind.isTemplate)
+    {
+      DebugLogger.logWarning("\(logPrefix): Instruction was only a filler — not pasting")
+      ContextLogger.shared.logSignal(
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue,
+        detail: ["reason": "fillerOnlyInstruction"])
+      throw TranscriptionError.noSpeechDetected
     }
 
     // Nothing selected and the user only said "Korrigiere" / "Rephrase this": the model fills

@@ -230,8 +230,10 @@ enum OutcomeSignal: String {
   case promptFollowUp
   /// Dictate Prompt ran as a compose turn: nothing was selected for this recording, so the model
   /// wrote new text instead of editing a selection (`detail.reason` = `composeTurn`, `detail.model`).
-  /// `detail.reason` = `bareEditCommandBlocked` is the exception: the instruction was only an edit
+  /// `detail.reason` = `bareEditCommandBlocked` is one refusal: the instruction was only an edit
   /// command, so the turn was refused instead of pasting invented text.
+  /// `detail.reason` = `fillerOnlyInstruction` is the other: the spoken instruction was only a
+  /// filler, so nothing is pasted.
   /// Until 2026-10 this meant the request was refused (`reason` `emptySelection` /
   /// `clipboardUnavailable`); the raw value is kept so the telemetry schema and older logs still
   /// line up.
