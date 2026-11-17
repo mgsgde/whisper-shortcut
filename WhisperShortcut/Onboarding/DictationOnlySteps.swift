@@ -549,15 +549,24 @@ struct DictationOnlyTestStep: View {
     SettingsDefaults.whisperLanguage
 
   @State private var micStatus = PermissionStatusChecker.status(for: .microphone)
+  @State private var axStatus = PermissionStatusChecker.status(for: .accessibility)
+  @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
+  @ObservedObject private var globeKey = GlobeKeyStatus.shared
 
   private var modelReady: Bool { modelManager.isModelAvailable(DictationOnlyDownloadStep.model) }
+
+  private var startKey: DictationOnlyStartKey {
+    RealKeyTryItCopy.currentStartKey(
+      fnEnabled: fnEnabled, globeConflict: globeKey.usage.conflictsWithFnDictation,
+      accessibilityGranted: axStatus == .granted)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       WelcomeStepHeader(
         systemImage: "waveform",
         title: "Try it",
-        subtitle: "Click “Try dictation” and read this sentence aloud:")
+        subtitle: RealKeyTryItCopy.instruction(for: startKey))
 
       Text(verbatim: DictationOnlyTestSentence.sentence(for: language))
         .font(.title3)
@@ -588,9 +597,10 @@ struct DictationOnlyTestStep: View {
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
       } else if modelReady {
-        OnboardingTryItPanel(
-          recordSeconds: Self.recordSeconds,
-          caption: "You have about \(Self.recordSeconds) seconds. Click “Stop” when you have finished.",
+        RealKeyTryIt(
+          startKey: startKey,
+          fallbackRecordSeconds: Self.recordSeconds,
+          fallbackCaption: "You have about \(Self.recordSeconds) seconds. Click “Stop” when you have finished.",
           onSuccess: onSuccess)
       } else {
         Text("The download is not finished yet. The test can start as soon as it is.")
@@ -614,6 +624,8 @@ struct DictationOnlyTestStep: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       micStatus = PermissionStatusChecker.status(for: .microphone)
+      axStatus = PermissionStatusChecker.status(for: .accessibility)
+      globeKey.refresh()
     }
   }
 }

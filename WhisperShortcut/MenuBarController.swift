@@ -105,6 +105,8 @@ class MenuBarController: NSObject {
   /// Live in the Send Feedback submenu, which `menu.item(withTag:)` does not search.
   private var reportResultItem: NSMenuItem?
   private var reportResultSeparator: NSMenuItem?
+  /// Rows the unfinished-setup gate hid, so it puts back exactly those once (and no others).
+  private var hiddenBySetupGate: [NSMenuItem] = []
   private var blinkTimer: Timer?
   private var feedbackResetTask: Task<Void, Never>?
 
@@ -1530,23 +1532,33 @@ class MenuBarController: NSObject {
 
   /// While onboarding is unfinished, hides every row `visibleDuringSetup` does not name, then
   /// drops a separator that would sit against another separator or at an edge. When setup is
-  /// done, puts back the rows nothing else writes `isHidden` for (the gate is the only thing
-  /// that hid them) and leaves Stop, history, Dictation only, proposals and the meeting backlog
-  /// as this pass already decided them.
+  /// done, puts back once the rows nothing else writes `isHidden` for (the gate is the only
+  /// thing that hid them), and only those the gate itself hid. Untagged rows other passes own
+  /// (the report-result separator) are left as those passes decided them, so the gate never
+  /// shows a row after setup that would be hidden without it.
   private func applyUnfinishedSetupVisibility(_ menu: NSMenu) {
     let setupIncomplete = WelcomeWindowController.needsCompletion
-    for item in menu.items {
-      let tag = MenuTag(rawValue: item.tag)
-      if setupIncomplete {
-        let allowed = tag.map(Self.visibleDuringSetup) ?? false
-        if !allowed { item.isHidden = true }
-      } else if Self.restoredWhenSetupFinishes(tag) {
-        item.isHidden = false
-      }
-    }
     if setupIncomplete {
+      for item in menu.items {
+        let allowed = MenuTag(rawValue: item.tag).map(Self.visibleDuringSetup) ?? false
+        if !allowed, !item.isHidden {
+          item.isHidden = true
+          if !hiddenBySetupGate.contains(where: { $0 === item }) { hiddenBySetupGate.append(item) }
+        }
+      }
       Self.hideDanglingSeparators(in: menu)
+      return
     }
+    guard !hiddenBySetupGate.isEmpty else { return }
+    let ownedElsewhere: Set<ObjectIdentifier> = Set(
+      [reportResultSeparator].compactMap { $0 }.map(ObjectIdentifier.init))
+    for item in hiddenBySetupGate
+    where Self.restoredWhenSetupFinishes(MenuTag(rawValue: item.tag))
+      && !ownedElsewhere.contains(ObjectIdentifier(item)) {
+      item.isHidden = false
+    }
+    hiddenBySetupGate.removeAll()
+    DebugLogger.log("MENU: setup finished, rows hidden during setup are back")
   }
 
   /// Visible by default, and no other pass writes `isHidden`. Untagged items are the separators
@@ -2923,6 +2935,13 @@ class MenuBarController: NSObject {
       }
       let pasteOutcome = await self.autoPasteIfEnabled()
       let didAutoPaste = pasteOutcome != nil
+      if spec.mode == .transcription, !duringMeeting {
+        // The onboarding test field shows the result even where nothing was pasted.
+        await MainActor.run {
+          NotificationCenter.default.post(
+            name: .dictationResultDelivered, object: nil, userInfo: ["text": result])
+        }
+      }
       await afterCopy(result)
       if let pasteOutcome {
         ContextLogger.shared.logSignal(
