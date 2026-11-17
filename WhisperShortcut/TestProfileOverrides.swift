@@ -145,7 +145,6 @@ struct TestProfileOverrides: Equatable {
     case "permissions": return .dictationOnly(.permissions)
     case "download": return .dictationOnly(.download)
     case "test": return .dictationOnly(.test)
-    case "glossary": return .dictationOnly(.glossary)
     case "done": return .dictationOnly(.done)
     case "full-setup": return .full(.dictationSetup)
     case "full-permissions": return .full(.permissions)
