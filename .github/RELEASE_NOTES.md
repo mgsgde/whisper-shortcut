@@ -1,16 +1,30 @@
-## Glossary
-- **The glossary shortcut learns what was misheard:** correct a word from your last dictation, select it and press the glossary shortcut. WhisperShortcut now also stores the form it heard, so offline dictation (Parakeet) writes it correctly next time. The confirmation shows both, for example: "Lasègue" added to your Glossary (heard as "Lasse").
-- New glossary terms go on their own line when your glossary is one term per line, instead of being appended to the last line.
+## Setup
+- **Try it with your real key:** the "Try it now" step asks you to press your actual dictation key (🌐 or your shortcut), and the text lands right in the window. "Test with a button instead" keeps the old way.
+- "Dictation only" setup ends after the successful test, without the glossary step.
+- Until setup is finished, the menu bar menu shows only Status, Finish setup…, Settings… and Quit.
 
 ## Shortcuts
-- A shortcut waiting on a conflict ("Currently used by …") is checked again when you change another shortcut, and assigned as soon as its key is free.
-- The conflict check and Reassign now also cover template keys and the template picker key.
+- Settings → General shows each shortcut as one control with keycaps. Dictate comes first, then the Fn switch; shortcuts you have not set sit behind "More shortcuts".
+- Modifier keys are shown in the same order everywhere: ⌃⌥⇧⌘.
+- The Fn switch shows as off while Accessibility is missing, with an Allow button.
 
-## MCP
-- `get_configuration` now lists every shortcut, including Dictate Live and template keys, plus your templates.
-- New tools `create_template`, `update_template` and `delete_template`, with the same approval levels and undo as `save_command`.
+## Dictation
+- "äh", "ähm" and "öhm" are removed from every dictation, not only from Dictate Live.
+- Glossary: a misheard form that is not a real word is corrected anywhere in the text, not only after "Frau" or "Dr.". Offline dictation (Parakeet) no longer replaces real German or English words with glossary terms.
+
+## Dictate Prompt
+- Works during a live meeting too: the quick prompt card appears, and clicking an entry or typing an instruction replaces the spoken one.
+- If the spoken instruction is only "Mhm" or "Ah", nothing is changed and "Didn't catch that" appears.
+- Local models no longer produce Cyrillic look-alike letters inside words.
+
+## Fixes
+- While Read Aloud plays, ⌘ shortcuts and typed keys reach the app in front (needs Accessibility).
+- Stopping a live meeting no longer hangs for up to 30 seconds after a cancelled piece.
+- Turning off "Dictation only" keeps the settings you changed after setup.
+- An MCP glossary update that only partly fits now adds the terms that fit.
+- Model import refuses with a clear message when the model is already there or still downloading. Deleting Parakeet keeps the voice detection model.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.94...v8.95
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.95...v8.96
