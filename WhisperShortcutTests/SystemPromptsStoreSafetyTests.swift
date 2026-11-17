@@ -171,4 +171,20 @@ struct SystemPromptsStoreSafetyTests {
     #expect(store.updateSection(.promptMode, content: "Half-typed replacement, more", source: .settings))
     #expect(read(store.backupFileURL)?.contains(customPrompt) == true, "the original must survive the second autosave")
   }
+
+  @Test("loadAllSections returns what loadSection returns for every section, and the legacy prompt from the same read")
+  func loadAllSectionsMatchesLoadSection() throws {
+    let dir = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = SystemPromptsStore(contextDirectoryURL: dir)
+    try fileContent(sections: [.promptMode: customPrompt])
+      .write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
+
+    let all = try #require(store.loadAllSections())
+    for section in SystemPromptSection.allCases {
+      #expect(all[section] == store.loadSection(section), "\(section.rawValue)")
+    }
+    #expect(SystemPromptsStore.legacyFullPrompt(for: .promptModeAdditions, in: all)
+      == store.legacyFullPrompt(for: .promptModeAdditions))
+  }
 }

@@ -69,19 +69,16 @@ struct ConfigHistoryQuery: Equatable {
 
   static func parse(_ args: [String: Any], now: Date = Date()) -> (query: ConfigHistoryQuery?, error: String?) {
     var q = ConfigHistoryQuery()
-    q.limit = min(max(ChatToolRegistry.intArgument(args, "limit", default: defaultLimit), 1), maxLimit)
     if let raw = args["section"] as? String, !raw.trimmingCharacters(in: .whitespaces).isEmpty {
       guard let section = section(named: raw) else {
         return (nil, "section must be one of: \(sectionNames.joined(separator: ", ")).")
       }
       q.section = section
     }
-    if let raw = args["since"] as? String, !raw.trimmingCharacters(in: .whitespaces).isEmpty {
-      guard let date = InteractionLogQuery.parseSince(raw, now: now) else {
-        return (nil, "since must be a date (2026-10-01), an ISO-8601 timestamp, or a relative 14d / 48h.")
-      }
-      q.since = date
-    }
+    let parsedWindow = LogWindowArgs.parse(args, defaultLimit: defaultLimit, maxLimit: maxLimit, now: now)
+    guard let window = parsedWindow.value else { return (nil, parsedWindow.error) }
+    q.limit = window.limit
+    q.since = window.since
     return (q, nil)
   }
 }
@@ -131,15 +128,9 @@ enum ConfigHistoryReader {
       if let section = query.section, !ConfigHistoryQuery.matchesStoredSection(entry.row.section, section: section) {
         return false
       }
-      if let since = query.since {
-        guard let date = UserContextLog.timestamp(entry.row.ts), date >= since else { return false }
-      }
-      return true
+      return LogWindowArgs.isAtOrAfter(since: query.since, ts: entry.row.ts)
     }
-    func cap(_ line: String) -> String {
-      line.count > ConfigHistoryQuery.maxLineCharacters
-        ? String(line.prefix(ConfigHistoryQuery.maxLineCharacters)) + "…" : line
-    }
+    func cap(_ line: String) -> String { LogWindowArgs.cap(line, to: ConfigHistoryQuery.maxLineCharacters) }
     let changes: [[String: Any]] = matching.prefix(query.limit).map { entry in
       let row = entry.row
       var item: [String: Any] = [

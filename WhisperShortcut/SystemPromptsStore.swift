@@ -176,8 +176,16 @@ final class SystemPromptsStore {
 
   /// The legacy full prompt that replaces the built-in for this additions section, when one is active.
   func legacyFullPrompt(for additionsSection: SystemPromptSection) -> String? {
+    Self.legacyFullPrompt(for: additionsSection, in: loadAllSections() ?? [:])
+  }
+
+  /// Same, from sections already read with `loadAllSections`, so a caller that needs several
+  /// sections does not read the file once per lookup.
+  static func legacyFullPrompt(
+    for additionsSection: SystemPromptSection, in sections: [SystemPromptSection: String]
+  ) -> String? {
     guard let legacy = additionsSection.promptPair?.legacy else { return nil }
-    let text = (loadSection(legacy) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let text = (sections[legacy] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     return text.isEmpty ? nil : text
   }
 
@@ -562,10 +570,20 @@ final class SystemPromptsStore {
   /// Current content for a section (raw, for display or comparison).
   /// Nil when the section is absent or the file cannot be read (see `unreadableReason`).
   func loadSection(_ section: SystemPromptSection) -> String? {
-    guard case .contents = currentFile() else { return nil }
-    prepareFile()
-    guard case .contents(let content) = readFile() else { return nil }
-    return parseSections(from: content)[section]
+    loadAllSections()?[section]
+  }
+
+  /// Every section from one read of the file (plus a second only when the one-time lift or
+  /// migration just rewrote it). Nil exactly when `loadSection` would be nil for every section:
+  /// the file is missing or unreadable. A caller that needs several sections uses this instead of
+  /// calling `loadSection` once per section.
+  func loadAllSections() -> [SystemPromptSection: String]? {
+    guard case .contents(var content) = currentFile() else { return nil }
+    if prepareFile() {
+      guard case .contents(let fresh) = readFile() else { return nil }
+      content = fresh
+    }
+    return parseSections(from: content)
   }
 
   /// One line per section — custom, default or empty, plus a character count — and one for the file
@@ -653,7 +671,9 @@ final class SystemPromptsStore {
   /// current wording before it is classified. The whole pass, including its writes, holds
   /// `migrationLock` so it runs once and no other write interleaves. Proposal decline is
   /// scheduled on the main queue after the lock is released, never via `main.sync`.
-  private func prepareFile() {
+  /// Returns whether the lift or migration rewrote the file.
+  @discardableResult
+  private func prepareFile() -> Bool {
     migrationLock.lock()
     let liftWrote = liftUnchangedDefaultsOnce()
     let migration = migrateAdditionsOnce()
@@ -661,12 +681,14 @@ final class SystemPromptsStore {
     if liftWrote || migration.wrote {
       NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
     }
-    guard !migration.superseded.isEmpty else { return }
+    let wrote = liftWrote || migration.wrote
+    guard !migration.superseded.isEmpty else { return wrote }
     let sections = migration.superseded
     let decline = declineLegacyProposals
     DispatchQueue.main.async {
       decline?(sections)
     }
+    return wrote
   }
 
   /// Once per launch: sections the user never edited — still equal to some default this app has
