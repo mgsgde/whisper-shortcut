@@ -18,8 +18,8 @@ class MenuBarController: NSObject {
   /// literals. Naming them makes that link something the compiler checks.
   ///
   /// Raw values are the historical tags, kept as-is: they are persisted nowhere, but leaving
-  /// them unchanged keeps this a pure rename.
-  private enum MenuTag: Int {
+  /// them unchanged keeps this a pure rename. Internal so the setup allow-list can be tested.
+  enum MenuTag: Int, CaseIterable {
     case status = 100
     case dictate = 101
     case dictatePrompt = 102
@@ -46,6 +46,19 @@ class MenuBarController: NSObject {
     case welcomeTour = 129
     case aiAppProposals = 130
     case chatSeparator = 135
+    case quit = 136
+  }
+
+  /// Rows that stay in the status menu until onboarding is finished. Everything else would only
+  /// lead to "API Key Required". Quit has a tag so this can name it; Check for Updates and the
+  /// daily-build switcher stay untagged and are hidden with the other non-matches.
+  static func visibleDuringSetup(_ tag: MenuTag) -> Bool {
+    switch tag {
+    case .status, .finishSetup, .finishSetupSeparator, .settings, .quit:
+      return true
+    default:
+      return false
+    }
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -650,7 +663,7 @@ class MenuBarController: NSObject {
       menu.addItem(switchItem)
     }
     menu.addItem(
-      createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
+      createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q", tag: .quit))
 
     return menu
   }
@@ -1484,6 +1497,8 @@ class MenuBarController: NSObject {
         canResume: !LiveMeetingTranscriptStore.shared.chunks.isEmpty))
 
     applyDictationOnlyVisibility(menu)
+    // Last, so an unfinished tour wins over Stop, Dictation only, history and the proposals row.
+    applyUnfinishedSetupVisibility(menu)
   }
 
   /// Hides the rows "Dictation only" removes, by `isHidden` on the existing items: the menu is
@@ -1511,6 +1526,62 @@ class MenuBarController: NSObject {
     apply(.chat, tags: [.chat, .chatSeparator])
     apply(.meetingBacklog, ownsVisibility: true, tags: [.retryMeetingTranscription, .showMeetingAudio])
     apply(.aiAppProposals, ownsVisibility: true, tags: [.aiAppProposals])
+  }
+
+  /// While onboarding is unfinished, hides every row `visibleDuringSetup` does not name, then
+  /// drops a separator that would sit against another separator or at an edge. When setup is
+  /// done, puts back the rows nothing else writes `isHidden` for (the gate is the only thing
+  /// that hid them) and leaves Stop, history, Dictation only, proposals and the meeting backlog
+  /// as this pass already decided them.
+  private func applyUnfinishedSetupVisibility(_ menu: NSMenu) {
+    let setupIncomplete = WelcomeWindowController.needsCompletion
+    for item in menu.items {
+      let tag = MenuTag(rawValue: item.tag)
+      if setupIncomplete {
+        let allowed = tag.map(Self.visibleDuringSetup) ?? false
+        if !allowed { item.isHidden = true }
+      } else if Self.restoredWhenSetupFinishes(tag) {
+        item.isHidden = false
+      }
+    }
+    if setupIncomplete {
+      Self.hideDanglingSeparators(in: menu)
+    }
+  }
+
+  /// Visible by default, and no other pass writes `isHidden`. Untagged items are the separators
+  /// between groups, Check for Updates, and the daily-build switcher.
+  private static func restoredWhenSetupFinishes(_ tag: MenuTag?) -> Bool {
+    switch tag {
+    case .status, .dictate, .addToGlossary, .liveDictate, .settings, .sendFeedback, .rate, .quit, nil:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// A separator with no visible row on both sides. The setup gate hides whole groups, which
+  /// would otherwise leave a blank row at the top, the bottom, or against another separator.
+  private static func hideDanglingSeparators(in menu: NSMenu) {
+    let items = menu.items
+    var previousVisibleIsSeparator = true
+    var lastVisibleSeparatorIndex: Int?
+    for (index, item) in items.enumerated() where !item.isHidden {
+      if item.isSeparatorItem {
+        if previousVisibleIsSeparator {
+          item.isHidden = true
+        } else {
+          previousVisibleIsSeparator = true
+          lastVisibleSeparatorIndex = index
+        }
+      } else {
+        previousVisibleIsSeparator = false
+        lastVisibleSeparatorIndex = nil
+      }
+    }
+    if let index = lastVisibleSeparatorIndex {
+      items[index].isHidden = true
+    }
   }
 
   /// Rebuilds the "Recent Transcriptions" submenu and hides both history rows while there is
@@ -1564,7 +1635,12 @@ class MenuBarController: NSObject {
     retryItem?.isHidden = count == 0 && !retrying
     showItem?.isHidden = count == 0
     retryItem?.isEnabled = !retrying
-    defer { applyDictationOnlyVisibility(menu) }
+    // Menu open runs this after `refreshMenu`, which would show the backlog rows again.
+    // The setup gate has to run last here too, or it only wins until the menu opens.
+    defer {
+      applyDictationOnlyVisibility(menu)
+      applyUnfinishedSetupVisibility(menu)
+    }
     retryItem?.title =
       retrying
       ? String(localized: "Retrying Meeting Transcription…")
