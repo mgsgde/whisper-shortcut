@@ -29,9 +29,6 @@ final class GlossaryFastLearner {
   private let transcriptWindowDays = 14
   /// Cap per typed message so a pasted document can never flood the glossary.
   private let maxAdditionsPerMessage = 3
-  /// Stop auto-adding once the glossary is this large — it is prepended to every
-  /// transcription prompt, so unbounded growth would eat the prompt budget.
-  private let glossaryAutoGrowthLimitChars = 2_000
   private let minTokenLength = 4
   private let maxCandidatesPerMessage = 12
   /// A 2-edit fuzzy match is only trusted when the shorter word is at least this long. Below it,
@@ -41,7 +38,12 @@ final class GlossaryFastLearner {
   /// words require an exact single-edit near-miss.
   private static let minLengthForTwoEdits = 8
 
-  private init() {}
+  /// The glossary file. Tests pass a scratch store; the shared learner uses the real one.
+  private let store: SystemPromptsStore
+
+  init(store: SystemPromptsStore = .shared) {
+    self.store = store
+  }
 
   /// Follows the same "Save usage data" toggle as ContextLogger: the transcripts this
   /// feature matches against only exist when interaction logging is enabled.
@@ -74,19 +76,17 @@ final class GlossaryFastLearner {
   /// model away from that specific error). Returns the functionResponse payload for the model.
   /// Unlike passive learning this is user intent, so it is not gated on the logging toggle.
   func rememberTerm(_ term: String, misheardAs: String?) -> [String: Any] {
-    // Drop the misheard spelling first. This learner adds terms bare (one per line), so whatever
-    // it picked up before the user corrected it — e.g. "Kimmi" — is sitting in the glossary as a
-    // legitimate-looking entry. Leaving it there hands the transcription model both spellings as
-    // correct and the new correction has no effect. Runs even on the already_in_glossary path,
-    // because that is exactly the state a repeated correction lands in.
-    var glossary = SystemPromptsStore.shared.loadWhisperGlossary()
+    // Drop the misheard spelling first. Leaving "Kimmi" in the glossary hands the model both
+    // spellings as correct, so the new correction has no effect. Runs even when the right
+    // spelling is already listed, which is where a repeated correction lands.
+    var glossary = store.loadWhisperGlossary()
     var prunedWrongSpelling = false
     if let wrong = misheardAs, !wrong.isEmpty {
       let cleaned = removingSpelling(wrong, from: glossary)
       if cleaned != glossary {
         glossary = cleaned
         prunedWrongSpelling = true
-        SystemPromptsStore.shared.updateSection(.whisperGlossary, content: glossary, source: .chat)
+        store.updateSection(.whisperGlossary, content: glossary, source: .chat)
         DebugLogger.log("GLOSSARY-LEARN: chat tool removed competing spelling \(DebugLogger.redacted(wrong))")
       }
     }
@@ -103,25 +103,38 @@ final class GlossaryFastLearner {
           : "Already listed — no change needed.",
       ]
     }
-    guard glossary.count < glossaryAutoGrowthLimitChars else {
-      return [
-        "error":
-          "The glossary is already very large. Ask the user to prune it in Settings → Dictate before adding more terms."
-      ]
-    }
     // The chat tool receives the term as the model spelled it, often all lowercase. The
     // casing already used in the user's transcripts ("Bachata") is the one worth storing,
     // so the glossary does not grow a second copy that differs only by case.
     let spelled = GlossaryLearning.applyingMajorityCasing(
       to: term, keepingLinesOf: "", transcripts: recentTranscriptionResults())
     let entry = misheardAs.map { "\(spelled) (not \"\($0)\")" } ?? spelled
-    let newGlossary = glossary.isEmpty ? entry : glossary + "\n" + entry
-    SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary, source: .chat)
-    DebugLogger.log("GLOSSARY-LEARN: chat tool added \(DebugLogger.redacted(entry)) to glossary")
-    return [
-      "ok": true, "status": "added", "glossary_entry": entry,
-      "note": "Saved. All future dictations are conditioned with this term.",
-    ]
+    // The store's budget and separator decide. This used to keep its own 2,000-character
+    // cap and always join with a newline, so it could outgrow what Whisper reads.
+    let result = store.mergeGlossary([entry], source: .chat).first
+    switch result {
+    case .added, .learned:
+      DebugLogger.log("GLOSSARY-LEARN: chat tool added \(DebugLogger.redacted(entry)) to glossary")
+      return [
+        "ok": true, "status": "added", "glossary_entry": entry,
+        "note": "Saved. All future dictations are conditioned with this term.",
+      ]
+    case .budgetExceeded:
+      return [
+        "error":
+          "The glossary is already very large. Ask the user to prune it in Settings → Dictate before adding more terms."
+      ]
+    case .duplicate:
+      return [
+        "ok": true, "status": prunedWrongSpelling ? "cleaned_up" : "already_in_glossary",
+        "term": term,
+        "note": prunedWrongSpelling
+          ? "The term was already listed, but the competing spelling was still in the glossary and has now been removed."
+          : "Already listed — no change needed.",
+      ]
+    case .notATerm, .none:
+      return ["error": "That is not a glossary term."]
+    }
   }
 
   /// Removes a misheard spelling from the glossary text, in both shapes it can appear in: a bare
@@ -166,9 +179,11 @@ final class GlossaryFastLearner {
 
   /// Fuzzy-matches typed candidates against recent transcript words (utility queue).
   private func findMatches(candidates: [String]) -> [(typed: String, transcript: String)] {
-    let glossary = SystemPromptsStore.shared.loadWhisperGlossary()
-    guard glossary.count < glossaryAutoGrowthLimitChars else {
-      DebugLogger.log("GLOSSARY-LEARN: skip — glossary at auto-growth limit (\(glossary.count) chars)")
+    let glossary = store.loadWhisperGlossary()
+    // The merge refuses anything past `glossaryCharBudget`. Scanning past that only
+    // produces terms commit cannot write.
+    guard glossary.count < SystemPromptsStore.glossaryCharBudget else {
+      DebugLogger.log("GLOSSARY-LEARN: skip — glossary at the store budget (\(glossary.count) chars)")
       return []
     }
     let glossaryTokens = Set(tokenize(glossary).map(fold))
@@ -242,16 +257,20 @@ final class GlossaryFastLearner {
   }
 
   /// Appends accepted spellings to the glossary (utility queue).
+  /// No `PromptHistorySource` case names this learner. The terms came from typed chat
+  /// text, so the history row stays `.chat`.
   private func commit(pairs: [(typed: String, transcript: String)]) {
-    let glossary = SystemPromptsStore.shared.loadWhisperGlossary()
-    let glossaryTokens = Set(tokenize(glossary).map(fold))
-    let additions = pairs.map(\.typed).filter { !glossaryTokens.contains(fold($0)) }
-    guard !additions.isEmpty else { return }
-    let newGlossary = glossary.isEmpty
-      ? additions.joined(separator: "\n")
-      : glossary + "\n" + additions.joined(separator: "\n")
-    SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary, source: .chat)
-    DebugLogger.log("GLOSSARY-LEARN: added \(additions.count) term(s) from typed chat text")
+    let terms = pairs.map(\.typed)
+    guard !terms.isEmpty else { return }
+    let results = store.mergeGlossary(terms, source: .chat)
+    let added = results.reduce(0) { count, result in
+      switch result {
+      case .added, .learned: return count + 1
+      default: return count
+      }
+    }
+    guard added > 0 else { return }
+    DebugLogger.log("GLOSSARY-LEARN: added \(added) term(s) from typed chat text")
   }
 
   /// Internal so the chat tool can reuse the same transcript window

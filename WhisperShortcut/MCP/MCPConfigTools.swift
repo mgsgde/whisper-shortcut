@@ -223,7 +223,7 @@ struct MCPConfigTools {
     "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\" in WhisperShortcut Settings, in which case it creates a proposal the user reviews there."
     + " " + InteractionLogTool.tuningRules
   private static let updateSystemPromptDescription: String =
-    "Replaces one system prompt section with the full new text (at most about 2,000 characters beyond the built-in default). For dictation and dictate_prompt the section holds only additional instructions (context, vocabulary, style) on top of a fixed built-in prompt that cannot be changed; never restate the task or write a whole prompt there, and empty content clears those two. A fixed output format for one job (a note layout) is a template, not a dictate_prompt addition: templates have their own shortcut and do not run via Dictate Prompt; use create_template for those. dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible: keep every existing rule and glossary line, add or edit the one that fixes what the logs show."
+    "Replaces one system prompt section with the full new text (at most about 2,000 characters beyond the built-in default). For dictation and dictate_prompt the section holds only additional instructions (context, vocabulary, style) on top of a fixed built-in prompt that cannot be changed; never restate the task or write a whole prompt there, and empty content clears those two. A fixed output format for one job (a note layout) is a template, not a dictate_prompt addition: templates have their own shortcut and do not run via Dictate Prompt; use create_template for those. Every section waits for the user to accept it in WhisperShortcut, at every access level: dictation, chat, whisper_glossary, dictate_prompt and read_aloud_rewrite. Read the current text first and change as little as possible: keep every existing rule and glossary line, add or edit the one that fixes what the logs show."
     + " " + InteractionLogTool.tuningRules
 
   static let writeToolDefinitions: [[String: Any]] = [
@@ -578,39 +578,60 @@ struct MCPConfigTools {
     }
     return MCPMain.run {
       let current = env.targets.systemPrompts.loadWhisperGlossary()
-      let merged = GlossaryLearning.mergeAdditively(current: current, suggestion: lines.joined(separator: "\n"))
       let base = current.trimmingCharacters(in: .whitespacesAndNewlines)
-      if merged == base {
-        log(tool, "applied", "no-op", len: current.count)
-        return (json(["status": "no_change", "message": "Nothing new to add: the terms are already in the glossary (or are longer than three words without a (not ...) note)."]), false)
-      }
-      guard merged.count <= SystemPromptsStore.glossaryCharBudget else {
-        let left = max(0, SystemPromptsStore.glossaryCharBudget - current.count)
-        return reject(
-          tool, "over budget",
-          "The glossary budget is \(SystemPromptsStore.glossaryCharBudget) characters and only \(left) are left. Nothing was written. Pick the terms that occur most in the user's recent dictations.")
-      }
+      // Propose must not write. The preview uses the same per-term rules as the apply path.
       if env.accessLevel() == .propose {
+        let preview = SystemPromptsStore.applyingGlossaryTerms(lines, to: current)
+        if preview.glossary == base {
+          return glossaryNoWrite(tool: tool, results: preview.results, current: current)
+        }
         do {
           let p = try env.proposals.create(
             kind: .systemPrompt, section: SystemPromptSection.whisperGlossary.rawValue,
-            previousContent: current, proposedContent: merged, rationale: r.value!)
-          log(tool, "proposed", len: merged.count)
+            previousContent: current, proposedContent: preview.glossary, rationale: r.value!)
+          log(tool, "proposed", len: preview.glossary.count)
           return pendingResult(p.id)
         } catch {
           return reject(tool, "too many pending", error.localizedDescription)
         }
       }
+      let results = env.targets.systemPrompts.mergeGlossary(lines, source: .mcp)
+      let after = env.targets.systemPrompts.loadWhisperGlossary()
+      if after == base {
+        return glossaryNoWrite(tool: tool, results: results, current: current)
+      }
       let known = Set(GlossaryLearning.entries(in: current).map { GlossaryLearning.fold($0.term) })
-      let added = GlossaryLearning.entries(in: merged).map(\.term).filter { !known.contains(GlossaryLearning.fold($0)) }
-      switch env.applier.applyGlossary(merged: merged, rationale: r.value!) {
-      case .success(let id):
-        log(tool, "applied", len: merged.count)
-        return (json(["status": "applied", "change_id": id, "added": added, "glossary_length": merged.count]), false)
-      case .failure(let error):
-        return reject(tool, "write failed", error.localizedDescription)
+      let added = GlossaryLearning.entries(in: after).map(\.term).filter { !known.contains(GlossaryLearning.fold($0)) }
+      let change = env.changeLog.record(
+        kind: .glossaryAdd, target: SystemPromptSection.whisperGlossary.rawValue,
+        previous: current, new: after, rationale: r.value!, viaProposal: false)
+      log(tool, "applied", len: after.count)
+      return (json(["status": "applied", "change_id": change.id, "added": added, "glossary_length": after.count]), false)
+    }
+  }
+
+  /// Nothing new landed. A term that did not fit the budget fails the whole call only when
+  /// no earlier term in it was written; a failed write is reported separately.
+  private func glossaryNoWrite(
+    tool: String, results: [SystemPromptsStore.GlossaryAppendResult], current: String
+  ) -> MCPToolResult {
+    let attempted = results.contains {
+      switch $0 {
+      case .added, .learned: return true
+      default: return false
       }
     }
+    if attempted {
+      return reject(tool, "write failed", "Could not write the glossary.")
+    }
+    if results.contains(where: { if case .budgetExceeded = $0 { return true }; return false }) {
+      let left = max(0, SystemPromptsStore.glossaryCharBudget - current.count)
+      return reject(
+        tool, "over budget",
+        "The glossary budget is \(SystemPromptsStore.glossaryCharBudget) characters and only \(left) are left. Nothing was written. Pick the terms that occur most in the user's recent dictations.")
+    }
+    log(tool, "applied", "no-op", len: current.count)
+    return (json(["status": "no_change", "message": "Nothing new to add: the terms are already in the glossary (or are longer than three words without a (not ...) note)."]), false)
   }
 
   // MARK: - update_system_prompt

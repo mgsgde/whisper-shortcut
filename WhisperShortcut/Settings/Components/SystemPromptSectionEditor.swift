@@ -294,21 +294,20 @@ struct SystemPromptSectionEditor: View {
     .cornerRadius(SettingsConstants.cornerRadius)
   }
 
-  /// Shown only for the sections the chat can actually write — Dictate Prompt via
-  /// `update_app_instructions` and the glossary via `remember_dictation_term`. The remaining
-  /// sections stay silent on purpose: advertising a shortcut that then does nothing is worse
-  /// than not advertising it.
+  /// Shown for the sections Chat can write (`ChatToolRegistry.editableInstructionSections`).
+  /// A section Chat cannot change stays silent: advertising a shortcut that does nothing is
+  /// worse than not advertising it. Dictation Only hides Chat, so every hint stays off.
   private var chatEditingHint: String? {
-    switch section {
-    case .promptMode, .promptModeAdditions:
-      return String(localized: "You can also change this by asking in Chat — e.g. “when I say correct, never translate”. Edits made there land in this text.")
-    case .whisperGlossary:
-      // "Dictation only" hides Chat; pointing to it would open a feature the person switched off.
-      if DictationOnlyMode.isEnabled { return nil }
+    Self.chatEditingHint(for: section, dictationOnly: DictationOnlyMode.isEnabled)
+  }
+
+  static func chatEditingHint(for section: SystemPromptSection, dictationOnly: Bool) -> String? {
+    guard !dictationOnly else { return nil }
+    guard ChatToolRegistry.editableInstructionSections.values.contains(section) else { return nil }
+    if section == .whisperGlossary {
       return String(localized: "You can also add terms by asking in Chat — e.g. “Kimi is spelled with one m”.")
-    case .dictation, .chat, .readAloudRewrite, .dictationAdditions:
-      return nil
     }
+    return String(localized: "You can also change this by asking in Chat. Chat can edit dictation, Dictate Prompt, Chat and the glossary, for example “when I say correct, never translate”. Edits made there land in this text.")
   }
 
   /// Our own save comes back trimmed, and an emptied field comes back as an empty body,
