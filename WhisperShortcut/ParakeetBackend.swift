@@ -37,14 +37,17 @@ final class ParakeetBackend: @unchecked Sendable {
   // MARK: - Files
 
   /// FluidAudio's model root (`Application Support/FluidAudio/Models`). Holds the Parakeet
-  /// download (Ultra + the CTC model). The Silero VAD model is stored in this same directory.
-  /// Settings deletes and sizes the folder, so deleting Parakeet also removes the VAD model,
-  /// which re-downloads on next launch.
+  /// download (Ultra + the CTC model) and, beside those, the Silero VAD model (`silero-vad*`).
+  /// Delete and the size readout use `modelDirectories` only, so removing Parakeet leaves the
+  /// VAD model in place.
   static var modelsRoot: URL {
     AsrModels.defaultCacheDirectory(for: version).deletingLastPathComponent()
   }
 
-  private static var ultraDirectory: URL { AsrModels.defaultCacheDirectory(for: version) }
+  /// Ultra and the CTC model. Never a `silero-vad*` folder, which shares `modelsRoot`.
+  static var modelDirectories: [URL] { [ultraDirectory, ctcDirectory] }
+
+  static var ultraDirectory: URL { AsrModels.defaultCacheDirectory(for: version) }
   /// Internal (not private) so the live test can remove just this part and watch it re-download.
   static var ctcDirectory: URL { CtcModels.defaultCacheDirectory(for: .ctc110m) }
 

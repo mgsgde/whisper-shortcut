@@ -191,41 +191,105 @@ final class ModelManager: ModelStore<OfflineModelType> {
     AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
   }
 
-  /// `models/argmaxinc/whisperkit-coreml/openai_whisper-<variant>` — WhisperKit's own layout.
-  private nonisolated var whisperKitRepoDirectory: URL {
-    rootDirectory
+  /// `models/argmaxinc/whisperkit-coreml` — WhisperKit's own layout, under `root`.
+  nonisolated static func whisperKitRepoDirectory(under root: URL) -> URL {
+    root
       .appendingPathComponent("models")
       .appendingPathComponent("argmaxinc")
       .appendingPathComponent("whisperkit-coreml")
   }
 
+  private nonisolated var whisperKitRepoDirectory: URL {
+    Self.whisperKitRepoDirectory(under: rootDirectory)
+  }
+
+  /// Canonical import folder for a Whisper model. Parakeet is not imported this way.
+  nonisolated static func importDestination(for type: OfflineModelType, under root: URL) -> URL {
+    whisperKitRepoDirectory(under: root)
+      .appendingPathComponent("openai_whisper-\(type.whisperKitModelName ?? type.rawValue)")
+  }
+
+  override nonisolated func importDestination(for type: OfflineModelType) -> URL {
+    Self.importDestination(for: type, under: rootDirectory)
+  }
+
   override nonisolated func resolveModelPath(for type: OfflineModelType) -> URL? {
-    guard let whisperKitModelName = type.whisperKitModelName else {
-      // Parakeet: the folder holding both of its models. Resolves while partial too, so Delete
-      // can clear an interrupted download; completeness is `isModelAvailable`'s job.
+    guard type.whisperKitModelName != nil else {
+      // Parakeet lives under the shared FluidAudio root, which also holds Silero VAD.
+      // Resolving the root (even for a partial download) lets callers see the folder;
+      // Delete removes only `ParakeetBackend.modelDirectories`.
       let root = ParakeetBackend.modelsRoot
       return fileManager.fileExists(atPath: root.path) ? root : nil
     }
-    // Standard WhisperKit download structure first.
-    let nestedPath = whisperKitRepoDirectory
+    return Self.resolveWhisperModelPath(for: type, root: rootDirectory, fileManager: fileManager)
+  }
+
+  /// WhisperKit's nested folder first, then the legacy plain names sitting directly under `root`
+  /// (`openai_whisper-<variant>`, the bare variant, `whisper-<variant>`).
+  nonisolated static func resolveWhisperModelPath(
+    for type: OfflineModelType, root: URL, fileManager: FileManager = .default
+  ) -> URL? {
+    guard let whisperKitModelName = type.whisperKitModelName else { return nil }
+    let nestedPath = whisperKitRepoDirectory(under: root)
       .appendingPathComponent("openai_whisper-\(whisperKitModelName)")
     if fileManager.fileExists(atPath: nestedPath.path) {
       return nestedPath
     }
-
-    // Simple location (legacy/manual downloads).
     let possibleSimpleNames = [
       "openai_whisper-\(whisperKitModelName)",
-      "\(whisperKitModelName)",
-      "whisper-\(whisperKitModelName)"
+      whisperKitModelName,
+      "whisper-\(whisperKitModelName)",
     ]
     for name in possibleSimpleNames {
-      let path = rootDirectory.appendingPathComponent(name)
+      let path = root.appendingPathComponent(name)
       if fileManager.fileExists(atPath: path.path) {
         return path
       }
     }
     return nil
+  }
+
+  /// Why a Whisper folder is or isn't loadable. One walk, shared by `isModelAvailable` and tests
+  /// that plant a legacy folder under a temp root. `documentsDirectory` nil means the real
+  /// Documents folder, matching `hasTokenizer`.
+  enum WhisperOnDisk {
+    case missing
+    case incomplete(String)
+    case missingTokenizer
+    case available(URL)
+  }
+
+  nonisolated static func whisperOnDisk(
+    _ type: OfflineModelType, root: URL, documentsDirectory: URL? = nil
+  ) -> WhisperOnDisk {
+    guard let modelPath = resolveWhisperModelPath(for: type, root: root) else { return .missing }
+    if let missing = incompleteComponent(at: modelPath) { return .incomplete(missing) }
+    if !hasTokenizer(for: type, modelFolder: modelPath, documentsDirectory: documentsDirectory) {
+      return .missingTokenizer
+    }
+    return .available(modelPath)
+  }
+
+  nonisolated static func isWhisperAvailable(
+    _ type: OfflineModelType, root: URL, documentsDirectory: URL? = nil
+  ) -> Bool {
+    if case .available = whisperOnDisk(type, root: root, documentsDirectory: documentsDirectory) {
+      return true
+    }
+    return false
+  }
+
+  /// Delete and the size readout cover Ultra and the CTC model only. The resolved path is the
+  /// shared FluidAudio root, and removing that would take the Silero VAD model with it.
+  override nonisolated func deletionTargets(for type: OfflineModelType) -> [URL] {
+    guard type.engine == .parakeet else { return super.deletionTargets(for: type) }
+    return ParakeetBackend.modelDirectories
+  }
+
+  override nonisolated func getModelSize(_ type: OfflineModelType) -> Int64? {
+    guard type.engine == .parakeet else { return super.getModelSize(type) }
+    let total = ParakeetBackend.modelDirectories.reduce(Int64(0)) { $0 + directorySize(at: $1) }
+    return total > 0 ? total : nil
   }
 
   // MARK: - Model Availability
@@ -240,7 +304,8 @@ final class ModelManager: ModelStore<OfflineModelType> {
     if type.engine == .parakeet {
       return ParakeetBackend.isDownloaded
     }
-    guard let modelPath = resolveModelPath(for: type) else {
+    switch Self.whisperOnDisk(type, root: rootDirectory, documentsDirectory: nil) {
+    case .missing:
       DebugLogger.logDebug("MODEL-MANAGER: Checking availability for \(type.displayName)")
       DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory: \(rootDirectory.path)")
       if fileManager.fileExists(atPath: rootDirectory.path),
@@ -248,19 +313,18 @@ final class ModelManager: ModelStore<OfflineModelType> {
         DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory contents: \(contents.joined(separator: ", "))")
       }
       return false
-    }
-    if let missing = Self.incompleteComponent(at: modelPath) {
+    case .incomplete(let missing):
       DebugLogger.logDebug(
         "MODEL-MANAGER: \(type.displayName) folder exists but \(missing) is missing or empty — download incomplete")
       return false
-    }
-    if !Self.hasTokenizer(for: type, modelFolder: modelPath) {
+    case .missingTokenizer:
       DebugLogger.logDebug(
         "MODEL-MANAGER: \(type.displayName) has no cached tokenizer — an offline load would fail, treating as not downloaded")
       return false
+    case .available(let modelPath):
+      DebugLogger.logDebug("MODEL-MANAGER: Found \(type.displayName) at: \(modelPath.path)")
+      return true
     }
-    DebugLogger.logDebug("MODEL-MANAGER: Found \(type.displayName) at: \(modelPath.path)")
-    return true
   }
 
   // MARK: - Tokenizer (offline completeness)

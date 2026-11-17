@@ -27880,6 +27880,16 @@
         }
       }
     },
+    "%@ is already being downloaded. Wait for it to finish, or cancel it, before importing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird bereits heruntergeladen. Warten Sie, bis der Download abgeschlossen ist, oder brechen Sie ihn ab, bevor Sie es importieren."
+          }
+        }
+      }
+    },
     "%@ is already downloaded. Delete it first if you want to replace it." : {
       "localizations" : {
         "de" : {
