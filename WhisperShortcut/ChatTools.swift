@@ -531,8 +531,9 @@ enum ChatToolRegistry {
   /// classification, which it does far more reliably than picking between similar tools.
   static let updateInstructionsToolName = "update_app_instructions"
 
-  /// Per-section ceiling, relative to the shipped default: the default's length plus
-  /// `instructionsSectionHeadroomChars`, never below `instructionsSectionLimitChars` (the floor).
+  /// Per-section ceiling for full-prompt sections, relative to the shipped default: the default's
+  /// length plus `instructionsSectionHeadroomChars`, never below `instructionsSectionLimitChars`
+  /// (the floor). Additions sections use `additionsSectionLimitChars` instead.
   /// A system prompt that grows without bound degrades every response in that mode, and unlike the
   /// glossary the damage is diffuse and hard to attribute. The old flat 5,000 ceiling stopped
   /// working once the defaults grew past it (Dictate Prompt ~5.4k, Chat ~6.7k), which refused every
@@ -541,10 +542,14 @@ enum ChatToolRegistry {
   static let instructionsSectionLimitChars = 5_000
   static let instructionsSectionHeadroomChars = 2_000
 
+  /// Additions sections hold only the user's own rules on top of a fixed core, so they get a flat
+  /// cap instead of default + headroom.
+  static let additionsSectionLimitChars = 2_000
+
   static func instructionsSectionLimit(for section: SystemPromptSection) -> Int {
     switch section {
     case .dictationAdditions, .promptModeAdditions:
-      return 2_000
+      return additionsSectionLimitChars
     default:
       return max(instructionsSectionLimitChars,
         MCPProposalWindows.defaultText(for: section).count + instructionsSectionHeadroomChars)

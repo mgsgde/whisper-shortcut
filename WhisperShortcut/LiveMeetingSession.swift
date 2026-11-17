@@ -1601,7 +1601,8 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         cleanUpAudioFile(audioURL)
       } catch {
         // A cancellation (task torn down, URLSession cancelled) is not a failure: keep the audio,
-        // but say nothing and burn no one-shot alert.
+        // but say nothing and burn no one-shot alert. A cancellation still settles the chunk below
+        // (pending count, flush waiter).
         let isCancellation = error is CancellationError || (error as? URLError)?.code == .cancelled
         if !isCancellation {
           DebugLogger.logError("LIVE-MEETING: Chunk \(chunkIndex) transcription failed: \(error)")
@@ -1630,37 +1631,37 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         if isCancellation {
           DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) transcription cancelled; audio kept=\(kept)")
           if kept { await MainActor.run { self.onBacklogChanged() } }
-          return
-        }
-        await MainActor.run {
-          if kept { self.onBacklogChanged() }
-          // A failure for a meeting that has ended (stopped, or replaced by a newer one) must not
-          // tell the user "Recording continues" or consume the current meeting's one-shot alerts.
-          // The kept audio still needs a word: nothing else will mention it.
-          guard self.isLive(generation) else {
-            if kept, self.endedMeetingAlertShown.insert(generation).inserted {
-              self.showEndedMeetingAlert(Self.endedMeetingFailureMessage(error: error))
+        } else {
+          await MainActor.run {
+            if kept { self.onBacklogChanged() }
+            // A failure for a meeting that has ended (stopped, or replaced by a newer one) must not
+            // tell the user "Recording continues" or consume the current meeting's one-shot alerts.
+            // The kept audio still needs a word: nothing else will mention it.
+            guard self.isLive(generation) else {
+              if kept, self.endedMeetingAlertShown.insert(generation).inserted {
+                self.showEndedMeetingAlert(Self.endedMeetingFailureMessage(error: error))
+              }
+              return
             }
-            return
-          }
-          if isRateLimitOrQuota {
-            if !self.didShowRateLimitAlert {
-              self.didShowRateLimitAlert = true
+            if isRateLimitOrQuota {
+              if !self.didShowRateLimitAlert {
+                self.didShowRateLimitAlert = true
+                self.didShowTranscriptionFailureAlert = true
+                PopupNotificationWindow.showError(
+                  verbatim: SpeechErrorFormatter.formatForUser(error)
+                    + (kept
+                      ? String(localized: "\n\nThe meeting audio is kept on this Mac and can be transcribed later.")
+                      : ""),
+                  title: "Live Meeting – Quota Reached"
+                )
+              }
+            } else if !self.didShowTranscriptionFailureAlert {
               self.didShowTranscriptionFailureAlert = true
               PopupNotificationWindow.showError(
-                verbatim: SpeechErrorFormatter.formatForUser(error)
-                  + (kept
-                    ? String(localized: "\n\nThe meeting audio is kept on this Mac and can be transcribed later.")
-                    : ""),
-                title: "Live Meeting – Quota Reached"
+                verbatim: Self.chunkFailureMessage(error: error, kept: kept),
+                title: "Live Meeting – Transcription Failed"
               )
             }
-          } else if !self.didShowTranscriptionFailureAlert {
-            self.didShowTranscriptionFailureAlert = true
-            PopupNotificationWindow.showError(
-              verbatim: Self.chunkFailureMessage(error: error, kept: kept),
-              title: "Live Meeting – Transcription Failed"
-            )
           }
         }
       }
