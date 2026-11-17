@@ -13,6 +13,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   private var knownPending = Set<String>()
   private var observer: NSObjectProtocol?
 
+  /// True while `start` is watching for proposals. `stop` clears it, so `start` can run again.
+  var isStarted: Bool { observer != nil }
+
   /// Opens a window as soon as a new proposal arrives: the user just asked their AI app for the
   /// change, so the decision belongs on screen now, not behind a menu.
   func start() {
@@ -21,6 +24,22 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     observer = NotificationCenter.default.addObserver(
       forName: .mcpProposalsDidChange, object: nil, queue: .main
     ) { [weak self] _ in self?.sync() }
+  }
+
+  /// Undoes `start`: the proposal observer and any review window it opened. Safe when already
+  /// stopped. Proposals stay pending; only the windows go away.
+  func stop() {
+    if let observer {
+      NotificationCenter.default.removeObserver(observer)
+      self.observer = nil
+    }
+    knownPending.removeAll()
+    let open = Array(windows.values)
+    windows.removeAll()
+    for window in open {
+      window.delegate = nil
+      window.close()
+    }
   }
 
   /// Opens every pending proposal (menu item, Settings button).
