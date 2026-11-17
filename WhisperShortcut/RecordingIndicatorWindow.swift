@@ -754,11 +754,10 @@ private struct QuickActionCardView: View {
   // MARK: Footer
 
   private var footerLabel: String {
-    // The footer words what the field would do, so a bound template is not passed in here: with
-    // a template bound and an entry highlighted it still reads "runs …" while the key handler
-    // stops (BUG CANDIDATE, kept as it was; see the R60 PR). The picker is the one bound case it names.
+    // Footer and key handler share one decision, so the label always words what ↩ does.
     let action = RecordingIndicatorModel.returnAction(
-      isVisible: true, templateBound: showsPicker, pickerChoiceCount: templateChoices.count,
+      isVisible: true, templateBound: showsPicker || templateName != nil,
+      pickerChoiceCount: showsPicker ? templateChoices.count : 0,
       pickerIndex: templateChoiceIndex, typedPrompt: typedText, selectedIndex: selectedIndex,
       actionCount: actions.count)
     switch action {
