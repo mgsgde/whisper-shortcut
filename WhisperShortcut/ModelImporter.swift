@@ -245,7 +245,7 @@ enum ModelImporter {
       let repoFolder = root.appendingPathComponent("models--argmaxinc--whisperkit-coreml")
       let snapshots = repoFolder.appendingPathComponent("snapshots")
       if let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) {
-        for hash in preferredOrder(in: repoFolder, among: hashes) {
+        for hash in HubSnapshotOrder.preferred(in: repoFolder, among: hashes) {
           let candidate = snapshots.appendingPathComponent(hash).appendingPathComponent(folderName)
           if ModelManager.incompleteComponent(at: candidate) == nil {
             return plan(
@@ -280,7 +280,7 @@ enum ModelImporter {
       guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else {
         continue
       }
-      for hash in preferredOrder(in: repoFolder, among: hashes) {
+      for hash in HubSnapshotOrder.preferred(in: repoFolder, among: hashes) {
         let candidate = snapshots.appendingPathComponent(hash)
         if FileManager.default.fileExists(
           atPath: candidate.appendingPathComponent("tokenizer.json").path) {
@@ -330,7 +330,7 @@ enum ModelImporter {
       let repoFolder = root.appendingPathComponent(cacheFolder)
       let snapshots = repoFolder.appendingPathComponent("snapshots")
       if let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) {
-        for hash in preferredOrder(in: repoFolder, among: hashes) {
+        for hash in HubSnapshotOrder.preferred(in: repoFolder, among: hashes) {
           let candidate = snapshots.appendingPathComponent(hash)
           if hasRequiredFiles(candidate) { return candidate }
         }
@@ -344,25 +344,8 @@ enum ModelImporter {
     return nil
   }
 
-  /// Orders a repo's snapshot hashes to try: the one `refs/main` names first — Hub keeps it
-  /// pointed at the default revision — then every other snapshot, newest-modified first. Plain
-  /// lexicographic order (`sorted()`) could land on an older, stale snapshot when a repo has more
-  /// than one.
-  private static func preferredOrder(in repoFolder: URL, among hashes: [String]) -> [String] {
-    let pinned = (try? String(contentsOf: repoFolder.appendingPathComponent("refs/main"), encoding: .utf8))?
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    let snapshots = repoFolder.appendingPathComponent("snapshots")
-    let rest = hashes.filter { $0 != pinned }.sorted { a, b in
-      modificationDate(of: snapshots.appendingPathComponent(a))
-        > modificationDate(of: snapshots.appendingPathComponent(b))
-    }
-    guard let pinned, hashes.contains(pinned) else { return rest }
-    return [pinned] + rest
-  }
-
   private static func modificationDate(of url: URL) -> Date {
-    (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-      ?? .distantPast
+    HubSnapshotOrder.modificationDate(of: url)
   }
 
   // MARK: - Plan construction
