@@ -125,6 +125,49 @@ enum DictatePromptSelectionDecision {
       && (isEditQuickAction || isBareEditCommand(instruction))
   }
 
+  /// True when the spoken instruction is only a filler ("Mhm.", "Äh, ähm."), a lone "0"
+  /// (what the transcriber writes for a breath), or `SpeechService.noSpokenInstructionMarker`
+  /// (the history transcription heard nothing). Nothing was asked, so the turn must not paste.
+  /// Empty input is not a filler: that is the timeout placeholder's neighbor, and a real
+  /// instruction ("Korrigiere", "Oh, kürze das") stays false. The timeout placeholder stays false.
+  static func isFillerOnlyInstruction(_ instruction: String) -> Bool {
+    if instruction == SpeechService.noSpokenInstructionMarker { return true }
+    let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !trimmed.isEmpty else { return false }
+    let stripped = trimmed
+      .trimmingCharacters(in: fillerPunctuation)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if stripped.isEmpty { return true }
+    let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ","))
+    let tokens = stripped.components(separatedBy: separators).compactMap { piece -> String? in
+      let token = piece.trimmingCharacters(in: fillerPunctuation)
+      return token.isEmpty ? nil : token
+    }
+    guard !tokens.isEmpty else { return true }
+    return tokens.allSatisfy(isFillerToken)
+  }
+
+  /// A filler-only spoken instruction is refused. A quick action's text is typed, and a
+  /// template turn formats its selection, so neither is judged here.
+  static func refusesFillerOnlyInstruction(
+    instruction: String, isQuickAction: Bool, isTemplateTurn: Bool
+  ) -> Bool {
+    !isQuickAction && !isTemplateTurn && isFillerOnlyInstruction(instruction)
+  }
+
+  /// ".", ",", "!", "?" and the ellipsis, stripped from both ends before the filler check.
+  private static let fillerPunctuation = CharacterSet(charactersIn: ".,!?…")
+
+  private static func isFillerToken(_ token: String) -> Bool {
+    switch token {
+    case "mhm", "mm-hmm", "hm", "äh", "ähm", "öhm", "ehm", "oh", "ah", "0":
+      return true
+    default:
+      // "hmm" and longer: h followed by two or more m. A single "hm" is the case above.
+      return token.count >= 3 && token.first == "h" && token.dropFirst().allSatisfy { $0 == "m" }
+    }
+  }
+
   /// True when the instruction is only an edit command ("Korrigiere", "Rephrase this") and
   /// nothing else. A compose turn with one of these used to let the model invent the text it
   /// was "editing". Extra words ("Korrigiere, mein Geburtsdatum ist 15.08.91", "schreib eine

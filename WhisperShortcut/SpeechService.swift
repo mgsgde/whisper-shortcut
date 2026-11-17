@@ -20,8 +20,12 @@ private enum Constants {
 class SpeechService {
 
   /// Placeholder used in conversation history when the parallel voice-to-text transcription
-  /// fails or times out.
+  /// fails or times out. Not a filler: the turn is still pasted.
   static let voiceInstructionPlaceholder = "(voice instruction)"
+
+  /// History transcription heard nothing (`TranscriptionError.noSpeechDetected`). A filler, so
+  /// the turn is not pasted. Distinct from the timeout placeholder above.
+  static let noSpokenInstructionMarker = "(no spoken instruction)"
 
   /// Fallback transcription instruction used when the user hasn't supplied a custom prompt.
   private static let defaultTranscriptionInstruction = "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
@@ -1802,6 +1806,11 @@ class SpeechService {
   /// drift apart per provider — they did before, and only the Gemini path's version was ever
   /// checked when either changed.
   ///
+  /// Throws `TranscriptionError.noSpeechDetected` when the spoken instruction is only a filler
+  /// ("Mhm.", a lone "0"). The model has already answered; the throw stops that guess from being
+  /// pasted. A quick action's text is typed and a template turn formats its selection, so neither
+  /// is judged. No speech from the history transcription (`noSpokenInstructionMarker`) is a
+  /// filler, so this throws before the turn is logged. The timeout placeholder is not a filler.
   /// Throws `TranscriptionError.noSelectedText` when a compose turn's instruction is only a bare
   /// edit command. The model has already answered by then; the throw is what stops the invented
   /// text from being pasted. A timed-out history transcription (`voiceInstructionPlaceholder`)
@@ -1830,6 +1839,20 @@ class SpeechService {
         DebugLogger.logWarning("\(logPrefix): History transcription timed out, using placeholder")
       }
       userInstruction = result ?? Self.voiceInstructionPlaceholder
+    }
+
+    // "Mhm.", "Äh." or a lone "0" (a breath) is not an instruction. The model would still edit
+    // the selection on a guess, so paste nothing. With or without a selection. A quick action's
+    // text is typed; only the edit quick action is flagged on this service.
+    if DictatePromptSelectionDecision.refusesFillerOnlyInstruction(
+      instruction: userInstruction, isQuickAction: promptIsEditQuickAction,
+      isTemplateTurn: promptTurnKind.isTemplate)
+    {
+      DebugLogger.logWarning("\(logPrefix): Instruction was only a filler — not pasting")
+      ContextLogger.shared.logSignal(
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue,
+        detail: ["reason": "fillerOnlyInstruction"])
+      throw TranscriptionError.noSpeechDetected
     }
 
     // Nothing selected and the user only said "Korrigiere" / "Rephrase this": the model fills
@@ -1892,9 +1915,10 @@ class SpeechService {
 
   // MARK: - Gemini Prompt Mode
   /// Spawns a parallel `Task` that transcribes the recording for the chat-history record,
-  /// running alongside the main Dictate Prompt request so it adds no latency. Failures fall back
-  /// to `voiceInstructionPlaceholder` instead of throwing. Callers `defer { .cancel() }` it so the
-  /// second API call is dropped if the main request throws first.
+  /// running alongside the main Dictate Prompt request so it adds no latency. No speech
+  /// returns `noSpokenInstructionMarker` so the filler guard can refuse the paste. Every other
+  /// failure falls back to `voiceInstructionPlaceholder` instead of throwing. Callers
+  /// `defer { .cancel() }` it so the second API call is dropped if the main request throws first.
   private func transcribeForHistoryInParallel(
     logPrefix: String,
     audioURL: URL,
@@ -1905,6 +1929,9 @@ class SpeechService {
         let text = try await NoSpeechContext.run(.promptHistory, audioURL: audioURL) { try await transcribe() }
         DebugLogger.log("\(logPrefix): Transcribed voice instruction for history \(DebugLogger.redacted(text))")
         return text
+      } catch TranscriptionError.noSpeechDetected {
+        DebugLogger.logWarning("\(logPrefix): Instruction had no speech")
+        return Self.noSpokenInstructionMarker
       } catch {
         DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.logDescription)")
         return Self.voiceInstructionPlaceholder

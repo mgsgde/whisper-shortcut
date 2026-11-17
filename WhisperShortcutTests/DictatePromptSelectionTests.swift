@@ -124,6 +124,42 @@ struct DictatePromptSelectionTests {
     }
   }
 
+  @Test("A filler-only instruction is fillers, punctuation, a lone 0, or no speech")
+  func fillerOnlyInstruction() {
+    let fillers = [
+      "Mhm.", "Ah.", "Oh.", "0", "Äh, ähm.", "hmm", ".", "…",
+      SpeechService.noSpokenInstructionMarker,
+    ]
+    let notFillers = [
+      "",
+      "Korrigiere",
+      "Oh, kürze das",
+      "Ah, mach es kürzer",
+      "Okay",
+      "10",
+      SpeechService.voiceInstructionPlaceholder,
+    ]
+    for text in fillers {
+      #expect(DictatePromptSelectionDecision.isFillerOnlyInstruction(text), "expected filler: \(text)")
+      #expect(
+        DictatePromptSelectionDecision.refusesFillerOnlyInstruction(
+          instruction: text, isQuickAction: false, isTemplateTurn: false),
+        "expected refusal: \(text)")
+    }
+    for text in notFillers {
+      #expect(!DictatePromptSelectionDecision.isFillerOnlyInstruction(text), "expected not a filler: \(text)")
+      #expect(
+        !DictatePromptSelectionDecision.refusesFillerOnlyInstruction(
+          instruction: text, isQuickAction: false, isTemplateTurn: false),
+        "expected no refusal: \(text)")
+    }
+    // Typed quick-action text and a template turn are not spoken fillers.
+    #expect(!DictatePromptSelectionDecision.refusesFillerOnlyInstruction(
+      instruction: "Mhm.", isQuickAction: true, isTemplateTurn: false))
+    #expect(!DictatePromptSelectionDecision.refusesFillerOnlyInstruction(
+      instruction: "0", isQuickAction: false, isTemplateTurn: true))
+  }
+
   @Test("Nothing selected refuses edit quick actions and bare edit commands, never compose or a screenshot")
   func editWithoutSelectionIsRefused() {
     func refuses(
