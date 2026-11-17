@@ -23,8 +23,11 @@ struct ConfigHistoryQuery: Equatable {
   static let maxDiffLines = 30
   static let maxLineCharacters = 200
 
-  /// Model-facing names, identical to `update_app_instructions` / `update_system_prompt`.
-  static let sectionNames = ["dictation", "dictate_prompt", "chat", "whisper_glossary"]
+  /// Model-facing names. Same set as `MCPConfigTools.sections` (`update_system_prompt`),
+  /// including Read Aloud, which the chat instructions tool does not edit.
+  static let sectionNames = [
+    "dictation", "dictate_prompt", "chat", "whisper_glossary", "read_aloud_rewrite",
+  ]
 
   static func section(named raw: String) -> SystemPromptSection? {
     switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
