@@ -259,7 +259,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   /// downloading. Choose Folder is the default. Escape dismisses without downloading.
   /// The suppression checkbox is the only thing that sets `modelImportOfferDismissed`.
   private func folderOfferAlert() -> FolderOfferChoice {
-    let alert = EscapeDismissAlert()
+    let alert = NSAlert()
     alert.messageText = String(localized: "Already have this model?")
     alert.informativeText = String(
       localized:
@@ -268,11 +268,8 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
     alert.alertStyle = .informational
     alert.addButton(withTitle: String(localized: "Choose Folder…"))
     alert.addButton(withTitle: String(localized: "Download"))
-    // Escape only cancels when some button has that key equivalent. The button stays in the
-    // hierarchy so the key reaches it; `EscapeDismissAlert` takes it out of the layout so the
-    // visible buttons are Choose Folder and Download.
-    let escape = alert.addButton(withTitle: String(localized: "Cancel"))
-    escape.keyEquivalent = "\u{1b}"
+    let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
+    cancel.keyEquivalent = "\u{1b}"
     alert.showsSuppressionButton = true
     alert.suppressionButton?.title = String(localized: "Don't ask again")
     let response = alert.runModal()
@@ -401,35 +398,6 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
     } catch {
       DebugLogger.logError("\(store.logPrefix): UI delete failed for \(model.displayName): \(error.logDescription)")
       onError(String(localized: "Failed to delete \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))"))
-    }
-  }
-}
-
-/// An alert whose last button dismisses on Escape and takes no space.
-///
-/// `NSAlert` only treats Escape as cancel when a button has that key equivalent, and a hidden
-/// button never receives key equivalents. After the alert's own layout, the button stays in the
-/// view hierarchy (so Escape still reaches it) but is removed from the stack view (so Choose
-/// Folder and Download are the only buttons the user sees).
-private final class EscapeDismissAlert: NSAlert {
-  private var collapsingEscape = false
-
-  override func layout() {
-    guard !collapsingEscape else { return }
-    collapsingEscape = true
-    defer { collapsingEscape = false }
-    super.layout()
-    guard buttons.count >= 3, let escape = buttons.last else { return }
-    escape.keyEquivalent = "\u{1b}"
-    var view: NSView? = escape.superview
-    while let current = view {
-      if let stack = current as? NSStackView, stack.arrangedSubviews.contains(escape) {
-        stack.removeArrangedSubview(escape)
-        escape.alphaValue = 0
-        escape.frame = .zero
-        return
-      }
-      view = current.superview
     }
   }
 }
