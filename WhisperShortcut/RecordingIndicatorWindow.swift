@@ -857,11 +857,14 @@ struct RecordingIndicatorView: View {
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
         if let deviceName = model.inputDeviceName {
-          Text("· \(deviceName)")
+          // Verbatim: the device name is a CoreAudio string, not a catalog key. Priority
+          // below the status word so a capped pill (160 pt suffix) truncates the name.
+          Text(verbatim: "· \(deviceName)")
             .font(.system(size: 10, weight: .semibold))
             .foregroundColor(.white.opacity(0.55))
             .lineLimit(1)
             .truncationMode(.tail)
+            .layoutPriority(-1)
         }
         PillCircleButton(
           symbolName: "checkmark", foreground: .black, background: .white,

@@ -28,9 +28,17 @@ enum AudioInputDeviceCatalog {
   /// The device macOS currently records from, or nil when CoreAudio has no usable answer
   /// (e.g. no input device exists at all). The name is the raw CoreAudio device name —
   /// never a made-up label — so it matches what System Settings shows.
+  ///
+  /// This does not use `device(id:)`. AVAudioRecorder captures the system default input
+  /// even when that device is BlackHole or a Zoom/Teams virtual driver, and the recording
+  /// pill must name it. The physical and input-channel filters belong to the picker list
+  /// (`availableDevices()`), not to the device that is already live.
   static func defaultInputDevice() -> InputDevice? {
-    guard let deviceID = readDefaultInputDevice() else { return nil }
-    return device(id: deviceID)
+    guard let deviceID = readDefaultInputDevice(),
+      let uid = readDeviceUID(deviceID),
+      let name = readDeviceName(deviceID)
+    else { return nil }
+    return InputDevice(id: deviceID, uid: uid, name: name)
   }
 
   /// Convenience for callers that only display the name.
@@ -132,8 +140,25 @@ enum AudioInputDeviceCatalog {
     return channels
   }
 
+  /// True unless the transport is a virtual loopback or an aggregate device. Virtual covers
+  /// BlackHole, Zoom and Teams. Aggregate and AutoAggregate are the multi-device devices
+  /// CoreAudio builds; `kAudioDeviceTransportTypeVirtual` alone does not catch them, and a
+  /// microphone picker must not offer them.
+  static func isPhysicalTransport(_ transportType: UInt32) -> Bool {
+    switch transportType {
+    case kAudioDeviceTransportTypeVirtual,
+      kAudioDeviceTransportTypeAggregate,
+      kAudioDeviceTransportTypeAutoAggregate:
+      return false
+    default:
+      return true
+    }
+  }
+
   /// True unless the device is an aggregate or otherwise virtual route. Those are loopback
-  /// drivers, not microphones, and must not appear in a microphone picker.
+  /// drivers, not microphones, and must not appear in a microphone picker. A failed
+  /// transport read is treated as not a microphone: the picker must not offer a device
+  /// it could not classify.
   private static func isPhysical(_ deviceID: AudioObjectID) -> Bool {
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioDevicePropertyTransportType,
@@ -143,6 +168,6 @@ enum AudioInputDeviceCatalog {
     var size = UInt32(MemoryLayout<UInt32>.size)
     let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
     guard status == noErr else { return false }
-    return value != kAudioDeviceTransportTypeVirtual
+    return isPhysicalTransport(value)
   }
 }
