@@ -329,4 +329,22 @@ struct ChatGeneratedTitleTests {
     #expect(ChatViewModel.mayApplyGeneratedTitle(current: truncated, firstMessageFallback: truncated))
     #expect(!ChatViewModel.mayApplyGeneratedTitle(current: "Short name", firstMessageFallback: truncated))
   }
+
+  @Test("A meeting title is generated only while empty or still the first-message fallback")
+  func meetingTitleNeedsGenerationPreservesARename() {
+    let messages = [ChatMessage(role: .user, content: "how do I reset the router")]
+    let untitled = ChatSession(messages: messages, isMeeting: true)
+    #expect(ChatViewModel.meetingTitleNeedsGeneration(untitled))
+    #expect(ChatViewModel.meetingTitleNeedsGeneration(
+      ChatSession(messages: messages, title: "", isMeeting: true)))
+
+    let fallback = ChatViewModel.meetingFirstMessageFallbackTitle(for: untitled)
+    #expect(ChatViewModel.meetingTitleNeedsGeneration(
+      ChatSession(messages: messages, title: fallback, isMeeting: true)))
+
+    #expect(!ChatViewModel.meetingTitleNeedsGeneration(
+      ChatSession(messages: messages, title: "Router help", isMeeting: true)))
+    #expect(!ChatViewModel.meetingTitleNeedsGeneration(
+      ChatSession(messages: messages, title: nil, isMeeting: false)))
+  }
 }
