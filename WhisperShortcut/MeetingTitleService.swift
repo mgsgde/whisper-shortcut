@@ -4,17 +4,16 @@
 //
 //  App-level meeting-title generation, independent of any chat window.
 //
-//  The title used to be generated only inside `ChatViewModel`: a live `.chatMeetingSummaryReady`
-//  sink (needs an open chat window) plus a backfill that fires when the user opens the meeting
-//  tab in Chat. The chat window auto-closes on focus loss (`chatCloseOnFocusLoss`), so at
-//  summary-ready time the sink was usually gone and the meeting stayed untitled until the user
-//  happened to open that meeting tab — measured on this Mac: every meeting whose summary was
-//  written while Chat was closed (e.g. Meeting-2026-11-13-140644) has no title in the store.
+//  The title used to be generated only inside `ChatViewModel`, which needs an open chat window.
+//  The chat window auto-closes on focus loss (`chatCloseOnFocusLoss`), so at summary-ready time
+//  that sink was usually gone and the meeting stayed untitled until the user opened the tab.
 //
-//  `MenuBarController` observes the same notification and calls this service, so the title
-//  lands in the session store no matter which windows are open. `ChatViewModel` keeps calling
-//  it too (it needs the applied title for the live UI sync); both paths early-return once a
-//  real title exists, so at most one title call runs and a manual rename is never overwritten.
+//  `MenuBarController` is the only live observer of `.chatMeetingSummaryReady`. It calls this
+//  service, which writes the title and posts `.chatSessionTitleChanged`. An open chat copies
+//  that title into its in-memory session; otherwise the next `store.save(session)` would persist
+//  the still-nil copy over the title just written. The chat backfill (opening a meeting tab
+//  whose summary is already on disk) calls this same function. Both entry points early-return
+//  once a real title exists, so at most one title call runs and a manual rename is never overwritten.
 //
 //  The title rides the user's meeting-summary model (`PromptModel.loadSelectedMeetingSummary`)
 //  through `LLMProviderFactory` — the same seam the summary itself uses. It used to be a
@@ -27,9 +26,9 @@ import Foundation
 @MainActor
 enum MeetingTitleService {
 
-  /// Sessions whose title call is currently in flight. The live ChatView sink and the
-  /// menu-bar observer can both receive `.chatMeetingSummaryReady`; without this set both
-  /// would pass the title-empty pre-check and fire two title calls for one meeting.
+  /// Sessions whose title call is currently in flight. The menu-bar observer and the chat
+  /// backfill can both call in for one meeting; without this set both would pass the
+  /// title-empty pre-check and fire two title calls.
   private static var inFlight: Set<UUID> = []
 
   /// Generates a short title for the meeting chat session `sessionId` from its finished summary
@@ -86,6 +85,8 @@ enum MeetingTitleService {
         ] as [String: Any],
         "required": ["title"],
       ]
+      // Lowest ThinkingLevel. A 2–4 word title needs no reasoning; `.default` would leave
+      // Flash on its medium built-in. Models that reject `minimal` are clamped to their floor.
       let obj = try await MeetingListService.withRetry(label: "TITLE-MEETING") {
         try await LLMProviderFactory.provider(for: model).generateStructured(
           model: model.rawValue,
@@ -93,7 +94,7 @@ enum MeetingTitleService {
           systemInstruction: nil,
           schema: titleSchema,
           schemaName: "meeting_title",
-          thinkingLevel: .default)
+          thinkingLevel: .minimal)
       }
       let title = ChatViewModel.cleanTitleResponse((obj["title"] as? String) ?? "")
       guard !title.isEmpty else { return nil }
@@ -103,10 +104,14 @@ enum MeetingTitleService {
       guard var updated = ChatSessionStore.shared.session(by: sessionId),
         ChatViewModel.meetingTitleNeedsGeneration(updated)
       else { return nil }
-      updated.title = String(title.prefix(ChatViewModel.maxSessionTitleLength))
+      let applied = String(title.prefix(ChatViewModel.maxSessionTitleLength))
+      updated.title = applied
       ChatSessionStore.shared.save(updated)
+      NotificationCenter.default.post(
+        name: .chatSessionTitleChanged, object: nil,
+        userInfo: ["sessionId": sessionId, "title": applied])
       DebugLogger.log("TITLE-MEETING: title generated for \(sessionId): \(title)")
-      return updated.title
+      return applied
     } catch {
       DebugLogger.logError("TITLE-MEETING: title generation failed: \(error.logDescription)")
       return nil

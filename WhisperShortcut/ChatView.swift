@@ -215,7 +215,7 @@ class ChatViewModel: ObservableObject {
   var isCurrentSessionFinishingMeeting: Bool { isMeetingFinishing && isCurrentSessionTheActiveMeeting }
   private var meetingCancellable: AnyCancellable?
   private var meetingFinishingCancellable: AnyCancellable?
-  private var summaryCancellable: AnyCancellable?
+  private var titleChangedCancellable: AnyCancellable?
   /// Meeting stems we've already attempted to backfill a title for this app run, so a missing or
   /// failed summary doesn't trigger a fresh API call every time the meeting is viewed.
   private var attemptedMeetingTitleStems: Set<String> = []
@@ -554,23 +554,20 @@ class ChatViewModel: ObservableObject {
         }
       }
 
-    // When a meeting's final summary is ready, title its chat from that summary.
-    // Only the main sidebar view model handles this (not the meeting window's).
-    if !singleChatOnly {
-      summaryCancellable = NotificationCenter.default.publisher(for: .chatMeetingSummaryReady)
-        .receive(on: DispatchQueue.main)
-        .sink { [weak self] note in
-          guard let self,
-                let stem = note.userInfo?["stem"] as? String,
-                let summary = note.userInfo?["summary"] as? String else { return }
-          Task {
-            // No title-empty precheck here — `generateMeetingTitle` already early-returns when the
-            // title is non-empty, and `generateAndApplyTitle` re-checks post-network before writing.
-            guard let targetId = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem })?.id else { return }
-            await self.generateMeetingTitle(targetId: targetId, summary: summary)
-          }
+    // MeetingTitleService writes the title and posts this. Copy it into the session on screen
+    // so a later store.save(session) does not persist a nil title over the one just stored.
+    // Every window listens: the meeting chat and the sidebar can each hold that session.
+    titleChangedCancellable = NotificationCenter.default.publisher(for: .chatSessionTitleChanged)
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] note in
+        guard let self else { return }
+        if let id = note.userInfo?["sessionId"] as? UUID,
+           id == self.session.id,
+           let title = note.userInfo?["title"] as? String {
+          self.session.title = title
         }
-    }
+        self.refreshRecentSessions()
+      }
 
     backfillMeetingTitleIfNeeded()
     if let notice = store.consumeCorruptionNotice() {
@@ -2379,7 +2376,7 @@ class ChatViewModel: ObservableObject {
     let isCurrentSession = resolved.isCurrent
     var target = resolved.session
 
-    // Meetings are titled from their summary (`generateMeetingTitle`), never from a chat message —
+    // Meetings are titled from their summary (`MeetingTitleService`), never from a chat message —
     // and that summary path only fires while the title is still empty. So we must NOT stamp a
     // first-message fallback onto a meeting, or it would permanently block the summary-based title
     // and leave the row showing whatever the user happened to ask first.
@@ -2445,16 +2442,14 @@ class ChatViewModel: ObservableObject {
       """
     // Replace the first-message fallback from appendMessage only while the title is still that
     // fallback. generateAndApplyTitle refuses the write once the user has renamed the chat.
-    await generateAndApplyTitle(targetId: sessionId, prompt: prompt, overwriteExisting: true, logLabel: "AI")
+    await generateAndApplyTitle(targetId: sessionId, prompt: prompt, logLabel: "AI")
   }
 
-  /// Generates a short title via the title model and applies it to `targetId`. With
-  /// `overwriteExisting` true (chat titles) the generated title replaces the session title only
-  /// while it is still empty or the first-message fallback `appendMessage` stamped. A manual
-  /// rename is kept. With `overwriteExisting` false (meetings) the title is only set while the
-  /// session is still untitled or holding the stale first-message fallback. Shared by both
-  /// paths so the model id, length cap, and UI sync stay in one place.
-  private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
+  /// Generates a short chat title via the title model and applies it to `targetId`.
+  /// The generated title replaces the session title only while it is still empty or the
+  /// first-message fallback `appendMessage` stamped. A manual rename is kept.
+  /// Meeting titles do not come through here; `MeetingTitleService` owns them.
+  private func generateAndApplyTitle(targetId: UUID, prompt: String, logLabel: String) async {
     // The title model is a Gemini call, which Offline Mode blocks; failing it only adds retries.
     if OfflineMode.isEnabled {
       DebugLogger.log("TITLE-\(logLabel.uppercased()): Skipping title generation (Offline Mode)")
@@ -2485,19 +2480,11 @@ class ChatViewModel: ObservableObject {
       let title = Self.cleanTitleResponse((obj["title"] as? String) ?? "")
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: targetId) else { return }
-      // A stale meeting first-message fallback counts as "untitled" here: it must yield to the
-      // summary-based title even under `overwriteExisting: false` (which only guards manual renames).
-      let isStaleMeetingFallback =
-        updated.isMeeting && updated.title == Self.meetingFirstMessageFallbackTitle(for: updated)
-      if overwriteExisting {
-        guard Self.mayApplyGeneratedTitle(
-          current: updated.title,
-          firstMessageFallback: Self.meetingFirstMessageFallbackTitle(for: updated)
-        ) else {
-          DebugLogger.log("GEMINI-CHAT: \(logLabel) title kept for \(targetId) — renamed away from the first-message title")
-          return
-        }
-      } else if !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback {
+      guard Self.mayApplyGeneratedTitle(
+        current: updated.title,
+        firstMessageFallback: Self.meetingFirstMessageFallbackTitle(for: updated)
+      ) else {
+        DebugLogger.log("GEMINI-CHAT: \(logLabel) title kept for \(targetId) — renamed away from the first-message title")
         return
       }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
@@ -2510,10 +2497,10 @@ class ChatViewModel: ObservableObject {
     }
   }
 
-  /// Recovers a meeting title that the live `.chatMeetingSummaryReady` notification missed (e.g. no
-  /// chat window was open when the summary finished). If the current session is an untitled meeting
-  /// whose summary is already on disk, generate the title now — at most once per stem per app run so
-  /// a missing or failed summary doesn't re-fire an API call on every view.
+  /// Recovers a meeting title when the live pass did not apply one (the summary was already on
+  /// disk when this tab opened). If the current session still needs a title and the summary is
+  /// on disk, generate it now — at most once per stem per app run so a missing or failed summary
+  /// doesn't re-fire a model call on every view.
   private func backfillMeetingTitleIfNeeded() {
     guard !singleChatOnly,
           session.isMeeting,
@@ -2527,28 +2514,19 @@ class ChatViewModel: ObservableObject {
     titleOpenMeetingFromSummary(summary)
   }
 
-  /// Titles `self.session` from `summary`. Used by the backfill and recovery paths to avoid the
-  /// `allSessions()` stem match used by the live `.chatMeetingSummaryReady` path, which can miss
-  /// the just-opened session and leave the meeting stuck on its first-message fallback title.
-  /// The save here is a safety net: ensure the session row exists in the store before the async
-  /// title generator reads it via `store.session(by:)`. Both callers gate on an empty in-memory
-  /// title, so we're persisting an untitled row.
+  /// Titles `self.session` from `summary` through `MeetingTitleService`. The save makes sure the
+  /// session row exists before the service reads it. If the store already has a real title, that
+  /// title is copied into memory instead: saving the untitled in-memory session would wipe it.
+  /// Otherwise the applied title comes back through `.chatSessionTitleChanged`.
   private func titleOpenMeetingFromSummary(_ summary: String) {
     let targetId = session.id
+    if let stored = store.session(by: targetId), !Self.meetingTitleNeedsGeneration(stored) {
+      session.title = stored.title
+      refreshRecentSessions()
+      return
+    }
     store.save(session)
-    Task { await generateMeetingTitle(targetId: targetId, summary: summary) }
-  }
-
-  /// Titles a meeting chat (by session id) from its summary, unless it's already titled.
-  /// The generation itself lives in `MeetingTitleService` — shared with the menu-bar
-  /// observer, which titles meetings while no chat window is open. This wrapper only
-  /// syncs the UI of the chat that happens to be on screen.
-  private func generateMeetingTitle(targetId: UUID, summary: String) async {
-    guard let title = await MeetingTitleService.generateAndPersistTitle(
-      sessionId: targetId, summary: summary)
-    else { return }
-    if targetId == session.id { session.title = title }
-    refreshRecentSessions()
+    Task { _ = await MeetingTitleService.generateAndPersistTitle(sessionId: targetId, summary: summary) }
   }
 
   // MARK: - Local model messages (slash commands)

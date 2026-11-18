@@ -1105,10 +1105,9 @@ class MenuBarController: NSObject {
       }
     }
 
-    // A finished meeting summary titles the meeting's chat session even when no chat window is
-    // open. ChatView's own sink covers the open-window case; the window auto-closes on focus
-    // loss, so without this observer every meeting whose summary lands while Chat is closed
-    // stayed untitled until the user opened the meeting tab by hand.
+    // A finished meeting summary titles the meeting's chat session whether or not a chat
+    // window is open. MeetingTitleService persists the title and posts .chatSessionTitleChanged
+    // so an open chat copies it into memory before the next session save.
     NotificationCenter.default.addObserver(
       forName: .chatMeetingSummaryReady, object: nil, queue: .main
     ) { note in

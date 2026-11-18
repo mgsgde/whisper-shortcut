@@ -876,9 +876,9 @@ final class LiveMeetingSession: NSObject {
           trimmed, transcriptFileURL: transcriptURL,
           meta: MeetingListService.summaryMeta(forChunks: sourceChunks))
         DebugLogger.log("LIVE-MEETING: Summary saved to .summary.md")
-        // Push the fresh summary to the chat sidebar so it can derive a meeting title live
-        // (ChatView subscribes to .chatMeetingSummaryReady; without this it relies on the
-        // slower backfill recovery path).
+        // Push the fresh summary out so the meeting can be titled with no chat window open
+        // (MenuBarController → MeetingTitleService). The chat backfill covers a summary that
+        // was already on disk when the meeting tab opened.
         await MainActor.run {
           NotificationCenter.default.post(
             name: .chatMeetingSummaryReady, object: nil,
