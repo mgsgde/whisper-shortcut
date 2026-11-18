@@ -3106,132 +3106,139 @@ class SpeechService {
     else { throw TranscriptionError.invalidRequest }
     var request = URLRequest(url: url)
     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
 
     let logPrefix = "TTS-OPENAI-REALTIME"
     let started = CFAbsoluteTimeGetCurrent()
     let ws = makeTranscriptionURLSession().webSocketTask(with: request)
     ws.resume()
 
-    // Stall watchdog, same shape as the Gemini stream (`synthesizeGeminiTTSChunk`): cancels the
-    // socket when the session stops delivering events, so the receive loop below throws and the
-    // catch converts it into a retryable error for `ChunkRetryPolicy`.
-    let progress = StreamProgressClock()
-    progress.touch(chunk: false)
-    let watchdog = progress.startWatchdog(
-      pollInterval: AppConstants.ttsStreamWatchdogPollInterval,
-      firstChunkTimeout: AppConstants.ttsStreamFirstAudioTimeout,
-      stallTimeout: AppConstants.ttsStreamStallTimeout,
-      logPrefix: logPrefix,
-      noun: "audio",
-      firstLabel: "before first audio",
-      midLabel: "mid-stream",
-      cancel: { ws.cancel(with: .goingAway, reason: nil) })
-    defer {
-      watchdog.cancel()
-      ws.cancel(with: .normalClosure, reason: nil)
-    }
-
-    func send(_ event: [String: Any]) async throws {
-      let data = try JSONSerialization.data(withJSONObject: event)
-      guard let raw = String(data: data, encoding: .utf8) else {
-        throw TranscriptionError.invalidRequest
+    // Stop must fail a pending receive() immediately. Without this the socket stays open until
+    // the stall watchdog, and Read Aloud keeps the "speaking" state for that whole wait.
+    return try await withTaskCancellationHandler {
+      // Stall watchdog, same shape as the Gemini stream (`synthesizeGeminiTTSChunk`): cancels the
+      // socket when the session stops delivering events, so the receive loop below throws and the
+      // catch converts it into a retryable error for `ChunkRetryPolicy`.
+      let progress = StreamProgressClock()
+      progress.touch(chunk: false)
+      let watchdog = progress.startWatchdog(
+        pollInterval: AppConstants.ttsStreamWatchdogPollInterval,
+        firstChunkTimeout: AppConstants.ttsStreamFirstAudioTimeout,
+        stallTimeout: AppConstants.ttsStreamStallTimeout,
+        logPrefix: logPrefix,
+        noun: "audio",
+        firstLabel: "before first audio",
+        midLabel: "mid-stream",
+        cancel: { ws.cancel(with: .goingAway, reason: nil) })
+      defer {
+        watchdog.cancel()
+        ws.cancel(with: .normalClosure, reason: nil)
       }
-      try await ws.send(.string(raw))
-    }
 
-    // Audio-only session, s16le 24 kHz mono out — the app's PCM contract.
-    try await send([
-      "type": "session.update",
-      "session": [
-        "type": "realtime",
-        "model": model.rawValue,
-        "output_modalities": ["audio"],
-        "instructions":
-          "You are a text-to-speech engine. Read the user's message aloud verbatim, exactly as written, in its original language. Do not answer, comment, translate, shorten or add anything.",
-        "audio": [
-          "output": [
-            "format": ["type": "audio/pcm", "rate": 24000] as [String: Any],
-            "voice": voice,
-          ]
-        ],
-      ] as [String: Any],
-    ])
-    try await send([
-      "type": "conversation.item.create",
-      "item": [
-        "type": "message",
-        "role": "user",
-        "content": [["type": "input_text", "text": text]],
-      ] as [String: Any],
-    ])
-    try await send(["type": "response.create"])
-
-    var batcher = PCMStreamBatcher()
-    var audio = Data()
-    var eventCount = 0
-    receiveLoop: while true {
-      let message: URLSessionWebSocketTask.Message
-      do {
-        message = try await ws.receive()
-      } catch {
-        // The caller pressed Stop: hand the cancellation up untouched.
-        if Task.isCancelled { throw error }
-        if progress.isStalled {
-          let idle = Int(progress.state.idle)
-          DebugLogger.logWarning(
-            "\(logPrefix): session stalled after \(idle)s (events=\(eventCount), bytes=\(audio.count)) — handing the chunk to the retry policy")
-          throw TranscriptionError.networkError(
-            String(localized: "OpenAI Realtime TTS stream stalled after \(idle)s"))
+      func send(_ event: [String: Any]) async throws {
+        let data = try JSONSerialization.data(withJSONObject: event)
+        guard let raw = String(data: data, encoding: .utf8) else {
+          throw TranscriptionError.invalidRequest
         }
-        throw TranscriptionError.networkError(
-          String(localized: "OpenAI Realtime TTS connection failed: \(error.logDescription)"))
+        try await ws.send(.string(raw))
       }
-      guard case .string(let raw) = message,
-        let data = raw.data(using: .utf8),
-        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-        let type = json["type"] as? String
-      else { continue }
-      eventCount += 1
-      switch type {
-      case "response.output_audio.delta":
-        progress.touch()
-        guard let base64 = json["delta"] as? String, let pcm = Data(base64Encoded: base64) else {
-          continue
-        }
-        audio.append(pcm)
-        if let onPartial {
-          for b in pcm {
-            await batcher.feed(b, started: started, logPrefix: logPrefix, emit: onPartial)
+
+      // Audio-only session, s16le 24 kHz mono out — the app's PCM contract.
+      // GA interface: do not send OpenAI-Beta: realtime=v1.
+      try await send([
+        "type": "session.update",
+        "session": [
+          "type": "realtime",
+          "model": model.rawValue,
+          "output_modalities": ["audio"],
+          "instructions":
+            "You are a text-to-speech engine. Read the user's message aloud verbatim, exactly as written, in its original language. Do not answer, comment, translate, shorten or add anything.",
+          "audio": [
+            "output": [
+              "format": ["type": "audio/pcm", "rate": 24000] as [String: Any],
+              "voice": voice,
+            ]
+          ],
+        ] as [String: Any],
+      ])
+      try await send([
+        "type": "conversation.item.create",
+        "item": [
+          "type": "message",
+          "role": "user",
+          "content": [["type": "input_text", "text": text]],
+        ] as [String: Any],
+      ])
+      try await send(["type": "response.create"])
+
+      var batcher = PCMStreamBatcher()
+      var audio = Data()
+      var eventCount = 0
+      receiveLoop: while true {
+        let message: URLSessionWebSocketTask.Message
+        do {
+          message = try await ws.receive()
+        } catch {
+          // The caller pressed Stop: hand the cancellation up untouched.
+          if Task.isCancelled { throw error }
+          if progress.isStalled {
+            let idle = Int(progress.state.idle)
+            DebugLogger.logWarning(
+              "\(logPrefix): session stalled after \(idle)s (events=\(eventCount), bytes=\(audio.count)) — handing the chunk to the retry policy")
+            throw TranscriptionError.networkError(
+              String(localized: "OpenAI Realtime TTS stream stalled after \(idle)s"))
           }
-        }
-      case "response.done":
-        let status = (json["response"] as? [String: Any])?["status"] as? String
-        guard status == "completed" else {
           throw TranscriptionError.networkError(
-            String(localized: "OpenAI Realtime TTS response ended with status \(status ?? "unknown")"))
+            String(localized: "OpenAI Realtime TTS connection failed: \(error.logDescription)"))
         }
-        break receiveLoop
-      case "error":
-        let err = json["error"] as? [String: Any]
-        let message = (err?["message"] as? String) ?? String(raw.prefix(300))
-        throw TranscriptionError.networkError(
-          String(localized: "OpenAI Realtime TTS error: \(message)"))
-      default:
-        // Session lifecycle and transcript events: evidence the session is alive, so they reset
-        // the stall clock too.
-        progress.touch()
+        guard case .string(let raw) = message,
+          let data = raw.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let type = json["type"] as? String
+        else { continue }
+        eventCount += 1
+        switch type {
+        case "response.output_audio.delta":
+          progress.touch()
+          guard let base64 = json["delta"] as? String, let pcm = Data(base64Encoded: base64) else {
+            continue
+          }
+          audio.append(pcm)
+          if let onPartial {
+            for b in pcm {
+              await batcher.feed(b, started: started, logPrefix: logPrefix, emit: onPartial)
+            }
+          }
+        case "response.done":
+          let status = (json["response"] as? [String: Any])?["status"] as? String
+          guard status == "completed" else {
+            throw TranscriptionError.networkError(
+              String(localized: "OpenAI Realtime TTS response ended with status \(status ?? "unknown")"))
+          }
+          break receiveLoop
+        case "error":
+          let err = json["error"] as? [String: Any]
+          let message = (err?["message"] as? String) ?? String(raw.prefix(300))
+          throw TranscriptionError.networkError(
+            String(localized: "OpenAI Realtime TTS error: \(message)"))
+        default:
+          // session.created, session.updated and transcripts prove the socket is alive, so they
+          // restart the stall clock. They are not audio: only output_audio.delta counts as the
+          // first chunk, which leaves the first-audio budget in force until PCM arrives.
+          progress.touch(chunk: false)
+        }
       }
-    }
-    if let onPartial, let rest = batcher.drain() { await onPartial(rest) }
+      if let onPartial, let rest = batcher.drain() { await onPartial(rest) }
 
-    DebugLogger.logNetwork(
-      "\(logPrefix): session done after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (events=\(eventCount), bytes=\(audio.count))")
-    guard !audio.isEmpty else {
-      DebugLogger.logError("\(logPrefix): response.done without any audio (events=\(eventCount))")
-      throw TranscriptionError.networkError(String(localized: "OpenAI Realtime TTS returned no audio"))
+      DebugLogger.logNetwork(
+        "\(logPrefix): session done after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (events=\(eventCount), bytes=\(audio.count))")
+      guard !audio.isEmpty else {
+        DebugLogger.logError("\(logPrefix): response.done without any audio (events=\(eventCount))")
+        throw TranscriptionError.networkError(String(localized: "OpenAI Realtime TTS returned no audio"))
+      }
+      return audio
+    } onCancel: {
+      ws.cancel(with: .goingAway, reason: nil)
     }
-    return audio
   }
 
   /// xAI Grok TTS — `output_format:{codec:"pcm",sample_rate:24000}` returns raw s16le 24kHz mono PCM.

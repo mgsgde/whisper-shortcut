@@ -1350,10 +1350,10 @@ enum TTSModel: String, CaseIterable {
       // 2.5 previews shut down 2026-10-16; 3.1 preview replaced 2026-09-29 by the cheaper, faster,
       // stable 3.8 Flash-Lite TTS (see the TTSModel note).
       return TTSModel.gemini38FlashLiteTTS.rawValue
-    case "gpt-4o-mini-tts":
-      // Deprecated 2026-10-01, shutdown 2027-01-06. OpenAI's named replacement is
-      // gpt-realtime-2.1-mini via the Realtime API (see the TTSModel note).
-      return TTSModel.openAIRealtimeMiniTTS.rawValue
+    // gpt-4o-mini-tts is intentionally not rewritten here. Leaving the stored raw value lets it
+    // parse as the retired case so ModelSelectionReconciler.retiredReadAloudReplacement can move
+    // it by which keys exist (OpenAI key → gpt-realtime-2.1-mini, else Gemini 3.8 Flash-Lite TTS,
+    // else the macOS voice). A rewrite here would skip that branch.
     default:
       return raw
     }

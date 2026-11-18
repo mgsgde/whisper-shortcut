@@ -79,7 +79,7 @@ All of them can be changed in Settings → General; F1–F20 can be bound withou
 | Provider | Used for |
 |---|---|
 | None (on-device) | Parakeet Ultra and Whisper dictation; Dictate Prompt and Chat on MLX models (Qwen3, Gemma); macOS and Qwen3 voices |
-| OpenAI | GPT Transcribe (the default dictation model), GPT chat, Dictate Prompt |
+| OpenAI | GPT Transcribe (the default dictation model), GPT chat, Dictate Prompt, Read Aloud (GPT-Realtime voices) |
 | Google Gemini | Dictation, Dictate Prompt, Chat, Read Aloud, meetings, YouTube videos |
 | xAI | Grok Speech-to-Text, Grok chat with X search, Grok voices |
 | Anthropic | Claude chat |

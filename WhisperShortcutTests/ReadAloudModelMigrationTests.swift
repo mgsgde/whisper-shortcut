@@ -5,15 +5,26 @@ import Testing
 struct ReadAloudModelMigrationTests {
 
   @Test("Retired Gemini TTS slugs forward to 3.8 Flash-Lite TTS")
-  func retiredGeminiTTSForward() {
+  func retiredGeminiTTSForward() throws {
     for raw in ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"] {
       #expect(TTSModel.migrateLegacyReadAloudRawValue(raw) == TTSModel.gemini38FlashLiteTTS.rawValue)
     }
-    // Current and non-Gemini selections are left alone.
+    // Current selections are left alone. gpt-4o-mini-tts stays the retired raw value so
+    // ModelSelectionReconciler.retiredReadAloudReplacement sees it and moves it by key:
+    // an OpenAI key → gpt-realtime-2.1-mini, a Gemini key and no OpenAI key → Gemini 3.8
+    // Flash-Lite TTS, neither key → the macOS voice.
     #expect(TTSModel.migrateLegacyReadAloudRawValue("gemini-3.8-flash-tts") == "gemini-3.8-flash-tts")
-    // The retired OpenAI TTS model forwards to its named Realtime replacement.
+    let stored = TTSModel.migrateLegacyReadAloudRawValue("gpt-4o-mini-tts")
+    #expect(stored == "gpt-4o-mini-tts")
+    let retired = try #require(TTSModel(rawValue: stored))
     #expect(
-      TTSModel.migrateLegacyReadAloudRawValue("gpt-4o-mini-tts")
-        == TTSModel.openAIRealtimeMiniTTS.rawValue)
+      ModelSelectionReconciler.retiredReadAloudReplacement(
+        for: retired, hasKey: { $0 == .openai }) == .openAIRealtimeMiniTTS)
+    #expect(
+      ModelSelectionReconciler.retiredReadAloudReplacement(
+        for: retired, hasKey: { $0 == .gemini }) == .gemini38FlashLiteTTS)
+    #expect(
+      ModelSelectionReconciler.retiredReadAloudReplacement(
+        for: retired, hasKey: { _ in false }) == .systemMacOS)
   }
 }
