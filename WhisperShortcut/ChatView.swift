@@ -4384,7 +4384,7 @@ struct ChatView: View {
           ForEach(Array(note.bullets.enumerated()), id: \.offset) { _, bullet in
             HStack(alignment: .top, spacing: 6) {
               Text("•")
-                .font(.system(size: 13))
+                .font(ChatTheme.bodyFont(size: 13))
                 .foregroundColor(ChatTheme.secondaryText)
               // Selectable NSTextView, DELIBERATELY not SwiftUI `.textSelection(.enabled)`: these rows
               // render inline in the chat stream, and SelectionOverlay's updateNSView loop pinned the
