@@ -45,6 +45,7 @@ class MenuBarController: NSObject {
     case showMeetingAudio = 128
     case welcomeTour = 129
     case aiAppProposals = 130
+    case aiAppProposalsSeparator = 137
     case chatSeparator = 135
     case quit = 136
   }
@@ -530,6 +531,10 @@ class MenuBarController: NSObject {
       "Review Changes from AI Apps…", action: #selector(showAIAppProposals), tag: .aiAppProposals)
     proposalsItem.isHidden = true
     menu.addItem(proposalsItem)
+    let proposalsSeparator = NSMenuItem.separator()
+    proposalsSeparator.tag = MenuTag.aiAppProposalsSeparator.rawValue
+    proposalsSeparator.isHidden = true
+    menu.addItem(proposalsSeparator)
 
     // Central stop button — visible only when any operation is active
     let stopItem = createMenuItem("Stop", action: #selector(stopCurrentOperation), tag: .stop)
@@ -1401,6 +1406,17 @@ class MenuBarController: NSObject {
     return image
   }
 
+  /// The proposals row's title with the icon's dot in front, in the accent color so it reads as
+  /// the thing to act on. An attributed title keeps the other rows' text column where it is (a
+  /// menu item image would indent every row).
+  private static func suggestionRowTitle(_ title: String) -> NSAttributedString {
+    let font = NSFont.menuFont(ofSize: 0)
+    let result = NSMutableAttributedString(
+      string: "\u{25CF} ", attributes: [.font: font, .foregroundColor: NSColor.controlAccentColor])
+    result.append(NSAttributedString(string: title, attributes: [.font: font]))
+    return result
+  }
+
   /// Local Debug builds carry an orange "DEV" tag next to the icon, so it is obvious at a glance
   /// which binary owns the hotkeys when the installed release could be running too. A sidecar
   /// (worktree build next to the user's instance, no hotkeys) shows a purple "TEST" instead.
@@ -1450,15 +1466,22 @@ class MenuBarController: NSObject {
     let fromWritingStyle = pending.filter(\.isFromWritingStyle).count
     if let proposalsItem = menu.item(withTag: MenuTag.aiAppProposals.rawValue) {
       proposalsItem.isHidden = pending.isEmpty
+      let title: String
       if fromWritingStyle == pending.count {
-        proposalsItem.title = String(localized: "Review Writing Style Suggestion…")
+        title = String(localized: "Review Writing Style Suggestion…")
       } else if fromWritingStyle > 0 {
-        proposalsItem.title = String(localized: "Review \(pending.count) Suggestions…")
+        title = String(localized: "Review \(pending.count) Suggestions…")
       } else {
-        proposalsItem.title = pending.count > 1
+        title = pending.count > 1
           ? String(localized: "Review \(pending.count) Changes from AI Apps…")
           : String(localized: "Review Change from AI App…")
       }
+      proposalsItem.title = title
+      // The row carries the same dot as the menu bar icon and says so underneath, so the user
+      // sees which row the dot points to without having to guess.
+      proposalsItem.attributedTitle = Self.suggestionRowTitle(title)
+      proposalsItem.subtitle = String(localized: "This is what the dot on the menu bar icon means")
+      menu.item(withTag: MenuTag.aiAppProposalsSeparator.rawValue)?.isHidden = pending.isEmpty
     }
     menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
 
@@ -1527,7 +1550,7 @@ class MenuBarController: NSObject {
     apply(.liveMeeting, tags: [.liveMeeting])
     apply(.chat, tags: [.chat, .chatSeparator])
     apply(.meetingBacklog, ownsVisibility: true, tags: [.retryMeetingTranscription, .showMeetingAudio])
-    apply(.aiAppProposals, ownsVisibility: true, tags: [.aiAppProposals])
+    apply(.aiAppProposals, ownsVisibility: true, tags: [.aiAppProposals, .aiAppProposalsSeparator])
   }
 
   /// While onboarding is unfinished, hides every row `visibleDuringSetup` does not name, then

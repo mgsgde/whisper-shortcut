@@ -561,6 +561,16 @@
         }
       }
     },
+    "This is what the dot on the menu bar icon means" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dafür steht der Punkt am Menüleisten-Symbol"
+          }
+        }
+      }
+    },
     "Review Writing Style Suggestion…" : {
       "localizations" : {
         "de" : {
