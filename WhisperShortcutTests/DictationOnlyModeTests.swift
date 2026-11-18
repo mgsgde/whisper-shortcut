@@ -279,4 +279,138 @@ struct DictationOnlyDefaultsTests {
     #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "parakeet-ultra")
     #expect(defaults.bool(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied))
   }
+
+  @Test("A model changed after the tour is kept; keys still at the applied value are restored")
+  func restoreKeepsUserModel() {
+    let defaults = makeDefaults()
+    defaults.set("gemini", forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    defaults.set(DictateMode.dictate.rawValue, forKey: UserDefaultsKeys.dictateMode)
+    applyWithSwitch(defaults)
+    defaults.set("whisper-large", forKey: UserDefaultsKeys.selectedTranscriptionModel)
+
+    let offline = Counter()
+    #expect(DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults, calls: offline)))
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "whisper-large")
+    #expect(defaults.string(forKey: UserDefaultsKeys.dictateMode) == DictateMode.dictate.rawValue)
+    #expect(defaults.object(forKey: UserDefaultsKeys.whisperLanguage) == nil)
+    #expect(defaults.object(forKey: UserDefaultsKeys.punctuationMode) == nil)
+    #expect(defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) == false)
+    #expect(offline.count == 1)
+  }
+
+  @Test("Fn dictation still on after the tour returns to the value from before it")
+  func restoreFnWhenStillApplied() {
+    let defaults = makeDefaults()
+    defaults.set(false, forKey: UserDefaultsKeys.fnKeyDictation)
+    applyWithSwitch(defaults)
+    defaults.set(true, forKey: UserDefaultsKeys.fnKeyDictation)
+    DictationOnlyDefaults.recordApplied(key: UserDefaultsKeys.fnKeyDictation, value: true, defaults: defaults)
+
+    DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults))
+    #expect(defaults.bool(forKey: UserDefaultsKeys.fnKeyDictation) == false)
+  }
+
+  @Test("Fn the user turned off after the tour stays off")
+  func restoreKeepsFnTheUserTurnedOff() {
+    let defaults = makeDefaults()
+    defaults.set(true, forKey: UserDefaultsKeys.fnKeyDictation)
+    applyWithSwitch(defaults)
+    defaults.set(true, forKey: UserDefaultsKeys.fnKeyDictation)
+    DictationOnlyDefaults.recordApplied(key: UserDefaultsKeys.fnKeyDictation, value: true, defaults: defaults)
+    defaults.set(false, forKey: UserDefaultsKeys.fnKeyDictation)
+
+    DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults))
+    #expect(defaults.object(forKey: UserDefaultsKeys.fnKeyDictation) as? Bool == false)
+  }
+
+  @Test("Offline Mode the user turned off after the tour stays off")
+  func restoreKeepsOfflineTheUserTurnedOff() {
+    let defaults = makeDefaults()
+    applyWithSwitch(defaults)
+    defaults.set(false, forKey: UserDefaultsKeys.offlineModeEnabled)
+    let offline = Counter()
+    DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults, calls: offline))
+    #expect(offline.count == 0)
+    #expect(defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) == false)
+  }
+
+  @Test("A snapshot without applied restores every key it captured, even ones changed since")
+  func oldSnapshotRestoresEverything() {
+    let defaults = makeDefaults()
+    defaults.set(
+      [
+        "present": [
+          UserDefaultsKeys.selectedTranscriptionModel: "gemini",
+          UserDefaultsKeys.dictateMode: DictateMode.dictate.rawValue,
+          UserDefaultsKeys.offlineModeEnabled: false,
+        ] as [String: Any],
+        "absent": [UserDefaultsKeys.whisperLanguage, UserDefaultsKeys.punctuationMode],
+      ],
+      forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
+    defaults.set(true, forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
+    defaults.set("parakeet-ultra", forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    defaults.set(DictateMode.live.rawValue, forKey: UserDefaultsKeys.dictateMode)
+    defaults.set("de", forKey: UserDefaultsKeys.whisperLanguage)
+    defaults.set(PunctuationMode.spokenOnly.rawValue, forKey: UserDefaultsKeys.punctuationMode)
+    defaults.set(true, forKey: UserDefaultsKeys.offlineModeEnabled)
+    defaults.set(true, forKey: UserDefaultsKeys.fnKeyDictation)
+
+    let offline = Counter()
+    #expect(DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults, calls: offline)))
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "gemini")
+    #expect(defaults.string(forKey: UserDefaultsKeys.dictateMode) == DictateMode.dictate.rawValue)
+    #expect(defaults.object(forKey: UserDefaultsKeys.whisperLanguage) == nil)
+    #expect(defaults.object(forKey: UserDefaultsKeys.punctuationMode) == nil)
+    #expect(defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) == false)
+    #expect(offline.count == 1)
+    // Fn was not in this snapshot, so the user's value stays.
+    #expect(defaults.bool(forKey: UserDefaultsKeys.fnKeyDictation))
+  }
+}
+
+@Suite("Dictation only MCP")
+struct DictationOnlyMCPLifecycleTests {
+
+  @Test("Turning the mode on stops MCP; turning it off starts it")
+  func mcpFollowsMode() {
+    var stoppedServer = 0
+    var stoppedWindows = 0
+    var startedServer = 0
+    var startedWindows = 0
+    func apply(_ enabled: Bool) {
+      DictationOnlyMCPLifecycle.apply(
+        modeEnabled: enabled,
+        stopServer: { stoppedServer += 1 },
+        stopProposalWindows: { stoppedWindows += 1 },
+        startServer: { startedServer += 1 },
+        startProposalWindows: { startedWindows += 1 })
+    }
+    apply(true)
+    #expect(stoppedServer == 1)
+    #expect(stoppedWindows == 1)
+    #expect(startedServer == 0)
+    #expect(startedWindows == 0)
+    apply(false)
+    #expect(stoppedServer == 1)
+    #expect(stoppedWindows == 1)
+    #expect(startedServer == 1)
+    #expect(startedWindows == 1)
+  }
+
+  @MainActor
+  @Test("Proposal windows can start again after stop")
+  func proposalWindowsRestart() {
+    let windows = MCPProposalWindows()
+    defer { windows.stop() }
+    #expect(!windows.isStarted)
+    windows.start()
+    #expect(windows.isStarted)
+    windows.start()
+    #expect(windows.isStarted)
+    windows.stop()
+    #expect(!windows.isStarted)
+    windows.stop()
+    windows.start()
+    #expect(windows.isStarted)
+  }
 }

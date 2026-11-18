@@ -114,6 +114,30 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
 
 // MARK: - Paths
 
+/// The order in which a Hub repo's snapshot hashes are tried, shared by the importer and the
+/// loader so both pick the same snapshot: the one `refs/main` names first (Hub keeps it pointed at
+/// the default revision), then every other snapshot, newest-modified first. Raw directory listing
+/// order could land on an older, stale snapshot when a repo has more than one.
+enum HubSnapshotOrder {
+  /// `repoFolder` contains `snapshots/` and possibly `refs/main`.
+  static func preferred(in repoFolder: URL, among hashes: [String]) -> [String] {
+    let pinned = (try? String(contentsOf: repoFolder.appendingPathComponent("refs/main"), encoding: .utf8))?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let snapshots = repoFolder.appendingPathComponent("snapshots")
+    let rest = hashes.filter { $0 != pinned }.sorted { a, b in
+      modificationDate(of: snapshots.appendingPathComponent(a))
+        > modificationDate(of: snapshots.appendingPathComponent(b))
+    }
+    guard let pinned, hashes.contains(pinned) else { return rest }
+    return [pinned] + rest
+  }
+
+  static func modificationDate(of url: URL) -> Date {
+    (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+      ?? .distantPast
+  }
+}
+
 /// Hugging Face hub snapshot layout shared by the MLX chat models and the Qwen3 audio models.
 ///
 /// `requiredFiles` is the only difference: MLX chat needs `tokenizer.json` (a cancelled snapshot
@@ -138,7 +162,7 @@ struct HubSnapshotLayout {
       guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else {
         continue
       }
-      for hash in hashes {
+      for hash in HubSnapshotOrder.preferred(in: repoPath, among: hashes) {
         let snap = snapshots.appendingPathComponent(hash)
         if hasRequiredFiles(at: snap) { return snap }
       }
@@ -171,6 +195,17 @@ struct HubSnapshotLayout {
       return false
     }
     return contents.contains { $0.hasSuffix(".safetensors") }
+  }
+
+  /// `models/<repoID>`, the folder a download writes. A finished snapshot may also sit at
+  /// `snapshots/<hash>` under that folder; `localDirectory` accepts both, an import writes here.
+  func importDestination(for repoID: String) -> URL {
+    Self.importDestination(for: repoID, under: root)
+  }
+
+  /// Same path under an explicit root, so discovery can aim at a temp folder in tests.
+  static func importDestination(for repoID: String, under root: URL) -> URL {
+    root.appendingPathComponent("models").appendingPathComponent(repoID)
   }
 
   /// Delete the repo, not just the snapshot folder — otherwise the blobs stay on disk while
@@ -250,6 +285,10 @@ final class LocalLLMModelManager: ModelStore<LocalLLMModelType> {
 
   override nonisolated func resolveModelPath(for type: LocalLLMModelType) -> URL? {
     MLXModelPaths.localDirectory(for: type)
+  }
+
+  override nonisolated func importDestination(for type: LocalLLMModelType) -> URL {
+    MLXModelPaths.layout.importDestination(for: type.huggingFaceID)
   }
 
   /// Delete the repo, not just the snapshot. `resolveModelPath` may land on

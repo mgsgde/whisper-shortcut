@@ -191,9 +191,8 @@ struct ModelImporterTests {
 
     // ...but the destination this import would land in already has a complete model of its
     // own (e.g. downloaded earlier through the app), so importing again would be pointless.
-    let destination = roots.mlxHub
-      .appendingPathComponent("models")
-      .appendingPathComponent(LocalLLMModelType.qwen34BInstruct2507.huggingFaceID)
+    let destination = HubSnapshotLayout.importDestination(
+      for: LocalLLMModelType.qwen34BInstruct2507.huggingFaceID, under: roots.mlxHub)
     try writeMLXModel(at: destination)
 
     let plans = ModelImporter.plans(in: root, roots: roots)
@@ -296,5 +295,137 @@ struct ModelImporterTests {
 
     #expect(fm.fileExists(atPath: destination.appendingPathComponent("tokenizer.json").path))
     #expect(try String(contentsOf: destination.appendingPathComponent("config.json"), encoding: .utf8) == "{}")
+  }
+
+  // MARK: - Refusals and staging
+
+  @Test("A model already available in a legacy folder is refused")
+  func refusesLegacyFolder() throws {
+    let fm = FileManager.default
+    let root = try makeTempFolder()
+    defer { try? fm.removeItem(at: root) }
+
+    // Bare variant name: one of the legacy locations `resolveModelPath` accepts, and not the
+    // canonical `models/argmaxinc/whisperkit-coreml/openai_whisper-tiny` import destination.
+    let legacy = root.appendingPathComponent("tiny")
+    try writeWhisperModel(at: legacy)
+    let tokenizerFolder = try #require(
+      ModelManager.bundledTokenizerFolder(for: .whisperTiny, modelFolder: legacy))
+    try fm.createDirectory(at: tokenizerFolder, withIntermediateDirectories: true)
+    try Data("{}".utf8).write(to: tokenizerFolder.appendingPathComponent("tokenizer.json"))
+
+    let docs = root.appendingPathComponent("documents")
+    #expect(ModelManager.isWhisperAvailable(.whisperTiny, root: root, documentsDirectory: docs))
+
+    let destination = ModelManager.importDestination(for: .whisperTiny, under: root)
+    #expect(destination.standardizedFileURL.path != legacy.standardizedFileURL.path)
+
+    let plan = ModelImportPlan(
+      family: .whisper(.whisperTiny), displayName: "Whisper Tiny",
+      source: legacy, destination: destination, byteCount: 1)
+    try expectImportError(.destinationExists("Whisper Tiny")) {
+      try ModelImporter.perform(
+        plan,
+        preconditions: ModelImportPreconditions(isDownloading: false, isModelAvailable: true)
+      ) { _ in }
+    }
+    #expect(!fm.fileExists(atPath: destination.path))
+    #expect(fm.fileExists(atPath: legacy.appendingPathComponent("AudioEncoder.mlmodelc").path))
+  }
+
+  @Test("A download in progress is refused")
+  func refusesDownloadInProgress() throws {
+    let root = try makeTempFolder()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let plan = ModelImportPlan(
+      family: .mlx(.qwen34BInstruct2507), displayName: "Qwen3 4B Instruct",
+      source: root.appendingPathComponent("source"),
+      destination: root.appendingPathComponent("destination"),
+      byteCount: 1)
+    try expectImportError(.downloadInProgress("Qwen3 4B Instruct")) {
+      try ModelImporter.perform(
+        plan,
+        preconditions: ModelImportPreconditions(isDownloading: true, isModelAvailable: false)
+      ) { _ in }
+    }
+    #expect(!FileManager.default.fileExists(atPath: plan.destination.path))
+  }
+
+  @Test("A second import's cleanup leaves a running import's staging folder alone")
+  func concurrentStagingSurvivesCleanup() throws {
+    let fm = FileManager.default
+    let parent = try makeTempFolder()
+    defer { try? fm.removeItem(at: parent) }
+
+    let active = parent.appendingPathComponent(".import-active")
+    let stale = parent.appendingPathComponent(".import-stale")
+    let young = parent.appendingPathComponent(".import-young")
+    for folder in [active, stale, young] {
+      try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+      try Data("x".utf8).write(to: folder.appendingPathComponent("partial"))
+    }
+    // Old enough to be abandoned, except `active` is registered as in progress.
+    let abandoned = ModelImporter.staleStagingMaxAge + 120
+    try setModified(active, age: abandoned)
+    try setModified(stale, age: abandoned)
+    try setModified(young, age: 30)
+
+    ModelImporter.beginStaging(active)
+    defer { ModelImporter.endStaging(active) }
+    ModelImporter.removeStaleStaging(in: parent)
+
+    #expect(fm.fileExists(atPath: active.appendingPathComponent("partial").path))
+    #expect(!fm.fileExists(atPath: stale.path))
+    #expect(fm.fileExists(atPath: young.appendingPathComponent("partial").path))
+
+    // Once the running import drops the folder, the same cleanup may remove it.
+    ModelImporter.endStaging(active)
+    ModelImporter.removeStaleStaging(in: parent)
+    #expect(!fm.fileExists(atPath: active.path))
+    #expect(fm.fileExists(atPath: young.path))
+  }
+
+  @Test("Parakeet deletion target excludes the VAD folder")
+  @MainActor
+  func parakeetDeletionTargetExcludesVAD() {
+    let targets = ModelManager.shared.deletionTargets(for: .parakeetUltra)
+    #expect(
+      Set(targets.map { $0.standardizedFileURL.path })
+        == Set(ParakeetBackend.modelDirectories.map { $0.standardizedFileURL.path }))
+    #expect(targets.count == 2)
+    #expect(!targets.contains { $0.lastPathComponent.hasPrefix("silero-vad") })
+    #expect(
+      !targets.contains {
+        $0.standardizedFileURL.path == ParakeetBackend.modelsRoot.standardizedFileURL.path
+      })
+    #expect(targets.contains { $0.standardizedFileURL.path == ParakeetBackend.ultraDirectory.standardizedFileURL.path })
+    #expect(targets.contains { $0.standardizedFileURL.path == ParakeetBackend.ctcDirectory.standardizedFileURL.path })
+  }
+
+  private func setModified(_ url: URL, age: TimeInterval) throws {
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date().addingTimeInterval(-age)], ofItemAtPath: url.path)
+  }
+
+  private func expectImportError(
+    _ expected: ModelImportError, _ body: () throws -> Void
+  ) throws {
+    do {
+      try body()
+      Issue.record("import should have been refused")
+    } catch let error as ModelImportError {
+      #expect(sameImportError(error, expected))
+    }
+  }
+
+  private func sameImportError(_ lhs: ModelImportError, _ rhs: ModelImportError) -> Bool {
+    switch (lhs, rhs) {
+    case (.nothingFound, .nothingFound): return true
+    case (.copyFailed(let a), .copyFailed(let b)): return a == b
+    case (.notEnoughSpace(let a, let b), .notEnoughSpace(let c, let d)): return a == c && b == d
+    case (.destinationExists(let a), .destinationExists(let b)): return a == b
+    case (.downloadInProgress(let a), .downloadInProgress(let b)): return a == b
+    default: return false
+    }
   }
 }

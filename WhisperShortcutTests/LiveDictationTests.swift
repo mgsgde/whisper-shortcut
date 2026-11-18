@@ -115,7 +115,8 @@ struct LiveDictationTests {
   @Test("Standalone fillers are dropped; real words stay")
   func fillersDropped() {
     #expect(LiveDictation.finishPiece("Mm-hmm", mode: .automatic) == "")
-    #expect(LiveDictation.finishPiece("Hmm, was ist das", mode: .automatic) == "was ist das")
+    // A leading filler is dropped and the next word is capitalised, same as a cloud transcript.
+    #expect(LiveDictation.finishPiece("Hmm, was ist das", mode: .automatic) == "Was ist das")
     #expect(LiveDictation.finishPiece("Hmmm", mode: .automatic) == "")
     #expect(LiveDictation.finishPiece("Basistherapie ähm Punkt", mode: .spokenOnly) == "Basistherapie.")
     #expect(LiveDictation.finishPiece("Um zehn Uhr", mode: .automatic) == "Um zehn Uhr")
@@ -130,7 +131,7 @@ struct LiveDictationTests {
       #expect(LiveDictation.finishPiece("Blutdruck 140 zu neunzig", mode: mode, timedMarks: true)
         == "Blutdruck 140 zu 90")
       #expect(LiveDictation.finishPiece("Einzel GdB Psyche zwanzig.", mode: mode, timedMarks: true)
-        == "Einzel GdB Psyche 20.")
+        == "Einzel-GdB Psyche 20.")
       #expect(LiveDictation.finishPiece("Um zehn Uhr kam die Patientin", mode: mode, timedMarks: true)
         == "Um zehn Uhr kam die Patientin")
       #expect(LiveDictation.finishPiece("Gesamt GdB drei Pünktchen und dann weiter", mode: mode,
@@ -139,7 +140,7 @@ struct LiveDictationTests {
     #expect(LiveDictation.finishPiece("Sie hat drei Punkte erreicht Punkt", mode: .spokenOnly, timedMarks: true)
       == "Sie hat drei Punkte erreicht.")
     #expect(LiveDictation.finishPiece("Gesamt GdB fünfzig Komma Merkzeichen G", mode: .spokenOnly, timedMarks: true)
-      == "Gesamt GdB 50, Merkzeichen G")
+      == "Gesamt-GdB 50, Merkzeichen G")
     #expect(LiveDictation.finishPiece("Ramipril zwei Komma fünf mg", mode: .spokenOnly, timedMarks: true)
       == "Ramipril 2,5 mg")
   }
@@ -608,10 +609,10 @@ struct LiveGluedPunktTests {
     #expect(LiveDictation.splittingGluedTrailingPunkt("Kein Juckreizpunkt?!") == "Kein Juckreiz Punkt?!")
   }
 
-  @Test("Only the last word is looked at")
+  @Test("The trailing split ignores a mid-piece glue; spoken punctuation still splits it")
   func midPieceUntouched() {
     #expect(LiveDictation.splittingGluedTrailingPunkt("Kniepunkt und Hüfte") == "Kniepunkt und Hüfte")
-    #expect(spoken("Kniepunkt und Hüfte").contains("Kniepunkt"))
+    #expect(spoken("Kniepunkt und Hüfte") == "Knie. Und Hüfte")
   }
 
   @Test("Automatic mode is not touched by the split")

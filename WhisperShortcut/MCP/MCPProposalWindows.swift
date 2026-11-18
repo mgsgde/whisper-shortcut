@@ -13,6 +13,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   private var knownPending = Set<String>()
   private var observer: NSObjectProtocol?
 
+  /// True while `start` is watching for proposals. `stop` clears it, so `start` can run again.
+  var isStarted: Bool { observer != nil }
+
   /// Opens a window as soon as a new proposal arrives: the user just asked their AI app for the
   /// change, so the decision belongs on screen now, not behind a menu.
   func start() {
@@ -21,6 +24,22 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     observer = NotificationCenter.default.addObserver(
       forName: .mcpProposalsDidChange, object: nil, queue: .main
     ) { [weak self] _ in self?.sync() }
+  }
+
+  /// Undoes `start`: the proposal observer and any review window it opened. Safe when already
+  /// stopped. Proposals stay pending; only the windows go away.
+  func stop() {
+    if let observer {
+      NotificationCenter.default.removeObserver(observer)
+      self.observer = nil
+    }
+    knownPending.removeAll()
+    let open = Array(windows.values)
+    windows.removeAll()
+    for window in open {
+      window.delegate = nil
+      window.close()
+    }
   }
 
   /// Opens every pending proposal (menu item, Settings button).
@@ -79,9 +98,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       rationale: Self.rationale(for: proposal),
       titlePrefix: proposal.isFromWritingStyle ? "Suggested change" : "Suggested by an AI app",
       cancelTitle: "Decline",
-      acceptTitle: proposal.kind == .deleteCommand ? ("Delete Command" as LocalizedStringResource) : "Accept",
+      acceptTitle: Self.acceptTitle(for: proposal),
       textNoun: Self.noun(for: proposal),
-      allowsEditing: proposal.kind != .deleteCommand,
+      allowsEditing: proposal.kind != .deleteCommand && proposal.kind != .deleteTemplate,
       acceptOnReturn: false,
       onAccept: { [weak self] edited in self?.accept(id, edited: edited) },
       onCancel: { [weak self] in self?.decline(id) })
@@ -117,7 +136,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
 
   private func accept(_ id: String, edited: String) {
     let proposal = MCPProposalStore.shared.pending.first { $0.id == id }
-    let editedContent = proposal?.kind == .deleteCommand ? nil : edited
+    let editedContent = (proposal?.kind == .deleteCommand || proposal?.kind == .deleteTemplate) ? nil : edited
     switch MCPProposalStore.shared.accept(id, editedContent: editedContent) {
     case .success:
       windows[id]?.close()
@@ -204,8 +223,17 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     return proposal.rationale + "\n\n" + details.joined(separator: "\n")
   }
 
+  static func acceptTitle(for proposal: MCPProposal) -> LocalizedStringResource {
+    switch proposal.kind {
+    case .deleteCommand: return "Delete Command"
+    case .deleteTemplate: return "Delete Template"
+    default: return "Accept"
+    }
+  }
+
   static func noun(for proposal: MCPProposal) -> ReviewNoun {
     switch proposal.kind {
+    case .saveTemplate, .deleteTemplate: return .instructions
     case .systemPrompt: return .instructions
     case .writingStyle: return .profile
     case .saveCommand, .deleteCommand: return .command
@@ -223,6 +251,13 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       return proposal.previousContent == nil
         ? String(localized: "New command /\(proposal.commandName ?? "")") : String(localized: "Command /\(proposal.commandName ?? "")")
     case .deleteCommand: return String(localized: "Delete command /\(proposal.commandName ?? "")")
+    case .saveTemplate:
+      let name = proposal.templateName ?? ""
+      return proposal.previousContent == nil
+        ? String(localized: "New template \u{201C}\(name)\u{201D}") : String(localized: "Template \u{201C}\(name)\u{201D}")
+    case .deleteTemplate:
+      let name = proposal.templateName ?? ""
+      return String(localized: "Delete template \u{201C}\(name)\u{201D}")
     case .problemReport: let reportTitle = proposal.title ?? String(localized: "untitled")
       return String(localized: "Problem report: \(reportTitle)")
     case .settings: return settingsSummary(proposal.settingsChanges ?? [])
@@ -252,6 +287,13 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .writingStyle: return String(localized: "Writing style profile")
     case .saveCommand: return change.previousContent == nil ? String(localized: "New command /\(change.target)") : String(localized: "Command /\(change.target)")
     case .deleteCommand: return String(localized: "Deleted command /\(change.target)")
+    case .saveTemplate:
+      let name = MCPTemplateSnapshot.decode(change.newContent ?? change.previousContent)?.name ?? ""
+      return change.previousContent == nil
+        ? String(localized: "New template \u{201C}\(name)\u{201D}") : String(localized: "Template \u{201C}\(name)\u{201D}")
+    case .deleteTemplate:
+      let name = MCPTemplateSnapshot.decode(change.previousContent)?.name ?? ""
+      return String(localized: "Deleted template \u{201C}\(name)\u{201D}")
     case .settings: return settingsSummary(change.settingsChanges ?? [])
     }
   }

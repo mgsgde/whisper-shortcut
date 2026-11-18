@@ -203,6 +203,9 @@ struct DictationOnlyGlobeKeyStep: View {
       // Freed here or in System Settings: the key is now meant for dictation.
       if usage == .doNothing {
         fnEnabled = true
+        // `apply` snapshotted Fn earlier. Without this, restore would see a value it did not
+        // record and leave the tour's `true` in place as if the user had chosen it.
+        DictationOnlyDefaults.recordApplied(key: UserDefaultsKeys.fnKeyDictation, value: true)
         freeFailed = false
         DebugLogger.log("ONBOARDING: dictation-only, 🌐 key free, Fn dictation on")
       }
@@ -549,15 +552,24 @@ struct DictationOnlyTestStep: View {
     SettingsDefaults.whisperLanguage
 
   @State private var micStatus = PermissionStatusChecker.status(for: .microphone)
+  @State private var axStatus = PermissionStatusChecker.status(for: .accessibility)
+  @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
+  @ObservedObject private var globeKey = GlobeKeyStatus.shared
 
   private var modelReady: Bool { modelManager.isModelAvailable(DictationOnlyDownloadStep.model) }
+
+  private var startKey: DictationOnlyStartKey {
+    RealKeyTryItCopy.currentStartKey(
+      fnEnabled: fnEnabled, globeConflict: globeKey.usage.conflictsWithFnDictation,
+      accessibilityGranted: axStatus == .granted)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       WelcomeStepHeader(
         systemImage: "waveform",
         title: "Try it",
-        subtitle: "Click “Try dictation” and read this sentence aloud:")
+        subtitle: RealKeyTryItCopy.instruction(for: startKey))
 
       Text(verbatim: DictationOnlyTestSentence.sentence(for: language))
         .font(.title3)
@@ -588,9 +600,10 @@ struct DictationOnlyTestStep: View {
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
       } else if modelReady {
-        OnboardingTryItPanel(
-          recordSeconds: Self.recordSeconds,
-          caption: "You have about \(Self.recordSeconds) seconds. Click “Stop” when you have finished.",
+        RealKeyTryIt(
+          startKey: startKey,
+          fallbackRecordSeconds: Self.recordSeconds,
+          fallbackCaption: "You have about \(Self.recordSeconds) seconds. Click “Stop” when you have finished.",
           onSuccess: onSuccess)
       } else {
         Text("The download is not finished yet. The test can start as soon as it is.")
@@ -614,102 +627,8 @@ struct DictationOnlyTestStep: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       micStatus = PermissionStatusChecker.status(for: .microphone)
-    }
-  }
-}
-
-// MARK: - Glossary
-
-/// Teach one word its spelling, then try again. Skippable.
-struct DictationOnlyGlossaryStep: View {
-  @State private var word = ""
-  @State private var result: SystemPromptsStore.GlossaryAppendResult?
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      WelcomeStepHeader(
-        systemImage: "character.book.closed",
-        title: "Did a word come out wrong?",
-        subtitle: "Names and technical terms are sometimes misheard. Write the word the way it should be spelled, and WhisperShortcut will use that spelling.")
-
-      HStack(spacing: 10) {
-        TextField("For example a name or a technical term", text: $word)
-          .textFieldStyle(.roundedBorder)
-          .controlSize(.large)
-          .frame(maxWidth: 360)
-          .onSubmit(save)
-        Button("Save", action: save)
-          .buttonStyle(.borderedProminent)
-          .controlSize(.large)
-          .disabled(word.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          .pointerCursorOnHover()
-      }
-
-      if let result {
-        resultLine(result)
-      }
-
-      if case .added = result {
-        Text("Try it again with that word:")
-          .font(DictationOnlyFont.note)
-          .foregroundStyle(.secondary)
-        // Bordered start: Continue stays the one primary button, the retry is an offer.
-        OnboardingTryItPanel(
-          recordSeconds: DictationOnlyTestStep.recordSeconds,
-          caption: "You have about \(DictationOnlyTestStep.recordSeconds) seconds. Click “Stop” when you have finished.",
-          prominentStart: false)
-      }
-
-      Text("Nothing came out wrong? Click Continue. You find your words later in Settings → Dictate → Glossary.")
-        .font(DictationOnlyFont.note)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      Spacer(minLength: 0)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-  }
-
-  @ViewBuilder
-  private func resultLine(_ result: SystemPromptsStore.GlossaryAppendResult) -> some View {
-    switch result {
-    case .added(let term):
-      Label("Saved. From now on WhisperShortcut writes “\(term)”.", systemImage: "checkmark.circle.fill")
-        .foregroundStyle(.green)
-        .font(DictationOnlyFont.body)
-    case .duplicate(let term):
-      Label("“\(term)” is already saved.", systemImage: "checkmark.circle")
-        .foregroundStyle(.secondary)
-        .font(DictationOnlyFont.body)
-    case .notATerm:
-      Label("Please enter one word or name, not a sentence.", systemImage: "exclamationmark.circle")
-        .foregroundStyle(.orange)
-        .font(DictationOnlyFont.body)
-    case .budgetExceeded:
-      Label("The list of words is full. Remove a word in Settings → Dictate → Glossary first.", systemImage: "exclamationmark.circle")
-        .foregroundStyle(.orange)
-        .font(DictationOnlyFont.body)
-    }
-  }
-
-  private func save() {
-    let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return }
-    let outcome = SystemPromptsStore.shared.appendToWhisperGlossary(trimmed, source: .settings)
-    result = outcome
-    if case .added = outcome { word = "" }
-    DebugLogger.log("ONBOARDING: dictation-only glossary save (\(outcome.logLabel))")
-  }
-}
-
-private extension SystemPromptsStore.GlossaryAppendResult {
-  /// For the log: the outcome without the word (dictations can be patient notes).
-  var logLabel: String {
-    switch self {
-    case .added: return "added"
-    case .duplicate: return "duplicate"
-    case .notATerm: return "notATerm"
-    case .budgetExceeded: return "budgetExceeded"
+      axStatus = PermissionStatusChecker.status(for: .accessibility)
+      globeKey.refresh()
     }
   }
 }

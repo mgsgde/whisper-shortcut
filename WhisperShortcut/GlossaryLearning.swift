@@ -4,8 +4,9 @@
 //
 //  The Whisper Glossary is free text the user asserts by hand (and via the chat tool or an AI
 //  app). Smart Improvement used to let a model rewrite that whole text, so an accepted
-//  suggestion deleted annotated corrections; that feature is gone (2026-11-02). Every automatic
-//  edit goes through `mergeAdditively`, which only appends.
+//  suggestion deleted annotated corrections; that feature is gone (2026-11-02). Automatic
+//  writers append through `SystemPromptsStore.mergeGlossary`. `mergeAdditively` is the pure
+//  text merge those rules grew out of.
 //
 
 import Foundation

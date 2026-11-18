@@ -2,10 +2,10 @@
 //  QuickActionStore.swift
 //  WhisperShortcut
 //
-//  Dictate Prompt quick actions for ⌘2: the three most-used prompts from the last 30
-//  days. Own prompts and learned ones are ranked together, and own prompts win ties.
-//  The log is read off the main thread and cached; the ⌘2 path only touches the cache
-//  and UserDefaults.
+//  Dictate Prompt quick actions for ⌘2. Usage over the last 30 days decides which
+//  prompts appear (own prompts win ties); their position stays fixed — Settings order
+//  with own prompts, stable slots without. The log is read off the main thread and
+//  cached; the ⌘2 path only touches the cache and UserDefaults.
 //
 
 import Foundation
@@ -90,11 +90,13 @@ struct QuickAction: Equatable, Identifiable {
 
 /// Dictate Prompt quick actions for ⌘2.
 ///
-/// The card shows the three most-used prompts from the last 30 days. Own prompts and
+/// Usage over the last 30 days decides which prompts the card shows. Own prompts and
 /// ones learned from the interaction log are ranked together; when the number of uses
-/// ties, own prompts win and keep their order. Built-in defaults fill the list only when
-/// the user has none of their own: when logging is off, Offline Mode is on, or fewer
-/// than three learned instructions clear the bar.
+/// ties, own prompts win. The ones that make the card then keep a fixed position: own
+/// prompts in their Settings order, then learned entries in learned order. Without own
+/// prompts the card uses stable slots instead of recency order. Built-in defaults fill
+/// the list only when the user has none of their own: when logging is off, Offline Mode
+/// is on, or fewer than three learned instructions clear the bar.
 final class QuickActionStore {
 
   static let shared = QuickActionStore()
@@ -150,28 +152,32 @@ final class QuickActionStore {
   func forCard() -> (actions: [QuickAction], preselectIndex: Int?) {
     Self.card(
       custom: Self.storedCustomTexts(), recent: Self.storedRecentTexts(), ranked: current(),
-      preselect: Self.preselectsRecent)
+      preselect: Self.preselectsRecent, slots: Self.storedSlotTexts())
   }
 
-  /// With prompts of the user's own, the card lists the three most-used prompts in `ranked`
-  /// (own prompts win ties) and shows `cardEntries` rows. The last one run is highlighted
-  /// where it stands when that prompt is still on the card.
-  /// Without, it lists the last instructions run first (`cardList`) and highlights the first.
+  /// With prompts of the user's own, the card lists the prompts in `ranked` (Settings order,
+  /// then learned order) and shows `cardEntries` rows. The last one run is highlighted where
+  /// it stands when that prompt is still on the card.
+  /// Without, it lists the fixed slots (`cardList`; the recent list when `slots` is empty)
+  /// and highlights the last-run entry where it stands.
   static func card(
-    custom: [String], recent: [String], ranked: [QuickAction], preselect: Bool
+    custom: [String], recent: [String], ranked: [QuickAction], preselect: Bool,
+    slots: [String]
   ) -> (actions: [QuickAction], preselectIndex: Int?) {
-    guard !customActions(from: custom).isEmpty else {
-      let list = cardList(recent: recent, ranked: ranked)
-      return (list, preselect && !list.isEmpty ? 0 : nil)
+    let list: [QuickAction]
+    if customActions(from: custom).isEmpty {
+      list = cardList(recent: slots.isEmpty ? recent : slots, ranked: ranked)
+    } else {
+      list = Array(ranked.prefix(cardEntries))
     }
-    let list = Array(ranked.prefix(cardEntries))
     guard preselect, let last = recent.first else { return (list, nil) }
     let key = normalizeKey(last.trimmingCharacters(in: .whitespacesAndNewlines))
     return (list, list.firstIndex { $0.key == key })
   }
 
-  /// Recent texts first (an entry that also ranks keeps its flags, so a built-in default stays
-  /// an edit), then ranked entries not already listed, capped at `cardEntries`.
+  /// Texts in the order given — the fixed slots, or the recent list when none are stored yet
+  /// (an entry that also ranks keeps its flags, so a built-in default stays an edit), then
+  /// ranked entries not already listed, capped at `cardEntries`.
   static func cardList(recent: [String], ranked: [QuickAction]) -> [QuickAction] {
     var result: [QuickAction] = []
     var seen: Set<String> = []
@@ -195,22 +201,29 @@ final class QuickActionStore {
     UserDefaults.standard.stringArray(forKey: UserDefaultsKeys.dictatePromptRecentQuickActions) ?? []
   }
 
-  /// Whether the card opens on its first entry: the last run picked an entry.
+  /// Display order of the card when the user has no prompts of their own.
+  static func storedSlotTexts() -> [String] {
+    UserDefaults.standard.stringArray(forKey: UserDefaultsKeys.dictatePromptQuickActionSlots) ?? []
+  }
+
+  /// Whether the card opens on the last-run entry: the last run picked an entry.
   static var preselectsRecent: Bool {
     UserDefaults.standard.bool(forKey: UserDefaultsKeys.dictatePromptPreselectRecent)
   }
 
   /// Records what a Dictate Prompt run used. `text`: the entry or typed instruction, moved to
   /// the front of the recent list (typed text longer than `maxKeyLength` is not kept — it is a
-  /// one-off, not a prompt to repeat). nil: the spoken instruction. `fromEntry`: an entry was
-  /// picked, so the next card opens on it.
+  /// one-off, not a prompt to repeat) and folded into the slot list. nil: the spoken
+  /// instruction. `fromEntry`: an entry was picked, so the next card opens on it.
   static func recordUse(text: String?, fromEntry: Bool) {
     let defaults = UserDefaults.standard
     defaults.set(fromEntry, forKey: UserDefaultsKeys.dictatePromptPreselectRecent)
     guard let text else { return }
+    let newRecent = updatedRecent(storedRecentTexts(), using: text)
+    defaults.set(newRecent, forKey: UserDefaultsKeys.dictatePromptRecentQuickActions)
     defaults.set(
-      updatedRecent(storedRecentTexts(), using: text),
-      forKey: UserDefaultsKeys.dictatePromptRecentQuickActions)
+      updatedSlots(storedSlotTexts(), recent: newRecent),
+      forKey: UserDefaultsKeys.dictatePromptQuickActionSlots)
   }
 
   /// `text` in front, earlier entries with the same key dropped, capped at `cardEntries`.
@@ -220,6 +233,54 @@ final class QuickActionStore {
     guard !key.isEmpty, key.count <= maxKeyLength else { return recent }
     let rest = recent.filter { normalizeKey($0) != key }
     return Array(([trimmed] + rest).prefix(cardEntries))
+  }
+
+  /// Fixed display order for the card when the user has no prompts of their own.
+  /// A slot stays put while its key is still in `recent`; one that has dropped out becomes
+  /// a hole, filled top to bottom with `recent` entries not already placed (in `recent`
+  /// order). Leftover holes are dropped, anything still unplaced is appended, and the
+  /// result is capped at `cardEntries`. A kept slot keeps its own spelling. Empty `slots`
+  /// returns `recent` (capped), so the first run matches the list already stored.
+  static func updatedSlots(_ slots: [String], recent: [String]) -> [String] {
+    var recentKeys = Set<String>()
+    for raw in recent {
+      let key = normalizeKey(raw)
+      if !key.isEmpty { recentKeys.insert(key) }
+    }
+
+    var placed: [String?] = []
+    var keptKeys = Set<String>()
+    for raw in slots {
+      let key = normalizeKey(raw)
+      if !key.isEmpty, recentKeys.contains(key), keptKeys.insert(key).inserted {
+        placed.append(raw)
+      } else {
+        placed.append(nil)
+      }
+    }
+
+    var incoming: [String] = []
+    var seen = keptKeys
+    for raw in recent {
+      let key = normalizeKey(raw)
+      if key.isEmpty || !seen.insert(key).inserted { continue }
+      incoming.append(raw)
+    }
+
+    var result: [String] = []
+    var next = 0
+    for entry in placed {
+      if let entry {
+        result.append(entry)
+      } else if next < incoming.count {
+        result.append(incoming[next])
+        next += 1
+      }
+    }
+    if next < incoming.count {
+      result.append(contentsOf: incoming[next...])
+    }
+    return Array(result.prefix(cardEntries))
   }
 
   /// Re-reads the interaction log and replaces the cached learned list. Call off the main thread.
@@ -265,10 +326,13 @@ final class QuickActionStore {
     return padding(learned)
   }
 
-  /// With own prompts, the three most-used of the last 30 days (`cardEntries`). Own prompts
-  /// and learned entries are ranked together by `counts` (a missing key counts as 0). Ties
-  /// keep candidate order, so own prompts win ties and keep their order. A learned entry
-  /// whose kind matches an entry already taken is left out (`.other` is not compared).
+  /// With own prompts, usage over the last 30 days decides which `cardEntries` prompts
+  /// appear. Own prompts and learned entries are ranked together by `counts` (a missing
+  /// key counts as 0). Ties keep candidate order, so own prompts win ties. A learned
+  /// entry whose kind matches an entry already taken is left out (`.other` is not
+  /// compared). The selected entries are then returned in a stable order: own prompts in
+  /// their Settings order, then the selected learned entries in `learned` order. Usage
+  /// decides which ones show, never where.
   /// Own prompts are capped at `maxCustomEntries` before ranking; learning off returns
   /// them in their own order, still capped at `cardEntries`.
   /// With no own prompts, learning on returns the same list as `ranked`; learning off
@@ -297,16 +361,21 @@ final class QuickActionStore {
       return lhs.offset < rhs.offset
     }.map(\.element)
 
-    var result: [QuickAction] = []
+    var selected: [QuickAction] = []
     var takenKinds = Set<QuickActionKind>()
     for action in ranked {
-      if result.count >= cardEntries { break }
+      if selected.count >= cardEntries { break }
       let isOwn = ownKeys.contains(action.key)
       if !isOwn, action.kind != .other, takenKinds.contains(action.kind) { continue }
-      result.append(action)
+      selected.append(action)
       if action.kind != .other { takenKinds.insert(action.kind) }
     }
-    return result
+    let selectedKeys = Set(selected.map(\.key))
+    let ownOnCard = own.filter { selectedKeys.contains($0.key) }
+    let learnedOnCard = learned.filter {
+      selectedKeys.contains($0.key) && !ownKeys.contains($0.key)
+    }
+    return ownOnCard + learnedOnCard
   }
 
   /// One row per own prompt and per cached learned entry, most used first. `on_card` is

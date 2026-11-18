@@ -20,8 +20,12 @@ private enum Constants {
 class SpeechService {
 
   /// Placeholder used in conversation history when the parallel voice-to-text transcription
-  /// fails or times out.
+  /// fails or times out. Not a filler: the turn is still pasted.
   static let voiceInstructionPlaceholder = "(voice instruction)"
+
+  /// History transcription heard nothing (`TranscriptionError.noSpeechDetected`). A filler, so
+  /// the turn is not pasted. Distinct from the timeout placeholder above.
+  static let noSpokenInstructionMarker = "(no spoken instruction)"
 
   /// Fallback transcription instruction used when the user hasn't supplied a custom prompt.
   private static let defaultTranscriptionInstruction = "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
@@ -407,9 +411,17 @@ class SpeechService {
   /// - A one-word rejected form is rewritten only when the correct form is itself one capitalised
   ///   word and a personal title stands immediately before the mishearing (`Frau Dr. Läufer` →
   ///   `Läuffer`). Bare nouns stay ("Der Läufer", "die Daten").
+  /// - A one-word rejected form that the spell checker does NOT know is not a legitimate word
+  ///   anywhere (judged against German and English only, `isKnownWordInDictationLanguages`: the
+  ///   auto-detecting checker accepts "Laseg" as some foreign word), so it is rewritten wherever it stands (`Lasègue (not "Laseg")`: "the Laseg sign").
+  ///   Offline engines rarely repeat the exact misheard form: the same audio that gave "Laseg"
+  ///   gives "Lasse" next time. So a transcript word of >= 5 letters that is also unknown, shares
+  ///   the first letter and is >= 0.75 similar to a listed form of exactly one term is rewritten
+  ///   too (`replacingNonWordMisheard`). Known words never take part in either rule. Without the
+  ///   German and English dictionaries both rules are off (`dictationDictionariesAvailable`).
   ///
   /// Every rule fails toward changing nothing, i.e. toward the behaviour before this existed.
-  private func correctingRejectedSpellings(in text: String) -> String {
+  private func correctingRejectedSpellings(in text: String) async -> String {
     guard !text.isEmpty else { return text }
     let corrections = parsedGlossary().corrections
     guard !corrections.isEmpty else { return text }
@@ -429,10 +441,91 @@ class SpeechService {
           rejected, with: correction.correct, in: result)
       }
     }
-    if result != text {
-      DebugLogger.log("GLOSSARY-CORRECT: rewrote rejected spelling(s) in transcript")
+    let pairs = corrections.map { (correct: $0.correct, rejected: $0.rejected) }
+    let terms = parsedGlossary().terms
+    // NSSpellChecker is main-thread only. This function is async, so the whole (pure, fast)
+    // rewrite hops to the main actor in one `await`: the caller suspends instead of blocking, and
+    // the main thread never waits on anything here, so it cannot deadlock.
+    let nonWord = await MainActor.run { () -> (text: String, exact: Int, near: Int)? in
+      guard GlossaryFastLearner.dictationDictionariesAvailable() else { return nil }
+      return Self.replacingNonWordMisheard(
+        in: result, corrections: pairs, extraTerms: terms,
+        isKnownWord: GlossaryFastLearner.isKnownWordInDictationLanguages)
+    }
+    guard let nonWord else {
+      DebugLogger.log("GLOSSARY-CORRECT: non-word rules off (German/English dictionary missing)")
+      return result
+    }
+    let before = result
+    result = nonWord.text
+    if result != before {
+      DebugLogger.log(
+        "GLOSSARY-CORRECT: rewrote misheard form(s) (non-word exact=\(nonWord.exact), near=\(nonWord.near))")
     }
     return result
+  }
+
+  /// Word-bounded rewrite of non-word misheard forms (rules described on
+  /// `correctingRejectedSpellings`). Pure and injectable so tests need no spell checker.
+  /// Exact rule: a word whose folded form equals a listed one-word rejected form of exactly one
+  /// single-word term, and which is not a known word. Near rule: otherwise, a non-known word with
+  /// the same folded first letter, at least 5 letters and `ParakeetVocabularyGuard.similarity`
+  /// >= 0.75 to a listed one-word form of exactly one term. Glossary terms themselves and exact rejected forms of
+  /// several terms are never touched.
+  static func replacingNonWordMisheard(
+    in text: String, corrections: [(correct: String, rejected: [String])],
+    extraTerms: [String] = [], isKnownWord: (String) -> Bool
+  ) -> (text: String, exact: Int, near: Int) {
+    let eligible = corrections.filter { !$0.correct.contains(" ") && !$0.correct.isEmpty }
+    guard !eligible.isEmpty,
+      let regex = try? NSRegularExpression(pattern: #"(?<![\p{L}\p{N}])\p{L}[\p{L}\p{N}]*"#)
+    else { return (text, 0, 0) }
+
+    typealias Form = (term: String, folded: String)
+    var forms: [Form] = []
+    for c in eligible {
+      for r in c.rejected where !r.contains(" ") && !r.isEmpty {
+        forms.append((c.correct, GlossaryDocument.fold(r)))
+      }
+    }
+    guard !forms.isEmpty else { return (text, 0, 0) }
+    var protectedWords = Set((corrections.map(\.correct) + extraTerms).map(GlossaryDocument.fold))
+    protectedWords.remove("")
+    let allRejected = Set(
+      corrections.flatMap { $0.rejected }.map(GlossaryDocument.fold))
+
+    let source = text as NSString
+    var result = text
+    var exact = 0
+    var near = 0
+    for match in regex.matches(in: text, range: NSRange(location: 0, length: source.length))
+      .reversed()
+    {
+      let word = source.substring(with: match.range)
+      let folded = GlossaryDocument.fold(word)
+      guard !protectedWords.contains(folded), let first = folded.first else { continue }
+
+      let exactTerms = Set(forms.filter { $0.folded == folded }.map(\.term))
+      var replacement: String?
+      if !exactTerms.isEmpty {
+        guard exactTerms.count == 1, !isKnownWord(word) else { continue }
+        replacement = exactTerms.first
+        exact += 1
+      } else {
+        if allRejected.contains(folded) { continue }
+        let nearTerms = Set(
+          forms.filter {
+            $0.folded.first == first && ParakeetVocabularyGuard.similarity(word, $0.folded) >= 0.75
+          }.map(\.term))
+        guard folded.count >= 5, nearTerms.count == 1, !isKnownWord(word) else { continue }
+        replacement = nearTerms.first
+        near += 1
+      }
+      if let replacement {
+        result = (result as NSString).replacingCharacters(in: match.range, with: replacement)
+      }
+    }
+    return (result, exact, near)
   }
 
   /// Internal rather than private so `RejectedSpellingCorrectionTests` can pin the two guards
@@ -575,7 +668,7 @@ class SpeechService {
         self.noteEchoStrip(original: transcript, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
       }
-      return self.correctingRejectedSpellings(in: stripped)
+      return await self.correctingRejectedSpellings(in: stripped)
     }
 
     if cancellable {
@@ -1713,6 +1806,11 @@ class SpeechService {
   /// drift apart per provider — they did before, and only the Gemini path's version was ever
   /// checked when either changed.
   ///
+  /// Throws `TranscriptionError.noSpeechDetected` when the spoken instruction is only a filler
+  /// ("Mhm.", a lone "0"). The model has already answered; the throw stops that guess from being
+  /// pasted. A quick action's text is typed and a template turn formats its selection, so neither
+  /// is judged. No speech from the history transcription (`noSpokenInstructionMarker`) is a
+  /// filler, so this throws before the turn is logged. The timeout placeholder is not a filler.
   /// Throws `TranscriptionError.noSelectedText` when a compose turn's instruction is only a bare
   /// edit command. The model has already answered by then; the throw is what stops the invented
   /// text from being pasted. A timed-out history transcription (`voiceInstructionPlaceholder`)
@@ -1741,6 +1839,20 @@ class SpeechService {
         DebugLogger.logWarning("\(logPrefix): History transcription timed out, using placeholder")
       }
       userInstruction = result ?? Self.voiceInstructionPlaceholder
+    }
+
+    // "Mhm.", "Äh." or a lone "0" (a breath) is not an instruction. The model would still edit
+    // the selection on a guess, so paste nothing. With or without a selection. A quick action's
+    // text is typed; only the edit quick action is flagged on this service.
+    if DictatePromptSelectionDecision.refusesFillerOnlyInstruction(
+      instruction: userInstruction, isQuickAction: promptIsEditQuickAction,
+      isTemplateTurn: promptTurnKind.isTemplate)
+    {
+      DebugLogger.logWarning("\(logPrefix): Instruction was only a filler — not pasting")
+      ContextLogger.shared.logSignal(
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue,
+        detail: ["reason": "fillerOnlyInstruction"])
+      throw TranscriptionError.noSpeechDetected
     }
 
     // Nothing selected and the user only said "Korrigiere" / "Rephrase this": the model fills
@@ -1773,6 +1885,14 @@ class SpeechService {
         modelResponse: normalizedText
       )
     }
+    LastResultStore.shared.recordPrompt(.init(
+      ts: Date(),
+      instruction: userInstruction,
+      selectedText: clipboardContext,
+      response: normalizedText,
+      model: model,
+      provider: providerLabel,
+      hadScreenshot: hadScreenshot))
     ContextLogger.shared.logPrompt(
       mode: mode,
       selectedText: clipboardContext,
@@ -1795,9 +1915,10 @@ class SpeechService {
 
   // MARK: - Gemini Prompt Mode
   /// Spawns a parallel `Task` that transcribes the recording for the chat-history record,
-  /// running alongside the main Dictate Prompt request so it adds no latency. Failures fall back
-  /// to `voiceInstructionPlaceholder` instead of throwing. Callers `defer { .cancel() }` it so the
-  /// second API call is dropped if the main request throws first.
+  /// running alongside the main Dictate Prompt request so it adds no latency. No speech
+  /// returns `noSpokenInstructionMarker` so the filler guard can refuse the paste. Every other
+  /// failure falls back to `voiceInstructionPlaceholder` instead of throwing. Callers
+  /// `defer { .cancel() }` it so the second API call is dropped if the main request throws first.
   private func transcribeForHistoryInParallel(
     logPrefix: String,
     audioURL: URL,
@@ -1808,6 +1929,9 @@ class SpeechService {
         let text = try await NoSpeechContext.run(.promptHistory, audioURL: audioURL) { try await transcribe() }
         DebugLogger.log("\(logPrefix): Transcribed voice instruction for history \(DebugLogger.redacted(text))")
         return text
+      } catch TranscriptionError.noSpeechDetected {
+        DebugLogger.logWarning("\(logPrefix): Instruction had no speech")
+        return Self.noSpokenInstructionMarker
       } catch {
         DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.logDescription)")
         return Self.voiceInstructionPlaceholder
@@ -2331,7 +2455,7 @@ class SpeechService {
         noteEchoStrip(original: spoken, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
       }
-      let transcript = correctingRejectedSpellings(in: stripped)
+      let transcript = await correctingRejectedSpellings(in: stripped)
       instruction = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
@@ -2494,9 +2618,15 @@ class SpeechService {
     if reply.count != combined.count {
       DebugLogger.log("PROMPT-MODE-LOCAL: Stripped reasoning block(s) (\(combined.count - reply.count) chars)")
     }
+    // Qwen3-4B writes Cyrillic look-alikes inside German words. Fold them before the paste.
+    // A word that is only Cyrillic is left alone.
+    let homoglyphs = TextProcessingUtility.foldingCyrillicHomoglyphs(reply)
+    if homoglyphs.folded > 0 {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Folded \(homoglyphs.folded) Cyrillic look-alike letter(s)")
+    }
 
     let normalizedText = Self.applyingSpokenLayout(
-      PromptReplyCleanup.normalize(reply), when: spokenOffline)
+      PromptReplyCleanup.normalize(homoglyphs.text), when: spokenOffline)
     try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-LOCAL")
     if offlineMode {
       flagUnsupportedWords(in: normalizedText, instruction: instruction, selection: clipboardContext)

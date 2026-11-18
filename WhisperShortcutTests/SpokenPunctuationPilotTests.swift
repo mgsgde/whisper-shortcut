@@ -443,4 +443,89 @@ struct SpokenPunctuationPilotTests {
     Self.check(
       ["Wir stimmen der Empfehlung zu Punkt"], "Wir stimmen der Empfehlung zu.", label: "R2-4b")
   }
+
+  // MARK: Glued "Punkt", "Neue Absatz", pronoun after "ein Punkt"
+
+  @Test func gluedPunktBecomesPeriodAndCapital() {
+    Self.check(
+      ["einen Rollatorpunkt aus dem Entlassungsbericht"],
+      "einen Rollator. Aus dem Entlassungsbericht", label: "Rollatorpunkt")
+    Self.check(
+      ["mit zwei Pausenpunkt Ursache sind"],
+      "mit zwei Pausen. Ursache sind", label: "Pausenpunkt")
+    Self.check(
+      ["Funktionsbeeinträchtigung der Wirbelsäulepunkt"],
+      "Funktionsbeeinträchtigung der Wirbelsäule.", label: "Wirbelsäulepunkt")
+    Self.check(
+      ["und passt die Dosis selbst anpunkt der letzte"],
+      "und passt die Dosis selbst an. Der letzte", label: "anpunkt")
+    Self.check(["die Frakturpunkt"], "die Fraktur.", label: "Frakturpunkt")
+  }
+
+  @Test func fugenSOnlyKeepsRealCompounds() {
+    Self.check(["Diabetespunkt"], "Diabetes.", label: "Diabetespunkt")
+    Self.check(["Ergebnispunkt"], "Ergebnis.", label: "Ergebnispunkt")
+    for text in [
+      "Anhaltspunkt",
+      "Gesichtspunkt",
+      "Einstiegspunkt",
+      "Orientierungspunkt",
+      "ein Diskussionspunkt",
+    ] {
+      Self.check([text], text, label: text)
+    }
+  }
+
+  @Test func longerPunktCompoundsStayAGluedBlutdruckSplits() {
+    for text in [
+      "Untersuchungszeitpunkt",
+      "Behandlungsschwerpunkt",
+      "zum Operationszeitpunkt",
+    ] {
+      Self.check([text], text, label: text)
+    }
+    Self.check(
+      ["Blutdruckpunkt Die Patientin"],
+      "Blutdruck. Die Patientin", label: "Blutdruckpunkt")
+  }
+
+  @Test func realPunktCompoundsInflectionsAndDoppelpunktStay() {
+    for text in [
+      "Der Zeitpunkt der Operation",
+      "Das ist der Schwerpunkt",
+      "ein Anhaltspunkt für",
+      "der Druckpunkt am Knie",
+      "der Zusammenhangspunkt bleibt",
+      "Punkte",
+      "Die Punkte bleiben",
+      "mit Punkten und des Punktes",
+      "ein Punkt Anamnese",
+    ] {
+      Self.check([text], text, label: text)
+    }
+    Self.check(
+      ["Diagnose Doppelpunkt Polyneuropathie"],
+      "Diagnose: Polyneuropathie", label: "Doppelpunkt")
+    Self.check(
+      ["Hüfte frei beweglich Strichpunkt Knie"],
+      "Hüfte frei beweglich; Knie", label: "Strichpunkt")
+    #expect(
+      SpokenPunctuation.apply(to: "einen Rollatorpunkt aus", mode: .automatic)
+        == "einen Rollatorpunkt aus")
+  }
+
+  @Test func punktAfterEinBeforePronounIsTheCommand() {
+    Self.check(
+      ["ein Antidepressivum ein Punkt Ihre Arbeit"],
+      "ein Antidepressivum ein. Ihre Arbeit", label: "ein Punkt Ihre")
+    Self.check(
+      ["Sie nimmt ein Antidepressivum ein Punkt Ihre Arbeit"],
+      "Sie nimmt ein Antidepressivum ein. Ihre Arbeit", label: "Sie nimmt … ein Punkt Ihre")
+  }
+
+  @Test func neueAbsatzWithoutEnding() {
+    Self.check(
+      ["Hörbehinderung. Neue Absatz das Tonaudiogramm"],
+      "Hörbehinderung.\n\nDas Tonaudiogramm", label: "Neue Absatz")
+  }
 }

@@ -198,8 +198,10 @@ enum UserDefaultsKeys {
   static let dictationOnlyMode = "dictationOnlyMode"
   /// Set once `DictationOnlyDefaults.apply` ran, so it never runs twice.
   static let dictationOnlyDefaultsApplied = "dictationOnlyDefaultsApplied"
-  /// What `DictationOnlyDefaults.apply` found before it changed anything (a dictionary of the
-  /// present values and the absent keys); `restore` puts it back and removes it.
+  /// What `DictationOnlyDefaults.apply` found before it changed anything (`present` / `absent`),
+  /// plus the values that pass wrote (`applied`: each key, or "absent" when it left the key
+  /// unset). `restore` puts a before-value back only while the key still holds what was applied,
+  /// then removes the snapshot. A snapshot without `applied` is restored in full.
   static let dictationOnlyDefaultsSnapshot = "dictationOnlyDefaultsSnapshot"
 
   // MARK: - Opt-in usage statistics (TelemetryService)
@@ -296,10 +298,15 @@ enum UserDefaultsKeys {
   /// blank entries while editing; readers drop them.
   static let dictatePromptCustomQuickActions = "dictatePromptCustomQuickActions"
   /// Dictate Prompt instructions last run from the card (an entry or typed text), most recent
-  /// first. `[String]`, at most `QuickActionStore.cardEntries`. Leads the card's list.
+  /// first. `[String]`, at most `QuickActionStore.cardEntries`. Recency for the slot list.
   static let dictatePromptRecentQuickActions = "dictatePromptRecentQuickActions"
+  /// Display order of Dictate Prompt quick actions when the user has no prompts of their own.
+  /// `[String]`, at most `QuickActionStore.cardEntries`. A slot stays put while its instruction
+  /// is still recent; a new one fills the slot of the instruction that dropped out. Empty on
+  /// the first run after this key exists, which shows the recent list instead.
+  static let dictatePromptQuickActionSlots = "dictatePromptQuickActionSlots"
   /// Whether the last Dictate Prompt run picked a list entry. `Bool`. True → the card opens with
-  /// the first (most recent) entry highlighted; false or unset → on the text field.
+  /// the last-run entry highlighted where it stands; false or unset → on the text field.
   static let dictatePromptPreselectRecent = "dictatePromptPreselectRecent"
   /// JSON-encoded `[DictationTemplate]`. Absent means no templates (today's behaviour).
   static let dictationTemplates = "dictationTemplates"
@@ -376,6 +383,11 @@ enum UserDefaultsKeys {
   static let mcpServerEnabled = "mcpServerEnabled"
   /// Optional override of the MCP server's loopback port. Unset/0 → MCPServer.defaultPort.
   static let mcpServerPort = "mcpServerPort"
+  /// Last port the MCP server bound after falling back from the default (another macOS user held it).
+  /// Sticky so connected clients keep working across restarts. Removed when the default is bound again.
+  static let mcpServerBoundPort = "mcpServerBoundPort"
+  /// Kill switch for the MCP port fallback. Unset → on; only an explicit false disables the fallback.
+  static let mcpPortFallbackEnabled = "mcpPortFallbackEnabled"
   /// Kill switch for MCPClientInstaller.repairStaleTokens. Unset → on; only an explicit false disables it.
   static let mcpAutoRepairClientTokens = "mcpAutoRepairClientTokens"
   /// Prefix + `MCPClient.rawValue`: app-scoped security bookmark of the client's config folder.

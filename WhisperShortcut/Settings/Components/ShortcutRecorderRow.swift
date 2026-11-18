@@ -45,6 +45,7 @@ struct ShortcutRecorderRow: View {
   @State private var transientMessage: LocalizedStringKey?
   @State private var pendingShortcut: ShortcutDefinition?
   @State private var pendingConflict: ShortcutConflict?
+  @State private var isHovering = false
 
   /// Stop-callback for the row currently in recording mode. Enforces "only one row records
   /// at a time": when a second row enters recording, it asks the previous row to cancel its
@@ -105,56 +106,44 @@ struct ShortcutRecorderRow: View {
       stopRecording()
       clearPending()
     }
+    // A held conflict is only true while the other row still owns the key. Any save of the app
+    // shortcuts or the template list (clear, change, reassign elsewhere) re-checks it.
+    .onReceive(
+      NotificationCenter.default.publisher(for: .shortcutsChanged)
+        .merge(with: NotificationCenter.default.publisher(for: .dictationTemplatesChanged))
+    ) { _ in
+      revalidatePendingConflict()
+    }
   }
 
   // MARK: - Subviews
 
+  /// One control per row, the way System Settings → Keyboard Shortcuts does it: the combination
+  /// as keycaps, click to record, ✕ on hover to clear. The old monospaced field + "Record" +
+  /// always-visible ✕ read as a text input and showed raw glyph strings (UX review 2026-11-17).
   @ViewBuilder
   private var shortcutDisplay: some View {
     HStack(spacing: 8) {
-      ZStack {
-        RoundedRectangle(cornerRadius: 6)
-          .fill(Color(.controlBackgroundColor))
-          .frame(height: SettingsConstants.textFieldHeight)
-          .overlay(
-            RoundedRectangle(cornerRadius: 6)
-              .stroke(borderColor, lineWidth: (isRecording || pendingConflict != nil) ? 1.5 : 1)
-          )
-
-        HStack {
-          Text(currentDisplayText)
-            .font(.system(.body, design: .monospaced))
-            .foregroundColor(textColor)
-            .padding(.leading, 10)
-            .padding(.trailing, 6)
-          Spacer()
-        }
-      }
-      .frame(minWidth: 140)
-      .focused($currentFocus, equals: focusedField)
-      .onTapGesture {
-        if !isRecording, pendingConflict == nil { startRecording() }
-      }
-
-      if pendingConflict != nil {
-        Button("Reassign") { reassign() }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.small)
-        Button("Cancel") { clearPending() }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-      } else {
-        Button(isRecording ? ("Cancel" as LocalizedStringKey) : "Record") {
+      ZStack(alignment: .trailing) {
+        Button {
           if isRecording {
             stopRecording()
-          } else {
+          } else if pendingConflict == nil {
             startRecording()
           }
+        } label: {
+          recorderLabel
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .buttonStyle(.plain)
+        .focused($currentFocus, equals: focusedField)
+        .pointerCursorOnHover()
+        .help(isRecording ? "Press the new shortcut. Esc cancels, Delete clears." : "Click to record a new shortcut")
+        .accessibilityLabel(Text(label))
+        .accessibilityValue(Text(currentDisplayText))
 
-        if !isRecording, shortcut != nil {
+        // Clear only on hover, like System Settings: an ✕ next to every row is noise on a list
+        // people set once.
+        if showsClearButton {
           Button {
             shortcut = nil
             onChanged?()
@@ -163,11 +152,81 @@ struct ShortcutRecorderRow: View {
               .foregroundColor(.secondary)
           }
           .buttonStyle(.plain)
+          .padding(.trailing, 6)
           .help("Clear shortcut")
           .accessibilityLabel("Clear shortcut")
         }
       }
+      .onHover { isHovering = $0 }
+
+      if pendingConflict != nil {
+        Button("Reassign") { reassign() }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+        Button("Cancel") { clearPending() }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+      }
     }
+  }
+
+  private var recorderLabel: some View {
+    HStack(spacing: 4) {
+      if let keys = displayedKeycaps {
+        ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
+          Keycap(text: key, dimmed: pendingConflict != nil)
+        }
+      } else {
+        Text(currentDisplayText)
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .lineLimit(1)
+      }
+      Spacer(minLength: 4)
+      // Room for the hover ✕, which sits on top of the control (a button inside a button's label
+      // does not get the click on macOS).
+      Color.clear.frame(width: 16, height: 16)
+    }
+    .padding(.horizontal, 6)
+    .frame(minWidth: 160, minHeight: 28)
+    .fixedSize(horizontal: true, vertical: false)
+    .background(
+      RoundedRectangle(cornerRadius: 6)
+        .fill(Color(.controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 6)
+        .stroke(borderColor, lineWidth: (isRecording || pendingConflict != nil) ? 2 : 1)
+    )
+    .contentShape(RoundedRectangle(cornerRadius: 6))
+  }
+
+  private var showsClearButton: Bool {
+    isHovering && !isRecording && pendingConflict == nil && shortcut?.isEnabled == true
+  }
+
+  /// The keycaps to draw, or nil when the row shows a text state ("Click to record", "Type
+  /// shortcut…").
+  private var displayedKeycaps: [String]? {
+    if let pending = pendingShortcut { return Self.keycaps(pending.displayString) }
+    if isRecording { return nil }
+    if let s = shortcut, s.isEnabled { return Self.keycaps(s.displayString) }
+    return nil
+  }
+
+  /// "⌃⌥⇧K" → ["⌃", "⌥", "⇧", "K"]; "⌥Space" → ["⌥", "Space"]. Modifier glyphs each get a cap, the
+  /// rest (a letter, "F5", "Space") is one cap.
+  static func keycaps(_ display: String) -> [String] {
+    let modifierGlyphs: Set<Character> = ["⌃", "⌥", "⇧", "⌘"]
+    var caps: [String] = []
+    var rest = Substring(display)
+    while let first = rest.first, modifierGlyphs.contains(first) {
+      caps.append(String(first))
+      rest = rest.dropFirst()
+    }
+    let key = rest.trimmingCharacters(in: .whitespaces)
+    if !key.isEmpty { caps.append(key) }
+    return caps
   }
 
   @ViewBuilder
@@ -194,20 +253,15 @@ struct ShortcutRecorderRow: View {
 
   private var currentDisplayText: String {
     if let pending = pendingShortcut { return pending.displayString }
-    if isRecording { return String(localized: "Press a key…") }
+    if isRecording { return String(localized: "Type shortcut…") }
     if let s = shortcut, s.isEnabled { return s.displayString }
-    return String(localized: "Not set")
+    return String(localized: "Click to record")
   }
 
   private var borderColor: Color {
     if pendingConflict != nil { return Color.orange.opacity(0.8) }
     if isRecording { return Color.accentColor }
-    return Color.clear
-  }
-
-  private var textColor: Color {
-    if pendingConflict != nil || isRecording { return .secondary }
-    return .primary
+    return Color(.separatorColor)
   }
 
   // MARK: - Recording lifecycle
@@ -287,6 +341,16 @@ struct ShortcutRecorderRow: View {
       return
     }
 
+    // Delete (either key) with no modifiers clears the binding, as in System Settings.
+    if keyCode == UInt16(kVK_Delete) || keyCode == UInt16(kVK_ForwardDelete), mods.isEmpty {
+      stopRecording()
+      if shortcut != nil {
+        shortcut = nil
+        onChanged?()
+      }
+      return
+    }
+
     // Resolve carbon keycode → HotKey.Key
     guard let resolvedKey = Key(carbonKeyCode: UInt32(keyCode)) else {
       transientMessage = "This key is not supported"
@@ -345,6 +409,26 @@ struct ShortcutRecorderRow: View {
     onChanged?()
   }
 
+  /// Re-runs the conflict lookup for the held shortcut. Free now: the other binding was cleared
+  /// or moved, so the pending key is assigned as the user intended. Still taken, possibly by a
+  /// different row: the caption follows the current owner.
+  private func revalidatePendingConflict() {
+    guard let pending = pendingShortcut, let held = pendingConflict else { return }
+    let now = findConflict?(pending, focusedField)
+    switch PendingConflictResolution.resolve(held: held, now: now) {
+    case .keep:
+      break
+    case .update(let conflict):
+      pendingConflict = conflict
+    case .assign:
+      pendingShortcut = nil
+      pendingConflict = nil
+      shortcut = pending
+      NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
+      onChanged?()
+    }
+  }
+
   private func clearPending() {
     let hadPending = pendingConflict != nil
     pendingShortcut = nil
@@ -352,5 +436,44 @@ struct ShortcutRecorderRow: View {
     if hadPending {
       NotificationCenter.default.post(name: .shortcutRecordingStopped, object: nil)
     }
+  }
+}
+
+/// One key of a shortcut, drawn like the key on the keyboard. System font, not monospaced: the
+/// glyphs ⌃⌥⇧⌘ are designed for it, and SF Mono draws ⌃ close to a caret.
+struct Keycap: View {
+  let text: String
+  var dimmed = false
+
+  var body: some View {
+    Text(verbatim: text)
+      .font(.system(size: 13, weight: .medium))
+      .foregroundColor(dimmed ? .secondary : .primary)
+      .padding(.horizontal, text.count > 1 ? 6 : 0)
+      .frame(minWidth: 20, minHeight: 20)
+      .background(
+        RoundedRectangle(cornerRadius: 4)
+          .fill(Color.primary.opacity(0.08))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 4)
+          .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+      )
+  }
+}
+
+/// What to do with a conflict the recorder row is holding after some shortcut changed elsewhere.
+/// Kept outside the view so the rule is testable.
+enum PendingConflictResolution: Equatable {
+  /// The same row still owns the key: leave the warning.
+  case keep
+  /// Another row owns it now: show that one.
+  case update(ShortcutConflict)
+  /// Nobody owns it any more: assign the pending shortcut.
+  case assign
+
+  static func resolve(held: ShortcutConflict, now: ShortcutConflict?) -> PendingConflictResolution {
+    guard let now else { return .assign }
+    return now == held ? .keep : .update(now)
   }
 }

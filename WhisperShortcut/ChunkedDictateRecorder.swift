@@ -53,7 +53,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     /// Dragon-like: a piece after ~0.6 s of silence (three 0.2 s samples), never shorter than 1.5 s
     /// — Parakeet rejects audio under 0.3 s, and a fragment of a word decodes badly.
     static let liveWithoutSoftCut = RotationPolicy(minDuration: 1.5, silenceDuration: 0.6)
-    /// Live plus the soft rule: from 5 s on, one quiet decision under (threshold + 10 dB) cuts.
+    /// Live plus the soft rule: from 5 s on, two quiet 0.2 s decisions (0.4 s) under (threshold + 10 dB) cut.
     static let live = RotationPolicy(
       minDuration: 1.5, silenceDuration: 0.6,
       softCutAfter: 5.0, softCutSilenceDuration: 0.4, softCutThresholdBoostDB: 10)

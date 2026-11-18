@@ -12,7 +12,8 @@ enum TextProcessingUtility {
   
   // MARK: - Text Normalization
   static func normalizeTranscriptionText(_ text: String) -> String {
-    cleanTranscriptionText(normalizingWhitespace(text))
+    // A clip that was only fillers comes back empty. Callers already treat that as no speech.
+    removingFillers(cleanTranscriptionText(normalizingWhitespace(text)))
   }
 
   /// Trim, collapse runs of three or more newlines to two, and collapse spaces inside each line
@@ -138,7 +139,92 @@ enum TextProcessingUtility {
     
     return cleaned
   }
-  
+
+  /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
+  /// one comma, period or semicolon glued on, and the spaces around them. "Um", "ah", "aha",
+  /// "achso" and "oh" stay — they are real German words. A piece of only fillers comes back "".
+  /// A filler removed at the start, or right after ". ", "! ", "? " or a newline, uppercases the
+  /// next letter ("Ähm, ich komme" becomes "Ich komme"). Letters anywhere else stay as they are.
+  static func removingFillers(_ text: String) -> String {
+    let full = NSRange(text.startIndex..., in: text)
+    let matches = fillerRegex.matches(in: text, range: full)
+    guard !matches.isEmpty else { return text }
+
+    var rebuilt = ""
+    var cursor = text.startIndex
+    var capitalizeNext = false
+    for match in matches {
+      guard let matchRange = Range(match.range, in: text) else { return text }
+      if cursor < matchRange.lowerBound {
+        let gap = String(text[cursor..<matchRange.lowerBound])
+        rebuilt += capitalizeNext ? capitalizingFirstLetter(gap) : gap
+        capitalizeNext = false
+      }
+      // The match, including the spaces and one glued mark around the filler, becomes one space.
+      rebuilt += " "
+      if fillerRemovalStartsSentence(text, matchRange: matchRange) {
+        capitalizeNext = true
+      }
+      cursor = matchRange.upperBound
+    }
+    if cursor < text.endIndex {
+      let gap = String(text[cursor...])
+      rebuilt += capitalizeNext ? capitalizingFirstLetter(gap) : gap
+    }
+    let collapsed = fillerSpaceRun.stringByReplacingMatches(
+      in: rebuilt, range: NSRange(rebuilt.startIndex..., in: rebuilt), withTemplate: " ")
+    return collapsed.trimmingCharacters(in: .whitespaces)
+  }
+
+  /// True when this filler match sits at the start of `text` (whitespace aside) or right after
+  /// ". ", "! ", "? " or a newline. The spaces the filler pattern consumes count as the gap.
+  private static func fillerRemovalStartsSentence(_ text: String, matchRange: Range<String.Index>) -> Bool {
+    var wordStart = matchRange.lowerBound
+    while wordStart < matchRange.upperBound, text[wordStart] == " " || text[wordStart] == "\t" {
+      wordStart = text.index(after: wordStart)
+    }
+    if wordStart == text.startIndex { return true }
+
+    var index = wordStart
+    var sawSpace = false
+    while index > text.startIndex {
+      let previous = text.index(before: index)
+      let character = text[previous]
+      if character == " " || character == "\t" {
+        sawSpace = true
+        index = previous
+        continue
+      }
+      break
+    }
+    if index == text.startIndex { return true }
+    let boundary = text[text.index(before: index)]
+    if boundary == "\n" || boundary == "\r" { return true }
+    return sawSpace && (boundary == "." || boundary == "!" || boundary == "?")
+  }
+
+  /// Uppercases the first letter of `gap` when a filler just before it opened a sentence.
+  /// Leading whitespace, including newlines, stays. A gap that does not start with a letter
+  /// (once that whitespace is skipped) is returned unchanged.
+  private static func capitalizingFirstLetter(_ gap: String) -> String {
+    var index = gap.startIndex
+    while index < gap.endIndex, gap[index].isWhitespace {
+      index = gap.index(after: index)
+    }
+    guard index < gap.endIndex, gap[index].isLetter else { return gap }
+    let upper = String(gap[index]).uppercased()
+    return String(gap[..<index]) + upper + String(gap[gap.index(after: index)...])
+  }
+
+  // "hmm" is two or more m's; "hm" is the single one. Longer forms come first so a word boundary
+  // still decides, and "ähm" is not eaten as "äh".
+  // swiftlint:disable:next force_try
+  private static let fillerRegex = try! NSRegularExpression(
+    pattern: #"[ \t]*\b(?:mm-hmm|mmhmm|m-hm|mhm|hm{2,}|hm|ähm|äh|öhm|ehm)\b[,.;]?[ \t]*"#,
+    options: [.caseInsensitive])
+  // swiftlint:disable:next force_try
+  private static let fillerSpaceRun = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
+
   // MARK: - Hallucination Plausibility Gate
 
   /// Discards transcripts that are impossibly long for the recording duration. Flash-tier Gemini
@@ -719,7 +805,97 @@ enum TextProcessingUtility {
       throw TranscriptionError.promptLeakDetected
     }
   }
-  
+
+  // MARK: - Cyrillic look-alikes
+
+  /// Replaces Cyrillic letters that look like Latin ones, only inside a word that already
+  /// contains an ASCII Latin letter (A-Z / a-z). A word made only of Cyrillic stays as written,
+  /// so real Russian text is never changed. Umlauts and ß count as letters but do not trigger
+  /// the fold by themselves.
+  ///
+  /// Local Qwen3-4B (MLX) writes these inside German words ("legе", last letter U+0435). The
+  /// paste looks right and then fails search and spell-check.
+  /// Returns the rewritten text and how many letters were replaced.
+  static func foldingCyrillicHomoglyphs(_ text: String) -> (text: String, folded: Int) {
+    guard !text.isEmpty else { return ("", 0) }
+
+    var output = String()
+    output.reserveCapacity(text.count)
+    var folded = 0
+    var index = text.startIndex
+
+    while index < text.endIndex {
+      if text[index].isLetter {
+        let wordStart = index
+        var wordEnd = text.index(after: index)
+        while wordEnd < text.endIndex, text[wordEnd].isLetter {
+          wordEnd = text.index(after: wordEnd)
+        }
+        let word = text[wordStart..<wordEnd]
+        if word.contains(where: isASCIILatinLetter) {
+          for character in word {
+            if let latin = latinLookAlike(of: character) {
+              output.append(latin)
+              folded += 1
+            } else {
+              output.append(character)
+            }
+          }
+        } else {
+          output.append(contentsOf: word)
+        }
+        index = wordEnd
+      } else {
+        output.append(text[index])
+        index = text.index(after: index)
+      }
+    }
+
+    guard folded > 0 else { return (text, 0) }
+    return (output, folded)
+  }
+
+  /// A-Z / a-z only. A single Unicode scalar, so a precomposed umlaut is not a trigger.
+  private static func isASCIILatinLetter(_ character: Character) -> Bool {
+    guard character.unicodeScalars.count == 1, let scalar = character.unicodeScalars.first else {
+      return false
+    }
+    let value = scalar.value
+    return (value >= 65 && value <= 90) || (value >= 97 && value <= 122)
+  }
+
+  /// Cyrillic letters that are visually identical to a Latin letter. Letters absent from this
+  /// table (including lowercase в) are never rewritten.
+  private static func latinLookAlike(of character: Character) -> Character? {
+    switch character {
+    case "\u{0430}": return "a" // а
+    case "\u{0435}": return "e" // е
+    case "\u{043E}": return "o" // о
+    case "\u{0440}": return "p" // р
+    case "\u{0441}": return "c" // с
+    case "\u{0443}": return "y" // у
+    case "\u{0445}": return "x" // х
+    case "\u{0456}": return "i" // і
+    case "\u{0458}": return "j" // ј
+    case "\u{0455}": return "s" // ѕ
+    case "\u{0410}": return "A" // А
+    case "\u{0412}": return "B" // В
+    case "\u{0415}": return "E" // Е
+    case "\u{041A}": return "K" // К
+    case "\u{041C}": return "M" // М
+    case "\u{041D}": return "H" // Н
+    case "\u{041E}": return "O" // О
+    case "\u{0420}": return "P" // Р
+    case "\u{0421}": return "C" // С
+    case "\u{0422}": return "T" // Т
+    case "\u{0425}": return "X" // Х
+    case "\u{0406}": return "I" // І
+    case "\u{0408}": return "J" // Ј
+    case "\u{0405}": return "S" // Ѕ
+    default: return nil
+    }
+  }
+
   // Text validation uses AppConstants.minimumTextLength
 }
 

@@ -768,13 +768,16 @@ struct OnboardingAPIKeyRow: View {
 /// The first successful dictation, as early as the tour can offer it: a provider or offline model
 /// is set up (previous steps) and the microphone is granted. Everything after this is optional.
 struct WelcomeTryItStep: View {
-  /// A disabled Dictate binding renders as "Disabled", which used to read
-  /// "Later, Disabled does the same…". There is no other wording for that case, so the
-  /// "Later, … does the same" clause is dropped and only the instruction to try it remains.
-  private var tryItDetail: LocalizedStringKey {
-    let shortcut = ShortcutConfigManager.shared.loadConfiguration()[keyPath: ShortcutAction.dictate.keyPath]
-    guard shortcut.isEnabled else { return "Say a sentence." }
-    return "Say a sentence. Later, \(shortcut.displayStringWithSeparator) does the same in any app and puts the text where your cursor is."
+  @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
+  @ObservedObject private var globeKey = GlobeKeyStatus.shared
+  @State private var axStatus = PermissionStatusChecker.status(for: .accessibility)
+
+  /// The key the user will press in every other app, rehearsed here (UX review 2026-11-17). With
+  /// no working key the step falls back to the record button.
+  private var startKey: DictationOnlyStartKey {
+    RealKeyTryItCopy.currentStartKey(
+      fnEnabled: fnEnabled, globeConflict: globeKey.usage.conflictsWithFnDictation,
+      accessibilityGranted: axStatus == .granted)
   }
 
   var body: some View {
@@ -782,9 +785,13 @@ struct WelcomeTryItStep: View {
       WelcomeStepHeader(
         systemImage: "waveform",
         title: "Try it now",
-        subtitle: tryItDetail)
-      OnboardingTryItPanel()
+        subtitle: RealKeyTryItCopy.freeInstruction(for: startKey))
+      RealKeyTryIt(startKey: startKey, onSuccess: {})
       Spacer(minLength: 0)
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      axStatus = PermissionStatusChecker.status(for: .accessibility)
+      globeKey.refresh()
     }
   }
 }

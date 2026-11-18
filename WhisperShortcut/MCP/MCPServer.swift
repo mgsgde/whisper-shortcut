@@ -9,6 +9,8 @@ import Security
 final class MCPServer: ObservableObject {
   static let shared = MCPServer()
   static let defaultPort: UInt16 = 47823
+  /// Ports past the default a second macOS user may try when 47823 is already taken.
+  static let fallbackPortCount: UInt16 = 16
   private static let tokenAccount = "mcp-server-token"
   private static let writeTokenAccount = "mcp-server-write-token"
 
@@ -36,9 +38,32 @@ final class MCPServer: ObservableObject {
     }
   }
 
+  /// The port clients should use. While running, the port actually bound; otherwise the first
+  /// candidate (an override, the sticky fallback, or the default).
   var port: UInt16 {
-    let stored = UserDefaults.standard.integer(forKey: UserDefaultsKeys.mcpServerPort)
-    return (stored > 0 && stored <= Int(UInt16.max)) ? UInt16(stored) : Self.defaultPort
+    if case .running(let bound) = status { return bound }
+    return Self.candidatePorts(
+      override: UserDefaults.standard.integer(forKey: UserDefaultsKeys.mcpServerPort),
+      sticky: UserDefaults.standard.integer(forKey: UserDefaultsKeys.mcpServerBoundPort),
+      fallbackEnabled: UserDefaults.standard.object(forKey: UserDefaultsKeys.mcpPortFallbackEnabled) as? Bool ?? true
+    ).first ?? Self.defaultPort
+  }
+
+  /// Ports to try, in order. An explicit override is used alone. With fallback disabled, only the
+  /// default. Otherwise the sticky port first when it lies in the default window, then the default,
+  /// then the next `fallbackPortCount` ports. Duplicates are dropped; order is kept.
+  static func candidatePorts(override: Int, sticky: Int, fallbackEnabled: Bool) -> [UInt16] {
+    if (1...65535).contains(override) { return [UInt16(override)] }
+    if !fallbackEnabled { return [defaultPort] }
+    let first = Int(defaultPort)
+    let last = first + Int(fallbackPortCount)
+    var ports: [UInt16] = []
+    if (first...last).contains(sticky) { ports.append(UInt16(sticky)) }
+    for value in first...last {
+      let candidate = UInt16(value)
+      if !ports.contains(candidate) { ports.append(candidate) }
+    }
+    return ports
   }
 
   var endpointURL: String { "http://127.0.0.1:\(port)/mcp" }
@@ -105,8 +130,8 @@ final class MCPServer: ObservableObject {
     repairClientTokens()
   }
 
-  /// Rewrites stale tokens in client configs that already hold our entry, once the server is
-  /// running. Silent: no UI, never adds an entry to a client that has none.
+  /// Rewrites a stale token or a previous loopback URL in client configs that already hold our
+  /// entry, once the server is running. Silent: no UI, never adds an entry to a client that has none.
   private func repairClientTokens() {
     Task { @MainActor [weak self] in
       guard let self, case .running = self.status,
@@ -189,43 +214,61 @@ final class MCPServer: ObservableObject {
           liveStem: { [weak self] in self?.currentLiveStem() },
           meetingTitles: { Self.meetingTitlesFromSessions() }),
         configTools: MCPConfigTools(env: .live))
-      let requested = port
-      do {
-        let s = try LoopbackHTTPServer(
-          port: requested,
-          onFailure: { [weak self] reason in
-            DispatchQueue.main.async {
-              guard let self else { return }
-              self.status = .failed(String(localized: "The local server stopped: \(reason). Turn it off and on again."))
-              DebugLogger.log("MCP-SERVER: Accept loop stopped: \(reason)")
-            }
-          }
-        ) { [weak self] request in
-          guard let self else { return .empty(503) }
-          // Offline Mode promises nothing leaves this Mac; an AI app reading transcripts would send
-          // them to its provider. Checked per request so turning the mode on takes effect at once.
-          if OfflineMode.isEnabled { return .empty(503) }
-          guard let readToken = self.token(), let writeToken = self.writeToken() else {
-            DebugLogger.logError("MCP-SERVER: Keychain unavailable, refusing request")
-            return HTTPResponse.json(["error": "keychain unavailable"], status: 503)
-          }
-          return Self.handle(
-            request, readToken: readToken, writeToken: writeToken, dispatcher: dispatcher)
+      let defaults = UserDefaults.standard
+      let override = defaults.integer(forKey: UserDefaultsKeys.mcpServerPort)
+      let candidates = Self.candidatePorts(
+        override: override,
+        sticky: defaults.integer(forKey: UserDefaultsKeys.mcpServerBoundPort),
+        fallbackEnabled: defaults.object(forKey: UserDefaultsKeys.mcpPortFallbackEnabled) as? Bool ?? true)
+      let onFailure: (String) -> Void = { [weak self] reason in
+        DispatchQueue.main.async {
+          guard let self else { return }
+          self.status = .failed(String(localized: "The local server stopped: \(reason). Turn it off and on again."))
+          DebugLogger.log("MCP-SERVER: Accept loop stopped: \(reason)")
         }
-        server = s
-        status = .running(port: s.port)
-        DebugLogger.log("MCP-SERVER: Listening on 127.0.0.1:\(s.port)")
-        repairClientTokens()
-      } catch {
-        let message: String
-        if let e = error as? LoopbackHTTPServer.ServerError, e.errno == EADDRINUSE {
-          message = String(localized: "Port \(requested) is in use by another app. Quit it or choose a different port.")
-        } else {
-          message = error.localizedDescription
-        }
-        status = .failed(message)
-        DebugLogger.log("MCP-SERVER: Start failed: \(message)")
       }
+      let handler: (HTTPRequest) -> HTTPResponse = { [weak self] request in
+        guard let self else { return .empty(503) }
+        // Offline Mode promises nothing leaves this Mac; an AI app reading transcripts would send
+        // them to its provider. Checked per request so turning the mode on takes effect at once.
+        if OfflineMode.isEnabled { return .empty(503) }
+        guard let readToken = self.token(), let writeToken = self.writeToken() else {
+          DebugLogger.logError("MCP-SERVER: Keychain unavailable, refusing request")
+          return HTTPResponse.json(["error": "keychain unavailable"], status: 503)
+        }
+        return Self.handle(
+          request, readToken: readToken, writeToken: writeToken, dispatcher: dispatcher)
+      }
+      for candidate in candidates {
+        do {
+          let s = try LoopbackHTTPServer(port: candidate, onFailure: onFailure, handler: handler)
+          server = s
+          let bound = s.port
+          if bound == Self.defaultPort || (1...65535).contains(override) {
+            defaults.removeObject(forKey: UserDefaultsKeys.mcpServerBoundPort)
+          } else {
+            defaults.set(Int(bound), forKey: UserDefaultsKeys.mcpServerBoundPort)
+            DebugLogger.log("MCP-SERVER: Default port taken (other macOS user?), using \(bound)")
+          }
+          status = .running(port: bound)
+          DebugLogger.log("MCP-SERVER: Listening on 127.0.0.1:\(bound)")
+          repairClientTokens()
+          return
+        } catch {
+          if let e = error as? LoopbackHTTPServer.ServerError, e.errno == EADDRINUSE {
+            DebugLogger.log("MCP-SERVER: Port \(candidate) in use, trying next")
+            continue
+          }
+          let message = error.localizedDescription
+          status = .failed(message)
+          DebugLogger.log("MCP-SERVER: Start failed: \(message)")
+          return
+        }
+      }
+      let first = candidates.first ?? Self.defaultPort
+      let message = String(localized: "Port \(first) is in use by another app. Quit it or choose a different port.")
+      status = .failed(message)
+      DebugLogger.log("MCP-SERVER: Start failed: \(message)")
     }
   }
 

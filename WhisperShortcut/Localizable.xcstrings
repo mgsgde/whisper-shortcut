@@ -1,6 +1,156 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Work from any app. Press once to start, again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktionieren in jeder App. Einmal drücken zum Starten, nochmal zum Beenden."
+          }
+        }
+      }
+    },
+    "More shortcuts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Tastenkürzel"
+          }
+        }
+      }
+    },
+    "Also start with 🌐 Fn" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auch mit 🌐 Fn starten"
+          }
+        }
+      }
+    },
+    "Needs Accessibility to notice the Fn key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht Bedienungshilfen, um die Fn-Taste zu erkennen."
+          }
+        }
+      }
+    },
+    "Type shortcut…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel drücken …"
+          }
+        }
+      }
+    },
+    "Click to record" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Aufnehmen klicken"
+          }
+        }
+      }
+    },
+    "Press the new shortcut. Esc cancels, Delete clears." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie das neue Tastenkürzel. Esc bricht ab, Löschen entfernt es."
+          }
+        }
+      }
+    },
+    "Click to record a new shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicken, um ein neues Tastenkürzel aufzunehmen"
+          }
+        }
+      }
+    },
+    "Key not working?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste funktioniert nicht?"
+          }
+        }
+      }
+    },
+    "Test with a button instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lieber per Klick testen"
+          }
+        }
+      }
+    },
+    "Your text appears here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier erscheint Ihr Text."
+          }
+        }
+      }
+    },
+    "Press 🌐, read the sentence aloud, then press 🌐 again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie 🌐, lesen Sie den Satz laut vor und drücken Sie dann noch einmal 🌐."
+          }
+        }
+      }
+    },
+    "Press %@ together, read the sentence aloud, then press them again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie %@ gleichzeitig, lesen Sie den Satz laut vor und drücken Sie die Tasten dann noch einmal."
+          }
+        }
+      }
+    },
+    "Press 🌐, say a sentence, then press 🌐 again. It works the same in every app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie 🌐, sprechen Sie einen Satz und drücken Sie dann noch einmal 🌐. So funktioniert es in jeder App."
+          }
+        }
+      }
+    },
+    "Press %@ together, say a sentence, then press them again. It works the same in every app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie %@ gleichzeitig, sprechen Sie einen Satz und drücken Sie die Tasten dann noch einmal. So funktioniert es in jeder App."
+          }
+        }
+      }
+    },
     "%@ (recommended)" : {
       "localizations" : {
         "de" : {
@@ -57,6 +207,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mit %@ fortfahren (ungenauer)"
+          }
+        }
+      }
+    },
+    "Could not write the template." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Vorlage konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Delete Template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage löschen"
+          }
+        }
+      }
+    },
+    "Delete template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage „%@“ löschen"
+          }
+        }
+      }
+    },
+    "Deleted template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage „%@“ gelöscht"
           }
         }
       }
@@ -231,6 +421,16 @@
         }
       }
     },
+    "New template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Vorlage „%@“"
+          }
+        }
+      }
+    },
     "Press Fn to dictate, with no shortcut to remember." : {
       "localizations" : {
         "de" : {
@@ -291,6 +491,16 @@
         }
       }
     },
+    "Template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage „%@“"
+          }
+        }
+      }
+    },
     "The recommended model is %@." : {
       "localizations" : {
         "de" : {
@@ -321,6 +531,16 @@
         }
       }
     },
+    "Unknown template." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbekannte Vorlage."
+          }
+        }
+      }
+    },
     "When the field is empty or unreadable, Dictate Prompt also sees the front window (never the whole screen)." : {
       "localizations" : {
         "de" : {
@@ -337,6 +557,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schreibstil-Vorschlag"
+          }
+        }
+      }
+    },
+    "This is what the dot on the menu bar icon means" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dafür steht der Punkt am Menüleisten-Symbol"
           }
         }
       }
@@ -763,6 +993,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : " und "
+          }
+        }
+      }
+    },
+    "\"%@\" added to your Glossary (heard as \"%@\")." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%1$@“ wurde ins Glossar übernommen (gehört als „%2$@“)."
           }
         }
       }
@@ -6853,12 +7093,32 @@
         }
       }
     },
+    "Contains the text that was read aloud. Remove names or anything else private before you send it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält den vorgelesenen Text. Entfernen Sie Namen und alles andere Private, bevor Sie ihn senden."
+          }
+        }
+      }
+    },
     "Contains your dictated text. Remove names or anything else private before you send it." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enthält Ihren diktierten Text. Entfernen Sie Namen und alles andere Private, bevor Sie ihn senden."
+          }
+        }
+      }
+    },
+    "Contains your instruction, part of the selected text and the answer. Remove names or anything else private before you send it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihre Anweisung, einen Auszug des markierten Texts und die Antwort. Entfernen Sie Namen und alles andere Private, bevor Sie sie senden."
           }
         }
       }
@@ -9954,6 +10214,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zum Beispiel: Am Ende stand ein Wort, das ich nicht gesagt habe"
+          }
+        }
+      }
+    },
+    "For example: a word was pronounced wrong" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel: Ein Wort wurde falsch ausgesprochen"
+          }
+        }
+      }
+    },
+    "For example: the answer ignored my instruction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel: Die Antwort hat meine Anweisung ignoriert"
           }
         }
       }
@@ -16177,6 +16457,16 @@
         }
       }
     },
+    "Prompt Answer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt-Antwort"
+          }
+        }
+      }
+    },
     "Prompt retries" : {
       "localizations" : {
         "de" : {
@@ -17298,22 +17588,32 @@
         }
       }
     },
-    "Report a Problem with a Dictation" : {
+    "Report a Problem" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Problem mit einem Diktat melden"
+            "value" : "Problem melden"
           }
         }
       }
     },
-    "Report a Problem with Last Dictation…" : {
+    "Report a Problem with Last Result…" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Problem mit letztem Diktat melden…"
+            "value" : "Problem mit letztem Ergebnis melden…"
+          }
+        }
+      }
+    },
+    "Report a Problem with the Last Read Aloud" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem mit dem letzten Vorlesen melden"
           }
         }
       }
@@ -17324,6 +17624,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Problem mit Ihrem letzten Diktat melden"
+          }
+        }
+      }
+    },
+    "Report a Problem with Your Last Prompt Answer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem mit Ihrer letzten Prompt-Antwort melden"
+          }
+        }
+      }
+    },
+    "Report Something Else" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etwas anderes melden"
           }
         }
       }
@@ -18750,16 +19070,6 @@
         }
       }
     },
-    "Send the last dictation with its model and version, after you check it" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das letzte Diktat mit Modell und Version senden, nachdem Sie es geprüft haben"
-          }
-        }
-      }
-    },
     "Send this message again and regenerate the response" : {
       "localizations" : {
         "de" : {
@@ -18786,6 +19096,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Per WhatsApp senden"
+          }
+        }
+      }
+    },
+    "Send your last dictation, prompt answer or reading with its model and version, after you check it" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet Ihr letztes Diktat, Ihre letzte Prompt-Antwort oder das letzte Vorlesen mit Modell und Version, nachdem Sie es geprüft haben"
           }
         }
       }
@@ -20271,6 +20591,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tab-Titel"
+          }
+        }
+      }
+    },
+    "Template “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage „%@“"
           }
         }
       }
@@ -23105,12 +23435,12 @@
         }
       }
     },
-    "You can also change this by asking in Chat — e.g. “when I say correct, never translate”. Edits made there land in this text." : {
+    "You can also change this by asking in Chat. Chat can edit dictation, Dictate Prompt, Chat and the glossary, for example “when I say correct, never translate”. Edits made there land in this text." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sie können das auch im Chat ändern lassen, z. B. „wenn ich ‚korrigieren‘ sage, nie übersetzen“. Änderungen dort landen in diesem Text."
+            "value" : "Sie können das auch im Chat ändern lassen. Der Chat kann Diktat, Dictate Prompt, Chat und das Glossar bearbeiten, z. B. „wenn ich ‚korrigieren‘ sage, nie übersetzen“. Änderungen dort landen in diesem Text."
           }
         }
       }
@@ -27706,6 +28036,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Glossar-Kurzbefehl"
+          }
+        }
+      }
+    },
+    "%@ is already being downloaded. Wait for it to finish, or cancel it, before importing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird bereits heruntergeladen. Warten Sie, bis der Download abgeschlossen ist, oder brechen Sie ihn ab, bevor Sie es importieren."
           }
         }
       }

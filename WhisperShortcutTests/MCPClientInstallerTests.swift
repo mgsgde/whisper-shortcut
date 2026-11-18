@@ -429,8 +429,10 @@ struct MCPClientInstallerTests {
     _ client: MCPClient, _ data: Data, url customURL: String? = nil, kind: MCPTokenKind = .write,
     exe: String = "/new/exe"
   ) -> Data? {
-    MCPClientInstaller.repairedConfig(
-      client: client, existing: data, serverName: name, url: customURL ?? url,
+    let target = customURL ?? url
+    return MCPClientInstaller.repairedConfig(
+      client: client, existing: data, serverName: name, url: target,
+      ownURL: { $0 == target || MCPClientInstaller.isOwnLoopbackMCPURL($0) },
       readToken: readTok, writeToken: writeTok, tokenKind: kind, executablePath: exe)
   }
 
@@ -510,8 +512,53 @@ struct MCPClientInstallerTests {
     #expect(text.contains("model = \"x\""))
     #expect(text.contains("Bearer writeTok"))
     #expect(!text.contains("Bearer old"))
-    #expect(repair(.codex, Data(stale.utf8), url: "http://127.0.0.1:1/mcp") == nil)
+    let foreign = MCPClientInstaller.mergeCodex(
+      existing: "model = \"x\"\n", serverName: name, url: "http://127.0.0.1:1/mcp", token: "old")
+    #expect(repair(.codex, Data(foreign.utf8)) == nil)
     let current = MCPClientInstaller.mergeCodex(existing: nil, serverName: name, url: url, token: readTok)
     #expect(repair(.codex, Data(current.utf8)) == nil)
+  }
+
+  @Test("Repair: a previous loopback port is rewritten to the current url; a valid token stays valid")
+  func repairRewritesOwnPort() throws {
+    let current = "http://127.0.0.1:47824/mcp"
+    let old = "http://127.0.0.1:47823/mcp"
+
+    let code = try codeConfig(token: writeTok, url: old)
+    let rewritten = try #require(repair(.claudeCode, code, url: current))
+    let servers = try #require(try object(rewritten)["mcpServers"] as? [String: Any])
+    let entry = try #require(servers[name] as? [String: Any])
+    #expect(entry["url"] as? String == current)
+    #expect((entry["headers"] as? [String: String])?["Authorization"] == "Bearer writeTok")
+
+    #expect(repair(.claudeCode, try codeConfig(token: writeTok, url: current), url: current) == nil)
+    #expect(repair(.claudeCode, try codeConfig(token: writeTok, url: "http://example.com/mcp"), url: current) == nil)
+
+    let codex = MCPClientInstaller.mergeCodex(
+      existing: "model = \"x\"\n", serverName: name, url: old, token: writeTok)
+    let codexOut = try #require(repair(.codex, Data(codex.utf8), url: current))
+    let codexText = String(decoding: codexOut, as: UTF8.self)
+    #expect(codexText.contains("url = \"\(current)\""))
+    #expect(codexText.contains("Bearer writeTok"))
+    #expect(!codexText.contains(old))
+
+    let desktop = try MCPClientInstaller.mergeClaudeDesktop(
+      existing: nil, serverName: name, url: old, token: writeTok, executablePath: "/bin/sh")
+    let desktopOut = try #require(repair(.claudeDesktop, desktop, url: current))
+    let desktopServers = try #require(try object(desktopOut)["mcpServers"] as? [String: Any])
+    let desktopEntry = try #require(desktopServers[name] as? [String: Any])
+    let env = try #require(desktopEntry["env"] as? [String: String])
+    #expect(env["WHISPERSHORTCUT_MCP_URL"] == current)
+    #expect(env["WHISPERSHORTCUT_MCP_AUTH"] == "Bearer writeTok")
+  }
+
+  @Test("Own loopback URLs are the default port and the next 16, on 127.0.0.1 or localhost")
+  func ownLoopbackURL() {
+    #expect(MCPClientInstaller.isOwnLoopbackMCPURL("http://127.0.0.1:47823/mcp"))
+    #expect(MCPClientInstaller.isOwnLoopbackMCPURL("http://localhost:47839/mcp"))
+    #expect(!MCPClientInstaller.isOwnLoopbackMCPURL("http://127.0.0.1:47840/mcp"))
+    #expect(!MCPClientInstaller.isOwnLoopbackMCPURL("http://127.0.0.1:47822/mcp"))
+    #expect(!MCPClientInstaller.isOwnLoopbackMCPURL("http://example.com/mcp"))
+    #expect(!MCPClientInstaller.isOwnLoopbackMCPURL("http://127.0.0.1:47823/mcp/"))
   }
 }

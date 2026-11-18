@@ -12,8 +12,8 @@
 //    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
 //                 speed button (cycles 0.75×…2×) — ⏸ becomes a spinner while the next chunk is
 //                 loading. While Read Aloud plays the pill takes key focus (non-activating):
-//                 Space pause/resume, ←/→ 5 s, Esc stop; any other key or a click elsewhere
-//                 hands focus back.
+//                 Space pause/resume, ←/→ 5 s, Esc stop; any other key is passed on to the app,
+//                 and a click elsewhere hands focus back.
 //  On success the pill hides immediately — the pasted/copied text itself is the
 //  feedback, and lingering UI would cover whatever the user is working on.
 //
@@ -22,6 +22,7 @@
 //
 
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 // MARK: - Model
@@ -31,6 +32,23 @@ enum RecordingIndicatorPhase: Equatable {
   case processing
   /// Read Aloud audio is playing (or paused). Transport controls live on the pill.
   case speaking
+}
+
+/// What ↩ does in the quick-action card right now. Decided once, by
+/// `RecordingIndicatorModel.returnAction`; the key handler performs it, the field's submit falls
+/// back to it, and the footer words it.
+enum QuickActionReturn: Equatable {
+  /// The template picker is open: ↩ takes the highlighted template and keeps recording.
+  case chooseTemplate(Int)
+  /// A template is bound and no picker is open (or nothing is typed or highlighted): ↩ stops and
+  /// uses what was spoken.
+  case stopAndProcess
+  /// The field holds an instruction: ↩ runs it instead of the speech.
+  case runTyped
+  /// The highlighted entry runs.
+  case runAction(Int)
+  /// The card is not up; ↩ belongs to whoever is underneath.
+  case notHandled
 }
 
 final class RecordingIndicatorModel: ObservableObject {
@@ -87,6 +105,31 @@ final class RecordingIndicatorModel: ObservableObject {
     guard templatePickerOpen, templateChoices.count > 1 else { return [] }
     if case .selection = quickActionContext { return [] }
     return templateChoices
+  }
+
+  /// The one place that answers "what does ↩ do". Plain values in, so it is unit-testable.
+  /// Order matters: the card being up, then a bound template (which hides the field, so it wins
+  /// over anything typed or highlighted), then typed text, then the highlighted entry, else stop.
+  /// An out-of-range `selectedIndex` counts as no highlight.
+  static func returnAction(
+    isVisible: Bool, templateBound: Bool, pickerChoiceCount: Int, pickerIndex: Int,
+    typedPrompt: String, selectedIndex: Int?, actionCount: Int
+  ) -> QuickActionReturn {
+    guard isVisible else { return .notHandled }
+    if templateBound {
+      return pickerChoiceCount > 0 ? .chooseTemplate(pickerIndex) : .stopAndProcess
+    }
+    if !typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .runTyped }
+    if let selectedIndex, (0..<actionCount).contains(selectedIndex) { return .runAction(selectedIndex) }
+    return .stopAndProcess
+  }
+
+  /// ↩ in the card, from the current state.
+  var returnAction: QuickActionReturn {
+    Self.returnAction(
+      isVisible: quickActionsVisible, templateBound: templateName != nil,
+      pickerChoiceCount: visibleTemplateChoices.count, pickerIndex: templateChoiceIndex,
+      typedPrompt: typedPrompt, selectedIndex: quickActionIndex, actionCount: quickActions.count)
   }
 
   func pushLevel(_ normalized: CGFloat) {
@@ -325,7 +368,7 @@ private enum QuickActionCardMetrics {
 /// from the start, and the recording controls.
 ///
 /// The list holds the user's own quick prompts in their fixed order (⌃n always runs the same one),
-/// or, when they have none, the instructions last run from the card, most recent first. Three rows
+/// or, when they have none, the instructions last run from the card, in fixed slots. Three rows
 /// show at once; longer lists scroll inside them, with a "9 prompts · ⌃1–⌃9 · ↑↓" line underneath. When the
 /// last run picked an entry, the card opens with it highlighted (scrolled into view), so ↩ runs it
 /// again; otherwise the field is selected and ↩ on it means the same as ✓ — stop and use what was
@@ -695,31 +738,45 @@ private struct QuickActionCardView: View {
 
   /// ↩ does what the footer says: the typed text, else the highlighted entry, else the speech.
   private func submit() {
-    if isTyping {
-      onSubmitTyped()
-    } else if let selectedIndex {
-      onSelect(selectedIndex)
-    } else {
-      onConfirm()
+    switch RecordingIndicatorModel.returnAction(
+      isVisible: true, templateBound: templateName != nil, pickerChoiceCount: templateChoices.count,
+      pickerIndex: templateChoiceIndex, typedPrompt: typedText, selectedIndex: selectedIndex,
+      actionCount: actions.count)
+    {
+    case .runTyped: onSubmitTyped()
+    case .runAction(let index): onSelect(index)
+    case .chooseTemplate(let index): onChooseTemplate(index)
+    case .stopAndProcess: onConfirm()
+    case .notHandled: break
     }
   }
 
   // MARK: Footer
 
   private var footerLabel: String {
-    if showsPicker { return String(localized: "Press a number to choose") }
-    if isTyping { return String(localized: "\u{21A9} runs what you typed") }
-    if let selectedIndex, actions.indices.contains(selectedIndex) {
-      return String(localized: "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}")
-    }
-    if showsTemplateHeader, templateEnabled, let templateName {
-      // The header names the template; the footer says what goes into it.
-      if case .selection(let text, _) = context {
-        return String(localized: "\u{21A9} formats the selection (\(text.count.formatted()) chars) as \u{201C}\(templateName)\u{201D}")
+    // Footer and key handler share one decision, so the label always words what ↩ does.
+    let action = RecordingIndicatorModel.returnAction(
+      isVisible: true, templateBound: showsPicker || templateName != nil,
+      pickerChoiceCount: showsPicker ? templateChoices.count : 0,
+      pickerIndex: templateChoiceIndex, typedPrompt: typedText, selectedIndex: selectedIndex,
+      actionCount: actions.count)
+    switch action {
+    case .chooseTemplate:
+      return String(localized: "Press a number to choose")
+    case .runTyped:
+      return String(localized: "\u{21A9} runs what you typed")
+    case .runAction(let index):
+      return String(localized: "\u{21A9} runs \u{201C}\(actions[index].text)\u{201D}")
+    case .stopAndProcess, .notHandled:
+      if showsTemplateHeader, templateEnabled, let templateName {
+        // The header names the template; the footer says what goes into it.
+        if case .selection(let text, _) = context {
+          return String(localized: "\u{21A9} formats the selection (\(text.count.formatted()) chars) as \u{201C}\(templateName)\u{201D}")
+        }
+        return String(localized: "\u{21A9} formats it as \u{201C}\(templateName)\u{201D}")
       }
-      return String(localized: "\u{21A9} formats it as \u{201C}\(templateName)\u{201D}")
+      return String(localized: "Speak your instruction")
     }
-    return String(localized: "Speak your instruction")
   }
 
   private var footer: some View {
@@ -923,8 +980,8 @@ struct RecordingIndicatorView: View {
 /// app the user is dictating into. It takes key status while the user types a
 /// Dictate Prompt instruction (while the quick-action list is up) — non-activating, so
 /// the target app stays frontmost. While Read Aloud plays the pill takes key focus
-/// (non-activating): Space or ↩ pause/resume, ←/→ 5 s, Esc stop; any other key or a click
-/// elsewhere hands focus back.
+/// (non-activating): Space or ↩ pause/resume, ←/→ 5 s, Esc stop; any other key is passed on
+/// to the app, and a click elsewhere hands focus back.
 private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
   /// ⌃1–9 while the card has key focus. Returns true when the digit picked an entry.
@@ -1293,6 +1350,16 @@ final class RecordingIndicatorManager {
     keyFocusReturnApp = nil
   }
 
+  /// A key the Read Aloud pill does not handle belongs to the app the user is typing in: after
+  /// focus is handed back, the same key is posted again so it is not lost. Needs Accessibility
+  /// (the App Store build usually lacks it); without it the key is dropped as before.
+  private static func forwardToFrontApp(_ event: NSEvent) {
+    guard AXIsProcessTrusted(), let cgEvent = event.cgEvent?.copy() else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+      cgEvent.post(tap: .cghidEventTap)
+    }
+  }
+
   private func submitTyped() {
     let text = typedPrompt
     guard !text.isEmpty else { return }
@@ -1436,22 +1503,23 @@ final class RecordingIndicatorManager {
       return true
     }
     panel.onReturn = { [weak self] in
-      if let self, self.model.quickActionsVisible, self.model.templateName != nil {
-        // The picker: ↩ takes the highlighted template and keeps recording. Without it the
-        // card has no field to submit, so ↩ stops, as the footer says.
-        if !self.model.visibleTemplateChoices.isEmpty {
-          self.chooseTemplate(self.model.templateChoiceIndex, close: true)
-        } else {
-          self.onConfirm?()
-        }
-        return true
+      guard let self else { return false }
+      let action = self.model.returnAction
+      switch action {
+      case .notHandled:
+        return false
+      case .chooseTemplate(let index):
+        // The picker: ↩ takes the highlighted template and keeps recording.
+        self.chooseTemplate(index, close: true)
+      case .stopAndProcess:
+        // No picker and no field to submit, so ↩ stops, as the footer says.
+        self.onConfirm?()
+      case .runTyped:
+        self.submitTyped()
+      case .runAction(let index):
+        DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")
+        self.onQuickAction?(index)
       }
-      guard let self, self.model.quickActionsVisible,
-        self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-        let index = self.model.quickActionIndex, self.model.quickActions.indices.contains(index)
-      else { return false }
-      DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")
-      self.onQuickAction?(index)
       return true
     }
     panel.onTab = { [weak self] in
@@ -1475,8 +1543,12 @@ final class RecordingIndicatorManager {
         !self.model.quickActionsVisible, self.panel?.acceptsKeyInput == true
       else { return false }
       let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-      // ⌘ shortcuts belong to the front app; leave the event for super.sendEvent.
-      if modifiers.contains(.command) { return false }
+      if modifiers.contains(.command) {
+        self.releaseKeyFocus()
+        Self.forwardToFrontApp(event)
+        DebugLogger.log("READ-ALOUD-KEYS: ⌘ shortcut, focus returned")
+        return true
+      }
       if modifiers.isEmpty {
         switch event.keyCode {
         case 49:
@@ -1509,6 +1581,7 @@ final class RecordingIndicatorManager {
         }
       }
       self.releaseKeyFocus()
+      Self.forwardToFrontApp(event)
       DebugLogger.log("READ-ALOUD-KEYS: Unhandled key, focus returned")
       return true
     }

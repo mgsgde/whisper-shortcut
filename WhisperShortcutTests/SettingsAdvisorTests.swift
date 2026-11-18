@@ -149,6 +149,50 @@ struct SettingsAdvisorTests {
     #expect(f.ids().isEmpty)
   }
 
+  @Test("Permission labels follow the grant state, so a Missing dismissal returns after grant and revoke")
+  func permissionDismissalExpiresAfterGrantRevoke() {
+    var accessibility = PermissionStatus.notDetermined
+    var screen = PermissionStatus.denied
+    let status: (PermissionKind) -> PermissionStatus = { kind in
+      switch kind {
+      case .accessibility: return accessibility
+      case .screenRecording: return screen
+      default: return .notDetermined
+      }
+    }
+    #expect(SettingsAdvisor.currentLabel(
+      forFindingID: SettingsAdvisor.accessibilityID, catalog: [], permissionStatus: status) == "Missing")
+    #expect(SettingsAdvisor.currentLabel(
+      forFindingID: SettingsAdvisor.screenRecordingID, catalog: [], permissionStatus: status) == "Missing")
+    accessibility = .granted
+    screen = .granted
+    #expect(SettingsAdvisor.currentLabel(
+      forFindingID: SettingsAdvisor.accessibilityID, catalog: [], permissionStatus: status) == "Granted")
+    #expect(SettingsAdvisor.currentLabel(
+      forFindingID: SettingsAdvisor.screenRecordingID, catalog: [], permissionStatus: status) == "Granted")
+
+    let f = Fixture()
+    f.setAllGood()
+    f.hasAccessibility = false
+    #expect(f.ids().contains(SettingsAdvisor.accessibilityID))
+    f.suppressions.suppress(id: SettingsAdvisor.accessibilityID, currentValue: "Missing")
+    #expect(!f.ids().contains(SettingsAdvisor.accessibilityID))
+    // The review while it is granted sees a different label and drops the dismissal.
+    f.hasAccessibility = true
+    #expect(!f.ids().contains(SettingsAdvisor.accessibilityID))
+    f.hasAccessibility = false
+    #expect(f.ids().contains(SettingsAdvisor.accessibilityID))
+
+    f.hasScreenRecording = false
+    #expect(f.ids().contains(SettingsAdvisor.screenRecordingID))
+    f.suppressions.suppress(id: SettingsAdvisor.screenRecordingID, currentValue: "Missing")
+    #expect(!f.ids().contains(SettingsAdvisor.screenRecordingID))
+    f.hasScreenRecording = true
+    _ = f.findings()
+    f.hasScreenRecording = false
+    #expect(f.ids().contains(SettingsAdvisor.screenRecordingID))
+  }
+
   @Test("A suppressed recommendation stays quiet until its value changes")
   func suppressionHoldsUntilValueChanges() {
     let f = Fixture()

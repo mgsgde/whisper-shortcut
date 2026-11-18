@@ -18,8 +18,8 @@ class MenuBarController: NSObject {
   /// literals. Naming them makes that link something the compiler checks.
   ///
   /// Raw values are the historical tags, kept as-is: they are persisted nowhere, but leaving
-  /// them unchanged keeps this a pure rename.
-  private enum MenuTag: Int {
+  /// them unchanged keeps this a pure rename. Internal so the setup allow-list can be tested.
+  enum MenuTag: Int, CaseIterable {
     case status = 100
     case dictate = 101
     case dictatePrompt = 102
@@ -45,7 +45,21 @@ class MenuBarController: NSObject {
     case showMeetingAudio = 128
     case welcomeTour = 129
     case aiAppProposals = 130
+    case aiAppProposalsSeparator = 137
     case chatSeparator = 135
+    case quit = 136
+  }
+
+  /// Rows that stay in the status menu until onboarding is finished. Everything else would only
+  /// lead to "API Key Required". Quit has a tag so this can name it; Check for Updates and the
+  /// daily-build switcher stay untagged and are hidden with the other non-matches.
+  static func visibleDuringSetup(_ tag: MenuTag) -> Bool {
+    switch tag {
+    case .status, .finishSetup, .finishSetupSeparator, .settings, .quit:
+      return true
+    default:
+      return false
+    }
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -90,8 +104,10 @@ class MenuBarController: NSObject {
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
   /// Live in the Send Feedback submenu, which `menu.item(withTag:)` does not search.
-  private var reportDictationItem: NSMenuItem?
-  private var reportDictationSeparator: NSMenuItem?
+  private var reportResultItem: NSMenuItem?
+  private var reportResultSeparator: NSMenuItem?
+  /// Rows the unfinished-setup gate hid, so it puts back exactly those once (and no others).
+  private var hiddenBySetupGate: [NSMenuItem] = []
   private var blinkTimer: Timer?
   private var feedbackResetTask: Task<Void, Never>?
 
@@ -515,6 +531,10 @@ class MenuBarController: NSObject {
       "Review Changes from AI Apps…", action: #selector(showAIAppProposals), tag: .aiAppProposals)
     proposalsItem.isHidden = true
     menu.addItem(proposalsItem)
+    let proposalsSeparator = NSMenuItem.separator()
+    proposalsSeparator.tag = MenuTag.aiAppProposalsSeparator.rawValue
+    proposalsSeparator.isHidden = true
+    menu.addItem(proposalsSeparator)
 
     // Central stop button — visible only when any operation is active
     let stopItem = createMenuItem("Stop", action: #selector(stopCurrentOperation), tag: .stop)
@@ -607,19 +627,20 @@ class MenuBarController: NSObject {
     // most-used surface, and three permanent contact rows in it would read as nagging.
     let feedbackItem = createMenuItem("Send Feedback", action: nil, tag: .sendFeedback)
     let feedbackMenu = NSMenu()
-    // First, because a report about a concrete dictation is the one the developer can act on
-    // without asking back. Hidden while there is no dictation to report.
+    // First, because a report about a concrete result (the last dictation, prompt answer or
+    // reading) is the one the developer can act on without asking back. Hidden while there is
+    // nothing to report.
     let reportItem = NSMenuItem(
-      title: String(localized: "Report a Problem with Last Dictation…"),
-      action: #selector(reportLastDictation), keyEquivalent: "")
+      title: String(localized: "Report a Problem with Last Result…"),
+      action: #selector(reportLastResult), keyEquivalent: "")
     reportItem.target = self
     reportItem.toolTip = String(
-      localized: "Send the last dictation with its model and version, after you check it")
+      localized: "Send your last dictation, prompt answer or reading with its model and version, after you check it")
     let reportSeparator = NSMenuItem.separator()
     feedbackMenu.addItem(reportItem)
     feedbackMenu.addItem(reportSeparator)
-    reportDictationItem = reportItem
-    reportDictationSeparator = reportSeparator
+    reportResultItem = reportItem
+    reportResultSeparator = reportSeparator
     for channel in FeedbackLinks.Channel.allCases {
       let item = NSMenuItem(
         title: channel.menuTitle, action: #selector(sendFeedback(_:)), keyEquivalent: "")
@@ -649,7 +670,7 @@ class MenuBarController: NSObject {
       menu.addItem(switchItem)
     }
     menu.addItem(
-      createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
+      createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q", tag: .quit))
 
     return menu
   }
@@ -859,7 +880,7 @@ class MenuBarController: NSObject {
       return
     }
     switch presentedState {
-    case .recording(.prompt) where activeMeetingSegment == nil:
+    case .recording(.prompt):
       offerQuickActionsIfNeeded()
       indicator.showRecording(label: AppState.RecordingMode.prompt.pillLabel)
     case .recording(let mode) where mode != .liveMeeting:
@@ -949,8 +970,8 @@ class MenuBarController: NSObject {
 
   // MARK: - Dictate Prompt quick actions
 
-  /// Shows the cached list once per prompt recording. A live-meeting segment never reaches
-  /// this — `updateRecordingIndicator` only calls it when no meeting segment is active.
+  /// Shows the cached list once per prompt recording. A prompt segment during a meeting gets
+  /// the card too (a template is never bound there).
   private func offerQuickActionsIfNeeded() {
     guard recording?.quickActionsOffered == false else { return }
     recording?.quickActionsOffered = true
@@ -1048,8 +1069,8 @@ class MenuBarController: NSObject {
     _ text: String, source: String, isEdit: Bool = false, fromQuickAction: Bool = false
   ) {
     guard recording?.quickActionRan == false else { return }
-    guard activeMeetingSegment == nil else { return }
     let recordingPrompt = appState.recordingMode == .prompt || pendingRecordingMode == .prompt
+      || (activeMeetingSegment == .prompt && !meetingSegmentIsProcessing)
     guard recordingPrompt else { return }
     recording?.quickActionRan = true
     recording?.quickActionInstruction = text
@@ -1385,6 +1406,17 @@ class MenuBarController: NSObject {
     return image
   }
 
+  /// The proposals row's title with the icon's dot in front, in the accent color so it reads as
+  /// the thing to act on. An attributed title keeps the other rows' text column where it is (a
+  /// menu item image would indent every row).
+  private static func suggestionRowTitle(_ title: String) -> NSAttributedString {
+    let font = NSFont.menuFont(ofSize: 0)
+    let result = NSMutableAttributedString(
+      string: "\u{25CF} ", attributes: [.font: font, .foregroundColor: NSColor.controlAccentColor])
+    result.append(NSAttributedString(string: title, attributes: [.font: font]))
+    return result
+  }
+
   /// Local Debug builds carry an orange "DEV" tag next to the icon, so it is obvious at a glance
   /// which binary owns the hotkeys when the installed release could be running too. A sidecar
   /// (worktree build next to the user's instance, no hotkeys) shows a purple "TEST" instead.
@@ -1434,15 +1466,22 @@ class MenuBarController: NSObject {
     let fromWritingStyle = pending.filter(\.isFromWritingStyle).count
     if let proposalsItem = menu.item(withTag: MenuTag.aiAppProposals.rawValue) {
       proposalsItem.isHidden = pending.isEmpty
+      let title: String
       if fromWritingStyle == pending.count {
-        proposalsItem.title = String(localized: "Review Writing Style Suggestion…")
+        title = String(localized: "Review Writing Style Suggestion…")
       } else if fromWritingStyle > 0 {
-        proposalsItem.title = String(localized: "Review \(pending.count) Suggestions…")
+        title = String(localized: "Review \(pending.count) Suggestions…")
       } else {
-        proposalsItem.title = pending.count > 1
+        title = pending.count > 1
           ? String(localized: "Review \(pending.count) Changes from AI Apps…")
           : String(localized: "Review Change from AI App…")
       }
+      proposalsItem.title = title
+      // The row carries the same dot as the menu bar icon and says so underneath, so the user
+      // sees which row the dot points to without having to guess.
+      proposalsItem.attributedTitle = Self.suggestionRowTitle(title)
+      proposalsItem.subtitle = String(localized: "This is what the dot on the menu bar icon means")
+      menu.item(withTag: MenuTag.aiAppProposalsSeparator.rawValue)?.isHidden = pending.isEmpty
     }
     menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
 
@@ -1483,6 +1522,8 @@ class MenuBarController: NSObject {
         canResume: !LiveMeetingTranscriptStore.shared.chunks.isEmpty))
 
     applyDictationOnlyVisibility(menu)
+    // Last, so an unfinished tour wins over Stop, Dictation only, history and the proposals row.
+    applyUnfinishedSetupVisibility(menu)
   }
 
   /// Hides the rows "Dictation only" removes, by `isHidden` on the existing items: the menu is
@@ -1509,7 +1550,73 @@ class MenuBarController: NSObject {
     apply(.liveMeeting, tags: [.liveMeeting])
     apply(.chat, tags: [.chat, .chatSeparator])
     apply(.meetingBacklog, ownsVisibility: true, tags: [.retryMeetingTranscription, .showMeetingAudio])
-    apply(.aiAppProposals, ownsVisibility: true, tags: [.aiAppProposals])
+    apply(.aiAppProposals, ownsVisibility: true, tags: [.aiAppProposals, .aiAppProposalsSeparator])
+  }
+
+  /// While onboarding is unfinished, hides every row `visibleDuringSetup` does not name, then
+  /// drops a separator that would sit against another separator or at an edge. When setup is
+  /// done, puts back once the rows nothing else writes `isHidden` for (the gate is the only
+  /// thing that hid them), and only those the gate itself hid. Untagged rows other passes own
+  /// (the report-result separator) are left as those passes decided them, so the gate never
+  /// shows a row after setup that would be hidden without it.
+  private func applyUnfinishedSetupVisibility(_ menu: NSMenu) {
+    let setupIncomplete = WelcomeWindowController.needsCompletion
+    if setupIncomplete {
+      for item in menu.items {
+        let allowed = MenuTag(rawValue: item.tag).map(Self.visibleDuringSetup) ?? false
+        if !allowed, !item.isHidden {
+          item.isHidden = true
+          if !hiddenBySetupGate.contains(where: { $0 === item }) { hiddenBySetupGate.append(item) }
+        }
+      }
+      Self.hideDanglingSeparators(in: menu)
+      return
+    }
+    guard !hiddenBySetupGate.isEmpty else { return }
+    let ownedElsewhere: Set<ObjectIdentifier> = Set(
+      [reportResultSeparator].compactMap { $0 }.map(ObjectIdentifier.init))
+    for item in hiddenBySetupGate
+    where Self.restoredWhenSetupFinishes(MenuTag(rawValue: item.tag))
+      && !ownedElsewhere.contains(ObjectIdentifier(item)) {
+      item.isHidden = false
+    }
+    hiddenBySetupGate.removeAll()
+    DebugLogger.log("MENU: setup finished, rows hidden during setup are back")
+  }
+
+  /// Visible by default, and no other pass writes `isHidden`. Untagged items are the separators
+  /// between groups, Check for Updates, and the daily-build switcher.
+  private static func restoredWhenSetupFinishes(_ tag: MenuTag?) -> Bool {
+    switch tag {
+    case .status, .dictate, .addToGlossary, .liveDictate, .settings, .sendFeedback, .rate, .quit, nil:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// A separator with no visible row on both sides. The setup gate hides whole groups, which
+  /// would otherwise leave a blank row at the top, the bottom, or against another separator.
+  private static func hideDanglingSeparators(in menu: NSMenu) {
+    let items = menu.items
+    var previousVisibleIsSeparator = true
+    var lastVisibleSeparatorIndex: Int?
+    for (index, item) in items.enumerated() where !item.isHidden {
+      if item.isSeparatorItem {
+        if previousVisibleIsSeparator {
+          item.isHidden = true
+        } else {
+          previousVisibleIsSeparator = true
+          lastVisibleSeparatorIndex = index
+        }
+      } else {
+        previousVisibleIsSeparator = false
+        lastVisibleSeparatorIndex = nil
+      }
+    }
+    if let index = lastVisibleSeparatorIndex {
+      items[index].isHidden = true
+    }
   }
 
   /// Rebuilds the "Recent Transcriptions" submenu and hides both history rows while there is
@@ -1518,8 +1625,11 @@ class MenuBarController: NSObject {
   private func updateTranscriptionHistoryItems(_ menu: NSMenu) {
     let entries = TranscriptionHistoryStore.shared.entries
     menu.item(withTag: MenuTag.copyLastTranscription.rawValue)?.isHidden = entries.isEmpty
-    reportDictationItem?.isHidden = entries.isEmpty
-    reportDictationSeparator?.isHidden = entries.isEmpty
+    let hasReportableResult = !entries.isEmpty
+      || LastResultStore.shared.lastPrompt != nil
+      || LastResultStore.shared.lastReadAloud != nil
+    reportResultItem?.isHidden = !hasReportableResult
+    reportResultSeparator?.isHidden = !hasReportableResult
 
     // Drops away once the retained file is gone (recovered, or replaced by a newer cancellation).
     let hasCancelled = cancelledRecordingURL.map {
@@ -1560,7 +1670,12 @@ class MenuBarController: NSObject {
     retryItem?.isHidden = count == 0 && !retrying
     showItem?.isHidden = count == 0
     retryItem?.isEnabled = !retrying
-    defer { applyDictationOnlyVisibility(menu) }
+    // Menu open runs this after `refreshMenu`, which would show the backlog rows again.
+    // The setup gate has to run last here too, or it only wins until the menu opens.
+    defer {
+      applyDictationOnlyVisibility(menu)
+      applyUnfinishedSetupVisibility(menu)
+    }
     retryItem?.title =
       retrying
       ? String(localized: "Retrying Meeting Transcription…")
@@ -1906,12 +2021,8 @@ class MenuBarController: NSObject {
     let isMeeting = isLiveMeetingActive
     switch availability(.dictatePrompt) {
     case .stop:
-      if isMeeting {
-        DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment")
-        stopRecordingAfterTailDelay()
-      } else {
-        stopPromptOrRunTyped()
-      }
+      if isMeeting { DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment") }
+      stopPromptOrRunTyped()
     case .ignored(.otherMeetingSegmentActive):
       DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring prompt")
     case .cancelProcessing:
@@ -2490,15 +2601,18 @@ class MenuBarController: NSObject {
     DebugLogger.log("FEEDBACK: Opened \(channel.rawValue) from the status menu")
   }
 
-  @objc private func reportLastDictation() {
-    guard let entry = TranscriptionHistoryStore.shared.mostRecent else {
-      DebugLogger.logWarning("DICTATION-REPORT: Requested but history is empty")
+  @objc private func reportLastResult() {
+    let candidates = ResultReport.candidates(
+      dictation: TranscriptionHistoryStore.shared.mostRecent,
+      glossaryTerms: speechService.glossaryTermsForReport(),
+      offlineMode: OfflineMode.isEnabled,
+      prompt: LastResultStore.shared.lastPrompt,
+      readAloud: LastResultStore.shared.lastReadAloud)
+    guard !candidates.isEmpty else {
+      DebugLogger.logWarning("DICTATION-REPORT: Requested but there is no result to report")
       return
     }
-    let details = DictationReport.body(
-      entry: entry, glossaryTerms: speechService.glossaryTermsForReport(),
-      offlineMode: OfflineMode.isEnabled)
-    DictationReportWindowController.shared.show(details: details)
+    DictationReportWindowController.shared.show(candidates: candidates)
   }
 
   @objc private func rateApp() {
@@ -2817,15 +2931,9 @@ class MenuBarController: NSObject {
         if clipboardManager.restorePendingSnapshot(afterForeignWriteAt: NSPasteboard.general.changeCount) {
           DebugLogger.log("READ-ALOUD-PROMPT: Restored the clipboard contents from before the selection copy")
         }
-        // `transitionToIdleAndCleanup` posts `ttsDidStop` when leaving a TTS state and drops the
-        // clipboard snapshot. The snapshot is already restored, and this job is a prompt, not
-        // Read Aloud, so idle is the same `finish()` that helper uses. A TTS state takes the
-        // success path instead, which does not post `ttsDidStop`.
-        if isTTSRunning {
-          appState = appState.showSuccess(String(localized: "Audio playback completed"))
-        } else {
-          appState = appState.finish()
-        }
+        // A prompt job, never a TTS state (Read Aloud is refused while it processes): straight to idle.
+        // The clipboard snapshot was restored above, so `transitionToIdleAndCleanup` is not used.
+        appState = appState.finish()
         cleanupAudioFile(at: audioURL)
         await deliver(result)
         return
@@ -2840,6 +2948,13 @@ class MenuBarController: NSObject {
       }
       let pasteOutcome = await self.autoPasteIfEnabled()
       let didAutoPaste = pasteOutcome != nil
+      if spec.mode == .transcription, !duringMeeting {
+        // The onboarding test field shows the result even where nothing was pasted.
+        await MainActor.run {
+          NotificationCenter.default.post(
+            name: .dictationResultDelivered, object: nil, userInfo: ["text": result])
+        }
+      }
       await afterCopy(result)
       if let pasteOutcome {
         ContextLogger.shared.logSignal(
@@ -3826,6 +3941,11 @@ class MenuBarController: NSObject {
     ContextLogger.shared.logReadAloud(
       text: text, model: readAloudModel.rawValue, voice: ReadAloudPreferences.voice(for: readAloudModel),
       app: frontmost.flatMap { isOwnApp ? nil : InteractionTargetApp(bundleId: $0.bundleIdentifier, name: $0.localizedName) })
+    LastResultStore.shared.recordReadAloud(.init(
+      ts: Date(),
+      text: text,
+      model: readAloudModel.rawValue,
+      voice: ReadAloudPreferences.voice(for: readAloudModel)))
     readAloudRequestIsOpen = true
     let playbackGeneration = ttsPlayback.begin(expectedCharacters: text.count)
 
@@ -4010,10 +4130,12 @@ class MenuBarController: NSObject {
   #if !APP_STORE
   /// Appends whatever the user has selected to the Glossary.
   ///
-  /// The deliberate non-feature here is intelligence: no model, no fuzzy matching against past
-  /// transcripts, no diff window. The user has already decided what the correct spelling is by
-  /// selecting it, so the app stores it verbatim. That is what makes this the one glossary path
-  /// that still works in Offline Mode, where every model-driven learning route is switched off.
+  /// Still no model and no network, so it works in Offline Mode, where every model-driven learning
+  /// route is switched off. The selection is the correct spelling and is stored verbatim. New: the
+  /// last dictation (`TranscriptionHistoryStore.mostRecent`, at most 10 minutes old) is searched
+  /// for the word most similar to a single-word selection (`GlossaryMisheard`); that word is what
+  /// the engine heard and is stored as `Term (not "heard")`, which the Parakeet vocabulary guard
+  /// accepts below its 0.6 similarity floor ("Lasse" for "Lasègue").
   @objc internal func addSelectionToGlossary() {
     guard AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .glossary) else { return }
     captureClipboardRestorePointIfEnabled()
@@ -4021,7 +4143,15 @@ class MenuBarController: NSObject {
     Task { @MainActor in
       switch await self.copySelection(logPrefix: "GLOSSARY") {
       case .selected(let selection):
-        self.reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(selection, source: .glossaryShortcut))
+        var misheard: String?
+        if let last = TranscriptionHistoryStore.shared.mostRecent {
+          misheard = GlossaryMisheard.misheardForm(
+            correct: SystemPromptsStore.normaliseTerm(selection), dictation: last.text,
+            dictationDate: last.ts, isKnownWord: GlossaryFastLearner.isKnownWordInDictationLanguages)
+        }
+        self.reportGlossaryAppend(
+          SystemPromptsStore.shared.appendToWhisperGlossary(
+            selection, misheard: misheard, source: .glossaryShortcut))
         // `restorePendingSnapshot()` compares against our own last write. A synthetic ⌘C is
         // another app's write, so that guard can never pass — name the foreign change count.
         if self.clipboardManager.restorePendingSnapshot(
@@ -4045,6 +4175,11 @@ class MenuBarController: NSObject {
     case .added(let term):
       TelemetryService.shared.count(.glossaryAdd, .used)
       PopupNotificationWindow.showInfo("\"\(term)\" added to your Glossary.", title: "Glossary")
+    case .learned(let term, let misheard):
+      TelemetryService.shared.count(.glossaryAdd, .used)
+      PopupNotificationWindow.showInfo(
+        "\"\(term)\" added to your Glossary (heard as \"\(misheard)\").",
+        title: "Glossary")
     case .duplicate(let term):
       PopupNotificationWindow.showInfo("\"\(term)\" is already in your Glossary.", title: "Glossary")
     case .notATerm(let text):
@@ -4539,6 +4674,8 @@ extension MenuBarController: AudioRecorderDelegate {
           case .prompt:
             await self.performPrompting(
               audioURL: audioURL, job: nil,
+              instruction: intent?.quickActionInstruction,
+              isEditQuickAction: intent?.isEditQuickAction ?? false,
               recordingWasSilent: self.audioRecorder.lastRecordingWasSilent,
               selection: intent?.promptSelection,
               speakResult: intent?.speakResult ?? false)
