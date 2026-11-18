@@ -40,9 +40,11 @@ enum MarkdownParsing {
   }
 
   /// Returns the font for a heading level, scaled relative to `baseSize` (chat = 16, summary = 14).
+  /// Goes through `ChatTheme.bodyFont` so headings follow the typeface picked in Settings instead
+  /// of staying San Francisco while the body prose turns serif.
   static func fontForHeadingLevel(_ level: Int, baseSize: CGFloat = 16) -> Font {
     let m = headingMetrics(level, baseSize: baseSize)
-    return .system(size: m.size, weight: m.bold ? .bold : .semibold)
+    return ChatTheme.bodyFont(size: m.size, weight: m.bold ? .bold : .semibold)
   }
 
   /// AppKit twin of `fontForHeadingLevel`, used when rendering prose in an `NSTextView`
@@ -536,26 +538,26 @@ struct MarkdownTableView: View {
       let before = String(remaining[remaining.startIndex..<boldStart.lowerBound])
       if !before.isEmpty {
         var attr = AttributedString(before)
-        attr.font = .system(size: fontSize, weight: baseWeight)
+        attr.font = ChatTheme.bodyFont(size: fontSize, weight: baseWeight)
         result.append(attr)
       }
       remaining = remaining[boldStart.upperBound...]
       if let boldEnd = remaining.range(of: "**") {
         let boldText = String(remaining[remaining.startIndex..<boldEnd.lowerBound])
         var attr = AttributedString(boldText)
-        attr.font = .system(size: fontSize, weight: .bold)
+        attr.font = ChatTheme.bodyFont(size: fontSize, weight: .bold)
         result.append(attr)
         remaining = remaining[boldEnd.upperBound...]
       } else {
         var attr = AttributedString("**" + String(remaining))
-        attr.font = .system(size: fontSize, weight: baseWeight)
+        attr.font = ChatTheme.bodyFont(size: fontSize, weight: baseWeight)
         result.append(attr)
         remaining = remaining[remaining.endIndex...]
       }
     }
     if !remaining.isEmpty {
       var attr = AttributedString(String(remaining))
-      attr.font = .system(size: fontSize, weight: baseWeight)
+      attr.font = ChatTheme.bodyFont(size: fontSize, weight: baseWeight)
       result.append(attr)
     }
     return result.characters.isEmpty ? AttributedString(text) : result

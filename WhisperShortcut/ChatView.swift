@@ -4123,7 +4123,7 @@ struct ChatView: View {
                 .help("Remove from queue")
                 .accessibilityLabel("Remove from queue")
                 Text(queued.displayContent)
-                  .font(.system(size: 14))
+                  .font(ChatTheme.bodyFont(size: 14))
                   .foregroundColor(ChatTheme.secondaryText)
                   .padding(.horizontal, 12)
                   .padding(.vertical, 8)
@@ -4659,14 +4659,15 @@ struct ChatView: View {
           ForEach(Array(note.bullets.enumerated()), id: \.offset) { _, bullet in
             HStack(alignment: .top, spacing: 6) {
               Text("•")
-                .font(.system(size: 13))
+                .font(ChatTheme.bodyFont(size: 13))
                 .foregroundColor(ChatTheme.secondaryText)
               // Selectable NSTextView, DELIBERATELY not SwiftUI `.textSelection(.enabled)`: these rows
               // render inline in the chat stream, and SelectionOverlay's updateNSView loop pinned the
               // main thread there (hang-20261103-182004). Invariant: no .textSelection in the transcript.
+              // The note prose follows the chat typeface like the rest of the transcript.
               SelectableProseText(
                 plain: bullet,
-                font: .systemFont(ofSize: 13),
+                font: ChatTheme.bodyNSFont(size: 13),
                 color: NSColor(ChatTheme.primaryText))
             }
           }
@@ -4721,7 +4722,7 @@ struct ChatView: View {
   private func noteEditor(_ note: LiveMeetingNote) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       TextEditor(text: $noteDraft)
-        .font(.system(size: 13))
+        .font(ChatTheme.bodyFont(size: 13))
         .foregroundColor(ChatTheme.primaryText)
         .scrollContentBackground(.hidden)
         .frame(minHeight: 44, maxHeight: 200)
@@ -4791,9 +4792,10 @@ struct ChatView: View {
         if let summary, !summary.isEmpty {
           // NSTextView, not SwiftUI `.textSelection`: hovering a note row below re-renders this
           // view, which is exactly the churn that wedges SelectionOverlay (hang-20261103-182004).
+          // The summary is prose like the transcript, so it follows the chat typeface too.
           SelectableProseText(
             plain: summary,
-            font: .systemFont(ofSize: 14),
+            font: ChatTheme.bodyNSFont(size: 14),
             color: NSColor(ChatTheme.primaryText))
           if !notes.isEmpty {
             Divider().padding(.vertical, 8)
@@ -6274,7 +6276,7 @@ private struct ModelReplyView: View {
             prose.append(AttributedString("\n"))
           }
           var bullet = AttributedString(item.marker)
-          bullet.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
+          bullet.font = ChatTheme.bodyFont(size: ChatTheme.bodyFontSize, weight: .regular)
           bullet.foregroundColor = ChatTheme.primaryText.opacity(0.5)
           bullet[ListLevelHint.self] = item.level
           prose.append(bullet)
@@ -6479,7 +6481,7 @@ private struct FailedTurnRow: View {
         .foregroundColor(Color.red.opacity(0.8))
       VStack(alignment: .leading, spacing: 6) {
         Text(message)
-          .font(.system(size: 14))
+          .font(ChatTheme.bodyFont(size: 14))
           .foregroundColor(ChatTheme.secondaryText)
           .fixedSize(horizontal: false, vertical: true)
         RetryButtonView(action: onRetry)
@@ -6510,7 +6512,7 @@ private struct LocalNoticeRow: View {
       Image(systemName: "info.circle")
         .font(.system(size: 11))
       Text(attributed)
-        .font(.system(size: 13))
+        .font(ChatTheme.bodyFont(size: 13))
         .fixedSize(horizontal: false, vertical: true)
     }
     .foregroundColor(ChatTheme.secondaryText)
