@@ -1,11 +1,11 @@
-## Menüleiste
-- Wartet ein Vorschlag (Schreibstil oder KI-App), beginnt seine Zeile im Menü jetzt mit demselben Punkt wie das Menüleisten-Symbol, darunter steht „Dafür steht der Punkt am Menüleisten-Symbol“.
+## Chat
+- Die Schrift „Serif“ (Einstellungen → Chat → Darstellung) gilt jetzt im ganzen Verlauf: Meeting-Notizen, Meeting-Zusammenfassung, Notiz-Editor, Überschriften, Tabellen und Listen.
+- Meetings bekommen ihren Titel aus der Zusammenfassung auch dann, wenn beim Fertigstellen kein Chatfenster offen war.
 
-## Behoben
-- Dictate Prompt mit Vorlage: Ist ein Eintrag markiert, nennt der Hinweis in der Karte mit den Schnellaktionen jetzt, was ↩ wirklich tut (mit der Vorlage formatieren), statt der markierten Aktion.
-- Interne Aufräumarbeiten bei Schnellaktionen, beim Laden der Hub-Daten und beim Lesen der Logs, ohne geändertes Verhalten.
+## Aufnahme
+- Die Aufnahme-Anzeige nennt das Mikrofon, von dem aufgenommen wird, sodass ein falsches Headset sofort auffällt.
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.96...v8.97
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.97...v8.98
