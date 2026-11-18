@@ -18,6 +18,9 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   @State private var isImporting = false
   @State private var importProgress: Double = 0
   @State private var activeImport: Task<Void, Never>?
+  /// True while the off-main scan for weights already on this Mac is running, so a second
+  /// click cannot start another scan or a download beside it.
+  @State private var isCheckingExisting = false
 
   var body: some View {
     let isDownloading = !isImporting && store.downloadingModels.contains(model)
@@ -133,6 +136,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
           Button("Download", action: download)
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .disabled(isCheckingExisting)
             .pointerCursorOnHover()
         }
       }
@@ -147,12 +151,16 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   }
 
   private func download() {
+    guard !isCheckingExisting else { return }
+    isCheckingExisting = true
     Task {
       // Before a multi-gigabyte download, look for weights the user already has. Off the main
-      // thread: the scan stats snapshot folders inside bookmarked directories.
+      // thread: the scan stats snapshot folders inside bookmarked directories and any cache
+      // this process can read. Nothing is asked when the scan finds nothing.
       let existing = await Task.detached(priority: .userInitiated) {
         ModelImporter.existingWeightsPlan(for: model)
       }.value
+      isCheckingExisting = false
 
       if let existing {
         switch importAlert(for: existing) {
@@ -163,36 +171,6 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
           return
         case .downloadAnyway:
           break
-        }
-      } else if shouldOfferImportFolder {
-        switch folderOfferAlert() {
-        case .chooseFolder:
-          guard let url = pickImportFolder() else { return }
-          guard ModelImporter.saveFolderBookmark(url) else {
-            onError(
-              String(
-                localized:
-                  "WhisperShortcut could not remember that folder. Choose it again, or download the model."
-              ))
-            return
-          }
-          let found = await Task.detached(priority: .userInitiated) {
-            ModelImporter.existingWeightsPlan(for: model)
-          }.value
-          if let found {
-            importExisting(found)
-            return
-          }
-          switch notFoundAlert() {
-          case .download:
-            break
-          case .cancel:
-            return
-          }
-        case .download:
-          break
-        case .cancel:
-          return
         }
       }
 
@@ -226,11 +204,12 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   /// Asks whether to import weights that are already on this Mac instead of downloading them
   /// again. Import is the default: it is faster and uses no network.
   private func importAlert(for plan: ModelImportPlan) -> ExistingWeightsChoice {
+    let folder = ModelImporter.existingFolderLabel(containing: plan.source)
     let alert = NSAlert()
     alert.messageText = String(localized: "Already on this Mac")
     alert.informativeText = String(
       localized:
-        "\(plan.displayName) was found in your Hugging Face cache or LM Studio folder (\(plan.sizeLabel)). Import it instead of downloading it again?"
+        "\(plan.displayName) is already on this Mac in \(folder). Import it instead of downloading?"
     )
     alert.alertStyle = .informational
     alert.addButton(withTitle: String(localized: "Import"))
@@ -239,81 +218,6 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
     switch alert.runModal() {
     case .alertFirstButtonReturn: return .import
     case .alertSecondButtonReturn: return .downloadAnyway
-    default: return .cancel
-    }
-  }
-
-  /// No bookmarks yet, and the user has not checked "Don't ask again".
-  private var shouldOfferImportFolder: Bool {
-    !ModelImporter.hasFolderBookmarks
-      && !UserDefaults.standard.bool(forKey: ModelImporter.offerDismissedDefaultsKey)
-  }
-
-  private enum FolderOfferChoice {
-    case chooseFolder
-    case download
-    case cancel
-  }
-
-  /// Offers to point at an existing Hugging Face cache or LM Studio folder instead of
-  /// downloading. Choose Folder is the default. Escape dismisses without downloading.
-  /// The suppression checkbox is the only thing that sets `modelImportOfferDismissed`.
-  private func folderOfferAlert() -> FolderOfferChoice {
-    let alert = NSAlert()
-    alert.messageText = String(localized: "Already have this model?")
-    alert.informativeText = String(
-      localized:
-        "If you downloaded it before with Hugging Face or LM Studio, WhisperShortcut can import it from that folder instead of downloading it again."
-    )
-    alert.alertStyle = .informational
-    alert.addButton(withTitle: String(localized: "Choose Folder…"))
-    alert.addButton(withTitle: String(localized: "Download"))
-    let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
-    cancel.keyEquivalent = "\u{1b}"
-    alert.showsSuppressionButton = true
-    alert.suppressionButton?.title = String(localized: "Don't ask again")
-    let response = alert.runModal()
-    if alert.suppressionButton?.state == .on {
-      UserDefaults.standard.set(true, forKey: ModelImporter.offerDismissedDefaultsKey)
-    }
-    switch response {
-    case .alertFirstButtonReturn: return .chooseFolder
-    case .alertSecondButtonReturn: return .download
-    default: return .cancel
-    }
-  }
-
-  /// Same panel as `ModelImportSection.pickFolder`: directories only, hidden files visible,
-  /// opening at the real-home cache when that folder exists.
-  private func pickImportFolder() -> URL? {
-    let panel = NSOpenPanel()
-    panel.canChooseDirectories = true
-    panel.canChooseFiles = false
-    panel.allowsMultipleSelection = false
-    panel.showsHiddenFiles = true
-    panel.directoryURL = ModelImportSection.defaultImportDirectory
-    panel.message = String(
-      localized: "Choose your Hugging Face cache or LM Studio models folder.")
-    guard panel.runModal() == .OK, let url = panel.url else { return nil }
-    return url
-  }
-
-  private enum NotFoundChoice {
-    case download
-    case cancel
-  }
-
-  /// Shown after the user picked a folder that does not contain this model.
-  private func notFoundAlert() -> NotFoundChoice {
-    let alert = NSAlert()
-    alert.messageText = String(localized: "Not found in that folder")
-    alert.informativeText = String(localized: "\(model.displayName) isn't in the folder you chose.")
-    alert.alertStyle = .informational
-    alert.addButton(withTitle: String(localized: "Download"))
-    let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
-    cancel.keyEquivalent = "\u{1b}"
-    switch alert.runModal() {
-    case .alertFirstButtonReturn: return .download
     default: return .cancel
     }
   }

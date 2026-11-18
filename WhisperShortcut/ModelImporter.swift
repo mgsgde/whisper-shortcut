@@ -9,10 +9,11 @@
 //  sandbox surface that has to be guarded on every access. After an import the model is a normal
 //  model — Delete, completeness checks and updates work exactly as they do for a download.
 //
-//  The scan that offers that import is the one place a bookmark is required. A sandboxed app's
-//  home directory is its container, so `~/.cache` and `~/.lmstudio` are invisible until the user
-//  picks them. Those picks are stored as app-scoped bookmarks and opened only around the scan
-//  and the copy.
+//  The direct build can read `~/.cache/huggingface` and `~/.lmstudio/models` (a home-relative
+//  read exception). The App Store build cannot, so those checks fail there. Any other folder is
+//  invisible until the user picks it in Import from folder. Those picks are stored as app-scoped
+//  bookmarks and opened only around the scan and the copy. A bookmark that does not resolve —
+//  an unmounted volume, for example — is skipped for that scan and kept.
 //
 //  A Hugging Face cache stores snapshot files as *relative symlinks* into `../../blobs/<hash>`
 //  (and, since huggingface_hub 1.32, a repo blob may itself link into a shared blob store at the
@@ -170,8 +171,6 @@ enum ModelImporter {
 
   /// `[Data]` security-scoped bookmarks of folders the user picked for import. At most five.
   static let folderBookmarksDefaultsKey = "modelImportFolderBookmarks"
-  /// The Download row's "Don't ask again" checkbox.
-  static let offerDismissedDefaultsKey = "modelImportOfferDismissed"
 
   private static let maxFolderBookmarks = 5
   private static let bookmarkLock = NSLock()
@@ -212,21 +211,14 @@ enum ModelImporter {
     return true
   }
 
-  /// Whether any import-folder bookmark is stored. Bookmarks that no longer resolve are dropped
-  /// by `searchFolders`, so read this after a scan when deciding whether to offer the picker.
-  static var hasFolderBookmarks: Bool {
-    bookmarkLock.lock()
-    defer { bookmarkLock.unlock() }
-    return !storedBookmarks().isEmpty
-  }
-
   /// Folders a Download click scans for weights the user already has.
   ///
-  /// Bookmarked folders come first: each is resolved with a security scope, a stale bookmark is
-  /// refreshed, and one that no longer resolves is dropped. The Hugging Face cache and LM Studio
-  /// models directory are appended only when this process can actually read them, which a
-  /// sandboxed build cannot until the user picks the folder. Resolving a bookmark does not grant
-  /// file access: `existingWeightsPlan` starts it on these URLs for the scan and stops it before
+  /// Bookmarked folders come first: each is resolved without UI and without mounting, a stale
+  /// bookmark is refreshed, and one that does not resolve is skipped for this scan and kept.
+  /// The Hugging Face hub cache and the LM Studio models directory are appended when this
+  /// process can read them. The direct build's entitlement makes those two readable; the App
+  /// Store build cannot, so they are skipped there. Resolving a bookmark does not grant file
+  /// access: `existingWeightsPlan` starts it on these URLs for the scan and stops it before
   /// returning, and the copy calls `startAccessingSearchFolders()` again.
   static var searchFolders: [URL] {
     bookmarkLock.lock()
@@ -298,13 +290,18 @@ enum ModelImporter {
   }
 
   private static func resolvedBookmarkURL(_ data: Data, stale: inout Bool) -> URL? {
+    // No UI and no mounting: a missing volume must not pop a dialog or spin a disk. The
+    // caller skips that bookmark for this scan and leaves the data stored.
     try? URL(
-      resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil,
+      resolvingBookmarkData: data,
+      options: [.withSecurityScope, .withoutUI, .withoutMounting],
+      relativeTo: nil,
       bookmarkDataIsStale: &stale)
   }
 
-  /// Caller holds `bookmarkLock`. Refreshes stale bookmarks, drops ones that no longer resolve,
-  /// and drops a second bookmark that resolves to a path already kept.
+  /// Caller holds `bookmarkLock`. Refreshes stale bookmarks and drops a second bookmark that
+  /// resolves to a path already kept. A bookmark that does not resolve is kept and skipped:
+  /// the volume may only be unmounted.
   private static func resolvedBookmarkedFolders() -> [URL] {
     let stored = storedBookmarks()
     var kept: [Data] = []
@@ -314,8 +311,8 @@ enum ModelImporter {
     for bookmark in stored {
       var stale = false
       guard let url = resolvedBookmarkURL(bookmark, stale: &stale) else {
-        changed = true
-        DebugLogger.logError("MODEL-IMPORT: dropping an import-folder bookmark that no longer resolves")
+        kept.append(bookmark)
+        DebugLogger.log("MODEL-IMPORT: skipping an import-folder bookmark that did not resolve")
         continue
       }
       let path = url.standardizedFileURL.path
@@ -342,8 +339,38 @@ enum ModelImporter {
     return urls
   }
 
-  /// Hugging Face cache and LM Studio models, included only when this process can read them.
-  /// In the sandbox both checks fail and the list stays empty until the user picks a folder.
+  /// The folder a Download alert should name: the chosen search folder that contains `source`
+  /// (a bookmark, or a readable default cache), not the snapshot directory inside it.
+  /// A path under the real home is shown with a tilde. `abbreviatingWithTildeInPath` uses the
+  /// process home, which is the container in a sandbox, so a real-home path that the API leaves
+  /// absolute is abbreviated against `AppConstants.realHomeDirectory`. Anything else is named
+  /// by its last path component.
+  static func existingFolderLabel(containing source: URL) -> String {
+    let sourcePath = source.standardizedFileURL.path
+    let match = searchFolders
+      .map(\.standardizedFileURL.path)
+      .filter { folder in
+        sourcePath == folder || sourcePath.hasPrefix(folder + "/")
+      }
+      .max(by: { $0.count < $1.count })
+    let path = match ?? source.deletingLastPathComponent().standardizedFileURL.path
+    return abbreviatedFolderPath(path)
+  }
+
+  private static func abbreviatedFolderPath(_ path: String) -> String {
+    let abbreviated = (path as NSString).abbreviatingWithTildeInPath
+    if abbreviated.hasPrefix("~") { return abbreviated }
+    let home = AppConstants.realHomeDirectory
+    if path == home { return "~" }
+    if path.hasPrefix(home + "/") {
+      return "~" + path.dropFirst(home.count)
+    }
+    return (path as NSString).lastPathComponent
+  }
+
+  /// Hugging Face hub cache and LM Studio models, included only when this process can read
+  /// them. The direct build's home-relative entitlement makes these readable; the App Store
+  /// build cannot, so both checks fail and only bookmarked folders remain.
   private static func readableDefaultCacheFolders() -> [URL] {
     let home = AppConstants.realHomeDirectory
     return ["/.cache/huggingface/hub", "/.lmstudio/models"].compactMap { suffix in
@@ -394,6 +421,10 @@ enum ModelImporter {
 
   /// The picked folder plus its immediate children, so both "I picked the cache root" and
   /// "I picked the folder that contains my models" work.
+  ///
+  /// `~/.cache/huggingface/hub` is one of those children when the pick is the cache root, so
+  /// `hub/models--*` is already reached. `isDirectoryKey` is false for a symlink, and a `hub`
+  /// that is only a link would be skipped — add it when it exists and is not already listed.
   private static func searchRoots(for folder: URL) -> [URL] {
     var roots = [folder]
     if let children = try? FileManager.default.contentsOfDirectory(
@@ -401,6 +432,13 @@ enum ModelImporter {
       roots.append(contentsOf: children.filter { url in
         (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
       })
+    }
+    let hub = folder.appendingPathComponent("hub", isDirectory: true)
+    var hubIsDirectory: ObjCBool = false
+    if FileManager.default.fileExists(atPath: hub.path, isDirectory: &hubIsDirectory),
+      hubIsDirectory.boolValue,
+      !roots.contains(where: { $0.standardizedFileURL.path == hub.standardizedFileURL.path }) {
+      roots.append(hub)
     }
     return roots
   }

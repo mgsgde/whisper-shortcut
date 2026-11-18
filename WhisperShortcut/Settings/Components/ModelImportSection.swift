@@ -94,17 +94,18 @@ struct ModelImportSection: View {
     }
   }
 
-  /// Where the folder panel opens: the real home's Hugging Face cache, else LM Studio's models
-  /// folder, else the real home itself. `homeDirectoryForCurrentUser` is the app container in a
+  /// Where the folder panel opens: the real home's Hugging Face cache root (not `hub`, so a
+  /// grant covers a huggingface_hub 1.32 shared blob store beside `hub`), else LM Studio's
+  /// models folder, else nowhere. `homeDirectoryForCurrentUser` is the app container in a
   /// sandboxed build, so the panel would otherwise open inside the container.
-  static var defaultImportDirectory: URL {
+  static var defaultImportDirectory: URL? {
     let home = AppConstants.realHomeDirectory
     let fm = FileManager.default
-    for suffix in ["/.cache/huggingface/hub", "/.lmstudio/models"] {
+    for suffix in ["/.cache/huggingface", "/.lmstudio/models"] {
       let path = home + suffix
       if fm.fileExists(atPath: path) { return URL(fileURLWithPath: path, isDirectory: true) }
     }
-    return URL(fileURLWithPath: home, isDirectory: true)
+    return nil
   }
 
   // MARK: - Confirmation sheet
