@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// One "Available Models" row — name, badge, status, size, then Download / progress + Cancel /
@@ -13,8 +14,10 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   @ViewBuilder let badge: () -> Badge
 
   /// Import-in-flight state, mirroring the download states above it.
+  /// `activeImport` is detached so Cancel stops the copy directly.
   @State private var isImporting = false
   @State private var importProgress: Double = 0
+  @State private var activeImport: Task<Void, Never>?
 
   var body: some View {
     let isDownloading = !isImporting && store.downloadingModels.contains(model)
@@ -89,9 +92,12 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
               ProgressView()
                 .scaleEffect(0.8)
             }
-            Text("Importing…")
-              .font(.caption)
-              .foregroundColor(.secondary)
+            Button("Cancel Import") {
+              activeImport?.cancel()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .pointerCursorOnHover()
           }
         } else if isDownloading {
           HStack(spacing: 8) {
@@ -142,8 +148,8 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
 
   private func download() {
     Task {
-      // Before a multi-gigabyte download, check the default caches (Hugging Face, LM Studio)
-      // off the main thread — the user may already have these weights on this Mac.
+      // Before a multi-gigabyte download, look for weights the user already has. Off the main
+      // thread: the scan stats snapshot folders inside bookmarked directories.
       let existing = await Task.detached(priority: .userInitiated) {
         ModelImporter.existingWeightsPlan(for: model)
       }.value
@@ -157,6 +163,36 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
           return
         case .downloadAnyway:
           break
+        }
+      } else if shouldOfferImportFolder {
+        switch folderOfferAlert() {
+        case .chooseFolder:
+          guard let url = pickImportFolder() else { return }
+          guard ModelImporter.saveFolderBookmark(url) else {
+            onError(
+              String(
+                localized:
+                  "WhisperShortcut could not remember that folder. Choose it again, or download the model."
+              ))
+            return
+          }
+          let found = await Task.detached(priority: .userInitiated) {
+            ModelImporter.existingWeightsPlan(for: model)
+          }.value
+          if let found {
+            importExisting(found)
+            return
+          }
+          switch notFoundAlert() {
+          case .download:
+            break
+          case .cancel:
+            return
+          }
+        case .download:
+          break
+        case .cancel:
+          return
         }
       }
 
@@ -207,48 +243,155 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
     }
   }
 
-  /// Copies `plan` into the app container with the row's own progress UI, then refreshes the
-  /// store so the row flips to "Downloaded" without a Settings restart.
+  /// No bookmarks yet, and the user has not checked "Don't ask again".
+  private var shouldOfferImportFolder: Bool {
+    !ModelImporter.hasFolderBookmarks
+      && !UserDefaults.standard.bool(forKey: ModelImporter.offerDismissedDefaultsKey)
+  }
+
+  private enum FolderOfferChoice {
+    case chooseFolder
+    case download
+    case cancel
+  }
+
+  /// Offers to point at an existing Hugging Face cache or LM Studio folder instead of
+  /// downloading. Choose Folder is the default. Escape dismisses without downloading.
+  /// The suppression checkbox is the only thing that sets `modelImportOfferDismissed`.
+  private func folderOfferAlert() -> FolderOfferChoice {
+    let alert = EscapeDismissAlert()
+    alert.messageText = String(localized: "Already have this model?")
+    alert.informativeText = String(
+      localized:
+        "If you downloaded it before with Hugging Face or LM Studio, WhisperShortcut can import it from that folder instead of downloading it again."
+    )
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: String(localized: "Choose Folder…"))
+    alert.addButton(withTitle: String(localized: "Download"))
+    // Escape only cancels when some button has that key equivalent. The button stays in the
+    // hierarchy so the key reaches it; `EscapeDismissAlert` takes it out of the layout so the
+    // visible buttons are Choose Folder and Download.
+    let escape = alert.addButton(withTitle: String(localized: "Cancel"))
+    escape.keyEquivalent = "\u{1b}"
+    alert.showsSuppressionButton = true
+    alert.suppressionButton?.title = String(localized: "Don't ask again")
+    let response = alert.runModal()
+    if alert.suppressionButton?.state == .on {
+      UserDefaults.standard.set(true, forKey: ModelImporter.offerDismissedDefaultsKey)
+    }
+    switch response {
+    case .alertFirstButtonReturn: return .chooseFolder
+    case .alertSecondButtonReturn: return .download
+    default: return .cancel
+    }
+  }
+
+  /// Same panel as `ModelImportSection.pickFolder`: directories only, hidden files visible,
+  /// opening at the real-home cache when that folder exists.
+  private func pickImportFolder() -> URL? {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.allowsMultipleSelection = false
+    panel.showsHiddenFiles = true
+    panel.directoryURL = ModelImportSection.defaultImportDirectory
+    panel.message = String(
+      localized: "Choose your Hugging Face cache or LM Studio models folder.")
+    guard panel.runModal() == .OK, let url = panel.url else { return nil }
+    return url
+  }
+
+  private enum NotFoundChoice {
+    case download
+    case cancel
+  }
+
+  /// Shown after the user picked a folder that does not contain this model.
+  private func notFoundAlert() -> NotFoundChoice {
+    let alert = NSAlert()
+    alert.messageText = String(localized: "Not found in that folder")
+    alert.informativeText = String(localized: "\(model.displayName) isn't in the folder you chose.")
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: String(localized: "Download"))
+    let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
+    cancel.keyEquivalent = "\u{1b}"
+    switch alert.runModal() {
+    case .alertFirstButtonReturn: return .download
+    default: return .cancel
+    }
+  }
+
+  /// Copies `plan` with the same refusal rules and completion as `ModelImportSection.importOne`:
+  /// a running download or a model already on disk is refused, Whisper gets its tokenizer pass,
+  /// and the store's importing flag hides Download until the copy finishes.
   private func importExisting(_ plan: ModelImportPlan) {
+    let preconditions = ModelImportPreconditions.live(for: plan.family)
+    // Refuse before marking the model busy. The copy below passes `.unchecked` so the busy
+    // flag this import is about to set is not read back as "a download is in progress".
+    if preconditions.isDownloading || preconditions.isModelAvailable {
+      do {
+        try ModelImporter.perform(plan, preconditions: preconditions) { _ in }
+      } catch {
+        onError(error.localizedDescription)
+      }
+      return
+    }
+
+    ModelImportSection.setImporting(plan.family, true)
     isImporting = true
     importProgress = 0
-    Task.detached(priority: .userInitiated) {
+
+    activeImport = Task.detached(priority: .userInitiated) {
+      // The scan released its security scope before the alert. The copy reads the same
+      // bookmarked folders, so the scope has to be open again until the files are in the container.
+      let accessed = ModelImporter.startAccessingSearchFolders()
+      defer { ModelImporter.stopAccessingSearchFolders(accessed) }
       do {
-        try ModelImporter.perform(plan) { fraction in
+        try ModelImporter.perform(plan, preconditions: .unchecked) { fraction in
           Task { @MainActor in importProgress = fraction }
         }
+
+        var needsInternet = false
+        if case .whisper(let type) = plan.family {
+          await ModelImporter.finishWhisperImport(plan)
+          needsInternet = !ModelManager.shared.isModelAvailable(type)
+        }
+
         await MainActor.run {
+          ModelImportSection.setImporting(plan.family, false)
           isImporting = false
-          notifyStore(for: plan.family)
-          PopupNotificationWindow.showInfo(
-            verbatim: String(
-              localized:
-                "\(plan.displayName) was imported. The first use may take a moment to load the model into memory."
-            ),
-            title: "Model Imported",
-            customDisplayDuration: 10
-          )
+          if needsInternet {
+            PopupNotificationWindow.showInfo(
+              verbatim: String(
+                localized:
+                  "\(plan.displayName) was imported. WhisperShortcut needs internet once to finish setting up this model."
+              ),
+              title: "Model Imported",
+              customDisplayDuration: 10
+            )
+          } else {
+            PopupNotificationWindow.showInfo(
+              verbatim: String(
+                localized:
+                  "\(plan.displayName) was imported. The first use may take a moment to load the model into memory."
+              ),
+              title: "Model Imported",
+              customDisplayDuration: 10
+            )
+          }
         }
       } catch is CancellationError {
-        await MainActor.run { isImporting = false }
+        await MainActor.run {
+          ModelImportSection.setImporting(plan.family, false)
+          isImporting = false
+        }
       } catch {
         await MainActor.run {
+          ModelImportSection.setImporting(plan.family, false)
           isImporting = false
           onError(error.localizedDescription)
         }
       }
-    }
-  }
-
-  /// The imported model's store does not touch its own `@Published` state during an import, so
-  /// this row (bound via `@ObservedObject`) would not otherwise notice the model is now on disk.
-  /// Same switch as `ModelImportSection.notifyStore`.
-  @MainActor
-  private func notifyStore(for family: ModelImportPlan.Family) {
-    switch family {
-    case .whisper: ModelManager.shared.objectWillChange.send()
-    case .mlx: LocalLLMModelManager.shared.objectWillChange.send()
-    case .qwen3: Qwen3ModelManager.shared.objectWillChange.send()
     }
   }
 
@@ -258,6 +401,35 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
     } catch {
       DebugLogger.logError("\(store.logPrefix): UI delete failed for \(model.displayName): \(error.logDescription)")
       onError(String(localized: "Failed to delete \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))"))
+    }
+  }
+}
+
+/// An alert whose last button dismisses on Escape and takes no space.
+///
+/// `NSAlert` only treats Escape as cancel when a button has that key equivalent, and a hidden
+/// button never receives key equivalents. After the alert's own layout, the button stays in the
+/// view hierarchy (so Escape still reaches it) but is removed from the stack view (so Choose
+/// Folder and Download are the only buttons the user sees).
+private final class EscapeDismissAlert: NSAlert {
+  private var collapsingEscape = false
+
+  override func layout() {
+    guard !collapsingEscape else { return }
+    collapsingEscape = true
+    defer { collapsingEscape = false }
+    super.layout()
+    guard buttons.count >= 3, let escape = buttons.last else { return }
+    escape.keyEquivalent = "\u{1b}"
+    var view: NSView? = escape.superview
+    while let current = view {
+      if let stack = current as? NSStackView, stack.arrangedSubviews.contains(escape) {
+        stack.removeArrangedSubview(escape)
+        escape.alphaValue = 0
+        escape.frame = .zero
+        return
+      }
+      view = current.superview
     }
   }
 }

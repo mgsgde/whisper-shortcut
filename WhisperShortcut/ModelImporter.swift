@@ -9,6 +9,11 @@
 //  sandbox surface that has to be guarded on every access. After an import the model is a normal
 //  model — Delete, completeness checks and updates work exactly as they do for a download.
 //
+//  The scan that offers that import is the one place a bookmark is required. A sandboxed app's
+//  home directory is its container, so `~/.cache` and `~/.lmstudio` are invisible until the user
+//  picks them. Those picks are stored as app-scoped bookmarks and opened only around the scan
+//  and the copy.
+//
 //  A Hugging Face cache stores snapshot files as *relative symlinks* into `../../blobs/<hash>`
 //  (and, since huggingface_hub 1.32, a repo blob may itself link into a shared blob store at the
 //  cache root). `FileManager.copyItem` copies those links as links, so a naive copy of a snapshot
@@ -163,24 +168,101 @@ enum ModelImporter {
 
   // MARK: - Existing-weights discovery
 
-  /// The default folders a user's existing weights live in: the Hugging Face cache and LM
-  /// Studio's models directory, when they exist. Same candidates as the import picker's
-  /// starting directory (`ModelImportSection.defaultImportDirectory`).
-  static var defaultSearchFolders: [URL] {
-    let home = FileManager.default.homeDirectoryForCurrentUser
-    return [".cache/huggingface/hub", ".lmstudio/models"]
-      .map { home.appendingPathComponent($0) }
-      .filter { FileManager.default.fileExists(atPath: $0.path) }
+  /// `[Data]` security-scoped bookmarks of folders the user picked for import. At most five.
+  static let folderBookmarksDefaultsKey = "modelImportFolderBookmarks"
+  /// The Download row's "Don't ask again" checkbox.
+  static let offerDismissedDefaultsKey = "modelImportOfferDismissed"
+
+  private static let maxFolderBookmarks = 5
+  private static let bookmarkLock = NSLock()
+
+  /// Stores a security-scoped bookmark for a folder the user picked. Dedupes by the path the
+  /// bookmark resolves to and keeps at most five, dropping the oldest. Returns false when the
+  /// bookmark could not be created; the folder is then invisible to the next scan.
+  ///
+  /// The scope is opened around `bookmarkData`: a panel URL already carries access (the extra
+  /// claim is balanced and does not revoke it), and creating the bookmark without claiming the
+  /// URL fails for any folder that arrived another way.
+  @discardableResult
+  static func saveFolderBookmark(_ url: URL) -> Bool {
+    let accessed = url.startAccessingSecurityScopedResource()
+    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+    let bookmark: Data
+    do {
+      bookmark = try url.bookmarkData(
+        options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+    } catch {
+      DebugLogger.logError(
+        "MODEL-IMPORT: could not bookmark \(url.path): \(error.logDescription)")
+      return false
+    }
+
+    bookmarkLock.lock()
+    defer { bookmarkLock.unlock() }
+    let path = resolvedBookmarkURL(bookmark)?.standardizedFileURL.path ?? url.standardizedFileURL.path
+    var bookmarks = storedBookmarks().filter { existing in
+      resolvedBookmarkURL(existing)?.standardizedFileURL.path != path
+    }
+    bookmarks.append(bookmark)
+    if bookmarks.count > maxFolderBookmarks {
+      bookmarks.removeFirst(bookmarks.count - maxFolderBookmarks)
+    }
+    UserDefaults.standard.set(bookmarks, forKey: folderBookmarksDefaultsKey)
+    DebugLogger.log("MODEL-IMPORT: bookmarked import folder \(path)")
+    return true
   }
 
-  /// An import plan for exactly `model` from the default caches, or nil when the user does not
-  /// already have it on this Mac. This is what the Download button asks about before starting a
-  /// multi-gigabyte download the user may not need. Cheap (a handful of stat calls on the
-  /// expected snapshot paths, no byte counting until a plan is built) but not free — call it
-  /// off the main thread.
+  /// Whether any import-folder bookmark is stored. Bookmarks that no longer resolve are dropped
+  /// by `searchFolders`, so read this after a scan when deciding whether to offer the picker.
+  static var hasFolderBookmarks: Bool {
+    bookmarkLock.lock()
+    defer { bookmarkLock.unlock() }
+    return !storedBookmarks().isEmpty
+  }
+
+  /// Folders a Download click scans for weights the user already has.
+  ///
+  /// Bookmarked folders come first: each is resolved with a security scope, a stale bookmark is
+  /// refreshed, and one that no longer resolves is dropped. The Hugging Face cache and LM Studio
+  /// models directory are appended only when this process can actually read them, which a
+  /// sandboxed build cannot until the user picks the folder. Resolving a bookmark does not grant
+  /// file access: `existingWeightsPlan` starts it on these URLs for the scan and stops it before
+  /// returning, and the copy calls `startAccessingSearchFolders()` again.
+  static var searchFolders: [URL] {
+    bookmarkLock.lock()
+    defer { bookmarkLock.unlock() }
+    var seen = Set<String>()
+    var folders: [URL] = []
+    for url in resolvedBookmarkedFolders() + readableDefaultCacheFolders() {
+      guard seen.insert(url.standardizedFileURL.path).inserted else { continue }
+      folders.append(url)
+    }
+    return folders
+  }
+
+  /// Starts security-scoped access for the bookmarked folders in `searchFolders`. Stop every
+  /// returned URL when the scan or the copy finishes. Readable default caches are not
+  /// security-scoped, so they are not included: access there needs no claim.
+  static func startAccessingSearchFolders() -> [URL] {
+    searchFolders.filter { $0.startAccessingSecurityScopedResource() }
+  }
+
+  static func stopAccessingSearchFolders(_ urls: [URL]) {
+    for url in urls { url.stopAccessingSecurityScopedResource() }
+  }
+
+  /// An import plan for exactly `model` from the bookmarked folders and any readable default
+  /// cache, or nil when the user does not already have it. This is what the Download button asks
+  /// about before starting a multi-gigabyte download the user may not need. Cheap (a handful of
+  /// stat calls on the expected snapshot paths, no byte counting until a plan is built) but not
+  /// free — call it off the main thread.
   static func existingWeightsPlan<M: DownloadableModel>(for model: M) -> ModelImportPlan? {
-    let folders = defaultSearchFolders
+    let folders = searchFolders
     guard !folders.isEmpty else { return nil }
+    // Same URL objects the scan reads. Access is stopped before returning so a bookmark is not
+    // held open across the alert; the copy claims it again.
+    let accessed = folders.filter { $0.startAccessingSecurityScopedResource() }
+    defer { stopAccessingSearchFolders(accessed) }
     let roots = folders.flatMap { searchRoots(for: $0) }
     let live = ModelImportRoots.live
     switch model {
@@ -200,6 +282,72 @@ enum ModelImporter {
       return qwen3Plan(for: type, in: roots, destination: destination)
     default:
       return nil
+    }
+  }
+
+  /// Caller holds `bookmarkLock`.
+  private static func storedBookmarks() -> [Data] {
+    UserDefaults.standard.array(forKey: folderBookmarksDefaultsKey) as? [Data] ?? []
+  }
+
+  private static func resolvedBookmarkURL(_ data: Data) -> URL? {
+    var stale = false
+    return resolvedBookmarkURL(data, stale: &stale)
+  }
+
+  private static func resolvedBookmarkURL(_ data: Data, stale: inout Bool) -> URL? {
+    try? URL(
+      resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil,
+      bookmarkDataIsStale: &stale)
+  }
+
+  /// Caller holds `bookmarkLock`. Refreshes stale bookmarks, drops ones that no longer resolve,
+  /// and drops a second bookmark that resolves to a path already kept.
+  private static func resolvedBookmarkedFolders() -> [URL] {
+    let stored = storedBookmarks()
+    var kept: [Data] = []
+    var urls: [URL] = []
+    var seen = Set<String>()
+    var changed = false
+    for bookmark in stored {
+      var stale = false
+      guard let url = resolvedBookmarkURL(bookmark, stale: &stale) else {
+        changed = true
+        DebugLogger.logError("MODEL-IMPORT: dropping an import-folder bookmark that no longer resolves")
+        continue
+      }
+      let path = url.standardizedFileURL.path
+      guard seen.insert(path).inserted else {
+        changed = true
+        continue
+      }
+      var current = bookmark
+      if stale {
+        let accessed = url.startAccessingSecurityScopedResource()
+        if let refreshed = try? url.bookmarkData(
+          options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+          current = refreshed
+          changed = true
+        }
+        if accessed { url.stopAccessingSecurityScopedResource() }
+      }
+      kept.append(current)
+      urls.append(url)
+    }
+    if changed {
+      UserDefaults.standard.set(kept, forKey: folderBookmarksDefaultsKey)
+    }
+    return urls
+  }
+
+  /// Hugging Face cache and LM Studio models, included only when this process can read them.
+  /// In the sandbox both checks fail and the list stays empty until the user picks a folder.
+  private static func readableDefaultCacheFolders() -> [URL] {
+    let home = AppConstants.realHomeDirectory
+    return ["/.cache/huggingface/hub", "/.lmstudio/models"].compactMap { suffix in
+      let path = home + suffix
+      guard FileManager.default.isReadableFile(atPath: path) else { return nil }
+      return URL(fileURLWithPath: path, isDirectory: true)
     }
   }
 

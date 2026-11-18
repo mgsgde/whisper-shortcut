@@ -29808,7 +29808,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ wurde in deinem Hugging-Face-Cache oder LM-Studio-Ordner gefunden (%@). Stattdessen importieren statt erneut herunterladen?"
+            "value" : "%@ wurde in Ihrem Hugging-Face-Cache oder LM-Studio-Ordner gefunden (%@). Stattdessen importieren, statt es erneut herunterzuladen?"
           }
         }
       }
@@ -29819,6 +29819,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Trotzdem herunterladen"
+          }
+        }
+      }
+    },
+    "Already have this model?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haben Sie dieses Modell schon?"
+          }
+        }
+      }
+    },
+    "If you downloaded it before with Hugging Face or LM Studio, WhisperShortcut can import it from that folder instead of downloading it again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn Sie es zuvor mit Hugging Face oder LM Studio heruntergeladen haben, kann WhisperShortcut es aus diesem Ordner importieren, statt es erneut herunterzuladen."
+          }
+        }
+      }
+    },
+    "Choose Folder…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner auswählen…"
+          }
+        }
+      }
+    },
+    "Don't ask again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht erneut fragen"
+          }
+        }
+      }
+    },
+    "Choose your Hugging Face cache or LM Studio models folder." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie Ihren Hugging-Face-Cache oder den Modelle-Ordner von LM Studio."
+          }
+        }
+      }
+    },
+    "Not found in that folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In diesem Ordner nicht gefunden"
+          }
+        }
+      }
+    },
+    "%@ isn't in the folder you chose." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist nicht in dem Ordner, den Sie ausgewählt haben."
+          }
+        }
+      }
+    },
+    "WhisperShortcut could not remember that folder. Choose it again, or download the model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut konnte sich diesen Ordner nicht merken. Wählen Sie ihn erneut aus, oder laden Sie das Modell herunter."
           }
         }
       }
