@@ -268,16 +268,18 @@ enum ModelImporter {
     switch model {
     case let type as OfflineModelType:
       guard type.engine == .whisperKit else { return nil }
-      let destination = whisperDestination(for: type, in: live)
+      let destination = ModelManager.importDestination(for: type, under: live.whisper)
       guard !isComplete(at: destination, family: .whisper(type)) else { return nil }
       return whisperPlan(
         for: type, in: roots, destination: destination)
     case let type as LocalLLMModelType:
-      let destination = mlxDestination(for: type, in: live)
+      let destination = HubSnapshotLayout.importDestination(
+        for: type.huggingFaceID, under: live.mlxHub)
       guard !isComplete(at: destination, family: .mlx(type)) else { return nil }
       return mlxPlan(for: type, in: roots, destination: destination)
     case let type as Qwen3ModelType:
-      let destination = qwen3Destination(for: type, in: live)
+      let destination = HubSnapshotLayout.importDestination(
+        for: type.huggingFaceID, under: live.qwen3)
       guard !isComplete(at: destination, family: .qwen3(type)) else { return nil }
       return qwen3Plan(for: type, in: roots, destination: destination)
     default:
