@@ -21,6 +21,13 @@
 //  folder produces a model whose files are all dangling. Every file is therefore copied through
 //  `resolvingSymlinksInPath()`.
 //
+//  The copy itself is an APFS clone (`copyfile` with `COPYFILE_CLONE`), so the imported model
+//  shares its blocks with the original instead of duplicating a multi-gigabyte download. On a
+//  file system without cloning, or across volumes, the same call falls back to a byte copy.
+//  A move is only offered for a self-contained, writable folder: it is the same clone followed by
+//  deleting the original, which is crash-safe (the original survives every failure before the
+//  destination is complete) and frees the space a copy would keep.
+//
 
 import Foundation
 
@@ -55,10 +62,14 @@ struct ModelImportPlan: Identifiable {
   /// For a Whisper plan only: a local `openai/whisper-<variant>` tokenizer snapshot found next to
   /// the weights, so the import can copy it in instead of needing the network afterwards.
   var whisperTokenizerSource: URL?
+  /// Whether the Download alert may offer "Move Instead" for this plan. Set by
+  /// `existingWeightsPlan` (off the main thread); false everywhere else, so the Import-from-folder
+  /// sheet and the tests keep the plain copy.
+  var canMove = false
 
   init(
     family: Family, displayName: String, source: URL, destination: URL, byteCount: Int64,
-    whisperTokenizerSource: URL? = nil
+    whisperTokenizerSource: URL? = nil, canMove: Bool = false
   ) {
     self.family = family
     self.displayName = displayName
@@ -66,6 +77,7 @@ struct ModelImportPlan: Identifiable {
     self.destination = destination
     self.byteCount = byteCount
     self.whisperTokenizerSource = whisperTokenizerSource
+    self.canMove = canMove
   }
 
   var sizeLabel: String {
@@ -159,6 +171,15 @@ struct ModelImportPreconditions {
         isModelAvailable: Qwen3ModelManager.shared.isModelAvailable(type))
     }
   }
+}
+
+/// What an import does with the original once the model is in the container.
+enum ModelImportMode: String {
+  /// Leave the original where it is. The bytes are an APFS clone, so this costs no extra space.
+  case copy
+  /// Delete the original after the destination is complete. Only offered for a self-contained,
+  /// writable folder (`ModelImporter.canMove`).
+  case move
 }
 
 enum ModelImporter {
@@ -262,21 +283,53 @@ enum ModelImporter {
       guard type.engine == .whisperKit else { return nil }
       let destination = ModelManager.importDestination(for: type, under: live.whisper)
       guard !isComplete(at: destination, family: .whisper(type)) else { return nil }
-      return whisperPlan(
-        for: type, in: roots, destination: destination)
+      return withMoveOption(
+        whisperPlan(for: type, in: roots, destination: destination))
     case let type as LocalLLMModelType:
       let destination = HubSnapshotLayout.importDestination(
         for: type.huggingFaceID, under: live.mlxHub)
       guard !isComplete(at: destination, family: .mlx(type)) else { return nil }
-      return mlxPlan(for: type, in: roots, destination: destination)
+      return withMoveOption(mlxPlan(for: type, in: roots, destination: destination))
     case let type as Qwen3ModelType:
       let destination = HubSnapshotLayout.importDestination(
         for: type.huggingFaceID, under: live.qwen3)
       guard !isComplete(at: destination, family: .qwen3(type)) else { return nil }
-      return qwen3Plan(for: type, in: roots, destination: destination)
+      return withMoveOption(qwen3Plan(for: type, in: roots, destination: destination))
     default:
       return nil
     }
+  }
+
+  /// Marks a plan with whether the alert may offer "Move Instead". Runs inside the scan's security
+  /// scope, so `isWritableFile` answers for the folder the user actually granted.
+  private static func withMoveOption(_ plan: ModelImportPlan?) -> ModelImportPlan? {
+    guard var plan else { return nil }
+    plan.canMove = canMove(plan.source)
+    return plan
+  }
+
+  /// Whether the Download alert may offer "Move Instead": the source has to be writable by this
+  /// process, and it must not be a tree of links into a shared blob store. A Hugging Face snapshot
+  /// is exactly that — moving it would either break the model or free nothing, because the blobs
+  /// it points at stay behind. The direct build's home-relative entitlement is read-only, so the
+  /// two default caches never qualify; a folder the user picked in Import from folder does, as
+  /// long as the panel granted write access. No extra entitlement is needed for that.
+  static func canMove(_ source: URL) -> Bool {
+    let fm = FileManager.default
+    guard fm.isWritableFile(atPath: source.path) else { return false }
+    let root = source.resolvingSymlinksInPath().standardizedFileURL.path
+    guard
+      let enumerator = fm.enumerator(
+        at: source, includingPropertiesForKeys: [.isSymbolicLinkKey])
+    else { return false }
+    for case let url as URL in enumerator {
+      guard (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true else {
+        continue
+      }
+      let resolved = url.resolvingSymlinksInPath().standardizedFileURL.path
+      guard resolved == root || resolved.hasPrefix(root + "/") else { return false }
+    }
+    return true
   }
 
   /// Caller holds `bookmarkLock`.
@@ -620,8 +673,13 @@ enum ModelImporter {
   /// for a complete one. A model the store already has — including a legacy folder or a Hub
   /// snapshot that is not this destination — is refused. Only an occupied but incomplete
   /// destination is replaced.
+  ///
+  /// `.move` is the same clone followed by deleting the original once the destination is in
+  /// place, never a filesystem rename: the source may be a snapshot whose links would break, and
+  /// a rename would lose the original if the final move failed.
   static func perform(
     _ plan: ModelImportPlan,
+    mode: ModelImportMode = .copy,
     preconditions: ModelImportPreconditions = .unchecked,
     onProgress: (Double) -> Void
   ) throws {
@@ -650,9 +708,13 @@ enum ModelImporter {
 
     let needed = Int64(Double(plan.byteCount) * spaceMargin)
     let volumeRoot = firstExistingAncestor(of: destination)
-    if let available = try? volumeRoot.resourceValues(
-      forKeys: [.volumeAvailableCapacityForImportantUsageKey]
-    ).volumeAvailableCapacityForImportantUsage, available < needed {
+    // A clone on the destination's own volume shares the source's blocks, so it needs no free
+    // space; only a copy across volumes (where cloning cannot work) has to fit. The check stays
+    // for that case, and for a file system that falls back to a byte copy.
+    if !sameVolume(plan.source, volumeRoot),
+      let available = try? volumeRoot.resourceValues(
+        forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+      ).volumeAvailableCapacityForImportantUsage, available < needed {
       throw ModelImportError.notEnoughSpace(
         needed: ByteCountFormatter.string(fromByteCount: needed, countStyle: .file),
         available: ByteCountFormatter.string(fromByteCount: available, countStyle: .file))
@@ -699,8 +761,49 @@ enum ModelImporter {
       throw ModelImportError.copyFailed(error.localizedDescription)
     }
     onProgress(1)
+    if mode == .move {
+      removeMovedSource(plan.source)
+    }
     DebugLogger.log(
-      "MODEL-IMPORT: imported \(plan.displayName) from \(plan.source.path) (\(plan.sizeLabel))")
+      "MODEL-IMPORT: imported \(plan.displayName) from \(plan.source.path) (\(plan.sizeLabel), \(mode))")
+  }
+
+  /// Deletes the folder a move took its files from, and forgets a bookmark that pointed at it.
+  /// A failure is logged, not thrown: the model is already in the container, and a leftover
+  /// original is the copy outcome, not a broken import.
+  private static func removeMovedSource(_ source: URL) {
+    do {
+      try FileManager.default.removeItem(at: source)
+    } catch {
+      DebugLogger.logWarning(
+        "MODEL-IMPORT: moved \(source.path) but could not remove the original: \(error.logDescription)"
+      )
+      return
+    }
+    forgetBookmarks(resolvingTo: source)
+    DebugLogger.log("MODEL-IMPORT: removed the moved original at \(source.path)")
+  }
+
+  /// Drops a stored bookmark that resolves to exactly `url`. A bookmark on a parent folder stays:
+  /// only the model folder was removed, and the parent is still a useful place to scan.
+  private static func forgetBookmarks(resolvingTo url: URL) {
+    let path = url.standardizedFileURL.path
+    bookmarkLock.lock()
+    defer { bookmarkLock.unlock() }
+    let stored = storedBookmarks()
+    let kept = stored.filter { bookmark in
+      resolvedBookmarkURL(bookmark)?.standardizedFileURL.path != path
+    }
+    guard kept.count != stored.count else { return }
+    UserDefaults.standard.set(kept, forKey: folderBookmarksDefaultsKey)
+  }
+
+  /// Whether two paths live on the same volume, so a clone can share their blocks.
+  private static func sameVolume(_ a: URL, _ b: URL) -> Bool {
+    let volumeA = try? a.resourceValues(forKeys: [.volumeURLKey]).volume
+    let volumeB = try? b.resourceValues(forKeys: [.volumeURLKey]).volume
+    guard let volumeA, let volumeB else { return false }
+    return volumeA.standardizedFileURL.path == volumeB.standardizedFileURL.path
   }
 
   /// How long an `.import-*` folder may sit before a later import treats it as abandoned.
@@ -781,7 +884,7 @@ enum ModelImporter {
       if resolvedValues.isDirectory == true {
         try copyDereferencing(resolved, to: to, onBytes: onBytes)
       } else {
-        try fm.copyItem(at: resolved, to: to)
+        try cloneOrCopy(resolved, to: to)
         onBytes(Int64((try? resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0))
       }
       return
@@ -796,8 +899,24 @@ enum ModelImporter {
       return
     }
 
-    try fm.copyItem(at: from, to: to)
+    try cloneOrCopy(from, to: to)
     onBytes(Int64((try? from.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0))
+  }
+
+  /// Copies one file, preferring an APFS clone so the two names share their blocks instead of
+  /// duplicating a multi-gigabyte model. `COPYFILE_CLONE` is a best-try flag: on a file system
+  /// without cloning, or across volumes, the same call falls back to a byte copy. It also implies
+  /// `COPYFILE_EXCL`, so the destination must not exist — every caller writes into a fresh
+  /// staging folder. A non-zero return is a real failure, not a declined clone.
+  private static func cloneOrCopy(_ from: URL, to: URL) throws {
+    if copyfile(from.path, to.path, nil, copyfile_flags_t(COPYFILE_CLONE)) == 0 { return }
+    let code = errno
+    throw NSError(
+      domain: NSPOSIXErrorDomain, code: Int(code),
+      userInfo: [
+        NSFilePathErrorKey: from.path,
+        NSLocalizedDescriptionKey: String(cString: strerror(code)),
+      ])
   }
 
   // MARK: - Post-import

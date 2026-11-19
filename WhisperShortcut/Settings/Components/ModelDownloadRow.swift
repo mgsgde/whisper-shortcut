@@ -165,7 +165,10 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
       if let existing {
         switch importAlert(for: existing) {
         case .import:
-          importExisting(existing)
+          importExisting(existing, mode: .copy)
+          return
+        case .move:
+          importExisting(existing, mode: .move)
           return
         case .cancel:
           return
@@ -197,27 +200,42 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   /// What the user picked in the "already on this Mac" alert.
   private enum ExistingWeightsChoice {
     case `import`
+    case move
     case downloadAnyway
     case cancel
   }
 
   /// Asks whether to import weights that are already on this Mac instead of downloading them
-  /// again. Import is the default: it is faster and uses no network.
+  /// again. Import is the default: it is faster, uses no network, and on APFS the clone it writes
+  /// shares the original's blocks, so it costs no extra space. "Move Instead" is only offered when
+  /// the source is a writable, self-contained folder — never for a Hugging Face snapshot, whose
+  /// files are links into a shared blob store, and never for the read-only default caches.
   private func importAlert(for plan: ModelImportPlan) -> ExistingWeightsChoice {
     let folder = ModelImporter.existingFolderLabel(containing: plan.source)
     let alert = NSAlert()
     alert.messageText = String(localized: "Already on this Mac")
-    alert.informativeText = String(
-      localized:
-        "\(plan.displayName) is already on this Mac in \(folder). Import it instead of downloading?"
-    )
+    if plan.canMove {
+      alert.informativeText = String(
+        localized:
+          "\(plan.displayName) is already on this Mac in \(folder). Importing it takes no extra space and leaves the original in place. Moving removes it from \(folder)."
+      )
+    } else {
+      alert.informativeText = String(
+        localized:
+          "\(plan.displayName) is already on this Mac in \(folder). Import it instead of downloading?"
+      )
+    }
     alert.alertStyle = .informational
     alert.addButton(withTitle: String(localized: "Import"))
+    if plan.canMove {
+      alert.addButton(withTitle: String(localized: "Move Instead"))
+    }
     alert.addButton(withTitle: String(localized: "Download Anyway"))
     alert.addButton(withTitle: String(localized: "Cancel"))
     switch alert.runModal() {
     case .alertFirstButtonReturn: return .import
-    case .alertSecondButtonReturn: return .downloadAnyway
+    case .alertSecondButtonReturn: return plan.canMove ? .move : .downloadAnyway
+    case .alertThirdButtonReturn: return plan.canMove ? .downloadAnyway : .cancel
     default: return .cancel
     }
   }
@@ -225,13 +243,13 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   /// Copies `plan` with the same refusal rules and completion as `ModelImportSection.importOne`:
   /// a running download or a model already on disk is refused, Whisper gets its tokenizer pass,
   /// and the store's importing flag hides Download until the copy finishes.
-  private func importExisting(_ plan: ModelImportPlan) {
+  private func importExisting(_ plan: ModelImportPlan, mode: ModelImportMode) {
     let preconditions = ModelImportPreconditions.live(for: plan.family)
     // Refuse before marking the model busy. The copy below passes `.unchecked` so the busy
     // flag this import is about to set is not read back as "a download is in progress".
     if preconditions.isDownloading || preconditions.isModelAvailable {
       do {
-        try ModelImporter.perform(plan, preconditions: preconditions) { _ in }
+        try ModelImporter.perform(plan, mode: mode, preconditions: preconditions) { _ in }
       } catch {
         onError(error.localizedDescription)
       }
@@ -248,7 +266,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
       let accessed = ModelImporter.startAccessingSearchFolders()
       defer { ModelImporter.stopAccessingSearchFolders(accessed) }
       do {
-        try ModelImporter.perform(plan, preconditions: .unchecked) { fraction in
+        try ModelImporter.perform(plan, mode: mode, preconditions: .unchecked) { fraction in
           Task { @MainActor in importProgress = fraction }
         }
 
