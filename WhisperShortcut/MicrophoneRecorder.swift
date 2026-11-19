@@ -124,6 +124,11 @@ final class DeviceMicrophoneRecorder: NSObject, MicrophoneRecorder {
   private var configObserver: NSObjectProtocol?
   private var framesWritten: UInt64 = 0
   private var lastPowerDb: Float = -160
+  /// Smoothed linear level of the meter. 0 is silence.
+  private var meterLevel: Float = 0
+  /// Peak of the partial ~10 ms window, carried across tap buffers.
+  private var meterWindowPeak: Float = 0
+  private var meterFrames: Int = 0
   private var didReportEncodeError = false
   private var didLogConvertError = false
 
@@ -213,7 +218,7 @@ final class DeviceMicrophoneRecorder: NSObject, MicrophoneRecorder {
     // counter afterwards would drop those frames from the "anything written" check.
     fileLock.lock()
     framesWritten = 0
-    lastPowerDb = -160
+    resetMeterLocked()
     didReportEncodeError = false
     didLogConvertError = false
     fileLock.unlock()
@@ -267,7 +272,7 @@ final class DeviceMicrophoneRecorder: NSObject, MicrophoneRecorder {
     defer { fileLock.unlock() }
     audioFile?.close()
     audioFile = nil
-    lastPowerDb = -160
+    resetMeterLocked()
     return framesWritten
   }
 
@@ -333,9 +338,8 @@ final class DeviceMicrophoneRecorder: NSObject, MicrophoneRecorder {
       return
     }
 
-    let power = Self.powerDB(output)
     fileLock.lock()
-    lastPowerDb = power
+    updateMeterLocked(output)
     var reported: Error?
     if let audioFile, output.frameLength > 0 {
       do {
@@ -367,18 +371,54 @@ final class DeviceMicrophoneRecorder: NSObject, MicrophoneRecorder {
     DebugLogger.logError("AUDIO: Microphone conversion failed: \(detail)")
   }
 
-  /// RMS of channel 0, in dB, floored at the AVAudioRecorder silence value.
-  private static func powerDB(_ buffer: AVAudioPCMBuffer) -> Float {
+  /// Peak of each ~10 ms window, then a fast attack (20 ms) and a slower release (50 ms),
+  /// held across buffers. Plain full-buffer RMS measured a median 5.4 dB below
+  /// AVAudioRecorder (built-in mic, 20 Hz, room noise; min 2.4, max 11.2). Smoothing
+  /// that RMS left the crest-factor gap in place; the short-window peak is what tracks it.
+  private static let meterWindowSeconds: Double = 0.010
+  private static let meterAttackSeconds: Double = 0.020
+  private static let meterReleaseSeconds: Double = 0.050
+
+  /// Caller holds `fileLock`.
+  private func resetMeterLocked() {
+    meterLevel = 0
+    meterWindowPeak = 0
+    meterFrames = 0
+    lastPowerDb = -160
+  }
+
+  /// Caller holds `fileLock`. A short tail is closed too, so a peak at the end of a tap
+  /// buffer is not held back until the next callback.
+  private func updateMeterLocked(_ buffer: AVAudioPCMBuffer) {
     let frames = Int(buffer.frameLength)
-    guard frames > 0, let samples = buffer.floatChannelData?[0] else { return -160 }
-    var sum: Float = 0
+    guard frames > 0, let samples = buffer.floatChannelData?[0] else { return }
+    let sampleRate = buffer.format.sampleRate
+    guard sampleRate > 0 else { return }
+    let window = max(1, Int((sampleRate * Self.meterWindowSeconds).rounded()))
     for index in 0..<frames {
-      let sample = samples[index]
-      sum += sample * sample
+      let sample = abs(samples[index])
+      if sample > meterWindowPeak { meterWindowPeak = sample }
+      meterFrames += 1
+      if meterFrames == window {
+        closeMeterWindowLocked(sampleRate: sampleRate)
+      }
     }
-    let rms = sqrt(sum / Float(frames))
-    guard rms > 0 else { return -160 }
-    return max(20 * log10(rms), -160)
+    if meterFrames > 0 {
+      closeMeterWindowLocked(sampleRate: sampleRate)
+    }
+    lastPowerDb = meterLevel > 0 ? max(20 * log10(meterLevel), -160) : -160
+  }
+
+  /// Caller holds `fileLock`.
+  private func closeMeterWindowLocked(sampleRate: Double) {
+    let peak = meterWindowPeak
+    let dt = Double(meterFrames) / sampleRate
+    meterWindowPeak = 0
+    meterFrames = 0
+    guard dt > 0 else { return }
+    let tau = peak > meterLevel ? Self.meterAttackSeconds : Self.meterReleaseSeconds
+    let alpha = Float(1 - exp(-dt / tau))
+    meterLevel += alpha * (peak - meterLevel)
   }
 
   // MARK: Device lost mid-recording
