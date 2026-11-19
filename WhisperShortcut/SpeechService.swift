@@ -172,21 +172,10 @@ class SpeechService {
     ).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// A legacy full prompt replaces the built-in core only when it is the user's own text.
-  /// Blank text and any wording this app has shipped, including a copy that differs only by
-  /// surrounding whitespace, count as empty so the core and the additions apply.
-  private static func legacyReplacesBuiltIn(_ legacy: String, section: SystemPromptSection) -> Bool {
-    let trimmed = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { return false }
-    if SystemPromptDefaultsHistory.isShippedDefault(legacy, for: section) { return false }
-    if SystemPromptDefaultsHistory.isShippedDefault(trimmed, for: section) { return false }
-    return true
-  }
-
   /// Pure dictation base: the user's own legacy prompt wins. A shipped default counts as empty,
   /// and then the core plus additions apply.
   static func dictationBase(additions: String, legacy: String) -> String {
-    if Self.legacyReplacesBuiltIn(legacy, section: .dictation) {
+    if SystemPromptsStore.legacyReplacesBuiltIn(legacy, section: .dictation) {
       return legacy.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     return AppConstants.withUserAdditions(
@@ -1337,7 +1326,7 @@ class SpeechService {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty {
       DebugLogger.log("\(logPrefix): Using dictation template")
-    } else if Self.legacyReplacesBuiltIn(legacy, section: .promptMode) {
+    } else if SystemPromptsStore.legacyReplacesBuiltIn(legacy, section: .promptMode) {
       DebugLogger.log("\(logPrefix): Using legacy full prompt")
     } else if stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       DebugLogger.log("\(logPrefix): Using base system prompt")
@@ -1371,7 +1360,7 @@ class SpeechService {
   static func dictatePromptBase(stored: String, template: String?, legacy: String = "") -> String {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty { return trimmedTemplate }
-    if Self.legacyReplacesBuiltIn(legacy, section: .promptMode) {
+    if SystemPromptsStore.legacyReplacesBuiltIn(legacy, section: .promptMode) {
       return legacy.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     return AppConstants.withUserAdditions(
