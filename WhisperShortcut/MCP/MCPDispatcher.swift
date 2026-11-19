@@ -79,7 +79,10 @@ struct MCPDispatcher {
       let args = params["arguments"] as? [String: Any] ?? [:]
       let start = Date()
       let result: MCPToolResult
-      if configTools.handles(name), name != "get_recent_interactions", name != "get_config_history" {
+      // File reads stay off the main thread. The rest of the config tools hop there.
+      if configTools.handles(name), name != "get_recent_interactions", name != "get_config_history",
+        name != "list_whisper_shortcut_docs", name != "read_whisper_shortcut_doc"
+      {
         let bounded = MCPMain.runBounded(timeout: MCPMain.mainWaitTimeout) {
           configTools.call(name: name, arguments: args, access: access)
         }
@@ -152,7 +155,7 @@ struct MCPDispatcher {
     case "get_live_transcript":
       countName = .liveTranscriptRead
     case "get_configuration", "get_settings", "get_recent_interactions", "get_config_history",
-      "get_proposal_status":
+      "get_proposal_status", "list_whisper_shortcut_docs", "read_whisper_shortcut_doc":
       countName = .configRead
     case "add_glossary_terms", "save_command", "delete_command", "update_system_prompt",
       "update_writing_style_profile":

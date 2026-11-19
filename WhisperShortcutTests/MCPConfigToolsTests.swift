@@ -708,6 +708,17 @@ struct MCPConfigToolsTests {
     #expect(env.proposals.pending.isEmpty, "\(row.note)")
   }
 
+  @Test("App docs tools are listed, and an unknown doc name is an error")
+  func appDocsTools() {
+    let t = MCPTestEnv().tools()
+    let names = Set(t.toolDefinitions(access: .read).compactMap { $0["name"] as? String })
+    #expect(names.contains("list_whisper_shortcut_docs"))
+    #expect(names.contains("read_whisper_shortcut_doc"))
+    let r = t.call(name: "read_whisper_shortcut_doc", arguments: ["name": "no-such-doc"], access: .read)
+    #expect(r.isError)
+    #expect(r.text.contains("Unknown doc"))
+  }
+
   // MARK: prompts and resources
 
   @Test("prompts/list and prompts/get with focus")

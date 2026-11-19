@@ -137,6 +137,7 @@ struct MCPServerTests {
     #expect(Set(list.compactMap { $0["name"] as? String }) == [
       "get_live_transcript", "list_meetings", "get_meeting", "search_meetings",
       "get_configuration", "get_recent_interactions", "get_config_history", "get_settings", "get_proposal_status",
+      "list_whisper_shortcut_docs", "read_whisper_shortcut_doc",
     ])
   }
 
