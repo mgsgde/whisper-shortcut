@@ -15,6 +15,10 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
+      WelcomeTourSection()
+
+      SpacedSectionDivider()
+
       KeyboardShortcutsSection(viewModel: viewModel, focusedField: $focusedField)
 
       SpacedSectionDivider()

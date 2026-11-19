@@ -14906,6 +14906,26 @@
         }
       }
     },
+    "Open Welcome Tour" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einführung öffnen"
+          }
+        }
+      }
+    },
+    "Open Welcome Tour…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einführung öffnen …"
+          }
+        }
+      }
+    },
     "Open a GitHub issue" : {
       "localizations" : {
         "de" : {
@@ -22641,6 +22661,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartet auf Ihre Freigabe …"
+          }
+        }
+      }
+    },
+    "Walk through setup again: how dictation runs, permissions, and a first try. Your settings stay as they are." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einrichtung noch einmal durchgehen: wie das Diktat läuft, Berechtigungen und ein erster Versuch. Ihre Einstellungen bleiben, wie sie sind."
           }
         }
       }

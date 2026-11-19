@@ -3,7 +3,7 @@ import SwiftUI
 /// About Settings Tab — information only, the macOS convention: what's new, support, and the
 /// credits the licences require. Settings live where people look for them: Updates and
 /// Data & Reset in General, the privacy promise in Privacy & Permissions, and the Welcome Tour in
-/// the menu bar menu (plus the What's New card right after an update).
+/// General and the menu bar menu (plus the What's New card right after an update).
 struct AboutSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
 
