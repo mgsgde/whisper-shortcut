@@ -225,6 +225,8 @@ enum UserDefaultsKeys {
 
   // MARK: - Context Settings
   static let contextLoggingEnabled = "userContextLoggingEnabled"
+  /// One-shot marker: the Welcome Tour's last step turned "Save usage data" on (UsageDataTourDefault). Never reset.
+  static let contextLoggingTourDefaultApplied = "contextLoggingTourDefaultApplied"
   static let contextInPromptEnabled = "userContextInPromptEnabled"
   static let contextMaxEntriesPerMode = "userContextMaxEntriesPerMode"
   static let contextMaxTotalChars = "userContextMaxTotalChars"
