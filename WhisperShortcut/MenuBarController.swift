@@ -4561,12 +4561,10 @@ class MenuBarController: NSObject {
         return nil
       }
 
-      guard CGPreflightPostEventAccess() else {
+      let postAccess = CGPreflightPostEventAccess()
+      if !postAccess {
         DebugLogger.logWarning(
-          "AUTO-PASTE: Skipped — macOS does not let this process post key events "
-            + "(CGPreflightPostEventAccess false); result stays on the clipboard")
-        clipboardManager.discardRestorePoint()
-        return nil
+          "AUTO-PASTE: CGPreflightPostEventAccess false — macOS may drop the ⌘V. Result stays on the clipboard")
       }
 
       let replaced = BundleReplacementCheck.currentMismatch()
@@ -4576,6 +4574,7 @@ class MenuBarController: NSObject {
             + "(running \(r.running), on disk \(r.onDisk)); "
             + "macOS may drop the ⌘V — restart the app. Result stays on the clipboard")
       }
+      let keepOnClipboard = !postAccess || replaced != nil
 
       simulatePaste()
       // Log *where* the synthetic ⌘V went. Without the target and payload size on record, a report
@@ -4590,9 +4589,10 @@ class MenuBarController: NSObject {
       // Non-destructive paste: give the receiving app time to read the pasteboard, then put
       // the user's previous clipboard back. With restore off, the optional "clear" setting empties
       // the pasteboard instead, so a later manual ⌘V cannot paste this dictation.
-      // A bundle replaced under a still-running process can have its ⌘V dropped, so that result
-      // stays on the clipboard instead of being restored over or cleared.
-      if replaced == nil {
+      // CGPreflightPostEventAccess false, or a bundle replaced under a still-running process,
+      // can have its ⌘V dropped, so that result stays on the clipboard instead of being
+      // restored over or cleared.
+      if !keepOnClipboard {
         let clearInsteadOfRestore = !Self.restoreClipboardEnabled && Self.clearClipboardEnabled
         DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.clipboardRestoreDelay) { [weak self] in
           guard let self else { return }
