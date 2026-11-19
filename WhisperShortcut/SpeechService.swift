@@ -1523,7 +1523,7 @@ class SpeechService {
       PromptHistoryTurn(isUser: $0.role != "model", text: $0.parts.compactMap { $0.text }.joined())
     }
 
-    return DictatePromptEnvelope(
+    let envelope = DictatePromptEnvelope(
       screenshot: screenshot,
       screenshotLabel: screenshotSelectionMode
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
@@ -1535,6 +1535,10 @@ class SpeechService {
       history: history,
       systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
         usesScreenshotSelection: screenshotSelectionMode))
+    #if DEBUG
+    PromptContextDebugDump.write(envelope, logPrefix: logPrefix)
+    #endif
+    return envelope
   }
 
   /// Label for the one `PROMPT-CONTEXT` line. Counts and labels only.

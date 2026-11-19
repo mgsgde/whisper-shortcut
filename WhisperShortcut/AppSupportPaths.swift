@@ -69,4 +69,11 @@ enum AppSupportPaths {
       .appendingPathComponent("Debug")
       .appendingPathComponent("raw-responses")
   }
+
+  /// DEBUG-only dump of one Dictate Prompt request (window JPEG plus the text blocks).
+  static func debugPromptContextURL() -> URL {
+    whisperShortcutApplicationSupportURL()
+      .appendingPathComponent("Debug")
+      .appendingPathComponent("prompt-context")
+  }
 }
