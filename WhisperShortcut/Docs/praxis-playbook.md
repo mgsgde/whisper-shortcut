@@ -44,7 +44,7 @@ Ab Werk liegen die Funktionen auf längeren Kombinationen. Ändern unter Einstel
 
 ## 4. Vorlagen einrichten
 
-Einstellungen → Vorlagen. Pro Dokumentart eine Vorlage, zum Beispiel „Befund“ mit den Überschriften Anamnese, Befund, Therapie. Einmal anlegen, ein Kürzel geben, fertig.
+Einstellungen → Vorlagen. Pro Dokumentart eine Vorlage, zum Beispiel „Befund“ mit den Überschriften Anamnese, Befund, Therapie. Einmal anlegen, ein Kürzel geben, fertig. Keine Sammelvorlage für alles, die am gesagten Namen erkennen soll, was gemeint ist: dafür sind die Auswahlliste und eigene Tasten da.
 
 - Kürzel drücken, sprechen, nochmal drücken: der Text kommt im Format der Vorlage an der Cursorposition an, auch in Praxissoftware im Browser.
 - Mehrere Vorlagen: die App zeigt eine nummerierte Liste, Auswahl mit 1–9.
@@ -105,4 +105,4 @@ Wünsche und Fragen sammeln und gebündelt besprechen, nicht einzeln zwischendur
 
 Dieses Playbook liegt auch in der App: Der Chat in WhisperShortcut kann es lesen und Fragen dazu beantworten.
 
-**v1.1 (19.11.2026):** Vorlage auf die gewohnte Taste, Tastenkonflikte mit Outlook, Antworten auf Mails mit „Text um den Cursor“, Schreibstil ohne Gmail.
+**v1.1 (19.11.2026):** Vorlage auf die gewohnte Taste, Tastenkonflikte mit Outlook, Antworten auf Mails mit „Text um den Cursor“, Schreibstil ohne Gmail, keine Sammelvorlage.
