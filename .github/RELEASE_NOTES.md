@@ -1,11 +1,13 @@
-## Chat
-- The Serif typeface (Settings → Chat → Appearance) now reaches the whole transcript: meeting notes, the meeting summary, the note editor, headings, tables and lists.
-- Meetings get a title from their summary even when no chat window was open when the summary finished.
+## Settings
+- The Writing Style subtitle (Settings → Dictate Prompt) now says that the style only shapes Dictate Prompt and learns from Gmail and from plain dictation in native mail and chat apps, not from the browser.
 
-## Recording
-- The recording pill shows which microphone it is recording from, so a wrong headset is visible right away.
+## Help
+- The in-app Chat can now answer questions about setting up WhisperShortcut in a medical or therapy practice (new practice playbook in the bundled docs). The guide mentions Philips SpeechMike buttons.
+
+## Fixes
+- Auto-paste no longer reports success it cannot confirm. If the app was replaced on disk by another version while it was running, it warns and leaves the dictation on the clipboard, so you can paste it yourself.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.97...v8.98
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.98...v8.99
