@@ -2040,7 +2040,7 @@ class SpeechService {
           logPrefix: "PROMPT-MODE-GEMINI")
       }
       normalizedText = applyingDashBackstop(
-        PromptReplyCleanup.normalize(raw), selection: clipboardContext)
+        PromptReplyCleanup.normalize(LeakedPlanningStrip.strip(parts: [raw])), selection: clipboardContext)
       try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-GEMINI")
     } else {
       normalizedText = try await performGeminiPromptRequest(
