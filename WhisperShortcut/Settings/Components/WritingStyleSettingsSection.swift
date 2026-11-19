@@ -32,7 +32,7 @@ struct WritingStyleSettingsSection: View {
       SectionHeader(
         title: "Writing Style",
         systemImage: "signature",
-        subtitle: "Dictate Prompt drafts messages the way you write them. The app learns your style by itself from emails you sent and from what you dictate into Mail, Messages, WhatsApp or Slack."
+        subtitle: "Only Dictate Prompt uses it, so messages come out the way you write. Plain Dictate, Templates and Chat stay as they are. The app learns by itself from your sent Gmail and from what you dictate with Dictate into mail and chat apps such as Outlook, Mail, WhatsApp, Teams or Slack, not in the browser."
       )
 
       VStack(alignment: .leading, spacing: 12) {
