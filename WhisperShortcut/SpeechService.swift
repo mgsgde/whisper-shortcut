@@ -1538,6 +1538,11 @@ class SpeechService {
     #if DEBUG
     PromptContextDebugDump.write(envelope, logPrefix: logPrefix)
     #endif
+    // Show on the processing pill what screen context left the Mac with this request.
+    var sent: PromptContextSent = []
+    if envelope.fieldBlock != nil { sent.insert(.fieldText) }
+    if envelope.screenshot != nil { sent.insert(.windowImage) }
+    await MainActor.run { RecordingIndicatorManager.shared.showPromptContext(sent) }
     return envelope
   }
 
