@@ -94,6 +94,7 @@ enum ChatToolRegistry {
          "google_tasks_create", "google_tasks_update", "google_tasks_complete", "google_tasks_delete",
          "trello_create_card", "trello_move_card", "trello_update_card", "trello_archive_card",
          rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
+         forgetAboutUserToolName, "forget_file_location",
          "write_text_file", "append_to_file", "edit_text_file":
       return true
     case updateInstructionsToolName:
@@ -114,6 +115,7 @@ enum ChatToolRegistry {
   static func allowsChatWideApproval(_ name: String) -> Bool {
     switch name {
     case rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
+         forgetAboutUserToolName, "forget_file_location",
          updateInstructionsToolName, AppSettingsChatTool.name, "open_url",
          "write_text_file", "append_to_file", "edit_text_file",
          "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card":
@@ -187,6 +189,8 @@ enum ChatToolRegistry {
       return note.isEmpty
         ? String(localized: "Remember folder: \(folder)")
         : String(localized: "Remember folder: \(folder) — \(preview(note, limit: 300))")
+    case forgetAboutUserToolName, "forget_file_location":
+      return String(localized: "Forget: \(preview(arg("matching"), limit: 200))")
     case "remember_dictation_term":
       return String(localized: "Add to dictation glossary: \(preview(arg("term"), limit: 100))")
     case updateInstructionsToolName:

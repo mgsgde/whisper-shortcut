@@ -14,7 +14,7 @@ struct ChatToolStepsTests {
     let groups: [[[String: Any]]] = [
       ChatToolRegistry.functionDeclarations, ChatToolRegistry.appDocsFunctionDeclarations,
       ChatToolRegistry.memoryFunctionDeclarations, ChatToolRegistry.instructionsFunctionDeclarations,
-      ChatToolRegistry.usageLogFunctionDeclarations,
+      ChatToolRegistry.usageLogFunctionDeclarations, [AppSettingsChatTool.declaration],
       ChatToolRegistry.workspaceFunctionDeclarations, ChatToolRegistry.workspaceWriteFunctionDeclarations,
       ChatToolRegistry.imageFunctionDeclarations, ChatToolRegistry.calendarFunctionDeclarations,
       ChatToolRegistry.tasksFunctionDeclarations, ChatToolRegistry.gmailFunctionDeclarations,
@@ -179,6 +179,7 @@ struct ChatToolStepsTests {
     "open_url": false,
     "write_text_file": false, "append_to_file": false, "edit_text_file": false,
     "remember_file_location": false, "remember_dictation_term": false,
+    ChatToolRegistry.forgetAboutUserToolName: false, "forget_file_location": false,
     // Destructive: always ask.
     "google_calendar_delete_event": false, "google_tasks_delete": false, "trello_archive_card": false,
     // Create/update/move: may be allowed for the chat.
