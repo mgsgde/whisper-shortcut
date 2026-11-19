@@ -18,7 +18,7 @@ protocol LiveMeetingRecorderDelegate: AnyObject {
 }
 
 /// Double-buffer audio recorder for seamless live meeting transcription.
-/// Uses two AVAudioRecorder instances that alternate to ensure no audio is lost.
+/// Uses two MicrophoneRecorder instances that alternate to ensure no audio is lost.
 /// Chunks are split at silence boundaries (pause ≥ 1.5s) with a fallback max duration.
 class LiveMeetingRecorder: NSObject {
 
@@ -62,11 +62,11 @@ class LiveMeetingRecorder: NSObject {
     label: "com.whispershortcut.live-meeting-recorder", qos: .userInitiated)
 
   /// Double-buffer recorders
-  private var recorderA: AVAudioRecorder?
-  private var recorderB: AVAudioRecorder?
+  private var recorderA: MicrophoneRecorder?
+  private var recorderB: MicrophoneRecorder?
 
   /// Currently active recorder (points to A or B)
-  private var activeRecorder: AVAudioRecorder?
+  private var activeRecorder: MicrophoneRecorder?
 
   /// URL for currently recording audio
   private var activeRecordingURL: URL?
@@ -96,7 +96,7 @@ class LiveMeetingRecorder: NSObject {
   /// instance (by identity) may be delivered as the final chunk; a recorder stopped by rotation is
   /// delivered by `rotateAndDeliver` as a normal chunk. Main thread only.
   private var finalRecorder: (
-    recorder: AVAudioRecorder, index: Int, startTime: TimeInterval, isSilent: Bool,
+    recorder: MicrophoneRecorder, index: Int, startTime: TimeInterval, isSilent: Bool,
     wallStart: Date?, systemAudio: SystemAudioBuffer?
   )?
 
@@ -253,7 +253,7 @@ class LiveMeetingRecorder: NSObject {
   /// Stop that was still draining) and chunks cut by rotation whose delivery was still queued.
   ///
   /// The delegate is detached first: the normal path delivers chunks asynchronously, which would
-  /// race process exit. `AVAudioRecorder.stop()` finalizes the WAV before returning, and a barrier
+  /// race process exit. `stop()` finalizes the WAV before returning, and a barrier
   /// on `audioQueue` waits for queued `stop()`s and mixing, so every returned file is complete.
   /// Chunks under a second or silent are not worth keeping; their files are deleted.
   func stopForTermination() -> [(url: URL, startTime: TimeInterval)] {
@@ -389,9 +389,8 @@ class LiveMeetingRecorder: NSObject {
     let url = createRecordingURL(isRecorderA: isRecorderA)
     let settings = createRecordingSettings()
 
-    let recorder = try AVAudioRecorder(url: url, settings: settings)
+    let recorder = try MicrophoneRecorderFactory.make(url: url, settings: settings)
     recorder.delegate = self
-    recorder.isMeteringEnabled = true
 
     if isRecorderA {
       recorderA = recorder
@@ -597,11 +596,11 @@ class LiveMeetingRecorder: NSObject {
   }
 }
 
-// MARK: - AVAudioRecorderDelegate
+// MARK: - MicrophoneRecorderDelegate
 
-extension LiveMeetingRecorder: AVAudioRecorderDelegate {
+extension LiveMeetingRecorder: MicrophoneRecorderDelegate {
 
-  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+  func microphoneRecorderDidFinishRecording(_ recorder: MicrophoneRecorder, successfully flag: Bool) {
     let url = recorder.url
 
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -612,7 +611,7 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
       }
     }
 
-    // All state is read on main, where it is owned. AVAudioRecorderDelegate may call off-main.
+    // All state is read on main, where it is owned. The recorder delegate may call off-main.
     DispatchQueue.main.async { [weak self] in
       guard let self, !self.isSessionActive, let final = self.finalRecorder,
         final.recorder === recorder
@@ -651,7 +650,7 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
     }
   }
 
-  func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+  func microphoneRecorderEncodeErrorDidOccur(_ recorder: MicrophoneRecorder, error: Error?) {
     if let error = error {
       DebugLogger.logError("LIVE-MEETING: Encode error: \(error)")
       delegate?.liveMeetingRecorder(didFailWithError: error)
