@@ -257,13 +257,23 @@ final class WritingStyleStore {
 
   struct PromptBlock {
     let text: String
-    /// The context actually used — `.defaultContext` when the requested one had nothing learned.
+    /// The context actually used: the requested one, its chat sibling (Messenger and Work Chat)
+    /// when the requested one had nothing learned, or `.defaultContext` when neither did.
     let context: WritingContext
     let exampleCount: Int
   }
 
+  /// Messenger and Work Chat stand in for each other. Email and Default have no sibling.
+  private static func chatSibling(of context: WritingContext) -> WritingContext? {
+    switch context {
+    case .messenger: return .workChat
+    case .workChat: return .messenger
+    case .email, .defaultContext: return nil
+    }
+  }
+
   /// The block for the Dictate Prompt system prompt, or nil when the feature is off or there is
-  /// nothing learned for this context (nor for the default context).
+  /// nothing learned for this context, its chat sibling, or the default context.
   func promptBlock(for context: WritingContext, incoming: String?, maxChars: Int) -> PromptBlock? {
     guard isEnabled() else { return nil }
     let profile = loadProfile()
@@ -272,7 +282,16 @@ final class WritingStyleStore {
     var effective = context
     var section = Self.profileSection(in: profile, for: context)
     var samples = all.filter { $0.context == context }
-    if section.isEmpty && samples.isEmpty && context != .defaultContext {
+    if section.isEmpty && samples.isEmpty, let sibling = Self.chatSibling(of: context) {
+      let siblingSection = Self.profileSection(in: profile, for: sibling)
+      let siblingSamples = all.filter { $0.context == sibling }
+      if !siblingSection.isEmpty || !siblingSamples.isEmpty {
+        effective = sibling
+        section = siblingSection
+        samples = siblingSamples
+      }
+    }
+    if section.isEmpty && samples.isEmpty && effective != .defaultContext {
       effective = .defaultContext
       section = Self.profileSection(in: profile, for: .defaultContext)
       samples = all.filter { $0.context == .defaultContext }

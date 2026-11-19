@@ -189,6 +189,31 @@ struct WritingStyleTests {
     #expect(WritingContextResolver.context(forBundleID: nil) == .defaultContext)
   }
 
+  @Test("Browser tab hosts map to writing contexts; other pages and native apps stay put")
+  func webHostMapping() {
+    #expect(
+      WritingContextResolver.context(
+        forBundleID: "com.google.chrome", webURL: URL(string: "https://outlook.office.com/mail/")) == .email)
+    #expect(
+      WritingContextResolver.context(
+        forBundleID: "com.apple.Safari", webURL: URL(string: "https://web.whatsapp.com/")) == .messenger)
+    #expect(
+      WritingContextResolver.context(
+        forBundleID: "com.microsoft.edgemac", webURL: URL(string: "https://teams.microsoft.com/v2/"))
+        == .workChat)
+    #expect(
+      WritingContextResolver.context(
+        forBundleID: "com.google.chrome", webURL: URL(string: "https://example.com")) == .defaultContext)
+    #expect(WritingContextResolver.context(forBundleID: "com.google.chrome", webURL: nil) == .defaultContext)
+    #expect(
+      WritingContextResolver.context(
+        forBundleID: "com.apple.mail", webURL: URL(string: "https://web.whatsapp.com/")) == .email)
+    #expect(
+      WritingContextResolver.context(
+        forBundleID: "com.google.chrome",
+        webURL: URL(string: "https://outlook.office.com.evil.example")) == .defaultContext)
+  }
+
   // MARK: - Store
 
   private func makeStore(enabled: Bool = true) -> WritingStyleStore {
@@ -449,6 +474,26 @@ struct WritingStyleTests {
     #expect(block?.text.contains("hey, klingt gut") == true)
     #expect(block?.context == .defaultContext)
     #expect(block?.exampleCount == 1)
+  }
+
+  @Test("Unlearned work chat uses messenger before default; email does not")
+  func chatFamilyFallback() {
+    let messengerOnly = makeStore()
+    defer { messengerOnly.clearAll() }
+    messengerOnly.addSamples([sample("hey, klingt gut", context: .messenger)])
+    let sibling = messengerOnly.promptBlock(for: .workChat, incoming: nil, maxChars: 4_000)
+    #expect(sibling?.context == .messenger)
+
+    let defaultOnly = makeStore()
+    defer { defaultOnly.clearAll() }
+    defaultOnly.saveProfile("=== Default ===\ndocumentation in bullet points, no greeting\n")
+    let fromDefault = defaultOnly.promptBlock(for: .workChat, incoming: nil, maxChars: 4_000)
+    #expect(fromDefault?.context == .defaultContext)
+
+    let emailRequest = makeStore()
+    defer { emailRequest.clearAll() }
+    emailRequest.addSamples([sample("hey, klingt gut", context: .messenger)])
+    #expect(emailRequest.promptBlock(for: .email, incoming: nil, maxChars: 4_000) == nil)
   }
 
   @Test("Budget drops examples before the profile")

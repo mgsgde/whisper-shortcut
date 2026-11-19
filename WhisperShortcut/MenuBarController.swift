@@ -4426,7 +4426,16 @@ class MenuBarController: NSObject {
   @MainActor
   private func recordDictatedWritingSample(_ text: String) {
     guard UserDefaults.standard.bool(forKey: UserDefaultsKeys.writingStyleEnabled) else { return }
-    let context = WritingContextResolver.context(forBundleID: pasteTargetAtRecordStart?.bundleId)
+    let bundleID = pasteTargetAtRecordStart?.bundleId
+    let frontmostIsRecordedApp = pasteTargetAtRecordStart.map {
+      NSWorkspace.shared.frontmostApplication?.processIdentifier == $0.pid
+    } ?? false
+    let context: WritingContext
+    if frontmostIsRecordedApp, WritingContextResolver.isBrowser(bundleID: bundleID) {
+      context = WritingContextResolver.context(forBundleID: bundleID, webURL: FocusedWebURL.current())
+    } else {
+      context = WritingContextResolver.context(forBundleID: bundleID)
+    }
     guard context != .defaultContext,
       let sample = WritingStyleStore.dictatedSample(text: text, context: context)
     else { return }
