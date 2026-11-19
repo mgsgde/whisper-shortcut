@@ -1,4 +1,4 @@
-# Praxis-Playbook v1.1
+# Praxis-Playbook v1.2
 
 Stand: 19. November 2026. Für alle, die WhisperShortcut in einer Arztpraxis oder Therapiepraxis einrichten.
 
@@ -44,7 +44,16 @@ Ab Werk liegen die Funktionen auf längeren Kombinationen. Ändern unter Einstel
 
 ## 4. Vorlagen einrichten
 
-Einstellungen → Vorlagen. Pro Dokumentart eine Vorlage, zum Beispiel „Befund“ mit den Überschriften Anamnese, Befund, Therapie. Einmal anlegen, ein Kürzel geben, fertig. Keine Sammelvorlage für alles, die am gesagten Namen erkennen soll, was gemeint ist: dafür sind die Auswahlliste und eigene Tasten da.
+Einstellungen → Vorlagen. Pro Dokumentart eine Vorlage, zum Beispiel „Befund“ mit den Überschriften Anamnese, Befund, Therapie. Einmal anlegen, ein Kürzel geben, fertig.
+
+Mehrere verwandte Formate derselben Aufgabe (zum Beispiel verschiedene Prüfberichte oder Befundarten) dürfen in **eine** Vorlage. So geht es:
+
+- Gemeinsame Regeln einmal oben hinschreiben, dann jedes Format unter einer eigenen Überschrift mit den Wörtern, an denen es erkannt wird.
+- Festlegen, was kommt, wenn kein Format genannt wird (zum Beispiel ein freies Protokoll).
+- Jedes Format beginnt mit seinem Namen als Überschrift. Dann sieht man sofort, wenn das falsche gewählt wurde.
+- Höchstens etwa sechs Formate pro Vorlage. Eine andere Aufgabe (Befunde, Briefe) bekommt eine eigene Vorlage mit eigener Taste.
+- Diktiert wird mit dem Namen zuerst: „Vorlage CT, Praxis Muster, …“. Bei nur einer Vorlage kommt keine Auswahlliste, das geht also ohne Hände.
+- Keine Regel, die aus „alles in Ordnung“ Messwerte oder ein „bestanden“ macht, die nicht gesagt wurden. Fehlende Werte bleiben als [ ] stehen.
 
 - Kürzel drücken, sprechen, nochmal drücken: der Text kommt im Format der Vorlage an der Cursorposition an, auch in Praxissoftware im Browser.
 - Mehrere Vorlagen: die App zeigt eine nummerierte Liste, Auswahl mit 1–9.
@@ -106,3 +115,5 @@ Wünsche und Fragen sammeln und gebündelt besprechen, nicht einzeln zwischendur
 Dieses Playbook liegt auch in der App: Der Chat in WhisperShortcut kann es lesen und Fragen dazu beantworten.
 
 **v1.1 (19.11.2026):** Vorlage auf die gewohnte Taste, Tastenkonflikte mit Outlook, Antworten auf Mails mit „Text um den Cursor“, Schreibstil ohne Gmail, keine Sammelvorlage.
+
+**v1.2 (19.11.2026):** Mehrere verwandte Formate in einer Vorlage, Auswahl per gesagtem Namen (ersetzt „keine Sammelvorlage“ aus v1.1).
