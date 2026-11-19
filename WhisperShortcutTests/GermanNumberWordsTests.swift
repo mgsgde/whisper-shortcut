@@ -76,6 +76,28 @@ struct GermanNumberWordsTests {
     #expect(digits("Punkte: 3. Drei weitere folgen") == "Punkte: 3. Drei weitere folgen")
   }
 
+  @Test("A year or a following noun is prose, not a digit neighbour or a zu-ratio")
+  func proseBesideDigitsStays() {
+    #expect(digits("Seit 2020 zwei Operationen") == "Seit 2020 zwei Operationen")
+    #expect(digits("Zimmer 12 drei Betten") == "Zimmer 12 drei Betten")
+    #expect(
+      digits("Der Patient kam 2023 zu vier Terminen") == "Der Patient kam 2023 zu vier Terminen")
+  }
+
+  @Test("Lower-case grad and a small Schläge count stay words; the noun Grad and a pulse do not")
+  func gradAndSchlaege() {
+    #expect(digits("die zwei grad besprochenen Punkte") == "die zwei grad besprochenen Punkte")
+    #expect(digits("drei Schläge auf den Rücken") == "drei Schläge auf den Rücken")
+    #expect(digits("Puls sechzig Schläge") == "Puls 60 Schläge")
+    #expect(digits("achtunddreißig Grad") == "38 Grad")
+  }
+
+  @Test("Clock minutes become digits once the hour is digits; a word hour leaves them")
+  func clockMinutes() {
+    #expect(digits("um vierzehn Uhr dreißig") == "um 14 Uhr 30")
+    #expect(digits("um zehn Uhr dreißig") == "um zehn Uhr dreißig")
+  }
+
   @Test("Prose stays: articles, scores, ellipsis, plain numbers")
   func proseStays() {
     for text in [

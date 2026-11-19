@@ -3568,16 +3568,10 @@ class MenuBarController: NSObject {
           }
         }
         transcriptLatencyMs = Int(Date().timeIntervalSince(dictationStart) * 1000)
-        // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the
-        // whole transcript, after streamed chunks are joined, so a command at a chunk edge still
-        // attaches to the word before it.
-        guard transcriptionModelForCapture.isOffline else { return transcript }
-        let timedMarks = transcriptionModelForCapture.offlineModelType?.engine == .parakeet
-        let source =
-          punctuationMode == .spokenOnly
-          ? SpokenPunctuation.stripModelPunctuation(from: transcript, timedMarks: timedMarks)
-          : transcript
-        return SpokenPunctuation.apply(to: source, mode: punctuationMode, timedMarks: timedMarks)
+        // Offline Dictate, on the joined transcript so a command at a chunk edge still attaches.
+        // Cloud text is unchanged. Same steps as Dictate Live (`OfflineTranscriptFinisher`).
+        return OfflineTranscriptFinisher.finish(
+          transcript, model: transcriptionModelForCapture, mode: punctuationMode)
       },
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*

@@ -581,7 +581,7 @@ struct LiveGluedPunktTests {
       "Im Nacken gibt es einen Triggerpunkt", "Es besteht ein Druckpunkt",
       "Ein Druckschmerzpunkt", "Zu diesem Zeitpunkt", "Punkt", "Befund Doppelpunkt",
     ] {
-      #expect(LiveDictation.splittingGluedTrailingPunkt(text) == text, "\(text)")
+      #expect(OfflineTranscriptFinisher.splittingGluedTrailingPunkt(text) == text, "\(text)")
     }
   }
 
@@ -594,24 +594,24 @@ struct LiveGluedPunktTests {
       "Abschlusspunkt", "Wiedereinstiegspunkt", "Kreuzungspunkt", "Mittelpunkt", "Streitpunkt",
     ] {
       let text = "Das ist der \(word)"
-      #expect(LiveDictation.splittingGluedTrailingPunkt(text) == text, "\(word)")
-      #expect(LiveDictation.splittingGluedTrailingPunkt(text + ".") == text + ".", "\(word).")
+      #expect(OfflineTranscriptFinisher.splittingGluedTrailingPunkt(text) == text, "\(word)")
+      #expect(OfflineTranscriptFinisher.splittingGluedTrailingPunkt(text + ".") == text + ".", "\(word).")
     }
-    #expect(LiveDictation.splittingGluedTrailingPunkt("in Ruhepunkt") == "in Ruhe Punkt")
+    #expect(OfflineTranscriptFinisher.splittingGluedTrailingPunkt("in Ruhepunkt") == "in Ruhe Punkt")
   }
 
   @Test("A glued Punkt followed by the model's own mark is split, the mark kept")
   func splitsBeforeModelPunctuation() {
     #expect(
-      LiveDictation.splittingGluedTrailingPunkt("Die Haut ist trockenpunkt.")
+      OfflineTranscriptFinisher.splittingGluedTrailingPunkt("Die Haut ist trockenpunkt.")
         == "Die Haut ist trocken Punkt.")
     #expect(spoken("Die Haut ist trockenpunkt.") == "Die Haut ist trocken.")
-    #expect(LiveDictation.splittingGluedTrailingPunkt("Kein Juckreizpunkt?!") == "Kein Juckreiz Punkt?!")
+    #expect(OfflineTranscriptFinisher.splittingGluedTrailingPunkt("Kein Juckreizpunkt?!") == "Kein Juckreiz Punkt?!")
   }
 
   @Test("The trailing split ignores a mid-piece glue; spoken punctuation still splits it")
   func midPieceUntouched() {
-    #expect(LiveDictation.splittingGluedTrailingPunkt("Kniepunkt und Hüfte") == "Kniepunkt und Hüfte")
+    #expect(OfflineTranscriptFinisher.splittingGluedTrailingPunkt("Kniepunkt und Hüfte") == "Kniepunkt und Hüfte")
     #expect(spoken("Kniepunkt und Hüfte") == "Knie. Und Hüfte")
   }
 
@@ -625,6 +625,6 @@ struct LiveGluedPunktTests {
   func killSwitch() {
     UserDefaults.standard.set(true, forKey: Self.key)
     defer { UserDefaults.standard.removeObject(forKey: Self.key) }
-    #expect(LiveDictation.splittingGluedTrailingPunkt("Die Haut ist trockenpunkt") == "Die Haut ist trockenpunkt")
+    #expect(OfflineTranscriptFinisher.splittingGluedTrailingPunkt("Die Haut ist trockenpunkt") == "Die Haut ist trockenpunkt")
   }
 }
