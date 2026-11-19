@@ -8669,12 +8669,12 @@
         }
       }
     },
-    "Dictate Prompt drafts messages the way you write them. The app learns your style by itself from emails you sent and from what you dictate into Mail, Messages, WhatsApp or Slack." : {
+    "Only Dictate Prompt uses it, so messages come out the way you write. Plain Dictate, Templates and Chat stay as they are. The app learns by itself from your sent Gmail and from what you dictate with Dictate into mail and chat apps such as Outlook, Mail, WhatsApp, Teams or Slack, not in the browser." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dictate Prompt entwirft Nachrichten so, wie Sie schreiben. Die App lernt Ihren Stil selbst, aus gesendeten E-Mails und aus dem, was Sie in Mail, Nachrichten, WhatsApp oder Slack diktieren."
+            "value" : "Nur Dictate Prompt nutzt ihn, damit Nachrichten so klingen, wie Sie schreiben. Normales Diktat, Vorlagen und Chat bleiben unverändert. Die App lernt selbst, aus Ihren gesendeten Gmail-Mails und aus dem, was Sie mit Dictate in Mail- und Chat-Apps wie Outlook, Mail, WhatsApp, Teams oder Slack diktieren, nicht im Browser."
           }
         }
       }
