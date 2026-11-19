@@ -69,8 +69,51 @@ enum WritingContextResolver {
     ],
   ]
 
-  /// Browsers and every unknown app fall through to `.defaultContext`: a browser tab could be
-  /// Gmail or WhatsApp Web, and guessing wrong is worse than using the neutral profile.
+  /// Browsers. A tab is not an app: `context(forBundleID:)` still returns `.defaultContext` for
+  /// these, and `context(forBundleID:webURL:)` resolves the tab's host only when it is one of the
+  /// listed web apps. Anything else stays Default.
+  private static let browserBundleIDs: Set<String> = [
+    "com.apple.safari",
+    "com.apple.safaritechnologypreview",
+    "com.google.chrome",
+    "com.google.chrome.beta",
+    "com.microsoft.edgemac",
+    "company.thebrowser.browser",
+    "com.brave.browser",
+    "com.vivaldi.vivaldi",
+    "com.operasoftware.opera",
+    "com.kagi.kagimacos",
+    "org.mozilla.firefox",
+  ]
+
+  /// Web-app hosts. A host matches exactly or as a subdomain (`host == h || host.hasSuffix("." + h)`).
+  private static let webHosts: [WritingContext: Set<String>] = [
+    .email: [
+      "mail.google.com",
+      "outlook.office.com",
+      "outlook.office365.com",
+      "outlook.live.com",
+      "mail.yahoo.com",
+      "app.fastmail.com",
+      "mail.proton.me",
+    ],
+    .messenger: [
+      "web.whatsapp.com",
+      "web.telegram.org",
+      "messages.google.com",
+      "app.signal.org",
+    ],
+    .workChat: [
+      "teams.microsoft.com",
+      "teams.live.com",
+      "teams.cloud.microsoft",
+      "app.slack.com",
+    ],
+  ]
+
+  /// Known native apps map to a context. Browsers and every unknown app fall through to
+  /// `.defaultContext` here. A browser resolves by the tab's host only when that host is one of
+  /// the listed web apps; anything else stays Default (`context(forBundleID:webURL:)`).
   static func context(forBundleID bundleID: String?) -> WritingContext {
     guard let id = bundleID?.lowercased() else { return .defaultContext }
     for (context, ids) in bundleIDs where ids.contains(id) {
@@ -79,7 +122,30 @@ enum WritingContextResolver {
     return .defaultContext
   }
 
+  static func isBrowser(bundleID: String?) -> Bool {
+    guard let id = bundleID?.lowercased() else { return false }
+    return browserBundleIDs.contains(id)
+  }
+
+  /// A non-browser keeps `context(forBundleID:)`. A browser uses the tab host when it is a listed
+  /// web app (exact host or a subdomain); every other tab, and a missing URL, stays `.defaultContext`.
+  static func context(forBundleID bundleID: String?, webURL: URL?) -> WritingContext {
+    guard isBrowser(bundleID: bundleID) else { return context(forBundleID: bundleID) }
+    guard let host = webURL?.host?.lowercased(), !host.isEmpty else { return .defaultContext }
+    for context in [WritingContext.email, .messenger, .workChat] {
+      guard let hosts = webHosts[context] else { continue }
+      if hosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) {
+        return context
+      }
+    }
+    return .defaultContext
+  }
+
   static func current() -> WritingContext {
-    context(forBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+    let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    guard isBrowser(bundleID: bundleID) else {
+      return context(forBundleID: bundleID)
+    }
+    return context(forBundleID: bundleID, webURL: FocusedWebURL.current())
   }
 }
