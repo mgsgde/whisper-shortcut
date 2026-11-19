@@ -1,13 +1,20 @@
-## Einstellungen
-- Der Untertitel bei Schreibstil (Einstellungen → Dictate Prompt) sagt jetzt, dass der Stil nur für Dictate Prompt gilt und aus Gmail sowie aus dem normalen Diktat in nativen Mail- und Chat-Apps lernt, nicht aus dem Browser.
+## Offline-Diktat
+- Normales Diktieren mit einem Offline-Modell bereitet den Text jetzt so auf wie Dictate Live: Füllwörter fallen weg, ein angehängtes „…punkt“ wird getrennt, „GdB“ wird einheitlich geschrieben, und gesprochene Mengenangaben werden zu Ziffern. Zahlwörter im normalen Fließtext bleiben Wörter.
 
-## Hilfe
-- Der Chat in der App beantwortet jetzt Fragen zur Einrichtung in einer Arzt- oder Therapiepraxis (neues Praxis-Playbook in der mitgelieferten Dokumentation). Die Anleitung erwähnt die Tasten des Philips SpeechMike.
+## Verbundene KI-Apps (MCP)
+- ChatGPT, Claude und andere verbundene Apps können jetzt die Dokumentation von WhisperShortcut auflisten und lesen, einschließlich des Praxis-Playbooks. So beantworten sie Fragen zur App aus der Dokumentation statt zu raten.
+
+## Einstellungen
+- Im Modus „Nur Diktat“ bleibt der Tab „Konten“ sichtbar, solange ein Cloud-Modell zur Transkription gewählt ist, damit Sie dessen Schlüssel eintragen können.
+- Einstellungen, Chat in der App und MCP sind sich jetzt einig, ob ein alter eigener Prompt den eingebauten ersetzt.
 
 ## Behoben
-- Das automatische Einfügen meldet keinen Erfolg mehr, den es nicht bestätigen kann. Wurde die App während des Laufs durch eine andere Version ersetzt, warnt sie und lässt das Diktat in der Zwischenablage, sodass Sie es selbst einfügen können.
+- Dienste → Dictate Prompt beachtet den Modus „Nur Diktat“.
+- Der Modell-Import öffnet Ihren echten Benutzerordner (für ~/.cache/huggingface und ~/.lmstudio/models) und überspringt versteckte Ordner wie unfertige Downloads.
+- Beim Umwandeln eines alten eigenen Prompts in Zusätze wird kein alter eingebauter Prompt mehr mitkopiert.
+- Praxis-Playbook aktualisiert (v1.1).
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.98...v8.99
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.99...v9.00
