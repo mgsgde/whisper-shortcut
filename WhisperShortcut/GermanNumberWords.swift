@@ -6,18 +6,30 @@ import Foundation
 /// zu neunzig", "Einzel GdB Psyche zwanzig"). A report wants digits for measured values, but prose
 /// keeps small numbers as words ("seit drei Tagen", "um zehn Uhr", "drei Punkte erreicht"). The rule
 /// follows the usual German writing convention (DIN 5008): numbers with a unit of measure and
-/// assessment values are digits, other numbers up to twelve stay words.
+/// assessment values are digits, other numbers up to twelve stay words. A year (exactly four
+/// digits, 1900–2099) and a capitalised noun after the number are prose too ("Seit 2020 zwei
+/// Operationen", "Zimmer 12 drei Betten", "2023 zu vier Terminen").
 ///
 /// A number word becomes digits only when one of these holds:
-/// - a unit of measure follows ("fünfhundert Meter", "zehn mg", "neunzig Prozent", "zwanzig %");
+/// - a unit of measure follows ("fünfhundert Meter", "zehn mg", "neunzig Prozent", "zwanzig %").
+///   "Grad" counts only with a capital G, the noun ("achtunddreißig Grad"); lower-case "grad" is
+///   colloquial "gerade" ("die zwei grad besprochenen Punkte"). "Schläge" or "schläge" counts only
+///   above twelve ("Puls sechzig Schläge"); "drei Schläge auf den Rücken" stays words. "°" and "%"
+///   still count;
 /// - a time unit follows and the number is above twelve ("dreizehn Uhr", "zwanzig Jahre"), so
 ///   "um zehn Uhr" and "seit drei Tagen" stay words;
+/// - it is the minutes after a digit hour: the previous word is "Uhr", the token before that is
+///   digits, the number is 0–59, and no noun follows. "um vierzehn Uhr dreißig" becomes
+///   "um 14 Uhr 30" once "vierzehn" is digits. "um zehn Uhr dreißig" stays words, because "zehn"
+///   is not above twelve, so the minutes never see a digit hour;
 /// - it is a GdB value: right after "GdB", after "GdB von", or after "GdB" and one capitalised
 ///   word ("Einzel GdB Psyche zwanzig");
-/// - it stands on one side of "zu" and the other side is digits, or both sides are number words
-///   and one of them is above nine ("140 zu neunzig", "hundertvierzig zu neunzig"; "eins zu eins"
-///   stays);
-/// - digits stand right next to it, separated only by spaces or "/" ("140 neunzig", "4/fünf").
+/// - it stands on one side of "zu" and the other side is digits that are not a year, and no noun
+///   follows, or both sides are number words and one of them is above nine ("140 zu neunzig",
+///   "hundertvierzig zu neunzig"; "eins zu eins" and "2023 zu vier Terminen" stay);
+/// - digits that are not a year stand right next to it, separated only by spaces or "/", and no
+///   noun follows ("140 neunzig", "4/fünf"). "Seit 2020 zwei Operationen" and "Zimmer 12 drei
+///   Betten" stay words.
 ///
 /// "ein" / "eine" are articles and are never read as a number; "eins" only in one of the contexts
 /// above. Pure and rule-based: no model, no setting.
@@ -63,7 +75,7 @@ enum GermanNumberWords {
   private static let measureUnits: Set<String> = [
     "meter", "metern", "m", "km", "kilometer", "kilometern", "cm", "zentimeter", "mm", "millimeter",
     "mg", "milligramm", "µg", "mikrogramm", "gramm", "kg", "kilo", "kilogramm", "ml", "milliliter",
-    "liter", "prozent", "grad", "mmhg", "mmol", "ie", "euro", "schläge",
+    "liter", "prozent", "mmhg", "mmol", "ie", "euro",
   ]
 
   /// Time units: digits only above twelve.
@@ -81,14 +93,28 @@ enum GermanNumberWords {
     // "drei Pünktchen" is the spoken ellipsis; only "Only when spoken" turns it into "…" first.
     if let next, ["pünktchen", "puenktchen", "punktchen"].contains(lower(next)) { return false }
 
-    // A unit after it.
+    // A unit after it. "Grad" is the noun (capital G); lower-case "grad" is "gerade".
+    // "Schläge" above twelve is a pulse; "drei Schläge" is a count and stays a word.
     if let next, tokens[next].kind == .word {
+      let nextText = tokens[next].text
       if measureUnits.contains(lower(next)) { return true }
       if timeUnits.contains(lower(next)), number > 12 { return true }
+      if nextText == "Grad" { return true }
+      if number > 12, nextText == "Schläge" || nextText == "schläge" { return true }
     }
     if index + 1 < tokens.count, tokens[index + 1].kind == .other {
       let symbol = tokens[index + 1].text.drop(while: { $0 == " " || $0 == "\t" }).first
       if symbol == "%" || symbol == "°" { return true }
+    }
+
+    // Minutes once the hour is digits ("vierzehn Uhr" becomes "14 Uhr" earlier in this pass).
+    if let previous, lower(previous) == "uhr",
+      let hour = neighbor(of: previous, step: -1, in: tokens),
+      tokens[hour].kind == .digits,
+      (0...59).contains(number),
+      !followedByNoun(index, in: tokens)
+    {
+      return true
     }
 
     // A GdB value.
@@ -103,28 +129,56 @@ enum GermanNumberWords {
       }
     }
 
-    // "140 zu neunzig", "hundertvierzig zu neunzig".
+    // "140 zu neunzig", "hundertvierzig zu neunzig". A year, or a noun after the number
+    // ("2023 zu vier Terminen"), is a sentence, not a ratio. The word–word branch is unchanged.
     for (link, step) in [(next, 1), (previous, -1)] {
       guard let link, lower(link) == "zu",
         let other = neighbor(of: link, step: step, in: tokens)
       else { continue }
-      if tokens[other].kind == .digits { return true }
-      if tokens[other].kind == .word, let otherValue = value(of: tokens[other].text),
+      if tokens[other].kind == .digits {
+        if !isYear(tokens[other]), !followedByNoun(index, in: tokens) { return true }
+      } else if tokens[other].kind == .word, let otherValue = value(of: tokens[other].text),
         max(number, otherValue) >= 10
       {
         return true
       }
     }
 
-    // Digits right next to it.
+    // Digits right next to it, unless that neighbour is a year or a noun follows.
     for step in [1, -1] {
       if let other = neighbor(of: index, step: step, in: tokens, slash: true),
-        tokens[other].kind == .digits
+        tokens[other].kind == .digits,
+        !isYear(tokens[other]),
+        !followedByNoun(index, in: tokens)
       {
         return true
       }
     }
     return false
+  }
+
+  /// A four-digit year, 1900–2099. "2,5" and "12" are not years.
+  private static func isYear(_ token: Token) -> Bool {
+    guard token.kind == .digits, token.text.count == 4,
+      token.text.allSatisfy({ $0.isASCII && $0.isNumber }),
+      let year = Int(token.text)
+    else { return false }
+    return (1900...2099).contains(year)
+  }
+
+  /// The next word is a capitalised noun ("Operationen", "Betten"), so the number is a count in a
+  /// sentence. A word in `measureUnits` or `timeUnits`, or "GdB", is not a noun. "Grad" and
+  /// "Schläge" are not in those sets; their own unit checks run before this one is asked.
+  private static func followedByNoun(_ index: Int, in tokens: [Token]) -> Bool {
+    guard let next = neighbor(of: index, step: 1, in: tokens),
+      tokens[next].kind == .word,
+      tokens[next].text.first?.isUppercase == true,
+      value(of: tokens[next].text) == nil
+    else { return false }
+    let folded = tokens[next].text.lowercased()
+    if measureUnits.contains(folded) || timeUnits.contains(folded) { return false }
+    if folded == "gdb" { return false }
+    return true
   }
 
   /// The word or digit token next to `index` in direction `step`, when only spaces (or, with
