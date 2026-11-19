@@ -4561,50 +4561,72 @@ class MenuBarController: NSObject {
         return nil
       }
 
+      let postAccess = CGPreflightPostEventAccess()
+      if !postAccess {
+        DebugLogger.logWarning(
+          "AUTO-PASTE: CGPreflightPostEventAccess false — macOS may drop the ⌘V. Result stays on the clipboard")
+      }
+
+      let replaced = BundleReplacementCheck.currentMismatch()
+      if let r = replaced {
+        DebugLogger.logWarning(
+          "AUTO-PASTE: App was replaced on disk while running "
+            + "(running \(r.running), on disk \(r.onDisk)); "
+            + "macOS may drop the ⌘V — restart the app. Result stays on the clipboard")
+      }
+      let keepOnClipboard = !postAccess || replaced != nil
+
       simulatePaste()
       // Log *where* the synthetic ⌘V went. Without the target and payload size on record, a report
       // of "my text was suddenly gone" is undiagnosable after the fact.
       let target = NSWorkspace.shared.frontmostApplication
       let chars = NSPasteboard.general.string(forType: .string)?.count ?? 0
       DebugLogger.log(
-        "AUTO-PASTE: Pasted \(chars) chars into "
+        "AUTO-PASTE: Sent ⌘V (\(chars) chars) to "
           + "\(target?.localizedName ?? "unknown") "
-          + "(\(target?.bundleIdentifier ?? "no bundle id"))")
+          + "(\(target?.bundleIdentifier ?? "no bundle id")) — delivery not confirmed")
 
       // Non-destructive paste: give the receiving app time to read the pasteboard, then put
       // the user's previous clipboard back. With restore off, the optional "clear" setting empties
       // the pasteboard instead, so a later manual ⌘V cannot paste this dictation.
-      let clearInsteadOfRestore = !Self.restoreClipboardEnabled && Self.clearClipboardEnabled
-      DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.clipboardRestoreDelay) { [weak self] in
-        guard let self else { return }
-        switch ClipboardPasteGuard.delayedAction(
-          generation: generation, latestGeneration: self.pasteGeneration,
-          changeCountAtWrite: writtenChangeCount,
-          currentChangeCount: NSPasteboard.general.changeCount)
-        {
-        case .ignore:
-          // A newer job owns the clipboard and its restore point now.
-          return
-        case .discard:
-          // Clipboard managers and Citrix/RDP sync rewrite the pasteboard right after a paste, which
-          // moves the count without changing the text. If it is still our text, clear anyway.
-          if clearInsteadOfRestore, writtenText != nil,
-            NSPasteboard.general.string(forType: .string) == writtenText
+      // CGPreflightPostEventAccess false, or a bundle replaced under a still-running process,
+      // can have its ⌘V dropped, so that result stays on the clipboard instead of being
+      // restored over or cleared.
+      if !keepOnClipboard {
+        let clearInsteadOfRestore = !Self.restoreClipboardEnabled && Self.clearClipboardEnabled
+        DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.clipboardRestoreDelay) { [weak self] in
+          guard let self else { return }
+          switch ClipboardPasteGuard.delayedAction(
+            generation: generation, latestGeneration: self.pasteGeneration,
+            changeCountAtWrite: writtenChangeCount,
+            currentChangeCount: NSPasteboard.general.changeCount)
           {
-            NSPasteboard.general.clearContents()
-            DebugLogger.log("AUTO-PASTE: Cleared clipboard after paste (count moved, text still ours)")
-          } else {
-            DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
-          }
-          self.clipboardManager.discardRestorePoint()
-        case .restore:
-          if clearInsteadOfRestore {
-            NSPasteboard.general.clearContents()
-            DebugLogger.log("AUTO-PASTE: Cleared clipboard after paste")
-          } else if self.clipboardManager.restorePendingSnapshot() {
-            DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
+          case .ignore:
+            // A newer job owns the clipboard and its restore point now.
+            return
+          case .discard:
+            // Clipboard managers and Citrix/RDP sync rewrite the pasteboard right after a paste, which
+            // moves the count without changing the text. If it is still our text, clear anyway.
+            if clearInsteadOfRestore, writtenText != nil,
+              NSPasteboard.general.string(forType: .string) == writtenText
+            {
+              NSPasteboard.general.clearContents()
+              DebugLogger.log("AUTO-PASTE: Cleared clipboard after paste (count moved, text still ours)")
+            } else {
+              DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
+            }
+            self.clipboardManager.discardRestorePoint()
+          case .restore:
+            if clearInsteadOfRestore {
+              NSPasteboard.general.clearContents()
+              DebugLogger.log("AUTO-PASTE: Cleared clipboard after paste")
+            } else if self.clipboardManager.restorePendingSnapshot() {
+              DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
+            }
           }
         }
+      } else {
+        clipboardManager.discardRestorePoint()
       }
       return AutoPasteOutcome(chars: chars, targetBundleId: target?.bundleIdentifier ?? "unknown")
     }
