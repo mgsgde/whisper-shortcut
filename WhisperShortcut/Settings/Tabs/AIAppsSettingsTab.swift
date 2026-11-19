@@ -20,7 +20,7 @@ struct AIAppsSettingsTab: View {
 
   @AppStorage(UserDefaultsKeys.mcpConfigAccessLevel) private var accessLevelRaw = MCPConfigAccessLevel.read.rawValue
   @AppStorage(UserDefaultsKeys.mcpShareRecentInteractions) private var shareRecentInteractions = false
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var contextLoggingEnabled = false
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var contextLoggingEnabled = true
 
   /// Changes listed under "Changed by AI apps"; the full record stays in `mcp-changes.jsonl`.
   private static let visibleChanges = 5

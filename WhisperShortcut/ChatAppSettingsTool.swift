@@ -124,7 +124,7 @@ enum AppSettingsChatTool {
     if deps.defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) {
       usage = "offline"
     } else {
-      usage = deps.defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled) ? "on" : "off"
+      usage = ContextLoggingPreference.storedFlag(in: deps.defaults) ? "on" : "off"
     }
     let language = catalog.first { $0.id == "dictation.language" }.map { $0.read() } ?? ""
     var out: [String: Any] = [

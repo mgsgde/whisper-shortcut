@@ -9,7 +9,7 @@ import SwiftUI
 /// it on its own any more.
 struct UsageDataSection: View {
   @ObservedObject var viewModel: SettingsViewModel
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
   // Offline Mode keeps no usage log; the switch keeps its value and applies again afterwards.
   @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
   @State private var showDeleteConfirmation = false

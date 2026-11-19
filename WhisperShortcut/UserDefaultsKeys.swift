@@ -224,6 +224,7 @@ enum UserDefaultsKeys {
   static let usageStatisticsNoticeShown = "usageStatisticsNoticeShown"
 
   // MARK: - Context Settings
+  /// Save usage data. On by default (2026-11-19); an absent key reads as on via `ContextLoggingPreference.storedFlag(in:)`.
   static let contextLoggingEnabled = "userContextLoggingEnabled"
   static let contextInPromptEnabled = "userContextInPromptEnabled"
   static let contextMaxEntriesPerMode = "userContextMaxEntriesPerMode"

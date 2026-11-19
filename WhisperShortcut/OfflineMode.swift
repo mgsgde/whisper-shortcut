@@ -213,11 +213,19 @@ enum ContextLoggingPreference {
     return storedFlag
   }
 
+  /// "Save usage data" for a new install: on since 2026-11-19 (owner decision). The log stays on this Mac.
+  static let defaultValue = true
+
+  /// Reads the stored preference from the given defaults. An absent key means on.
+  static func storedFlag(in defaults: UserDefaults) -> Bool {
+    (defaults.object(forKey: UserDefaultsKeys.contextLoggingEnabled) as? Bool) ?? defaultValue
+  }
+
   /// The user's own preference, ignoring Offline Mode — for settings UI that has to show what
   /// the toggle is set to, not what the app is currently doing.
   static var storedFlag: Bool {
-    // Absent key means "off": usage logging is opt-in. `FullApp` writes the key at launch, so this
+    // Absent key means ON (owner decision 2026-11-19). `FullApp` writes the key at launch, so this
     // only matters before that has run.
-    UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
+    storedFlag(in: .standard)
   }
 }

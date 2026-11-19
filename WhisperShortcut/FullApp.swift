@@ -260,10 +260,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
-    // Usage logging ("Save usage data") is opt-in (owner decision 2026-10-19): new installs start
-    // with it off, matching the privacy promise "when on". Existing installs keep their stored value.
+    // Usage logging ("Save usage data") is on by default since 2026-11-19 (owner: best defaults,
+    // not most restrictive). The log stays on this Mac. Existing installs keep their stored value.
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
-      UserDefaults.standard.set(false, forKey: UserDefaultsKeys.contextLoggingEnabled)
+      UserDefaults.standard.set(ContextLoggingPreference.defaultValue, forKey: UserDefaultsKeys.contextLoggingEnabled)
     }
 
     // Launch at Login is OFF by default and only enabled when the user explicitly

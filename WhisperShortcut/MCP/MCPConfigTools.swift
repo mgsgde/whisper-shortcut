@@ -36,7 +36,7 @@ struct MCPConfigEnvironment {
     return MCPConfigEnvironment(
       targets: .live, proposals: .shared, changeLog: .shared,
       accessLevel: { MCPConfigAccessLevel.current },
-      contextLoggingEnabled: { defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled) },
+      contextLoggingEnabled: { ContextLoggingPreference.storedFlag(in: defaults) },
       shareRecentInteractions: { defaults.bool(forKey: UserDefaultsKeys.mcpShareRecentInteractions) },
       interactionLog: { query in InteractionLogReader.load(query) },
       settings: {

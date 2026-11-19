@@ -1349,7 +1349,7 @@ enum MCPSettingsCatalog {
       unavailableReason: {
         defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) ? "Offline Mode keeps no usage log." : nil
       },
-      read: { defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled) },
+      read: { ContextLoggingPreference.storedFlag(in: defaults) },
       validate: { value in value is Bool ? nil : "Save usage data needs true or false." },
       apply: { value in
         guard let b = value as? Bool else { throw MCPConfigError(message: "Save usage data needs true or false.") }
