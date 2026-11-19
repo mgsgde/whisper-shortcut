@@ -21211,6 +21211,26 @@
         }
       }
     },
+    "The text around the cursor was sent as context" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text um den Cursor wurde als Kontext gesendet"
+          }
+        }
+      }
+    },
+    "An image of the front window was sent as context" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Bild des vorderen Fensters wurde als Kontext gesendet"
+          }
+        }
+      }
+    },
     "Thinking effort" : {
       "localizations" : {
         "de" : {
