@@ -1,4 +1,4 @@
-# Praxis-Playbook v1
+# Praxis-Playbook v1.1
 
 Stand: 19. November 2026. Für alle, die WhisperShortcut in einer Arztpraxis oder Therapiepraxis einrichten.
 
@@ -26,6 +26,8 @@ Offline-Modus (Einstellungen → Datenschutz & Berechtigungen) nur, wenn die Pra
 
 Kurz: **Befunde mit Vorlage, Mails mit Dictate Prompt, der Rest mit Diktieren.**
 
+Dictate Prompt sieht ab Werk nur, was man sagt, und markierten Text. Die Mail, auf die man antwortet, sieht es nicht. Soll „Antworte: Termin passt“ zur Originalmail passen, unter Einstellungen → Dictate Prompt → Bildschirminhalt „Text um den Cursor senden“ einschalten (nur in der Version von der Website). Die Originalmail nicht markieren: markierter Text wird ersetzt.
+
 Dictate Prompt ist für kurze Ansagen gebaut, nicht für ein Diktat von zehn Minuten. Lange Diktate gehen mit Diktieren oder einer Vorlage.
 
 ## 3. Tasten
@@ -34,8 +36,9 @@ Empfehlung:
 
 - **Fn (🌐) für Diktieren.** Ist ab Werk an, wenn die Fn-Taste frei ist. Ist sie in macOS schon belegt (Emoji, Diktierfunktion von Apple), zeigt die App das an und stellt es auf Wunsch um: Systemeinstellungen → Tastatur → „Drücken der 🌐-Taste“ → „Keine Aktion“.
 - **⌘2 für Dictate Prompt, ⌘3 für die Vorlage**, weitere Funktionen nach Bedarf auf ⌘4 und ⌘5.
+- Ist die Praxis schon eine Taste für Befunde gewohnt, kommt die Vorlage auf genau diese Taste und Dictate Prompt auf eine andere. Dann ändert sich für die Praxis nichts.
 
-Ab Werk liegen die Funktionen auf längeren Kombinationen. Ändern unter Einstellungen → Allgemein. Vorher kurz prüfen, ob die Praxissoftware ⌘2 oder ⌘3 selbst benutzt.
+Ab Werk liegen die Funktionen auf längeren Kombinationen. Ändern unter Einstellungen → Allgemein. Die Kürzel von WhisperShortcut gehen vor: Benutzt ein Programm dieselbe Taste (Outlook zum Beispiel ⌘1 bis ⌘5 für Mail, Kalender, Kontakte), funktioniert sie dort nicht mehr. Vorher kurz mit der Praxis klären, ob sie diese Tasten braucht.
 
 **Diktiermikrofone (z. B. SpeechMike):** keine direkte Anbindung. Die Tasten des Mikrofons lassen sich aber in dessen eigener Software auf diese Tastenkürzel legen. Das funktioniert. Eine Vorlage kann auch ein eigenes Kürzel bekommen, für eine eigene Mikrofontaste.
 
@@ -62,7 +65,11 @@ Einstellungen → Diktieren → Glossar. Hier stehen **nur Wörter, die beim Dik
 
 Gilt **nur für Dictate Prompt**, also für Mails und Nachrichten. Diktieren, Vorlagen und Chat bleiben davon unberührt. Für Befunde spielt er keine Rolle.
 
-Die App lernt den Stil selbst: aus gesendeten Gmail-Mails, wenn ein Google-Konto verbunden ist, und aus dem, was mit Diktieren in Mail- und Chat-Apps diktiert wird. Nach etwa 20 neuen Nachrichten schlägt sie ein Profil vor, das man in der Menüleiste bestätigt. **Den Schreibstil nicht von Hand schreiben oder mit KI-Texten füttern.** Einschalten unter Einstellungen → Dictate Prompt → Schreibstil.
+Die App lernt den Stil selbst: aus gesendeten Gmail-Mails, wenn ein Google-Konto verbunden ist, und aus dem, was mit Diktieren in Mail- und Chat-Apps diktiert wird. Nach etwa 20 neuen Nachrichten schlägt sie ein Profil vor, das man in der Menüleiste bestätigt. Einschalten unter Einstellungen → Dictate Prompt → Schreibstil.
+
+**Ohne Gmail** (zum Beispiel mit Outlook) gibt es am ersten Tag noch keinen Stil. Dann unter „Weitere von Hand hinzufügen“ → „Beispiele hinzufügen …“ 10 bis 20 echte, selbst geschriebene Mails der Person einfügen und „Profil jetzt aktualisieren“ drücken.
+
+**Das Profil nie von Hand schreiben und keine KI-Texte als Beispiele einfügen.** Nur Texte, die die Person wirklich selbst geschrieben hat.
 
 ## 7. Prompts nicht anfassen
 
@@ -97,3 +104,5 @@ Wünsche und Fragen sammeln und gebündelt besprechen, nicht einzeln zwischendur
 Ändert sich etwas an diesen Regeln, erscheint eine neue Version dieses Playbooks mit Datum und einer kurzen Liste, was anders ist. Alles, was nicht in einer neuen Version steht, gilt weiter wie hier beschrieben.
 
 Dieses Playbook liegt auch in der App: Der Chat in WhisperShortcut kann es lesen und Fragen dazu beantworten.
+
+**v1.1 (19.11.2026):** Vorlage auf die gewohnte Taste, Tastenkonflikte mit Outlook, Antworten auf Mails mit „Text um den Cursor“, Schreibstil ohne Gmail.
