@@ -1247,6 +1247,13 @@ enum ChatToolRegistry {
           "Where WhisperShortcut stores app data on macOS (settings, logs, prompts, sessions, recordings).",
         filename: "data-directories.md"
       ),
+      (
+        name: "praxis-playbook",
+        title: "Praxis-Playbook (German)",
+        description:
+          "German setup rules for medical and therapy practices: which function for findings, emails and plain dictation, recommended keys, templates, glossary, writing style, what the app can and cannot do, how to report problems.",
+        filename: "praxis-playbook.md"
+      ),
     ]
 
   static let appDocsFunctionDeclarations: [[String: Any]] = [

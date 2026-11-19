@@ -56,6 +56,8 @@ Default menu bar shortcuts (all configurable in Settings → General):
 
 Installs from before these defaults keep ⌘1–⌘4 and ⌘0. Add Selection to Glossary has no default shortcut; set one in Settings → General. Every shortcut can be changed in Settings → General, and the in-app Chat always sees your current bindings.
 
+**Dictation microphones (Philips SpeechMike and similar):** there is no direct integration, but the buttons work. In the microphone's own software (for example Philips SpeechControl), map its record button to the shortcut you use for Dictate, or for a template. A template can get a key of its own for exactly this, so each button can start a different format.
+
 Press **Stop** in the menu bar (or use the active mode's shortcut again) to cancel recording, TTS playback, or in-flight processing.
 
 To change a shortcut, open Settings → General, click **Record** next to it and press the combination once. Any key works with at least one of ⌘/⌥/⌃, and **F1–F20 can be bound on their own, without a modifier** — that is the binding to use for a programmable (QMK/VIA) keyboard with a dedicated dictation key.
