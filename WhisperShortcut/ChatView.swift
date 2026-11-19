@@ -1307,8 +1307,9 @@ class ChatViewModel: ObservableObject {
   /// meeting/workspace gates must follow that session — not whichever one is on screen.
   private func buildToolDeclarations(for target: ChatSession? = nil) -> [LLMToolDeclaration] {
     let s = target ?? session
-    let calendarConnected = GoogleAccountOAuthService.shared.isConnected
-    let trelloConnected = TrelloOAuthService.shared.isConnected
+    // Offline Mode blocks Google and Trello at the network layer; same gating as DictatePromptAgent.availableTools().
+    let calendarConnected = !OfflineMode.isEnabled && GoogleAccountOAuthService.shared.isConnected
+    let trelloConnected = !OfflineMode.isEnabled && TrelloOAuthService.shared.isConnected
     // Image generation renders via the Gemini image model regardless of the chat model,
     // so the tool is offered exactly when a Gemini credential exists.
     let imageGenerationAvailable = GeminiCredentialProvider.shared.hasCredential()
@@ -2075,12 +2076,18 @@ class ChatViewModel: ObservableObject {
     } else {
       text += "\n\nNO WEB SEARCH: You cannot search the web in this chat. Answer from what you know; for prices, versions, release dates, news or anything else that may have changed, say in one short sentence that it may be out of date. Never claim to have searched and never cite sources you did not get from a tool."
     }
-    if GoogleAccountOAuthService.shared.isConnected {
+    // Mirrors buildToolDeclarations: in Offline Mode the Google and Trello tools are not declared,
+    // so the prompt must not claim a connection (or push the connect link) either.
+    if OfflineMode.isEnabled {
+      text += "\n\nOFFLINE MODE: Google Calendar, Google Tasks, Gmail and Trello are unavailable while Offline Mode is on, whatever is connected. Never offer or promise to look up or change anything there; if the user asks, say in one short sentence that Offline Mode has to be turned off first."
+    } else if GoogleAccountOAuthService.shared.isConnected {
       text += Self.googleConnectedInstructions(timeZoneID: TimeZone.current.identifier)
     } else {
       text += "\n\nGOOGLE ACCOUNT NOT CONNECTED: You have no access to the user's Google Calendar, Google Tasks or Gmail in this session. Never offer or promise to create, change or look up calendar events, tasks or emails there. The first time the user asks for any of that, answer with one short sentence that the Google account isn't connected yet, plus this markdown link (link text in the user's language): [Google-Konto verbinden](whispershortcut://settings/accounts). For a calendar event you may also offer a Google Calendar quick-add link (https://calendar.google.com/calendar/render?action=TEMPLATE&text=...&dates=...) as a fallback."
     }
-    if TrelloOAuthService.shared.isConnected {
+    if OfflineMode.isEnabled {
+      // Covered by the OFFLINE MODE line above.
+    } else if TrelloOAuthService.shared.isConnected {
       text += "\n\nTRELLO: You are connected to the user's Trello through the trello_* tools. If earlier messages in this conversation said you had no access, that is outdated — the user has connected since; call the tool now."
     } else {
       text += "\n\nTRELLO NOT CONNECTED: You have no access to the user's Trello boards or cards. Never offer or promise to look up or change them. The first time the user asks, answer with one short sentence that Trello isn't connected yet, plus this markdown link (link text in the user's language): [Trello verbinden](whispershortcut://settings/accounts)."

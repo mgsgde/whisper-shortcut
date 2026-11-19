@@ -207,6 +207,7 @@ extension ChatToolRegistry {
       running: "Reading the change history", done: "Read the change history", countNoun: "changes"),
     readRecentInteractionsToolName: .init(
       running: "Reading your usage log", done: "Read your usage log", countNoun: "entries"),
+    AppSettingsChatTool.name: .init(running: "Checking app settings", done: "Checked app settings"),
     rememberAboutUserToolName: .init(running: "Saving to memory", done: "Saved to memory"),
     forgetAboutUserToolName: .init(running: "Removing from memory", done: "Removed from memory"),
   ]

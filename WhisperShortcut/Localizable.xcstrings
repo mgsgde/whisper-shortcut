@@ -6112,6 +6112,16 @@
         }
       }
     },
+    "Checked app settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen geprüft"
+          }
+        }
+      }
+    },
     "Checked the app docs" : {
       "localizations" : {
         "de" : {
@@ -6148,6 +6158,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufgaben geprüft"
+          }
+        }
+      }
+    },
+    "Checking app settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen werden geprüft"
           }
         }
       }
@@ -10284,6 +10304,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alles vergessen, was sich der Chat gemerkt hat"
+          }
+        }
+      }
+    },
+    "Forget: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vergessen: %@"
           }
         }
       }
