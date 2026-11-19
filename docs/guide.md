@@ -69,6 +69,8 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 3. Press the shortcut (or the Fn key, if you turned that on), speak, then stop recording.
 4. The transcription inserts at the cursor when auto-paste is on (Settings → Clipboard Behavior; on once you grant Accessibility; direct-download only). It is always copied to the clipboard as a backup.
 
+**Microphone.** By default the app records from the input chosen in macOS (System Settings → Sound, or Control Center). With a second microphone plugged in, such as a headset or a SpeechMike, Settings → Dictate shows a **Microphone** menu: pick the device there and Dictate, Dictate Prompt and Live Meeting always record from it, even when macOS switches its input. The choice is remembered across restarts. If that microphone is unplugged, recording falls back to the system default (also in the middle of a recording) and a short notice says so; Settings then shows it as *not connected* with a **Use System Default** button. The recording pill always names the microphone in use.
+
 Longer recordings (roughly ten seconds and up) start transcribing in the background while you speak, on Gemini, OpenAI, Grok, and on-device Whisper. Pressing Stop only waits for the last chunk. If any chunk fails, the app transcribes the full recording instead, so you still get a complete result.
 
 **Accuracy tuning** (Settings → Dictate, cloud models only):
