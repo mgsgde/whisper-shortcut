@@ -331,4 +331,30 @@ struct SettingsAdvisorTests {
     #expect(text.components(separatedBy: "• **").count - 1 == 3)
     #expect(text.hasSuffix("FOOTER"))
   }
+
+  /// Every id `SettingsAdvisor.candidates` can append. There is no static list on the type:
+  /// blockers (`privacy.save_usage_data`, the two permissions), recommended feature states
+  /// (`mcpFeatureOrder`'s five settings), the three `modelIDs`, and `writing_style.enabled`.
+  /// `recent_interactions` is MCP `not_yet_enabled` only and names two controls, so it stays nil.
+  @Test("Every finding the advisor can emit points at the tab that shows that setting")
+  func findingSettingsTabs() {
+    let tabs: [String: SettingsTab] = [
+      "privacy.save_usage_data": .permissions,
+      "permission.accessibility": .permissions,
+      "permission.screen_recording": .permissions,
+      "dictation.fn_key": .general,
+      "clipboard.auto_paste": .general,
+      "dictate_prompt.field_text_context": .speechToPrompt,
+      "dictate_prompt.screenshot_context": .speechToPrompt,
+      "general.launch_at_login": .general,
+      "dictation.transcription_model": .speechToText,
+      "chat.model": .chat,
+      "dictate_prompt.model": .speechToPrompt,
+      "writing_style.enabled": .speechToPrompt,
+    ]
+    for (id, tab) in tabs {
+      #expect(SettingsAdvisor.settingsTab(forFindingID: id) == tab, "\(id)")
+    }
+    #expect(SettingsAdvisor.settingsTab(forFindingID: "recent_interactions") == nil)
+  }
 }

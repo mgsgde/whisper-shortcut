@@ -159,7 +159,8 @@ final class SystemPromptsStore {
     loadSection(.dictationAdditions)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
-  /// Legacy Dictation prompt. Non-empty means it replaces the built-in instructions entirely.
+  /// Legacy Dictation prompt, trimmed. Empty when the section is missing or blank.
+  /// Whether that text replaces the built-in is `legacyReplacesBuiltIn`, not "non-empty".
   func loadLegacyDictationPrompt() -> String {
     loadSection(.dictation)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
@@ -169,24 +170,39 @@ final class SystemPromptsStore {
     loadSection(.promptModeAdditions)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
-  /// Legacy Dictate Prompt. Non-empty means it replaces the built-in instructions entirely.
+  /// Legacy Dictate Prompt, trimmed. Empty when the section is missing or blank.
+  /// Whether that text replaces the built-in is `legacyReplacesBuiltIn`, not "non-empty".
   func loadLegacyDictatePrompt() -> String {
     loadSection(.promptMode)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
+  /// A legacy full prompt replaces the built-in core only when it is the user's own text.
+  /// Blank text and any wording this app has shipped, including a copy that differs only by
+  /// surrounding whitespace, count as empty so the core and the additions apply.
+  static func legacyReplacesBuiltIn(_ legacy: String, section: SystemPromptSection) -> Bool {
+    let trimmed = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return false }
+    if SystemPromptDefaultsHistory.isShippedDefault(legacy, for: section) { return false }
+    if SystemPromptDefaultsHistory.isShippedDefault(trimmed, for: section) { return false }
+    return true
+  }
+
   /// The legacy full prompt that replaces the built-in for this additions section, when one is active.
+  /// Active means `legacyReplacesBuiltIn` on the paired legacy section (`.dictation` or `.promptMode`).
   func legacyFullPrompt(for additionsSection: SystemPromptSection) -> String? {
     Self.legacyFullPrompt(for: additionsSection, in: loadAllSections() ?? [:])
   }
 
   /// Same, from sections already read with `loadAllSections`, so a caller that needs several
-  /// sections does not read the file once per lookup.
+  /// sections does not read the file once per lookup. Nil when the legacy text is blank or a
+  /// shipped default: those do not replace the built-in.
   static func legacyFullPrompt(
     for additionsSection: SystemPromptSection, in sections: [SystemPromptSection: String]
   ) -> String? {
     guard let legacy = additionsSection.promptPair?.legacy else { return nil }
     let text = (sections[legacy] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    return text.isEmpty ? nil : text
+    guard legacyReplacesBuiltIn(text, section: legacy) else { return nil }
+    return text
   }
 
   /// Turns a legacy full prompt into additions. Strips a shipped core when every line of some

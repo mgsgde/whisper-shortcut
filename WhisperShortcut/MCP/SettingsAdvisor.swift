@@ -395,11 +395,22 @@ enum SettingsAdvisor {
   }
 
   /// The Settings tab that holds a finding's setting, when that is certain.
+  ///
+  /// Prefixes whose settings all live on one tab map together. `dictation` does not: the Fn key
+  /// (`dictation.fn_key`) is on General, the transcription model (`dictation.transcription_model`)
+  /// is on Dictate. Any other `dictation.*` id, and anything that is not one setting on one tab
+  /// (for example MCP-only `recent_interactions`), stays nil.
   static func settingsTab(forFindingID id: String) -> SettingsTab? {
+    switch id {
+    case "dictation.fn_key": return .general
+    case "dictation.transcription_model": return .speechToText
+    default: break
+    }
     switch id.split(separator: ".").first.map(String.init) {
     case "privacy", "permission": return .permissions
     case "dictate_prompt", "writing_style": return .speechToPrompt
-    case "general": return .general
+    case "general", "clipboard": return .general
+    case "chat": return .chat
     default: return nil
     }
   }
