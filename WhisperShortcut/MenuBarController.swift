@@ -2078,6 +2078,7 @@ class MenuBarController: NSObject {
   /// and the Screen Recording check: a service selection is never read from a screenshot.
   /// Invoking it again while recording stops the recording, the same way the shortcut does.
   func dictatePromptFromService(text: String) {
+    if DictationOnlyMode.blocks("Dictate Prompt (service)") { return }
     switch availability(.dictatePrompt) {
     case .start:
       let isMeeting = isLiveMeetingActive

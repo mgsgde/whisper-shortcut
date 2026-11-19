@@ -369,7 +369,8 @@ enum ModelImporter {
   static func byteCount(at directory: URL) -> Int64 {
     let fm = FileManager.default
     guard let enumerator = fm.enumerator(
-      at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+      at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey],
+      options: [.skipsHiddenFiles])
     else { return 0 }
     var total: Int64 = 0
     for case let url as URL in enumerator {
@@ -559,7 +560,8 @@ enum ModelImporter {
 
     if values.isDirectory == true {
       try fm.createDirectory(at: to, withIntermediateDirectories: true)
-      for child in try fm.contentsOfDirectory(at: from, includingPropertiesForKeys: nil) {
+      for child in try fm.contentsOfDirectory(
+        at: from, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
         try copyDereferencing(
           child, to: to.appendingPathComponent(child.lastPathComponent), onBytes: onBytes)
       }

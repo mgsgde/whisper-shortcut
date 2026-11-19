@@ -138,6 +138,28 @@ struct FixedPromptCoreTests {
     #expect(unchanged.additions == "")
   }
 
+  @Test("strippingAnyShippedLines keeps a reworded line and a user line, and drops an orphan header")
+  func strippingAnyShippedLines() {
+    let setALines = ["Alpha line one.", "Beta line two.", "Gamma line three."]
+    let setA = Set(setALines.map { SystemPromptDefaultsHistory.fingerprint($0) })
+    let reworded = "Beta line two, rewritten."
+    let user = "Keep this user line."
+    let mixed = ["Alpha line one.", reworded, "Gamma line three.", user].joined(separator: "\n")
+    let kept = SystemPromptsStore.strippingAnyShippedLines(mixed, lineSets: [setA])
+    #expect(kept.contains(reworded))
+    #expect(kept.contains(user))
+    #expect(!kept.contains("Alpha line one."))
+    #expect(!kept.contains("Gamma line three."))
+
+    let child = "Shipped child line."
+    let childSet = Set([SystemPromptDefaultsHistory.fingerprint(child)])
+    let dropped = SystemPromptsStore.strippingAnyShippedLines(
+      "Rules:\n\(child)\n\(user)", lineSets: [childSet])
+    #expect(dropped == user)
+    #expect(!dropped.contains("Rules:"))
+    #expect(!dropped.contains(child))
+  }
+
   @Test("convertLegacyToAdditions strips a core when it can, otherwise moves the whole prompt")
   func convertLegacy() throws {
     let rule = "FIXED-PROMPT-RULE-ANAMNESE: use the headings Anamnese, Befund and Therapie."

@@ -95,7 +95,7 @@ struct ModelImportSection: View {
   /// The user's Hugging Face cache, or LM Studio's models folder if that is the one that exists.
   private static var defaultImportDirectory: URL? {
     let fm = FileManager.default
-    let home = fm.homeDirectoryForCurrentUser
+    let home = URL(fileURLWithPath: AppConstants.realHomeDirectory, isDirectory: true)
     for candidate in [".cache/huggingface/hub", ".lmstudio/models"] {
       let url = home.appendingPathComponent(candidate)
       if fm.fileExists(atPath: url.path) { return url }
