@@ -1832,7 +1832,7 @@ class MenuBarController: NSObject {
       ownTextWindowAtRecordStart = Self.ownFocusedTextWindowNumber()
       // For the usage log's appBundleId/appName. Our own windows (the Chat input) are not a
       // target app worth naming.
-      let isOwn = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+      let isOwn = frontmost?.isCurrentProcess == true
       ContextLogger.shared.noteRecordingTarget(
         frontmost.flatMap { isOwn ? nil : InteractionTargetApp(bundleId: $0.bundleIdentifier, name: $0.localizedName) })
     }
@@ -3948,7 +3948,7 @@ class MenuBarController: NSObject {
     // One row per user request, here at the single entry every Read Aloud path goes through.
     let readAloudModel = ReadAloudPreferences.model
     let frontmost = NSWorkspace.shared.frontmostApplication
-    let isOwnApp = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+    let isOwnApp = frontmost?.isCurrentProcess == true
     ContextLogger.shared.logReadAloud(
       text: text, model: readAloudModel.rawValue, voice: ReadAloudPreferences.voice(for: readAloudModel),
       app: frontmost.flatMap { isOwnApp ? nil : InteractionTargetApp(bundleId: $0.bundleIdentifier, name: $0.localizedName) })
@@ -4088,7 +4088,7 @@ class MenuBarController: NSObject {
     // user's selection, so a later snapshot would "restore" that instead of what they copied.
     captureClipboardRestorePointIfEnabled()
     // At press time, on the main actor: a WhisperShortcut window in front receives the ⌘C.
-    let ownAppFrontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier
+    let ownAppFrontmost = NSWorkspace.shared.isOwnAppFrontmost
     if ownAppFrontmost {
       DebugLogger.log("\(logPrefix): WhisperShortcut window was frontmost at press — ⌘C cannot see the other app's selection")
     }
