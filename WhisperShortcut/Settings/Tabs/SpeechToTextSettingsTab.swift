@@ -45,6 +45,9 @@ struct SpeechToTextSettingsTab: View {
       SpacedSectionDivider()
       #endif
 
+      // Only shown with a second microphone attached (or a choice stored); brings its own divider.
+      MicrophoneSection()
+
       dictationOnlyLanguageSection
       SpacedSectionDivider()
 
@@ -107,6 +110,9 @@ struct SpeechToTextSettingsTab: View {
 
       SpacedSectionDivider()
       #endif
+
+      // Only shown with a second microphone attached (or a choice stored); brings its own divider.
+      MicrophoneSection()
 
       // Transcription Model Section
       modelSection

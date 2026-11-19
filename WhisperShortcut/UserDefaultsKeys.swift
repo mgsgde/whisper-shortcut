@@ -92,6 +92,8 @@ enum UserDefaultsKeys {
   // MARK: - Microphone
   /// CoreAudio UID of the chosen input; absent means follow the macOS default.
   static let selectedMicrophoneUID = "selectedMicrophoneUID"
+  /// Display name of that device when it was chosen; names it in Settings while it is unplugged.
+  static let selectedMicrophoneName = "selectedMicrophoneName"
 
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
