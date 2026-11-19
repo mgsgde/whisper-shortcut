@@ -32,7 +32,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 
 **Writing with your voice**
 - **Dictate Prompt**: select text and say "make this shorter" or "translate to English". With nothing selected, it writes what you ask for, in your own writing style if you turn that on.
-- **Templates**: dictate into a fixed format you set up once, such as a clinical note with Anamnese, Befund and Therapie.
+- **Templates**: dictate into a fixed format you set up once, such as a clinical note with Anamnese, Befund and Therapie. One template can also hold several related formats that you pick by saying their name first, for example "CT" or "Servicebericht" in an inspection-report template.
 - **Read Aloud**: select any text and hear it, with cloud voices or on-device ones, from a small player with pause, skip and speed.
 - **Read Aloud Prompt**: select text and say what you want to hear, such as "summarize this in two sentences" or "read it in English". The answer is read aloud instead of pasted. With nothing selected, it reads out the answer to your question.
 
@@ -40,7 +40,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 - **Chat**: a chat window (⌥Space) with every supported model, screenshots, files, web search and YouTube videos. It works with Google Calendar, Tasks and Gmail, Trello, IMAP mailboxes and folders you share, including your `AGENTS.md` / `CLAUDE.md` context files.
 - **Improve**: type `/improve` or click Improve in an empty chat. The Chat reviews your settings (features that are off, missing permissions, models) and, with "Save usage data" on, your recent dictations, and suggests one change at a time, a setting, a glossary term or a rule, which you approve before it changes anything. It runs on a strong model (Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol, whichever you have a key for) while the review lasts; your usual chat model stays as it is. A chip next to the model picker shows the review model: switch to another one there, continue with your own, or end the review with ✕. Your pick is remembered for the next review.
 - **Live Meeting**: records your meeting (with headphones too), transcribes it as it goes, writes live notes into the chat and answers questions about anything said so far.
-- **Claude, Claude Code and Codex over MCP**: connect them with one click. They read your meetings, even the one running right now, and tune your dictation from your logs, one glossary term or rule at a time that you approve. Examples at [whispershortcut.com/mcp](https://whispershortcut.com/mcp).
+- **Claude, Claude Code and Codex over MCP**: connect them with one click. They read your meetings, even the one running right now, and tune your dictation from your logs, one glossary term or rule at a time that you approve. They can also list every shortcut that is taken (including Dictate Live and each template's key) and create, change or delete Templates, with your approval unless you allowed them to apply changes. Examples at [whispershortcut.com/mcp](https://whispershortcut.com/mcp).
 
 **Privacy**
 - **Offline Mode**: one switch that keeps everything on your Mac. Dictation, Dictate Prompt, Chat and Read Aloud run on-device, network requests the app builds are blocked, and nothing is written to the usage log. Built for regulated dictation such as patient findings.
@@ -55,7 +55,7 @@ Dictate and Dictate Prompt have built-in instructions that always apply, because
 - **Belongs there**: who you are and your field ("I work in hospital IT"), tone per app ("Teams messages short and informal"), spelling and list style ("no em dashes").
 - **Does not belong there**: a whole prompt. Don't start with "You are…" or "Your task…", and don't paste a dictation prompt into Dictate Prompt. The mode stays the same; only the result changes.
 - **Single names and terms** go in the Glossary.
-- **A different output format** for one job, such as a clinical note, goes in a Template. A template replaces the instructions for that one recording.
+- **A different output format** for one job, such as a clinical note, goes in a Template. A template replaces the instructions for that one recording, has its own shortcut and does not run through Dictate Prompt.
 
 Settings, Chat and connected AI apps show a warning when the additions read like a whole prompt. Full prompts from earlier versions that replace the built-in instructions keep working and show a button to convert them.
 
