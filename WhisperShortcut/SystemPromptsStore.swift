@@ -204,10 +204,18 @@ final class SystemPromptsStore {
     let legacyText = (parsed[pair.legacy] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !legacyText.isEmpty else { return false }
     let sets = SystemPromptDefaultsHistory.shippedLineSets[pair.legacy] ?? []
-    let moved = Self.strippingShippedCore(legacyText, lineSets: sets) ?? legacyText
+    let outcome = Self.migrateLegacyPrompt(legacyText, section: pair.legacy, lineSets: sets)
+    let moved: String
+    switch outcome.caseNumber {
+    case 1: moved = ""
+    case 2: moved = outcome.additions
+    default: moved = Self.strippingAnyShippedLines(legacyText, lineSets: sets)
+    }
     let existing = (parsed[pair.additions] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     parsed[pair.legacy] = ""
-    parsed[pair.additions] = existing.isEmpty ? moved : moved + "\n\n" + existing
+    if !moved.isEmpty {
+      parsed[pair.additions] = existing.isEmpty ? moved : moved + "\n\n" + existing
+    }
     guard write(formatContent(parsed), reason: "convert legacy \(pair.legacy.rawValue) to additions") else { return false }
     recordChanges(from: before, source: .settings)
     NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
@@ -752,10 +760,23 @@ final class SystemPromptsStore {
     }
     let matches = lineSets.filter { !$0.isEmpty && $0.isSubset(of: present) }
     guard let best = matches.max(by: { $0.count < $1.count }) else { return nil }
+    return dropping(best, from: text)
+  }
+
+  /// Lines of `text` minus every line that appears in any shipped core. Same header, newline
+  /// and trim rules as `strippingShippedCore`.
+  static func strippingAnyShippedLines(_ text: String, lineSets: [Set<String>]) -> String {
+    dropping(Set(lineSets.joined()), from: text)
+  }
+
+  /// Drops lines whose fingerprint is in `fingerprints` (empty-normalised lines stay), then a
+  /// ":" header whose next line was dropped. Collapses runs of 3 or more newlines and trims.
+  private static func dropping(_ fingerprints: Set<String>, from text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
     var drop = Array(repeating: false, count: lines.count)
     for (index, line) in lines.enumerated() {
       let norm = SystemPromptDefaultsHistory.normalized(line)
-      if !norm.isEmpty, best.contains(SystemPromptDefaultsHistory.fingerprint(line)) {
+      if !norm.isEmpty, fingerprints.contains(SystemPromptDefaultsHistory.fingerprint(line)) {
         drop[index] = true
       }
     }
