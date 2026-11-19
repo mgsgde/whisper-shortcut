@@ -51,6 +51,28 @@ enum QuickActionReturn: Equatable {
   case notHandled
 }
 
+/// Dictate Prompt: screen context that went to the model with this request, beyond the voice and
+/// the selection the user already knows about. The processing pill shows one symbol per member.
+struct PromptContextSent: OptionSet, Equatable {
+  let rawValue: Int
+  /// The text of the field around the cursor ("Text um den Cursor").
+  static let fieldText = PromptContextSent(rawValue: 1 << 0)
+  /// An image of the front window ("Fensterbild").
+  static let windowImage = PromptContextSent(rawValue: 1 << 1)
+
+  /// Symbol and spoken/hover description for each member, in display order.
+  var symbols: [(name: String, label: String)] {
+    var result: [(name: String, label: String)] = []
+    if contains(.fieldText) {
+      result.append(("text.cursor", String(localized: "The text around the cursor was sent as context")))
+    }
+    if contains(.windowImage) {
+      result.append(("macwindow", String(localized: "An image of the front window was sent as context")))
+    }
+    return result
+  }
+}
+
 final class RecordingIndicatorModel: ObservableObject {
   static let barCount = 10
 
@@ -70,6 +92,8 @@ final class RecordingIndicatorModel: ObservableObject {
   /// `.processing` only: how far on-device Read Aloud synthesis is (0…1) while it holds audio
   /// back to pre-buffer. nil shows the indeterminate spinner.
   @Published var processingProgress: Double?
+  /// `.processing` only: screen context the running Dictate Prompt request carries.
+  @Published var promptContext: PromptContextSent = []
   /// `.speaking` only: the rate currently applied to playback.
   @Published var speed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
   /// `.speaking` only: playhead, total length and received audio, in seconds of source audio.
@@ -810,6 +834,16 @@ private struct QuickActionCardView: View {
   }
 }
 
+/// Layout of the Dictate Prompt context symbols at the end of the processing pill.
+enum ContextSymbolMetrics {
+  static let iconWidth: CGFloat = 14
+  static let spacing: CGFloat = 4
+  /// Width each symbol adds to the pill.
+  static let slot: CGFloat = iconWidth + spacing
+  /// Gap between the status word and the first symbol (the HStack already spaces by 8).
+  static let leadingGap: CGFloat = 12
+}
+
 struct RecordingIndicatorView: View {
   @ObservedObject var model: RecordingIndicatorModel
   let onCancel: () -> Void
@@ -842,11 +876,14 @@ struct RecordingIndicatorView: View {
     showsQuickActions: Bool,
     hasTemplate: Bool = false,
     templateChoiceCount: Int = 0,
-    inputDeviceName: String? = nil
+    inputDeviceName: String? = nil,
+    contextSymbolCount: Int = 0
   ) -> CGSize {
     let cardVisible = showsQuickActions && phase == .recording
       && (!quickActions.isEmpty || hasTemplate)
-    guard cardVisible else { return pillSize(for: phase, inputDeviceName: inputDeviceName) }
+    guard cardVisible else { return pillSize(
+      for: phase, inputDeviceName: inputDeviceName, contextSymbolCount: contextSymbolCount)
+    }
     // A template recording lists only the picker's templates, and never the field.
     let height = hasTemplate
       ? QuickActionCardMetrics.height(count: templateChoiceCount, field: false)
@@ -857,12 +894,18 @@ struct RecordingIndicatorView: View {
   /// The pill grows with a status word so the user can tell listening from transcribing
   /// without decoding icons (Wispr Flow Bar / Superwhisper parity). The recording pill also
   /// grows to name the live microphone (implementer queue row 68, step 1).
-  static func pillSize(for phase: RecordingIndicatorPhase, inputDeviceName: String? = nil) -> CGSize {
+  /// The processing pill also grows by one slot per Dictate Prompt context symbol.
+  static func pillSize(
+    for phase: RecordingIndicatorPhase, inputDeviceName: String? = nil, contextSymbolCount: Int = 0
+  ) -> CGSize {
     switch phase {
     case .recording:
       let deviceExtra = inputDeviceName.map { Self.inputDeviceSuffixWidth($0) } ?? 0
       return CGSize(width: 218 + deviceExtra, height: 40)
-    case .processing: return CGSize(width: 168, height: 40)
+    case .processing:
+      let contextExtra = contextSymbolCount == 0
+        ? 0 : ContextSymbolMetrics.leadingGap + CGFloat(contextSymbolCount) * ContextSymbolMetrics.slot
+      return CGSize(width: 168 + contextExtra, height: 40)
     case .speaking: return CGSize(width: 420, height: 40)
     }
   }
@@ -877,14 +920,17 @@ struct RecordingIndicatorView: View {
   }
 
   var body: some View {
-    let pill = Self.pillSize(for: model.phase, inputDeviceName: model.inputDeviceName)
+    let pill = Self.pillSize(
+      for: model.phase, inputDeviceName: model.inputDeviceName,
+      contextSymbolCount: model.promptContext.symbols.count)
     let panel = Self.panelSize(
       phase: model.phase,
       quickActions: model.quickActions,
       showsQuickActions: model.quickActionsVisible,
       hasTemplate: model.templateName != nil,
       templateChoiceCount: model.visibleTemplateChoices.count,
-      inputDeviceName: model.inputDeviceName)
+      inputDeviceName: model.inputDeviceName,
+      contextSymbolCount: model.promptContext.symbols.count)
     Group {
       if panel != pill {
         QuickActionCardView(
@@ -950,6 +996,21 @@ struct RecordingIndicatorView: View {
         Text(model.statusLabel)
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
+        let symbols = model.promptContext.symbols
+        if !symbols.isEmpty {
+          HStack(spacing: ContextSymbolMetrics.spacing) {
+            ForEach(symbols, id: \.name) { symbol in
+              Image(systemName: symbol.name)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.6))
+                .frame(width: ContextSymbolMetrics.iconWidth)
+                .help(symbol.label)
+                .accessibilityLabel(symbol.label)
+            }
+          }
+          .padding(.leading, ContextSymbolMetrics.leadingGap - 8)
+          .transition(.opacity)
+        }
       case .speaking:
         PillCircleButton(
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
@@ -1151,6 +1212,7 @@ final class RecordingIndicatorManager {
     }
     model.resetLevels()
     model.statusLabel = label
+    model.promptContext = []
     // Read at show time, not once at launch: the default input changes with every
     // headset connect/disconnect, and the pill must name the device this recording uses.
     model.inputDeviceName = AudioInputDeviceCatalog.defaultInputDeviceName()
@@ -1211,6 +1273,15 @@ final class RecordingIndicatorManager {
     if model.scrubPosition == nil { model.position = position }
   }
 
+  /// Dictate Prompt: names the screen context this request sends, as symbols on the processing
+  /// pill. Called once per request, after the context is captured; cleared by the next recording
+  /// and once the pill has faded out, so it never carries over into another run.
+  func showPromptContext(_ sent: PromptContextSent) {
+    guard model.promptContext != sent else { return }
+    model.promptContext = sent
+    if isVisible, let panel { position(panel) }
+  }
+
   /// Read Aloud: on-device synthesis progress while audio is held back to pre-buffer.
   func updateProcessingProgress(_ fraction: Double) {
     guard model.phase == .processing else { return }
@@ -1228,6 +1299,7 @@ final class RecordingIndicatorManager {
     stopKeepingInFront()
     guard isVisible, let panel else {
       isVisible = false
+      model.promptContext = []
       return
     }
     isVisible = false
@@ -1239,6 +1311,7 @@ final class RecordingIndicatorManager {
       // hide the pill that just came back.
       guard let self, !self.isVisible else { return }
       panel.orderOut(nil)
+      self.model.promptContext = []
     }
   }
 
@@ -1636,7 +1709,8 @@ final class RecordingIndicatorManager {
       showsQuickActions: model.quickActionsVisible,
       hasTemplate: model.templateName != nil,
       templateChoiceCount: model.visibleTemplateChoices.count,
-      inputDeviceName: model.inputDeviceName)
+      inputDeviceName: model.inputDeviceName,
+      contextSymbolCount: model.promptContext.symbols.count)
     return NSSize(width: size.width, height: size.height)
   }
 
