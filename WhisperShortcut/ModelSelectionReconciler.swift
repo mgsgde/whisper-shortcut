@@ -462,16 +462,19 @@ enum ModelSelectionReconciler {
   /// Cloud Read Aloud models in preference order. Not `readAloudModels`: that list is filtered by
   /// Offline Mode and starts with the macOS voice.
   private static let readAloudCloudPreference: [TTSModel] = [
-    .gemini38FlashLiteTTS, .gemini38FlashTTS, .grokVoiceTTS,
+    .gemini38FlashLiteTTS, .gemini38FlashTTS, .grokVoiceTTS, .openAIRealtimeMiniTTS,
   ]
 
-  /// Where a retired Read Aloud model moves. The 2026-11-03 audit's option A: Gemini 3.8
-  /// Flash-Lite TTS is measured and free of the shutdown; an OpenAI-only user gets the macOS
-  /// voice. xAI was not measured as a stand-in. Nil for every model still offered.
+  /// Where a retired Read Aloud model moves. gpt-4o-mini-tts (deprecated 2026-10-01, shutdown
+  /// 2027-01-06) forwards to OpenAI's own named replacement, gpt-realtime-2.1-mini via the
+  /// Realtime API, whenever the OpenAI key is there; an OpenAI-less user gets the measured
+  /// Gemini 3.8 Flash-Lite TTS (2026-11-03 audit, option A), else the macOS voice. xAI was not
+  /// measured as a stand-in. Nil for every model still offered.
   nonisolated static func retiredReadAloudReplacement(
     for model: TTSModel, hasKey: (TTSProvider) -> Bool
   ) -> TTSModel? {
     guard model == .openAIGpt4oMiniTTS else { return nil }
+    if hasKey(.openai) { return .openAIRealtimeMiniTTS }
     return hasKey(.gemini) ? .gemini38FlashLiteTTS : .systemMacOS
   }
 
@@ -506,7 +509,7 @@ enum ModelSelectionReconciler {
       UserDefaults.standard.set(replacement.rawValue, forKey: key)
       UserDefaults.standard.removeObject(forKey: recordKey)
       DebugLogger.log(
-        "MODEL-RECONCILE: \(key): gpt-4o-mini-tts → \(replacement.rawValue) (retired, shutdown 2027-01-06)")
+        "MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (retired, shutdown 2027-01-06)")
       return
     }
     let storedPrevious = UserDefaults.standard.string(forKey: recordKey)
