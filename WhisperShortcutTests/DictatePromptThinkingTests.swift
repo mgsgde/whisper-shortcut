@@ -10,6 +10,8 @@ struct DictatePromptThinkingTests {
     #expect(PromptModel.gemini38Flash.dictatePromptThinkingLevel == "low")
     #expect(PromptModel.gemini31Pro.dictatePromptThinkingLevel == "low")
     #expect(PromptModel.gemini4Argon.dictatePromptThinkingLevel == "low")
+    #expect(PromptModel.gemini4Hydrogen.dictatePromptThinkingLevel == "low")
+    #expect(PromptModel.gemini4Neon.dictatePromptThinkingLevel == "low")
     #expect(PromptModel.gemini31FlashLite.dictatePromptThinkingLevel == "minimal")
     #expect(PromptModel.openaiGPT6Sol.dictatePromptThinkingLevel == nil)
   }
@@ -20,7 +22,7 @@ struct DictatePromptThinkingTests {
     let schema: [String: Any] = ["type": "object", "properties": [:] as [String: Any]]
     let contents: [[String: Any]] = [["role": "user", "parts": [["text": "x"]]]]
     let sendsLow: [PromptModel] = [
-      .gemini4Argon, .gemini31Pro, .gemini38Flash, .gemini31FlashLite, .gemini35FlashLite,
+      .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini38Flash, .gemini31FlashLite, .gemini35FlashLite,
     ]
     let sendsNone: [PromptModel] = [.geminiImage, .geminiImagePro]
     let gemini = PromptModel.allCases.filter { $0.provider == .gemini }

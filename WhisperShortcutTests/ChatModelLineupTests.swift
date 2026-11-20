@@ -80,6 +80,8 @@ struct ChatModelLineupTests {
     ("gemini 3", PromptModel.gemini38Flash),
     ("3.1 flash lite", PromptModel.gemini31FlashLite),
     ("/gemini argon", PromptModel.gemini4Argon),
+    ("/gemini hydrogen", PromptModel.gemini4Hydrogen),
+    ("/gemini neon", PromptModel.gemini4Neon),
     ("gemini 4", PromptModel.gemini4Argon),
     ("3.7", PromptModel.gemini38Flash),
   ])

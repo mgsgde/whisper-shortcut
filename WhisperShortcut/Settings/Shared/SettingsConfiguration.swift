@@ -102,6 +102,15 @@ enum ChatModelProvider: String, CaseIterable {
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
   case gemini4Argon = "gemini-4-argon"
+  /// Added 2026-11-20. Prices from https://ai.google.dev/gemini-api/docs/pricing (verified 2026-11-20):
+  /// $1.50/$7.50 per 1M tokens, 1M context. Not the default: chat benchmark 2026-11-20
+  /// (scripts/benchmark-chat-latency.py, 36 calls, grounding on, thinking low) measured
+  /// time-to-first-token median 5809 ms vs 3453 ms for gemini-3.8-flash, with 3/36 errors.
+  /// Revisit before 2027-01-01, when gemini-3.8-flash rises to $1.50/$7.50 (same as Hydrogen).
+  case gemini4Hydrogen = "gemini-4-hydrogen"
+  /// Added 2026-11-20. Prices from https://ai.google.dev/gemini-api/docs/pricing (verified 2026-11-20):
+  /// $3/$15 per 1M tokens, 1M context. Note: gemini-4-argon rises to $4/$20 on 2026-12-01, Neon stays $3/$15.
+  case gemini4Neon = "gemini-4-neon"
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35FlashLite = "gemini-3.5-flash-lite"
@@ -228,6 +237,10 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini4Argon:
       return "Gemini 4 Argon"
+    case .gemini4Hydrogen:
+      return "Gemini 4 Hydrogen"
+    case .gemini4Neon:
+      return "Gemini 4 Neon"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
@@ -290,6 +303,8 @@ enum PromptModel: String, CaseIterable {
   var shortAlias: String {
     switch self {
     case .gemini4Argon:      return "gemini4argon"
+    case .gemini4Hydrogen:   return "gemini4hydrogen"
+    case .gemini4Neon:       return "gemini4neon"
     case .gemini31Pro:       return "gemini31pro"
     case .gemini31FlashLite: return "gemini31flashlite"
     case .gemini35FlashLite: return "gemini35flashlite"
@@ -320,6 +335,10 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini4Argon:
       return String(localized: "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier) • Multimodal")
+    case .gemini4Hydrogen:
+      return String(localized: "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 tier ($1.50/$7.50 per 1M) • 1M context • Google Search grounding • Audio input")
+    case .gemini4Neon:
+      return String(localized: "Google's Gemini 4 Neon • Frontier-level intelligence with fast task completion ($3/$15 per 1M) • 1M context • Google Search grounding • Audio input")
     case .gemini31Pro:
       return String(localized: "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal")
     case .gemini31FlashLite:
@@ -380,11 +399,11 @@ enum PromptModel: String, CaseIterable {
       return .medium
     case .grok43, .grok47:
       return .medium
-    case .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT61Terra, .claudeSonnet55:
+    case .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT61Terra, .claudeSonnet55, .gemini4Hydrogen:
       return .medium
     case .openaiGPT5Mini, .openaiGPT6Luna:
       return .low
-    case .gemini4Argon, .claudeOpus55:
+    case .gemini4Argon, .gemini4Neon, .claudeOpus55:
       return .high
     }
   }
@@ -394,7 +413,7 @@ enum PromptModel: String, CaseIterable {
     // newly added non-Gemini case silently claimed the Gemini credential and endpoint. Let the
     // compiler force the decision instead.
     switch self {
-    case .gemini4Argon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
+    case .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .geminiImage, .geminiImagePro:
       return .gemini
     case .grok43, .grok47:
@@ -595,6 +614,12 @@ enum PromptModel: String, CaseIterable {
     case .gemini4Argon:
       // Argon documents thinkingLevel low/medium/high only (no minimal).
       return ["thinkingLevel": "high"]
+    case .gemini4Hydrogen:
+      // Documented levels: low/medium/high/xhigh (no minimal).
+      return ["thinkingLevel": "low"]
+    case .gemini4Neon:
+      // Documented levels: low/medium/high/xhigh (no minimal).
+      return ["thinkingLevel": "medium"]
     case .gemini31Pro:
       return ["thinkingLevel": "high"]
     case .gemini38Flash:
@@ -649,6 +674,10 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .gemini4Argon:
       return .gemini4Argon
+    case .gemini4Hydrogen:
+      return .gemini4Hydrogen
+    case .gemini4Neon:
+      return .gemini4Neon
     case .gemini31Pro:
       return .gemini31Pro
     case .gemini31FlashLite:
@@ -846,7 +875,7 @@ enum PromptModel: String, CaseIterable {
   /// before it was removed. Argon documents low/medium/high only.
   var geminiRejectsMinimalThinking: Bool {
     switch self {
-    case .gemini4Argon, .gemini31Pro, .gemini38Flash: return true
+    case .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini38Flash: return true
     default: return false
     }
   }

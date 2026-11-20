@@ -44,8 +44,8 @@ enum TranscriptionTuning {
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite,
-// gemini-3.8-flash, gemini-4-argon. Preview (keep -preview): gemini-3.1-pro-preview.
-// gemini-3.1-pro-preview and gemini-4-argon are present but **not offered for dictation**,
+// gemini-3.8-flash, gemini-4-argon, gemini-4-hydrogen, gemini-4-neon. Preview (keep -preview): gemini-3.1-pro-preview.
+// gemini-3.1-pro-preview and the gemini-4-* models (argon, hydrogen, neon) are present but **not offered for dictation**,
 // see `isSelectableForDictation`.
 // gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
 // gemini-3.5-flash-lite as the replacement. We deliberately do not follow that pointer — see the
@@ -65,6 +65,10 @@ enum TranscriptionModel: String, CaseIterable {
   /// Not selectable for dictation — flagship reasoning is far too slow and expensive for it.
   /// The case stays so `PromptModel.asTranscriptionModel` can resolve the Gemini endpoint.
   case gemini4Argon = "gemini-4-argon"
+  /// Not selectable for dictation (chat-only tier, see `PromptModel.gemini4Hydrogen`).
+  case gemini4Hydrogen = "gemini-4-hydrogen"
+  /// Not selectable for dictation (chat-only tier, see `PromptModel.gemini4Neon`).
+  case gemini4Neon = "gemini-4-neon"
   /// **Not selectable for dictation** — excluded from every picker via `isSelectableForDictation`,
   /// and persisted selections are migrated away. The case survives only because `PromptModel`
   /// borrows this enum to resolve its Gemini endpoint (`PromptModel.asTranscriptionModel`), which
@@ -124,6 +128,10 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini4Argon:
       return "Gemini 4 Argon"
+    case .gemini4Hydrogen:
+      return "Gemini 4 Hydrogen"
+    case .gemini4Neon:
+      return "Gemini 4 Neon"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
@@ -198,10 +206,10 @@ enum TranscriptionModel: String, CaseIterable {
   /// offering it meant a five-minute freeze for anyone who dictated a short phrase.
   /// Detail: plans/model-audits/2026-08-03-audit.md.
   /// Gemini 4 Argon is flagship reasoning, far too slow and expensive for dictation, so it stays
-  /// out of the pickers the same way.
+  /// out of the pickers the same way. Hydrogen and Neon are chat-only tiers and stay out too.
   var isSelectableForDictation: Bool {
     switch self {
-    case .gemini4Argon, .gemini31Pro: return false
+    case .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro: return false
     // Dominated by gpt-transcribe in the 2026-11-03 audit; stored selections forward to it.
     case .openAIGPT4oTranscribe: return false
     // Whisper Medium and Large v3 are superseded by turbo (see `OfflineModelType.isSuperseded`).
@@ -260,7 +268,7 @@ enum TranscriptionModel: String, CaseIterable {
     // Language-dependent (Parakeet covers 25 languages); one source of truth for both pickers.
     case .parakeetUltra, .whisperLargeTurbo:
       return offlineModelType?.isRecommended ?? false
-    case .gemini4Argon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
+    case .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
          .whisperLarge, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription, .qwen3ASR:
@@ -273,8 +281,10 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash:
       return .low
-    case .gemini4Argon:
+    case .gemini4Argon, .gemini4Neon:
       return .high
+    case .gemini4Hydrogen:
+      return .medium
     case .gemini31Pro:
       return .medium
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
@@ -299,6 +309,10 @@ enum TranscriptionModel: String, CaseIterable {
     switch self {
     case .gemini4Argon:
       return String(localized: "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier)")
+    case .gemini4Hydrogen:
+      return String(localized: "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 tier • Paid (no free tier)")
+    case .gemini4Neon:
+      return String(localized: "Google's Gemini 4 Neon • Frontier-level intelligence, fast • Paid (no free tier)")
     case .gemini31Pro:
       return String(localized: "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal")
     case .gemini31FlashLite:
@@ -359,8 +373,8 @@ enum TranscriptionModel: String, CaseIterable {
       return .init(
         thinkingConfig: .init(thinkingLevel: effort.geminiValue, thinkingBudget: nil),
         temperature: temperature)
-    case .gemini4Argon, .gemini31Pro, .gemini38Flash:
-      // Argon, 3.1 Pro, and 3.8 Flash reject `thinkingLevel: minimal` (HTTP 400) and
+    case .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini38Flash:
+      // Argon (Hydrogen and Neon documented the same way), 3.1 Pro, and 3.8 Flash reject `thinkingLevel: minimal` (HTTP 400) and
       // `thinkingBudget: 0` — they only run in thinking mode. Argon documents low/medium/high
       // only. `minimal` therefore means "as little as this model allows", i.e. `low`.
       // Verified live: 3.8 Flash 2026-09-06 (minimal → 400, low → 200).

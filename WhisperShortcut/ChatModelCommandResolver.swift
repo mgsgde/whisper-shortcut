@@ -131,6 +131,10 @@ enum ChatModelCommandResolver {
       } else {
         candidates = [.openaiGPT5Mini, .openaiGPT6Luna, .openaiGPT61Terra, .openaiGPT6Sol]
       }
+    } else if normalized.contains("hydrogen") {
+      candidates = [.gemini4Hydrogen]
+    } else if normalized.contains("neon") {
+      candidates = [.gemini4Neon]
     } else if normalized.contains("argon") || padded.contains(" 4 ") {
       candidates = [.gemini4Argon]
     } else if normalized.contains("3.8") {

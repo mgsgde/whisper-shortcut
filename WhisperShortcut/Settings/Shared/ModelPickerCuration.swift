@@ -187,7 +187,7 @@ extension TranscriptionModel: PickerCuratedModel {
     case .gemini31FlashLite: return 4
     case .gemini35FlashLite: return 5
     case .gemini38Flash: return 6
-    case .openAIGPT4oTranscribe, .gemini4Argon, .gemini31Pro, .whisperTiny, .whisperBase,
+    case .openAIGPT4oTranscribe, .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .whisperTiny, .whisperBase,
          .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo, .parakeetUltra,
          .qwen3ASR, .selfHostedTranscription, .openRouterTranscription:
       return nil
