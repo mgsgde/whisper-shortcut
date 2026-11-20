@@ -4,12 +4,12 @@ import Foundation
 protocol AudioRecorderDelegate: AnyObject {
   func audioRecorderDidFinishRecording(audioURL: URL)
   func audioRecorderDidFailWithError(_ error: Error)
-  /// Recording actually started (mic permission granted and AVAudioRecorder.record() succeeded).
+  /// Recording actually started (mic permission granted and record() succeeded).
   func audioRecorderDidBeginRecording()
 }
 
 /// Common surface of the Dictate recorders so MenuBarController can hold either the
-/// classic single-file AVAudioRecorder (`AudioRecorder`) or the chunk-capable
+/// classic single-file recorder (`AudioRecorder`) or the chunk-capable
 /// `ChunkedDictateRecorder` behind `AppConstants.useChunkedDictateRecorder`.
 protocol DictationAudioRecording: AnyObject {
   var delegate: AudioRecorderDelegate? { get set }
@@ -28,7 +28,7 @@ protocol DictationAudioRecording: AnyObject {
 class AudioRecorder: NSObject, DictationAudioRecording {
   weak var delegate: AudioRecorderDelegate?
 
-  private var audioRecorder: AVAudioRecorder?
+  private var audioRecorder: MicrophoneRecorder?
   private var recordingURL: URL?
 
   private var meteringTimer: Timer?
@@ -171,9 +171,8 @@ class AudioRecorder: NSObject, DictationAudioRecording {
     do {
       // On macOS, AVAudioRecorder handles audio session setup automatically
 
-      audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
+      audioRecorder = try MicrophoneRecorderFactory.make(url: audioFilename, settings: settings)
       audioRecorder?.delegate = self
-      audioRecorder?.isMeteringEnabled = true
       peakPowerDuringRecording = -160
       lastTwoMeterSamples = (-160, -160)
       meterSampleCount = 0
@@ -242,9 +241,9 @@ class AudioRecorder: NSObject, DictationAudioRecording {
   }
 }
 
-// MARK: - AVAudioRecorderDelegate
-extension AudioRecorder: AVAudioRecorderDelegate {
-  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+// MARK: - MicrophoneRecorderDelegate
+extension AudioRecorder: MicrophoneRecorderDelegate {
+  func microphoneRecorderDidFinishRecording(_ recorder: MicrophoneRecorder, successfully flag: Bool) {
     // Store URL before cleanup
     let url = recordingURL
 
@@ -294,7 +293,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
     }
   }
 
-  func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+  func microphoneRecorderEncodeErrorDidOccur(_ recorder: MicrophoneRecorder, error: Error?) {
     if let error = error {
 
       delegate?.audioRecorderDidFailWithError(error)

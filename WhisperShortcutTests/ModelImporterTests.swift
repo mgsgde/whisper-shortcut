@@ -254,6 +254,39 @@ struct ModelImporterTests {
     #expect(try String(contentsOf: imported, encoding: .utf8) == "weights")
   }
 
+  @Test("byteCount and import skip hidden cache and git folders")
+  func skipsHiddenFolders() throws {
+    let fm = FileManager.default
+    let root = try makeTempFolder()
+    defer { try? fm.removeItem(at: root) }
+
+    let source = root.appendingPathComponent("model")
+    try fm.createDirectory(at: source, withIntermediateDirectories: true)
+    let real = Data("weights".utf8)
+    try real.write(to: source.appendingPathComponent("model.safetensors"))
+    let cache = source.appendingPathComponent(".cache/huggingface/download")
+    try fm.createDirectory(at: cache, withIntermediateDirectories: true)
+    try Data(repeating: 1, count: 4_096).write(to: cache.appendingPathComponent("x.incomplete"))
+    let git = source.appendingPathComponent(".git/objects")
+    try fm.createDirectory(at: git, withIntermediateDirectories: true)
+    try Data(repeating: 2, count: 8_192).write(to: git.appendingPathComponent("y"))
+
+    #expect(ModelImporter.byteCount(at: source) == Int64(real.count))
+
+    let destination = root.appendingPathComponent("imported")
+    let plan = ModelImportPlan(
+      family: .mlx(.qwen34BInstruct2507),
+      displayName: "Qwen3 4B Instruct",
+      source: source,
+      destination: destination,
+      byteCount: Int64(real.count))
+    try ModelImporter.perform(plan) { _ in }
+
+    #expect(fm.fileExists(atPath: destination.appendingPathComponent("model.safetensors").path))
+    #expect(!fm.fileExists(atPath: destination.appendingPathComponent(".cache").path))
+    #expect(!fm.fileExists(atPath: destination.appendingPathComponent(".git").path))
+  }
+
   @Test("Importing into a complete destination is refused")
   func refusesOccupiedDestination() throws {
     let fm = FileManager.default

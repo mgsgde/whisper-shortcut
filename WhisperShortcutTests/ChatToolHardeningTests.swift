@@ -36,13 +36,20 @@ struct ChatToolHardeningTests {
   // MARK: persistent-write tools are gated
 
   @Test func rememberToolsNeedApprovalAndNeverChatWide() {
-    for name in ["remember_file_location", "remember_dictation_term"] {
+    for name in [
+      "remember_file_location", "remember_dictation_term",
+      ChatToolRegistry.forgetAboutUserToolName, "forget_file_location",
+    ] {
       #expect(ChatToolRegistry.requiresUserApproval(name))
       #expect(!ChatToolRegistry.allowsChatWideApproval(name))
     }
     let folder = ChatToolRegistry.approvalSummary(
       name: "remember_file_location", args: ["path": "~/Invoices", "note": "PDFs by year"])
     #expect(folder == "Remember folder: ~/Invoices — PDFs by year")
+    #expect(
+      ChatToolRegistry.approvalSummary(
+        name: ChatToolRegistry.forgetAboutUserToolName, args: ["matching": "employer"])
+        == "Forget: employer")
     let term = ChatToolRegistry.approvalSummary(name: "remember_dictation_term", args: ["term": "Nebius"])
     #expect(term == "Add to dictation glossary: Nebius")
   }

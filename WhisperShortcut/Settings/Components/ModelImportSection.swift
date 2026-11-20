@@ -99,11 +99,11 @@ struct ModelImportSection: View {
   /// models folder, else nowhere. `homeDirectoryForCurrentUser` is the app container in a
   /// sandboxed build, so the panel would otherwise open inside the container.
   static var defaultImportDirectory: URL? {
-    let home = AppConstants.realHomeDirectory
+    let home = URL(fileURLWithPath: AppConstants.realHomeDirectory, isDirectory: true)
     let fm = FileManager.default
-    for suffix in ["/.cache/huggingface", "/.lmstudio/models"] {
-      let path = home + suffix
-      if fm.fileExists(atPath: path) { return URL(fileURLWithPath: path, isDirectory: true) }
+    for candidate in [".cache/huggingface", ".lmstudio/models"] {
+      let url = home.appendingPathComponent(candidate)
+      if fm.fileExists(atPath: url.path) { return url }
     }
     return nil
   }

@@ -27,7 +27,7 @@
 //                                no Accessibility). Absolute path only, same rule as --audio-file.
 //    --glossary-terms "<a;b;c>"  the Glossary at launch: these terms, separated by `;`, one per line.
 //    --sample-results            one invented dictation, Prompt answer and Read Aloud, so
-//                                Send Feedback ▸ Report a Problem with Last Result… has all three.
+//                                Report a Problem… has all three.
 //
 
 import Foundation

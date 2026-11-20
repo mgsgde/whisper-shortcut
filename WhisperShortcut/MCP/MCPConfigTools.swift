@@ -133,7 +133,7 @@ struct MCPConfigTools {
 
   static let readToolNames: Set<String> = [
     "get_configuration", "get_recent_interactions", "get_config_history", "get_settings",
-    "get_proposal_status",
+    "get_proposal_status", "list_whisper_shortcut_docs", "read_whisper_shortcut_doc",
   ]
   static let writeToolNames: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
@@ -180,6 +180,28 @@ struct MCPConfigTools {
       "description": ConfigHistoryTool.description,
       "inputSchema": ConfigHistoryTool.parameters,
       "annotations": ["title": "Get Config History", "readOnlyHint": true, "openWorldHint": false],
+    ],
+    [
+      "name": "list_whisper_shortcut_docs",
+      "description":
+        "Lists WhisperShortcut's own documentation (overview, full user guide, data folders, practice playbook) with live shortcut bindings. Read these before explaining how the app works or recommending settings.",
+      "inputSchema": [
+        "type": "object",
+        "properties": [:] as [String: Any],
+      ] as [String: Any],
+      "annotations": ["title": "List WhisperShortcut Docs", "readOnlyHint": true, "openWorldHint": false],
+    ],
+    [
+      "name": "read_whisper_shortcut_doc",
+      "description": "Returns one WhisperShortcut doc by name from list_whisper_shortcut_docs.",
+      "inputSchema": [
+        "type": "object",
+        "properties": [
+          "name": ["type": "string", "description": "Doc name from list_whisper_shortcut_docs."],
+        ],
+        "required": ["name"],
+      ] as [String: Any],
+      "annotations": ["title": "Read WhisperShortcut Doc", "readOnlyHint": true, "openWorldHint": false],
     ],
     [
       "name": "get_settings",
@@ -289,7 +311,7 @@ struct MCPConfigTools {
     [
       "name": "report_problem",
       "description":
-        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Before calling, read get_configuration; if a section's warnings explain the problem, fix the configuration instead. Saves a report the user reviews in WhisperShortcut; nothing is sent unless they open it as a GitHub issue themselves. Remove names, patient, customer and other private data from the examples. The user's prompt configuration is attached automatically; point out names of patients, clients or other personal data in it so the user removes them in the review window before sending.",
+        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Before calling, read get_configuration; if a section's warnings explain the problem, fix the configuration instead. The report opens in WhisperShortcut's \"Report a Problem\" window prefilled; the user reviews it and sends it by email with their configuration attached; nothing is sent automatically. Remove names, patient, customer and other private data from the examples. The user's prompt configuration is attached automatically; point out names of patients, clients or other personal data in it so the user removes them before sending.",
       "inputSchema": [
         "type": "object",
         "properties": [
@@ -345,6 +367,8 @@ struct MCPConfigTools {
     case "get_configuration": return getConfiguration(arguments)
     case "get_recent_interactions": return getRecentInteractions(arguments)
     case "get_config_history": return getConfigHistory(arguments)
+    case "list_whisper_shortcut_docs": return listWhisperShortcutDocs()
+    case "read_whisper_shortcut_doc": return readWhisperShortcutDoc(arguments)
     case "add_glossary_terms": return addGlossaryTerms(arguments)
     case "update_system_prompt": return updateSystemPrompt(arguments)
     case "update_writing_style_profile": return updateWritingStyle(arguments)
@@ -521,6 +545,30 @@ struct MCPConfigTools {
     }
     let text = json(ConfigHistoryReader.result(rows: env.configHistory(), query: query))
     log("get_config_history", "applied", "read", len: text.count)
+    return (text, false)
+  }
+
+  // MARK: - WhisperShortcut docs
+
+  /// Same bundled docs the in-app Chat reads. Off the main thread, like `get_config_history`:
+  /// it only reads the bundle and the shortcut config.
+  private func listWhisperShortcutDocs() -> MCPToolResult {
+    let text = json(ChatToolRegistry.listDocsResult())
+    log("list_whisper_shortcut_docs", "applied", "read", len: text.count)
+    return (text, false)
+  }
+
+  private func readWhisperShortcutDoc(_ args: [String: Any]) -> MCPToolResult {
+    let tool = "read_whisper_shortcut_doc"
+    guard let name = args["name"] as? String else {
+      return reject(tool, "missing name", "Missing required argument: name")
+    }
+    let object = ChatToolRegistry.readDocResult(name: name)
+    if let error = object["error"] as? String {
+      return reject(tool, "error", error)
+    }
+    let text = json(object)
+    log(tool, "applied", "read", len: text.count)
     return (text, false)
   }
 
@@ -1011,7 +1059,7 @@ struct MCPConfigTools {
     return (json(payload), false)
   }
 
-  /// Always a proposal, at every access level above read: the user decides whether to open the issue.
+  /// Always a proposal, at every access level above read. The report window opens prefilled; nothing is sent automatically.
   private func reportProblem(_ args: [String: Any]) -> MCPToolResult {
     let title = boundedText(args, key: "title", limit: 120, required: true)
     if let e = title.error { return e }
@@ -1052,7 +1100,7 @@ struct MCPConfigTools {
           proposedContent: body, rationale: why.value!)
         log("report_problem", "proposed", len: body.count)
         return (
-          "Saved as a problem report in WhisperShortcut (id \(proposal.id)). The user decides whether to send it; nothing leaves the Mac unless they open it as a GitHub issue.",
+          "Saved as a problem report in WhisperShortcut (id \(proposal.id)). The report opens in WhisperShortcut's \"Report a Problem\" window prefilled; the user reviews it and sends it by email with their configuration attached; nothing is sent automatically.",
           false)
       } catch {
         return reject("report_problem", "too many pending", error.localizedDescription)

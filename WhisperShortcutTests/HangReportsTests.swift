@@ -10,19 +10,56 @@ struct HangReportsTests {
     #expect(HangReports.feedbackAttachment(reportURLs: [], newestContents: "unused") == nil)
   }
 
-  @Test("Attachment lists filenames and the newest excerpt")
+  @Test("Attachment names the newest recent file and inlines its excerpt")
   func attachmentListsFilesAndExcerpt() throws {
     let newest = URL(fileURLWithPath: "/tmp/hang-20260902-103000.txt")
-    let older = URL(fileURLWithPath: "/tmp/hang-20260901-090000.txt")
+    let older = URL(fileURLWithPath: "/tmp/hang-20260902-090000.txt")
     let text = HangReports.feedbackAttachment(
       reportURLs: [newest, older],
-      newestContents: "WATCHDOG: main thread hang\n0  AppKit")
+      newestContents: "WATCHDOG: main thread hang\n0  AppKit",
+      now: Self.hangInstant("20260902-103000"))
+
+    let body = try #require(text)
+    #expect(body.hasPrefix("App hang in the last 24 hours (hang-20260902-103000.txt, +1 more):"))
+    #expect(body.contains("+1 more"))
+    #expect(body.contains("WATCHDOG: main thread hang"))
+    #expect(!body.contains("Reveal Hang Reports"))
+    #expect(!body.contains("attach"))
+  }
+
+  @Test("Reports older than 24 hours produce no attachment")
+  func oldReportsProduceNoAttachment() {
+    let old = URL(fileURLWithPath: "/tmp/hang-20260901-090000.txt")
+    let now = Self.hangInstant("20260901-090000").addingTimeInterval(24 * 60 * 60 + 1)
+    #expect(HangReports.feedbackAttachment(
+      reportURLs: [old],
+      newestContents: "WATCHDOG: main thread hang",
+      now: now) == nil)
+  }
+
+  @Test("A mix keeps only the recent hang, with no extra count for one file")
+  func mixedAgesKeepOnlyTheRecentHang() throws {
+    let recent = URL(fileURLWithPath: "/tmp/hang-20260902-103000.txt")
+    let old = URL(fileURLWithPath: "/tmp/hang-20260901-090000.txt")
+    let text = HangReports.feedbackAttachment(
+      reportURLs: [recent, old],
+      newestContents: "WATCHDOG: main thread hang",
+      now: Self.hangInstant("20260902-103000"))
 
     let body = try #require(text)
     #expect(body.contains("hang-20260902-103000.txt"))
-    #expect(body.contains("hang-20260901-090000.txt"))
-    #expect(body.contains("Reveal Hang Reports"))
+    #expect(!body.contains("hang-20260901-090000.txt"))
+    #expect(!body.contains("more"))
     #expect(body.contains("WATCHDOG: main thread hang"))
+  }
+
+  private static func hangInstant(_ stamp: String) -> Date {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyyMMdd-HHmmss"
+    formatter.isLenient = false
+    return formatter.date(from: stamp)!
   }
 
   @Test("existingReportURLs only returns hang-*.txt")

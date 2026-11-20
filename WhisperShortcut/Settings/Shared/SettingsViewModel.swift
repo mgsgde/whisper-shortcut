@@ -641,14 +641,8 @@ class SettingsViewModel: ObservableObject {
   }
 
   // MARK: - Feedback
-  func openWhatsAppFeedback() {
-    FeedbackLinks.open(.whatsApp)
-  }
-
-  /// The fallback for everyone without WhatsApp — regionally common, and blocked outright on many
-  /// managed Macs, in which case the WhatsApp button is a dead end.
-  func openEmailFeedback() {
-    FeedbackLinks.open(.email)
+  func openProblemReport() {
+    ProblemReport.open(startOnGeneral: true)
   }
 
   // MARK: - App Store Link
@@ -699,13 +693,6 @@ class SettingsViewModel: ObservableObject {
     } else {
       DebugLogger.logError("GITHUB: Invalid GitHub URL")
     }
-  }
-
-  /// Prefills a new GitHub issue with version, OS, and any hang-*.txt names so the
-  /// report is actionable without a round-trip. The files themselves stay on disk;
-  /// Reveal Hang Reports is how the user attaches them.
-  func openGitHubIssue() {
-    FeedbackLinks.open(.gitHub)
   }
 
   /// Reveals `hang-*.txt` watchdog captures in Finder (the Logs folder if none exist yet).

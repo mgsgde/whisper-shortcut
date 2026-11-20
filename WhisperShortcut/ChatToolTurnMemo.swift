@@ -33,6 +33,8 @@ final class ChatToolTurnMemo {
     "list_whisper_shortcut_docs",
     "read_whisper_shortcut_doc",
     "read_clipboard",
+    ChatToolRegistry.readConfigHistoryToolName,
+    ChatToolRegistry.readRecentInteractionsToolName,
     "gmail_search",
     "gmail_read",
     "mail_search",

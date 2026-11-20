@@ -34,11 +34,15 @@
 		     per-binary "allow" password prompt. Restricted entitlement: requires a provisioning
 		     profile (Xcode-managed team profile for Debug, WhisperShortcut_DeveloperID_CI for
 		     Release). Ad-hoc builds strip it (scripts/rebuild-and-restart.sh) and KeychainManager
-		     falls back to the legacy file keychain. Follows PRODUCT_BUNDLE_IDENTIFIER, so the Debug
-		     build (….whispershortcut.dev) keeps its own keys apart from the installed release. -->
+		     falls back to the legacy file keychain. The first entry follows
+		     PRODUCT_BUNDLE_IDENTIFIER, so the Debug build (….whispershortcut.dev) keeps its own
+		     keys apart from the installed release. The second entry is the same for every build of
+		     this team: the MCP bearer tokens live there, so whichever build owns port 47823
+		     accepts the token the client already has. -->
 		<key>keychain-access-groups</key>
 		<array>
 			<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<string>$(AppIdentifierPrefix)com.magnusgoedde.whispershortcut.shared</string>
 		</array>
 
 		<!-- AppleFnUsageType in com.apple.HIToolbox ("Press 🌐 key to"). Read so Fn dictation can

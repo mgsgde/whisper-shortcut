@@ -112,6 +112,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Move leftover legacy-keychain items to the data protection keychain in one go (off-main: may block on prompts).
     DispatchQueue.global(qos: .utility).async { KeychainManager.shared.migrateLegacyItemsIfNeeded() }
 
+    // Drop report files older than 7 days. Off the main thread: the folder can hold a week's drafts.
+    DispatchQueue.global(qos: .utility).async { ReportAttachment.pruneOld() }
+
     // Prevent macOS from automatically terminating this menu bar app when
     // the system is under memory/storage pressure or cleaning container caches.
     ProcessInfo.processInfo.disableAutomaticTermination("WhisperShortcut is a persistent menu bar utility")
@@ -260,8 +263,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
-    // Usage logging ("Save usage data") is opt-in (owner decision 2026-10-19): new installs start
-    // with it off, matching the privacy promise "when on". Existing installs keep their stored value.
+    // "Save usage data" starts off at first launch; the Welcome Tour's last step turns it on for a new
+    // All-features install, in view of the switch (owner decision 2026-11-19, UsageDataTourDefault).
+    // Dictation only and Offline Mode keep it off. Existing installs keep their stored value.
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
       UserDefaults.standard.set(false, forKey: UserDefaultsKeys.contextLoggingEnabled)
     }

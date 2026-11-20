@@ -72,6 +72,103 @@ class SpeechService {
     return recentEchoStrips.filter { $0.date >= since }.map(\.tail)
   }
 
+  /// One model return, captured before glossary-echo stripping, spoken punctuation and any
+  /// other cleanup. `promptChars` and `promptHash` describe the instructions string actually
+  /// sent; both are nil when the call sent none.
+  struct RequestTrace: Equatable {
+    let date: Date
+    /// The dictation, Dictate Prompt or template run that produced this return. Nil for a
+    /// live-meeting chunk, which must never appear in another recording's report.
+    let job: UUID?
+    /// Set when the caller knows which piece of a chunked or streaming recording this is.
+    let chunkIndex: Int?
+    let rawOutput: String
+    let audioDurationSeconds: Double?
+    let promptChars: Int?
+    let promptHash: String?
+  }
+
+  private var recentRequestTraces: [RequestTrace] = []
+  private let requestTracesLock = NSLock()
+  /// Set around a transcription whose text is only an input to a later model call (prompt
+  /// history, the local path's instruction step), so it does not mix into the result trace.
+  @TaskLocal static var suppressRequestTrace = false
+  /// The recording whose model returns `noteRequestTrace` should keep. Live-meeting chunks
+  /// leave it unset.
+  @TaskLocal static var requestTraceJob: UUID?
+  /// Piece index for a streaming chunk, read when `noteRequestTrace` is not given one directly.
+  @TaskLocal static var requestTraceChunkIndex: Int?
+
+  func noteRequestTrace(
+    rawOutput: String,
+    audioDurationSeconds: Double? = nil,
+    prompt: String? = nil,
+    chunkIndex: Int? = nil,
+    date: Date = Date()
+  ) {
+    guard !Self.suppressRequestTrace else { return }
+    guard !rawOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    requestTracesLock.lock()
+    recentRequestTraces.append(RequestTrace(
+      date: date,
+      job: Self.requestTraceJob,
+      chunkIndex: chunkIndex ?? Self.requestTraceChunkIndex,
+      rawOutput: rawOutput,
+      audioDurationSeconds: audioDurationSeconds,
+      promptChars: prompt.map(\.count),
+      promptHash: prompt.map(ReportConfigFingerprint.shortHash)))
+    if recentRequestTraces.count > 20 {
+      recentRequestTraces.removeFirst(recentRequestTraces.count - 20)
+    }
+    requestTracesLock.unlock()
+  }
+
+  /// Traces at or after `since`, oldest first.
+  func requestTraces(since: Date) -> [RequestTrace] {
+    requestTracesLock.lock()
+    defer { requestTracesLock.unlock() }
+    return recentRequestTraces.filter { $0.date >= since }
+  }
+
+  /// The fields a history entry stores for one dictation: raw texts joined by newlines,
+  /// durations summed, prompt size and hash taken from the last trace. The last trace is the
+  /// run that produced the text (a glossary-echo retry sends no glossary).
+  struct RecordedTrace: Equatable {
+    var rawOutput: String?
+    var audioDurationSeconds: Double?
+    var promptChars: Int?
+    var promptHash: String?
+  }
+
+  /// Traces for `job` only. Ordered by chunk index when every trace has one, otherwise by date.
+  func recordedTrace(job: UUID) -> RecordedTrace {
+    requestTracesLock.lock()
+    let matching = recentRequestTraces.filter { $0.job == job }
+    requestTracesLock.unlock()
+    guard !matching.isEmpty else {
+      return RecordedTrace(
+        rawOutput: nil, audioDurationSeconds: nil, promptChars: nil, promptHash: nil)
+    }
+    let ordered: [RequestTrace]
+    if matching.allSatisfy({ $0.chunkIndex != nil }) {
+      ordered = matching.sorted {
+        let left = $0.chunkIndex ?? 0
+        let right = $1.chunkIndex ?? 0
+        if left != right { return left < right }
+        return $0.date < $1.date
+      }
+    } else {
+      ordered = matching.sorted { $0.date < $1.date }
+    }
+    let durations = ordered.compactMap(\.audioDurationSeconds)
+    let last = ordered[ordered.count - 1]
+    return RecordedTrace(
+      rawOutput: ordered.map(\.rawOutput).joined(separator: "\n"),
+      audioDurationSeconds: durations.isEmpty ? nil : durations.reduce(0, +),
+      promptChars: last.promptChars,
+      promptHash: last.promptHash)
+  }
+
   /// Glossary terms for the problem report.
   func glossaryTermsForReport() -> [String] { parsedGlossary().terms }
   private var currentTranscriptionTask: Task<String, Error>?
@@ -150,6 +247,12 @@ class SpeechService {
   func getPromptModelInfo() -> String {
     getPromptModel().displayName
   }
+
+  /// Raw value and display name of the Dictate Prompt model, for the history entry.
+  func selectedPromptModelIdentity() -> (rawValue: String, displayName: String) {
+    let model = getPromptModel()
+    return (model.rawValue, model.displayName)
+  }
   
   // MARK: - Prompt Model Selection Helper
   /// Reads the user's currently-selected Dictate Prompt model from UserDefaults,
@@ -172,21 +275,10 @@ class SpeechService {
     ).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// A legacy full prompt replaces the built-in core only when it is the user's own text.
-  /// Blank text and any wording this app has shipped, including a copy that differs only by
-  /// surrounding whitespace, count as empty so the core and the additions apply.
-  private static func legacyReplacesBuiltIn(_ legacy: String, section: SystemPromptSection) -> Bool {
-    let trimmed = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { return false }
-    if SystemPromptDefaultsHistory.isShippedDefault(legacy, for: section) { return false }
-    if SystemPromptDefaultsHistory.isShippedDefault(trimmed, for: section) { return false }
-    return true
-  }
-
   /// Pure dictation base: the user's own legacy prompt wins. A shipped default counts as empty,
   /// and then the core plus additions apply.
   static func dictationBase(additions: String, legacy: String) -> String {
-    if Self.legacyReplacesBuiltIn(legacy, section: .dictation) {
+    if SystemPromptsStore.legacyReplacesBuiltIn(legacy, section: .dictation) {
       return legacy.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     return AppConstants.withUserAdditions(
@@ -775,6 +867,10 @@ class SpeechService {
           ? String(glossaryKeywords().joined(separator: ", ").prefix(1500)) : ""
         let result = try await Qwen3ASRService.shared.transcribe(
           audioURL: audioURL, language: savedLanguage.qwen3LanguageName, context: glossaryContext)
+        noteRequestTrace(
+          rawOutput: result,
+          audioDurationSeconds: getAudioDuration(url: audioURL),
+          prompt: glossaryContext.isEmpty ? nil : glossaryContext)
         let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
         DebugLogger.logSpeech("SPEED: Qwen3-ASR transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
         return result
@@ -846,6 +942,17 @@ class SpeechService {
       let result = try await LocalSpeechService.shared.transcribe(
         audioURL: audioURL, language: languageString, prompt: whisperPrompt, vocabulary: vocabulary,
         spokenMarksOnly: punctuationMode == .spokenOnly)
+      let sentPrompt: String? = {
+        if model.offlineModelType?.engine == .parakeet {
+          let joined = vocabulary.joined(separator: "\n")
+          return joined.isEmpty ? nil : joined
+        }
+        return whisperPrompt
+      }()
+      noteRequestTrace(
+        rawOutput: result,
+        audioDurationSeconds: getAudioDuration(url: audioURL),
+        prompt: sentPrompt)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -1337,7 +1444,7 @@ class SpeechService {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty {
       DebugLogger.log("\(logPrefix): Using dictation template")
-    } else if Self.legacyReplacesBuiltIn(legacy, section: .promptMode) {
+    } else if SystemPromptsStore.legacyReplacesBuiltIn(legacy, section: .promptMode) {
       DebugLogger.log("\(logPrefix): Using legacy full prompt")
     } else if stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       DebugLogger.log("\(logPrefix): Using base system prompt")
@@ -1371,7 +1478,7 @@ class SpeechService {
   static func dictatePromptBase(stored: String, template: String?, legacy: String = "") -> String {
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty { return trimmedTemplate }
-    if Self.legacyReplacesBuiltIn(legacy, section: .promptMode) {
+    if SystemPromptsStore.legacyReplacesBuiltIn(legacy, section: .promptMode) {
       return legacy.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     return AppConstants.withUserAdditions(
@@ -1534,7 +1641,7 @@ class SpeechService {
       PromptHistoryTurn(isUser: $0.role != "model", text: $0.parts.compactMap { $0.text }.joined())
     }
 
-    return DictatePromptEnvelope(
+    let envelope = DictatePromptEnvelope(
       screenshot: screenshot,
       screenshotLabel: screenshotSelectionMode
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
@@ -1546,6 +1653,15 @@ class SpeechService {
       history: history,
       systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
         usesScreenshotSelection: screenshotSelectionMode))
+    #if DEBUG
+    PromptContextDebugDump.write(envelope, logPrefix: logPrefix)
+    #endif
+    // Show on the processing pill what screen context left the Mac with this request.
+    var sent: PromptContextSent = []
+    if envelope.fieldBlock != nil { sent.insert(.fieldText) }
+    if envelope.screenshot != nil { sent.insert(.windowImage) }
+    await MainActor.run { RecordingIndicatorManager.shared.showPromptContext(sent) }
+    return envelope
   }
 
   /// Label for the one `PROMPT-CONTEXT` line. Counts and labels only.
@@ -1732,7 +1848,8 @@ class SpeechService {
     userParts: [GeminiChatRequest.GeminiChatPart],
     systemPrompt: String,
     credential: GeminiCredential,
-    logPrefix: String
+    logPrefix: String,
+    audioDurationSeconds: Double?
   ) async throws -> String {
     guard let transcriptionModel = model.asTranscriptionModel else {
       throw TranscriptionError.networkError(String(localized: "Selected model is not a Gemini model"))
@@ -1766,11 +1883,16 @@ class SpeechService {
       withRetry: true
     )
 
-    guard let firstCandidate = result.candidates.first else {
+    guard !result.candidates.isEmpty else {
       throw TranscriptionError.networkError(String(localized: "No candidates in Gemini response"))
     }
 
-    let textContent = Self.dictatePromptText(from: result)
+    let partTexts = Self.dictatePromptPartTexts(from: result)
+    noteRequestTrace(
+      rawOutput: partTexts.joined(),
+      audioDurationSeconds: audioDurationSeconds,
+      prompt: systemPrompt)
+    let textContent = LeakedThoughtStrip.strip(LeakedPlanningStrip.strip(parts: partTexts))
 
     let normalizedText = PromptReplyCleanup.normalize(textContent)
     try PromptReplyCleanup.validate(normalizedText, mode: logPrefix)
@@ -1779,13 +1901,17 @@ class SpeechService {
 
   /// The pasted text of a classic Gemini Dictate Prompt response: thought parts skipped, a leaked
   /// English planning block dropped, then any leaked `start_thought` … `end_thought` block stripped.
-  nonisolated static func dictatePromptText(from response: GeminiChatResponse) -> String {
-    guard let candidate = response.candidates.first else { return "" }
+  nonisolated static func dictatePromptPartTexts(from response: GeminiChatResponse) -> [String] {
+    guard let candidate = response.candidates.first else { return [] }
     var parts: [String] = []
     for part in candidate.content.parts where part.thought != true {
       if let text = part.text { parts.append(text) }
     }
-    return LeakedThoughtStrip.strip(LeakedPlanningStrip.strip(parts: parts))
+    return parts
+  }
+
+  nonisolated static func dictatePromptText(from response: GeminiChatResponse) -> String {
+    LeakedThoughtStrip.strip(LeakedPlanningStrip.strip(parts: dictatePromptPartTexts(from: response)))
   }
 
   // MARK: - Dictate Prompt: shared tail
@@ -2041,8 +2167,12 @@ class SpeechService {
           tools: agentTools,
           logPrefix: "PROMPT-MODE-GEMINI")
       }
+      noteRequestTrace(
+        rawOutput: raw,
+        audioDurationSeconds: getAudioDuration(url: audioURL),
+        prompt: systemPrompt)
       normalizedText = applyingDashBackstop(
-        PromptReplyCleanup.normalize(raw), selection: clipboardContext)
+        PromptReplyCleanup.normalize(LeakedPlanningStrip.strip(parts: [raw])), selection: clipboardContext)
       try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-GEMINI")
     } else {
       normalizedText = try await performGeminiPromptRequest(
@@ -2051,7 +2181,8 @@ class SpeechService {
         userParts: userParts,
         systemPrompt: envelope.systemPrompt,
         credential: credential,
-        logPrefix: "PROMPT-MODE-GEMINI"
+        logPrefix: "PROMPT-MODE-GEMINI",
+        audioDurationSeconds: getAudioDuration(url: audioURL)
       )
       normalizedText = applyingDashBackstop(normalizedText, selection: clipboardContext)
     }
@@ -2106,7 +2237,9 @@ class SpeechService {
     defer { transcriptionTask?.cancel() }
     if textInstruction == nil, !omitsSilentAudio(selection: clipboardContext) {
       transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-OPENAI", audioURL: audioURL) {
-        try await self.transcribeWithOpenAI(audioURL: audioURL, modelID: "gpt-4o-mini-transcribe")
+        try await SpeechService.$suppressRequestTrace.withValue(true) {
+          try await self.transcribeWithOpenAI(audioURL: audioURL, modelID: "gpt-4o-mini-transcribe")
+        }
       }
     }
 
@@ -2232,6 +2365,10 @@ class SpeechService {
         history: envelope.history, userContent: userContent, apiKey: apiKey)
     }
 
+    noteRequestTrace(
+      rawOutput: rawText,
+      audioDurationSeconds: getAudioDuration(url: audioURL),
+      prompt: envelope.systemPrompt)
     // gpt-audio-1.5 sometimes answers an edit instruction with a JSON edit object rather than the
     // edited text. Unwrap it before anything else touches the string, or the JSON is what the user
     // pastes. No-op for the plain-text replies that are the norm.
@@ -2434,12 +2571,16 @@ class SpeechService {
         guard CustomEndpointPreferences.isTranscriptionConfigured else {
           throw TranscriptionError.networkError(CustomEndpointPreferences.transcriptionNotConfiguredMessage)
         }
-        spoken = try await transcribeWithSelfHostedEndpoint(audioURL: audioURL)
+        spoken = try await SpeechService.$suppressRequestTrace.withValue(true) {
+          try await self.transcribeWithSelfHostedEndpoint(audioURL: audioURL)
+        }
         // The shared endpoint is a server, not an offline engine, so the reply does not get the
         // spoken-layout pass.
         spokenOffline = false
       } else {
-        spoken = try await performTranscription(audioURL: audioURL)
+        spoken = try await SpeechService.$suppressRequestTrace.withValue(true) {
+          try await self.performTranscription(audioURL: audioURL)
+        }
         // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
         // feeds the local model should arrive with the layout the user spoke.
         spokenOffline = TranscriptionModel.loadSelected().isOffline
@@ -2544,6 +2685,10 @@ class SpeechService {
       }
     }
     if let raw = agentRaw {
+      noteRequestTrace(
+        rawOutput: raw,
+        audioDurationSeconds: getAudioDuration(url: audioURL),
+        prompt: envelope.systemPrompt)
       let now = CFAbsoluteTimeGetCurrent()
       DebugLogger.logSpeech(
         "SPEED: [\(providerTag):\(modelLabel)] transcription \(String(format: "%.2f", transcriptionTime))s + agent \(String(format: "%.2f", now - agentStart))s = \(String(format: "%.2f", now - startTime))s total (\(raw.count) chars)")
@@ -2612,6 +2757,10 @@ class SpeechService {
       lastPromptReplyTruncated = true
     }
 
+    noteRequestTrace(
+      rawOutput: combined,
+      audioDurationSeconds: getAudioDuration(url: audioURL),
+      prompt: envelope.systemPrompt)
     // Hybrid models (qwen3, deepseek-r1, …) can put their reasoning in the reply text itself, and
     // this text goes straight to the user's clipboard.
     let reply = LocalLLMChatProvider.strippingReasoningBlocks(combined)
@@ -3704,6 +3853,8 @@ class SpeechService {
       throw TranscriptionError.networkError("OpenRouter returned no transcription text")
     }
 
+    noteRequestTrace(
+      rawOutput: content, audioDurationSeconds: audioDurationSeconds, prompt: instruction)
     let normalized = TextProcessingUtility.normalizeTranscriptionText(content)
     try TextProcessingUtility.validateSpeechText(normalized, mode: "TRANSCRIPTION-MODE")
     return try gatingGlossaryEcho(normalized, audioDurationSeconds: audioDurationSeconds, logPrefix: logPrefix)
@@ -3821,6 +3972,10 @@ class SpeechService {
       let combined = appendGlossaryHint(to: trimmedDictationHint)
       return combined.isEmpty ? nil : combined
     }()
+    let tracePrompt: String? = combinedPrompt ?? {
+      let joined = contextKeywords.joined(separator: "\n")
+      return joined.isEmpty ? nil : joined
+    }()
     let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
     let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
     let languageCode = savedLanguage.languageCode
@@ -3922,6 +4077,8 @@ class SpeechService {
 
     struct WhisperResponse: Decodable { let text: String }
     if let parsed = try? JSONDecoder().decode(WhisperResponse.self, from: data) {
+      noteRequestTrace(
+        rawOutput: parsed.text, audioDurationSeconds: audioDurationSeconds, prompt: tracePrompt)
       let result = parsed.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if result.isEmpty {
         DebugLogger.log("\(logPrefix): empty transcription (no speech detected)")
@@ -3933,11 +4090,15 @@ class SpeechService {
       DebugLogger.logSuccess("\(logPrefix): \(gated.count) chars")
       return gated
     }
-    if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-       !text.isEmpty {
-      let gated = try gatingGlossaryEcho(text, audioDurationSeconds: audioDurationSeconds, logPrefix: logPrefix)
-      DebugLogger.logSuccess("\(logPrefix): \(gated.count) chars (plain text)")
-      return gated
+    if let body = String(data: data, encoding: .utf8) {
+      noteRequestTrace(
+        rawOutput: body, audioDurationSeconds: audioDurationSeconds, prompt: tracePrompt)
+      let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !text.isEmpty {
+        let gated = try gatingGlossaryEcho(text, audioDurationSeconds: audioDurationSeconds, logPrefix: logPrefix)
+        DebugLogger.logSuccess("\(logPrefix): \(gated.count) chars (plain text)")
+        return gated
+      }
     }
     DebugLogger.log("\(logPrefix): empty transcription (no speech detected)")
     ContextLogger.shared.logNoSpeechDetected(
@@ -4126,7 +4287,14 @@ class SpeechService {
       credential: credential,
       model: model,
       prompt: prompt,
-      glossaryTerms: glossaryTermsForEchoCheck()
+      glossaryTerms: glossaryTermsForEchoCheck(),
+      onRawModelText: { raw, duration, sentPrompt, index in
+        // A streaming chunk that is split again keeps the streaming index. Sub-chunk
+        // indexes would collide with the other streaming pieces of the same recording.
+        self.noteRequestTrace(
+          rawOutput: raw, audioDurationSeconds: duration, prompt: sentPrompt,
+          chunkIndex: Self.requestTraceChunkIndex ?? index)
+      }
     )
   }
 
@@ -4152,6 +4320,8 @@ class SpeechService {
       glossaryTerms: glossaryTermsForEchoCheck(),
       mode: "GEMINI-TRANSCRIPTION",
       withRetry: true)
+    noteRequestTrace(
+      rawOutput: result.rawText, audioDurationSeconds: audioDuration, prompt: instruction)
 
     if suppressGlossary {
       return result.text

@@ -50,6 +50,12 @@ enum AppSupportPaths {
     }
   }
 
+  /// Report files the user can attach when they write to the developer. Same root as the rest of
+  /// the app's data, so a sandboxed build and a direct build share one Reports directory.
+  static func reportsURL() -> URL {
+    whisperShortcutApplicationSupportURL().appendingPathComponent("Reports")
+  }
+
   /// Returns the daily log directory used by `DebugLogger`. Resolves automatically to the
   /// container path under sandbox and to `~/Library/Logs/WhisperShortcut` otherwise.
   static func logsURL() -> URL {
@@ -68,5 +74,12 @@ enum AppSupportPaths {
     appSupport
       .appendingPathComponent("Debug")
       .appendingPathComponent("raw-responses")
+  }
+
+  /// DEBUG-only dump of one Dictate Prompt request (window JPEG plus the text blocks).
+  static func debugPromptContextURL() -> URL {
+    whisperShortcutApplicationSupportURL()
+      .appendingPathComponent("Debug")
+      .appendingPathComponent("prompt-context")
   }
 }

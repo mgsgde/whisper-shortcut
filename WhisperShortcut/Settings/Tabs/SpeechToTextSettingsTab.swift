@@ -11,6 +11,8 @@ struct SpeechToTextSettingsTab: View {
   /// "Dictation only" shows the four things a dictating user changes (`dictationOnlyBody`).
   @AppStorage(UserDefaultsKeys.dictationOnlyMode) private var dictationOnly = false
   @State private var starterListStatus: String?
+  /// The model Dictate Live replaced with Parakeet Ultra, restored when the mode goes back.
+  @AppStorage(UserDefaultsKeys.modelBeforeDictateLive) private var modelBeforeLive = ""
 
   var body: some View {
     if dictationOnly {
@@ -44,6 +46,9 @@ struct SpeechToTextSettingsTab: View {
       dictateModeSection
       SpacedSectionDivider()
       #endif
+
+      // Only shown with a second microphone attached (or a choice stored); brings its own divider.
+      MicrophoneSection()
 
       dictationOnlyLanguageSection
       SpacedSectionDivider()
@@ -107,6 +112,9 @@ struct SpeechToTextSettingsTab: View {
 
       SpacedSectionDivider()
       #endif
+
+      // Only shown with a second microphone attached (or a choice stored); brings its own divider.
+      MicrophoneSection()
 
       // Transcription Model Section
       modelSection
@@ -406,6 +414,7 @@ struct SpeechToTextSettingsTab: View {
         set: { newValue in
           DebugLogger.log("SETTINGS: Dictate mode set to \(newValue.rawValue)")
           viewModel.data.dictateMode = newValue
+          switchModel(for: newValue)
           Task { await viewModel.saveSettings() }
         }
       )) {
@@ -429,8 +438,44 @@ struct SpeechToTextSettingsTab: View {
           modeCaption("Text appears at the cursor after each pause. Everything stays on this Mac.")
         } else {
           modeCaption("Text appears at the cursor after each pause, transcribed offline by Parakeet Ultra.")
+          if let previous = TranscriptionModel(rawValue: modelBeforeLive), previous != .parakeetUltra {
+            modeCaption("Switching back to Dictate selects \(previous.displayName) again.")
+          }
         }
       }
+    }
+    // A Live choice made before Parakeet Ultra was on disk takes effect when its download ends.
+    .onChange(of: modelManager.downloadingModels) { downloading in
+      guard viewModel.data.dictateMode == .live, !downloading.contains(.parakeetUltra) else { return }
+      if switchModel(for: .live) { Task { await viewModel.saveSettings() } }
+    }
+  }
+
+  /// Dictate Live runs on Parakeet Ultra only, so choosing it switches the model (when it is on
+  /// disk) and remembers the one it replaced; choosing Dictate again restores that model. Until
+  /// 2026-11 Live only showed a warning and left the switch to the user, which left both keys
+  /// dead in between. Returns true when the model changed; the caller saves.
+  @discardableResult
+  private func switchModel(for mode: DictateMode) -> Bool {
+    let current = viewModel.data.selectedTranscriptionModel
+    switch mode {
+    case .live:
+      guard current != .parakeetUltra, TranscriptionModel.parakeetUltra.isOfflineModelAvailable() else {
+        return false
+      }
+      modelBeforeLive = current.rawValue
+      viewModel.data.selectedTranscriptionModel = .parakeetUltra
+      DebugLogger.log("SETTINGS: Dictate Live — model \(current.rawValue) → parakeet-ultra")
+      return true
+    case .dictate:
+      defer { modelBeforeLive = "" }
+      // Only undo our own switch: a model the user picked by hand since then stays.
+      guard current == .parakeetUltra, let previous = TranscriptionModel(rawValue: modelBeforeLive),
+        previous != .parakeetUltra
+      else { return false }
+      viewModel.data.selectedTranscriptionModel = previous
+      DebugLogger.log("SETTINGS: Dictate — model restored to \(previous.rawValue)")
+      return true
     }
   }
 
@@ -448,8 +493,10 @@ struct SpeechToTextSettingsTab: View {
       VStack(alignment: .leading, spacing: 2) {
         // `message` points to Settings → Dictate, which is this tab.
         Group {
-          if reason == .notParakeet {
-            Text("Dictate Live works with the offline Parakeet Ultra model. Select it below.")
+          if reason == .notParakeet && !TranscriptionModel.parakeetUltra.isOfflineModelAvailable() {
+            Text("Dictate Live works with the offline Parakeet Ultra model (about 700 MB, downloaded once). It is selected as soon as the download finishes.")
+          } else if reason == .notParakeet {
+            Text("Dictate Live works with the offline Parakeet Ultra model.")
           } else {
             Text(verbatim: reason.message)
           }
@@ -461,14 +508,34 @@ struct SpeechToTextSettingsTab: View {
           .foregroundColor(.secondary)
       }
       Spacer(minLength: 8)
-      if reason == .notParakeet && TranscriptionModel.parakeetUltra.isOfflineModelAvailable() {
-        Button("Use Parakeet Ultra") {
-          DebugLogger.log("SETTINGS: Dictate Live warning — switched Dictate model to Parakeet Ultra")
-          viewModel.data.selectedTranscriptionModel = .parakeetUltra
-          Task { await viewModel.saveSettings() }
+      if reason == .notParakeet || reason == .notDownloaded {
+        if TranscriptionModel.parakeetUltra.isOfflineModelAvailable() {
+          // Reached when the user picked another model by hand while Live was on.
+          Button("Use Parakeet Ultra") {
+            if switchModel(for: .live) { Task { await viewModel.saveSettings() } }
+          }
+          .controlSize(.small)
+          .pointerCursorOnHover()
+        } else if let fraction = modelManager.downloadProgress[.parakeetUltra],
+          modelManager.downloadingModels.contains(.parakeetUltra)
+        {
+          ProgressView(value: fraction)
+            .frame(width: 90)
+            .controlSize(.small)
+        } else {
+          Button("Download Parakeet Ultra") {
+            DebugLogger.log("SETTINGS: Dictate Live warning — downloading Parakeet Ultra")
+            Task {
+              do {
+                try await modelManager.downloadModel(.parakeetUltra)
+              } catch {
+                DebugLogger.logError("SETTINGS: Parakeet Ultra download failed: \(error.localizedDescription)")
+              }
+            }
+          }
+          .controlSize(.small)
+          .pointerCursorOnHover()
         }
-        .controlSize(.small)
-        .pointerCursorOnHover()
       }
     }
     .padding(10)

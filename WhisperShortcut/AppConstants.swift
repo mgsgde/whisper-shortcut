@@ -238,7 +238,6 @@ Output rules (CRITICAL):
   static let livePieceGapDelay: TimeInterval = 0.4
 
   // MARK: - Support Contact
-  static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
   /// Local Debug builds run as `com.magnusgoedde.whispershortcut.dev` ("WhisperShortcut Dev"), so
   /// macOS TCC and the keychain keep them apart from the installed release. Drives the DEV badge.

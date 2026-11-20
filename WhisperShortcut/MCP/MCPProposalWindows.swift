@@ -50,6 +50,10 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   /// `activate` is false when a proposal arrives on its own: the window comes to the front but
   /// does not take the keyboard from the app the user is typing in.
   func show(_ proposal: MCPProposal, activate: Bool = true) {
+    if proposal.kind == .problemReport {
+      handOffProblemReport(proposal)
+      return
+    }
     if let window = windows[proposal.id] {
       bringForward(window, activate: activate)
       return
@@ -59,15 +63,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       contentRect: NSRect(x: 0, y: 0, width: 860, height: 680),
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
       backing: .buffered, defer: false)
-    if proposal.kind == .problemReport {
-      window.title = String(localized: "Problem Report from an AI App")
-      window.setContentSize(NSSize(width: 720, height: 640))
-      window.contentView = NSHostingView(rootView: ProblemReportReviewView(
-        title: proposal.title ?? String(localized: "Problem report"),
-        report: proposal.proposedContent ?? "",
-        onSend: { [weak self] title, report in self?.sendReport(id, title: title, report: report) },
-        onDiscard: { [weak self] in self?.decline(id) }))
-    } else if proposal.kind == .settings {
+    if proposal.kind == .settings {
       window.title = String(localized: "Settings Change from an AI App")
       window.setContentSize(NSSize(width: 560, height: 420))
       window.contentView = NSHostingView(rootView: MCPSettingsProposalReviewView(
@@ -125,13 +121,14 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
 
   private func sync() {
     let pending = MCPProposalStore.shared.pending
-    let ids = Set(pending.map(\.id))
     for proposal in pending where !knownPending.contains(proposal.id) && !proposal.isFromWritingStyle {
       show(proposal, activate: false)
     }
-    // Resolved elsewhere (Settings, another window): close what is left open.
-    for (id, window) in windows where !ids.contains(id) { window.close() }
-    knownPending = ids
+    // Problem reports stay pending until the user sends, shares or copies. Re-read so a proposal
+    // resolved while its review window was open still closes.
+    let stillPending = Set(MCPProposalStore.shared.pending.map(\.id))
+    for (id, window) in windows where !stillPending.contains(id) { window.close() }
+    knownPending = stillPending
   }
 
   private func accept(_ id: String, edited: String) {
@@ -148,22 +145,40 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     }
   }
 
-  /// Marks the report sent and opens it as a prefilled GitHub issue. The browser is the last
-  /// stop before anything is public: the user submits it there, or not.
-  private func sendReport(_ id: String, title: String, report: String) {
-    guard let url = FeedbackLinks.issueURL(title: title, body: report) else {
-      DebugLogger.logError("MCP-CONFIG: could not build issue URL for problem report")
-      return
+  /// Opens the report window with the proposal prefilled. It stays pending until the user sends,
+  /// shares or copies, so Cancel and a second report do not count as handed over.
+  /// `get_proposal_status` stays pending until then. Nothing is sent until they send the email.
+  private func handOffProblemReport(_ proposal: MCPProposal) {
+    guard MCPProposalStore.shared.pending.contains(where: { $0.id == proposal.id }) else { return }
+    let title = proposal.title ?? ""
+    let report = proposal.proposedContent ?? ""
+    // The stored body ends with its own configuration snapshot; the window attaches the full
+    // configuration as a file, so only the AI app's description goes into the message field.
+    let description = report.components(separatedBy: "## Configuration (added by WhisperShortcut)")
+      .first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? report
+    let message = title.isEmpty ? description : "\(title)\n\n\(description)"
+    let id = proposal.id
+    MainActor.assumeIsolated {
+      // One report window at a time. A second pending report stays pending for Review….
+      if DictationReportWindowController.shared.isShowing {
+        DebugLogger.log(
+          "MCP-CONFIG: problem report left pending; a report window is already open id=\(id)")
+        return
+      }
+      ProblemReport.open(
+        message: message,
+        startOnGeneral: true,
+        activate: false,
+        onHandedOff: { body in
+          switch MCPProposalStore.shared.accept(id, editedContent: body) {
+          case .success:
+            DebugLogger.log("MCP-CONFIG: problem report handed to the user id=\(id)")
+          case .failure(let error):
+            DebugLogger.logError(
+              "MCP-CONFIG: could not mark problem report accepted: \(error.logDescription)")
+          }
+        })
     }
-    guard NSWorkspace.shared.open(url) else {
-      let alert = NSAlert()
-      alert.messageText = String(localized: "Couldn't open your browser")
-      alert.informativeText = String(localized: "The report is still here. Try again, or copy the text into a new issue on GitHub.")
-      alert.runModal()
-      return
-    }
-    _ = MCPProposalStore.shared.accept(id, editedContent: report)
-    windows[id]?.close()
   }
 
   private func acceptSettings(_ id: String) {

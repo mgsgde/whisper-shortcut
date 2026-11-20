@@ -99,10 +99,17 @@ struct ResultReportTests {
     let readAloud = LastResultStore.ReadAloudResult(ts: middle, text: spoken, model: "v", voice: "Kore")
 
     let all = ResultReport.candidates(
-      dictation: dictation, glossaryTerms: [], offlineMode: false,
+      dictations: [dictation], glossaryTerms: [], offlineMode: false,
       prompt: prompt, readAloud: readAloud)
-    #expect(all.map(\.kind) == [.prompt, .readAloud, .dictation])
-    #expect(all.map(\.ts) == [newest, middle, oldest])
+    #expect(all.dropLast().map(\.kind) == [.prompt, .readAloud, .dictation])
+    #expect(all.last?.id == "general")
+    #expect(all.last?.kind == .general)
+    #expect(all.last?.details.contains("macOS:") == false)
+    #expect(all.last?.details.contains("App version:") == false)
+    #expect(all.last?.details.contains("Offline Mode: off") == true)
+    #expect(!all[0].details.contains("macOS:"))
+    #expect(!all[1].details.contains("macOS:"))
+    #expect(all.dropLast().map(\.ts) == [newest, middle, oldest])
     #expect(all[2].preview == "hello world")
     #expect(all[2].details == DictationReport.body(entry: dictation, glossaryTerms: [], offlineMode: false))
     let expectedPreview = "ab " + String(repeating: "c", count: 37) + "…"
@@ -110,8 +117,9 @@ struct ResultReportTests {
     #expect(all[1].preview.count == 41)
 
     let withoutReadAloud = ResultReport.candidates(
-      dictation: nil, glossaryTerms: [], offlineMode: false, prompt: prompt, readAloud: nil)
-    #expect(withoutReadAloud.map(\.kind) == [.prompt])
+      dictations: [], glossaryTerms: [], offlineMode: false, prompt: prompt, readAloud: nil)
+    #expect(withoutReadAloud.dropLast().map(\.kind) == [.prompt])
+    #expect(withoutReadAloud.last?.id == "general")
   }
 
   @Test("LastResultStore caps excerpts and ignores empty text")

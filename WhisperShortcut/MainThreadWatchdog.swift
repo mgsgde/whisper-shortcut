@@ -299,9 +299,9 @@ final class MainThreadWatchdog {
 
 // MARK: - Hang report files
 
-/// The watchdog writes `hang-*.txt` into the Logs directory. These helpers are how that
-/// evidence leaves the machine: Settings reveals the files in Finder, and the feedback
-/// composer lists them so a GitHub issue / email / WhatsApp draft can attach them.
+/// The watchdog writes `hang-*.txt` into the Logs directory. Settings → Reveal Hang Reports
+/// shows those files in Finder. The feedback composer inlines an excerpt of a hang from the
+/// last 24 hours.
 enum HangReports {
 
   static let filePrefix = "hang-"
@@ -327,28 +327,49 @@ enum HangReports {
       .sorted { $0.lastPathComponent > $1.lastPathComponent }
   }
 
-  /// Filenames plus a truncated excerpt of the newest report. `nil` when none exist so
-  /// the feedback body does not grow an empty section.
+  /// Inlines an excerpt of the newest hang report from the last 24 hours, measured from `now`.
+  /// Returns `nil` when none are that recent, so the feedback body does not grow an empty section.
+  /// `newestContents`, when given, is the text of that newest recent report.
+  /// A filename that is not `hang-yyyyMMdd-HHmmss.txt` is ignored.
   static func feedbackAttachment(
     reportURLs: [URL] = existingReportURLs(),
-    newestContents: String? = nil
+    newestContents: String? = nil,
+    now: Date = Date()
   ) -> String? {
-    guard !reportURLs.isEmpty else { return nil }
-    let names = reportURLs.map(\.lastPathComponent)
-    var lines = [
-      "Hang reports on this Mac (Settings → About → Reveal Hang Reports — attach these files to the issue):",
-    ]
-    lines.append(contentsOf: names.prefix(8).map { "- \($0)" })
-    if names.count > 8 {
-      lines.append("- …and \(names.count - 8) more")
+    let recent = reportURLs.filter { isRecent($0, now: now) }
+    guard let newest = recent.first else { return nil }
+    let file = newest.lastPathComponent
+    let header: String
+    if recent.count > 1 {
+      let more = recent.count - 1
+      header = String(localized: "App hang in the last 24 hours (\(file), +\(more) more):")
+    } else {
+      header = String(localized: "App hang in the last 24 hours (\(file)):")
     }
-    let excerpt = newestContents ?? newestExcerpt(of: reportURLs[0])
-    if let excerpt, !excerpt.isEmpty {
-      lines.append("")
-      lines.append("Newest report (\(reportURLs[0].lastPathComponent)):")
-      lines.append(excerpt)
-    }
-    return lines.joined(separator: "\n")
+    let excerpt = newestContents ?? newestExcerpt(of: newest)
+    guard let excerpt, !excerpt.isEmpty else { return header }
+    return "\(header)\n\(excerpt)"
+  }
+
+  /// The watchdog stamps local time into `hang-yyyyMMdd-HHmmss.txt`.
+  private static func reportDate(from filename: String) -> Date? {
+    guard filename.hasPrefix(filePrefix), filename.hasSuffix(".\(fileExtension)") else { return nil }
+    let stamp = String(filename.dropFirst(filePrefix.count).dropLast(fileExtension.count + 1))
+    guard stamp.count == 15 else { return nil }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyyMMdd-HHmmss"
+    formatter.isLenient = false
+    return formatter.date(from: stamp)
+  }
+
+  private static let feedbackWindow: TimeInterval = 24 * 60 * 60
+
+  private static func isRecent(_ url: URL, now: Date) -> Bool {
+    guard let stamped = reportDate(from: url.lastPathComponent) else { return false }
+    let age = now.timeIntervalSince(stamped)
+    return age >= 0 && age <= feedbackWindow
   }
 
   private static func newestExcerpt(of url: URL) -> String? {

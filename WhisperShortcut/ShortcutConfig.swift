@@ -860,6 +860,10 @@ extension Notification.Name {
   static let chatEndMeetingWithName = Notification.Name("chatEndMeetingWithName")
   /// Posted after a meeting's final summary is written to disk. userInfo: ["stem": String, "summary": String].
   static let chatMeetingSummaryReady = Notification.Name("chatMeetingSummaryReady")
+  /// Posted after a chat session title is saved (meeting titles from `MeetingTitleService`).
+  /// userInfo: ["sessionId": UUID, "title": String]. An open chat copies the title into its
+  /// in-memory session so a later `store.save(session)` does not write nil over it.
+  static let chatSessionTitleChanged = Notification.Name("chatSessionTitleChanged")
   /// Posted by a consumer that wants the live notes brought up to date right now for the active
   /// meeting (the user just sent a chat message). MenuBarController forwards it to the session.
   static let liveMeetingNotesRefreshRequested = Notification.Name("liveMeetingNotesRefreshRequested")

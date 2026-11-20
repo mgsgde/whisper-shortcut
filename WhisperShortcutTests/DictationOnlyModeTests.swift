@@ -77,19 +77,42 @@ struct DictationOnlyModeTests {
 
   @Test("Settings tabs: everything with the mode off, four with it on")
   func tabList() {
-    #expect(DictationOnlyMode.visibleTabs(SettingsTab.allCases, enabled: false) == SettingsTab.allCases)
     #expect(
-      DictationOnlyMode.visibleTabs(SettingsTab.allCases, enabled: true)
+      DictationOnlyMode.visibleTabs(SettingsTab.allCases, enabled: false, selectedModelIsCloud: false)
+        == SettingsTab.allCases)
+    #expect(
+      DictationOnlyMode.visibleTabs(SettingsTab.allCases, enabled: true, selectedModelIsCloud: false)
         == [.general, .speechToText, .permissions, .about])
+  }
+
+  @Test("A cloud transcription model keeps Accounts visible; an offline model does not")
+  func accountsFollowsTranscriptionModel() {
+    #expect(
+      DictationOnlyMode.visibleTabs(SettingsTab.allCases, enabled: true, selectedModelIsCloud: true)
+        == [.general, .accounts, .speechToText, .permissions, .about])
+    #expect(
+      DictationOnlyMode.visibleTabs(SettingsTab.allCases, enabled: true, selectedModelIsCloud: false)
+        == [.general, .speechToText, .permissions, .about])
+    #expect(DictationOnlyMode.reachableTab(.accounts, enabled: true, selectedModelIsCloud: true) == .accounts)
+    #expect(
+      DictationOnlyMode.reachableTab(.accounts, enabled: true, selectedModelIsCloud: false) == .speechToText)
+    #expect(
+      SettingsTab.SettingsSection.general.tabs(enabled: true, selectedModelIsCloud: true)
+        == [.general, .accounts, .permissions])
   }
 
   @Test("Sidebar sections lose the ones with no tab left")
   func sectionList() {
-    #expect(SettingsTab.sections(enabled: false) == SettingsTab.SettingsSection.allCases)
-    #expect(SettingsTab.sections(enabled: true) == [.general, .dictation, .more])
-    #expect(SettingsTab.SettingsSection.general.tabs(enabled: true) == [.general, .permissions])
-    #expect(SettingsTab.SettingsSection.dictation.tabs(enabled: true) == [.speechToText])
-    #expect(SettingsTab.SettingsSection.more.tabs(enabled: true) == [.about])
+    #expect(
+      SettingsTab.sections(enabled: false, selectedModelIsCloud: false) == SettingsTab.SettingsSection.allCases)
+    #expect(
+      SettingsTab.sections(enabled: true, selectedModelIsCloud: false) == [.general, .dictation, .more])
+    #expect(
+      SettingsTab.SettingsSection.general.tabs(enabled: true, selectedModelIsCloud: false)
+        == [.general, .permissions])
+    #expect(
+      SettingsTab.SettingsSection.dictation.tabs(enabled: true, selectedModelIsCloud: false) == [.speechToText])
+    #expect(SettingsTab.SettingsSection.more.tabs(enabled: true, selectedModelIsCloud: false) == [.about])
   }
 
   @Test("Status menu rows: all with the mode off, dictation rows, Settings, updates and Quit with it on")
@@ -129,10 +152,27 @@ struct DictationOnlyDefaultsTests {
   ) -> DictationOnlyDefaults.Result {
     DictationOnlyDefaults.apply(
       defaults: defaults, preferredLanguages: languages, isAppleSilicon: appleSilicon,
-      isAppStore: appStore, switchOfflineOn: { offlineCalls.count += 1 })
+      isAppStore: appStore, switchOfflineOn: { offlineCalls.count += 1 },
+      notifySelectionsChanged: {})
   }
 
   final class Counter { var count = 0 }
+
+  @Test("A pass that writes tells listeners once; a second apply does not")
+  func notifiesSelectionsOnce() {
+    let defaults = makeDefaults()
+    let notes = Counter()
+    let first = DictationOnlyDefaults.apply(
+      defaults: defaults, preferredLanguages: ["de-DE"], isAppleSilicon: true, isAppStore: false,
+      switchOfflineOn: {}, notifySelectionsChanged: { notes.count += 1 })
+    #expect(!first.alreadyApplied)
+    #expect(notes.count == 1)
+    let second = DictationOnlyDefaults.apply(
+      defaults: defaults, preferredLanguages: ["de-DE"], isAppleSilicon: true, isAppStore: false,
+      switchOfflineOn: {}, notifySelectionsChanged: { notes.count += 1 })
+    #expect(second.alreadyApplied)
+    #expect(notes.count == 1)
+  }
 
   @Test("Applies Offline Mode, Parakeet, Mac language, Dictate Live and spoken punctuation")
   func appliesAll() {
@@ -207,7 +247,7 @@ struct DictationOnlyDefaultsTests {
     let toggle = offlineSwitch(defaults, calls: calls)
     _ = DictationOnlyDefaults.apply(
       defaults: defaults, preferredLanguages: ["de-DE"], isAppleSilicon: true, isAppStore: false,
-      switchOfflineOn: { toggle(true) })
+      switchOfflineOn: { toggle(true) }, notifySelectionsChanged: {})
   }
 
   @Test("Apply then restore gives every key back, absent ones removed")

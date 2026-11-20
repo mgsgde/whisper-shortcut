@@ -18,15 +18,9 @@ struct FeedbackLinksTests {
         continue
       }
       switch channel {
-      case .whatsApp:
-        #expect(url.scheme == "https")
-        #expect(url.host == "wa.me")
       case .email:
         #expect(url.scheme == "mailto")
         #expect(url.absoluteString.contains(FeedbackLinks.supportEmail))
-      case .gitHub:
-        #expect(url.host == "github.com")
-        #expect(url.path.hasSuffix("/issues/new"))
       }
     }
   }
@@ -51,7 +45,7 @@ struct FeedbackLinksTests {
   func specialCharactersAreEncoded() {
     // A real error text: newlines, an ampersand, a hash, and a plus all have meaning in a URL.
     let context = "Line one\nLine two & three #4 + more"
-    guard let url = FeedbackLinks.url(for: .whatsApp, context: context) else {
+    guard let url = FeedbackLinks.url(for: .email, context: context) else {
       Issue.record("no URL")
       return
     }
@@ -75,57 +69,30 @@ struct FeedbackLinksTests {
     #expect(FeedbackLinks.truncated(short, limit: 500) == short)
   }
 
-  @Test("A hang-report attachment survives encoding into a GitHub issue URL")
-  func hangAttachmentEncodesIntoGitHubIssue() {
+  @Test("A hang-report attachment survives encoding into the email URL")
+  func hangAttachmentEncodesIntoEmail() {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyyMMdd-HHmmss"
+    guard let now = formatter.date(from: "20260902-100000") else {
+      Issue.record("could not parse hang timestamp")
+      return
+    }
     let attachment = HangReports.feedbackAttachment(
       reportURLs: [URL(fileURLWithPath: "/tmp/hang-20260902-100000.txt")],
-      newestContents: "WATCHDOG: main thread hang")
+      newestContents: "WATCHDOG: main thread hang",
+      now: now)
     guard let attachment else {
       Issue.record("expected an attachment")
       return
     }
-    guard let url = FeedbackLinks.url(for: .gitHub, context: attachment) else {
+    guard let url = FeedbackLinks.url(for: .email, context: attachment) else {
       Issue.record("no URL")
       return
     }
-    #expect(url.path.hasSuffix("/issues/new"))
+    #expect(url.scheme == "mailto")
     #expect(url.absoluteString.removingPercentEncoding?.contains("hang-20260902-100000.txt") == true)
-    #expect(url.absoluteString.removingPercentEncoding?.contains("Reveal Hang Reports") == true)
-  }
-
-  @Test("An AI problem-report URL carries the title, body and ai-report label")
-  func issueURLCarriesFields() {
-    guard let url = FeedbackLinks.issueURL(title: "Glossary echo", body: "The list was appended.") else {
-      Issue.record("no URL")
-      return
-    }
-    let decoded = url.absoluteString.removingPercentEncoding ?? ""
-    #expect(url.path.hasSuffix("/issues/new"))
-    #expect(decoded.contains("title=Glossary echo"))
-    #expect(decoded.contains("The list was appended."))
-    #expect(url.absoluteString.contains("labels=ai-report"))
-  }
-
-  @Test("Umlauts and spaces count at their encoded size, so the URL stays under GitHub's limit")
-  func issueURLCapsEncodedLength() {
-    let body = String(repeating: "Größe ändern ", count: 1_500)
-    guard let url = FeedbackLinks.issueURL(title: "T", body: body) else {
-      Issue.record("no URL")
-      return
-    }
-    #expect(url.absoluteString.count < 8_000)
-    #expect((url.absoluteString.removingPercentEncoding ?? "").contains("…(truncated)"))
-  }
-
-  @Test("& + = in a value are encoded, so they cannot end or corrupt the field")
-  func issueURLEncodesQuerySeparators() {
-    guard let url = FeedbackLinks.issueURL(title: "A & B", body: "x=1 + y&labels=bug") else {
-      Issue.record("no URL")
-      return
-    }
-    let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-    #expect(items.first { $0.name == "title" }?.value == "A & B")
-    #expect(items.first { $0.name == "body" }?.value == "x=1 + y&labels=bug")
-    #expect(items.filter { $0.name == "labels" }.map(\.value) == ["ai-report"])
+    #expect(url.absoluteString.removingPercentEncoding?.contains("App hang in the last 24 hours") == true)
   }
 }

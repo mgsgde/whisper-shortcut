@@ -33,6 +33,8 @@ final class DictateStreamingSession {
     return _isCancelled
   }
   private let sessionStart = CFAbsoluteTimeGetCurrent()
+  /// When this recording's session was created, before the first chunk was sent.
+  let startedAt = Date()
   /// Chunk indices whose transcription task has finished (either way). Guarded by `cancelLock`.
   private var finishedChunks: Set<Int> = []
 
@@ -120,8 +122,10 @@ final class DictateStreamingSession {
       // reportsProgress: false — a long chunk (>45s of speech without a silence boundary)
       // gets chunk-split internally; letting that drive the global progress delegate would
       // hijack the app state machine away from `.recording` and strand the main pipeline.
-      return try await NoSpeechContext.run(.streamingChunk, audioURL: url) {
-        try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
+      return try await SpeechService.$requestTraceChunkIndex.withValue(index) {
+        try await NoSpeechContext.run(.streamingChunk, audioURL: url) {
+          try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
+        }
       }
     }
   }

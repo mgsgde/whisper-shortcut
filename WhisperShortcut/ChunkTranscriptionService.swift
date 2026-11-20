@@ -107,7 +107,8 @@ class ChunkTranscriptionService {
         credential: GeminiCredential,
         model: TranscriptionModel,
         prompt: String,
-        glossaryTerms: [String] = []
+        glossaryTerms: [String] = [],
+        onRawModelText: ((String, TimeInterval, String, Int) -> Void)? = nil
     ) async throws -> String {
         let startTime = CFAbsoluteTimeGetCurrent()
 
@@ -131,7 +132,8 @@ class ChunkTranscriptionService {
             credential: credential,
             model: model,
             prompt: prompt,
-            glossaryTerms: glossaryTerms
+            glossaryTerms: glossaryTerms,
+            onRawModelText: onRawModelText
         )
 
         // Don't flip the menu bar into `.merging` if Stop already fired: the cancel handler
@@ -162,7 +164,8 @@ class ChunkTranscriptionService {
         credential: GeminiCredential,
         model: TranscriptionModel,
         prompt: String,
-        glossaryTerms: [String]
+        glossaryTerms: [String],
+        onRawModelText: ((String, TimeInterval, String, Int) -> Void)?
     ) async throws -> (transcripts: [ChunkTranscript], chunks: [AudioChunk]) {
         let totalChunks = chunkStream.expectedCount
         let accumulator = ChunkResultAccumulator<ChunkTranscript>()
@@ -186,7 +189,8 @@ class ChunkTranscriptionService {
                                 model: model,
                                 prompt: prompt,
                                 glossaryTerms: glossaryTerms,
-                                totalChunks: totalChunks
+                                totalChunks: totalChunks,
+                                onRawModelText: onRawModelText
                             )
                             return .success(transcript)
                         } catch {
@@ -265,7 +269,8 @@ class ChunkTranscriptionService {
         model: TranscriptionModel,
         prompt: String,
         glossaryTerms: [String],
-        totalChunks: Int
+        totalChunks: Int,
+        onRawModelText: ((String, TimeInterval, String, Int) -> Void)?
     ) async throws -> ChunkTranscript {
         try await retryPolicy.run(
             label: "Chunk \(chunk.index)",
@@ -295,6 +300,7 @@ class ChunkTranscriptionService {
                 mode: "CHUNK-\(chunk.index)",
                 withRetry: false,
                 timeoutInterval: Self.chunkResourceTimeout)
+            onRawModelText?(result.rawText, chunk.endTime - chunk.startTime, prompt, chunk.index)
             let normalizedText = result.text
 
             DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) transcribed (\(normalizedText.count) chars)")
