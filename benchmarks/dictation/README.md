@@ -47,9 +47,10 @@ The script kills and restarts nothing; a running Dev build or the installed app 
 
 Every dictation is cut into live pieces before it is decoded, offline, the way Dictate Live cuts a
 recording at a pause: a piece is at least 1.5 s long and ends after 0.6 s below −45 dB.
-`LivePieceSplitter` approximates the recorder's live metering (RMS of a 50 ms window against
-`AVAudioRecorder`'s averagePower), so a pause near that edge may cut differently than the app. A
-piece that stays below −45 dB is silent and is not decoded.
+`LivePieceSplitter` scores a raw 50 ms RMS against a fixed −45 dB. The recorder scores
+`AVAudioRecorder.averagePower` against a noise floor that falls at once and rises by at most
+0.05 dB per 0.2 s, plus 10 dB, clamped from −45 to −30 dB. The same pause can therefore cut here
+and not in the app. A piece that stays below −45 dB is silent and is not decoded.
 
 ## The scores
 

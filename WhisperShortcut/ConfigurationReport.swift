@@ -1,15 +1,16 @@
 import Foundation
 
-/// A paste-able snapshot of the user's configuration, for WhatsApp or mail.
+/// A snapshot of the user's configuration, attached as a file to a problem report.
 ///
 /// Mirrors what the MCP `get_configuration` tool exposes (model names, shortcuts, prompt sections)
-/// and nothing else. The base report carries no text the user wrote; prompt and glossary texts
-/// appear only when the matching option is on. API keys, transcripts, interaction logs, chat
+/// and nothing else. The base report carries no text the user wrote; prompt, glossary and template
+/// texts appear only when the matching option is on. API keys, transcripts, interaction logs, chat
 /// history, meeting content and the writing-style profile are never read.
 enum ConfigurationReport {
   struct Options: Equatable {
     var includeGlossary = false
     var includePrompts = false
+    var includeTemplates = false
   }
 
   /// The glossary is listed with a count only; its text stays behind `includeGlossary`.
@@ -24,7 +25,8 @@ enum ConfigurationReport {
     store: SystemPromptsStore = .shared,
     defaults: UserDefaults = .standard,
     environment: UsageReport.Environment = .current,
-    settings: [MCPSetting]? = nil
+    settings: [MCPSetting]? = nil,
+    templates: [DictationTemplate]? = nil
   ) -> String {
     let buildLabel = environment.isAppStoreBuild ? "App Store build" : "direct build"
     var lines = [
@@ -79,7 +81,32 @@ enum ConfigurationReport {
       }
     }
 
+    if options.includeTemplates {
+      lines += templateLines(templates ?? DictationTemplateStore.load())
+    }
+
     return lines.joined(separator: "\n")
+  }
+
+  /// One block per template, after the glossary. A template with no shortcut says `none`, and so
+  /// does an empty list: the heading is still there so a missing section is not read as "forgot".
+  private static func templateLines(_ templates: [DictationTemplate]) -> [String] {
+    var lines = ["", "## Templates"]
+    if templates.isEmpty {
+      lines.append("none")
+      return lines
+    }
+    for template in templates {
+      let shortcut = template.shortcut?.displayString ?? "none"
+      lines += [
+        "",
+        "### \(template.name)  (shortcut: \(shortcut))",
+        "```",
+        template.instructions,
+        "```",
+      ]
+    }
+    return lines
   }
 
   private static func trimmed(_ text: String?) -> String {

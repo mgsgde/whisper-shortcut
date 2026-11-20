@@ -198,7 +198,7 @@ enum TelemetryMilestone: String, CaseIterable, Codable {
     switch dictationStep {
     case .globeKey, .language, .download: self = .onboardingAPIKeys
     case .permissions: self = .onboardingPermissions
-    case .test, .glossary: self = .onboardingTryIt
+    case .test: self = .onboardingTryIt
     case .done: self = .onboardingDone
     }
   }

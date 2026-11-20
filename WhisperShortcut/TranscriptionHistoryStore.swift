@@ -7,7 +7,12 @@
 
 import Foundation
 
-/// Keeps the most recent dictation results available for one-click re-copying.
+/// Keeps recent dictation, Dictate Prompt and template results for one-click re-copying and for
+/// the problem report.
+///
+/// The status menu shows at most `menuEntries` rows. The store keeps more than that
+/// (`maxEntries`) so a report can still reach a result that has scrolled off the menu, including
+/// what the model returned before cleanup.
 ///
 /// Before this existed, a transcription that got pasted into the wrong place — or overwritten on
 /// the clipboard by the next copy — could only be recovered by navigating to
@@ -32,23 +37,52 @@ final class TranscriptionHistoryStore {
     var transcriptionModelName: String?
     /// Tails the glossary-echo strip removed. Empty = ran, nothing removed; nil = unknown.
     var glossaryEchoRemoved: [String]?
+    /// Model text before glossary-echo stripping, spoken punctuation or any other cleanup.
+    var rawOutput: String? = nil
+    var audioDurationSeconds: Double? = nil
+    /// Set when a template produced this result.
+    var templateName: String? = nil
+    var templateID: UUID? = nil
+    /// Size and hash of the prompt actually sent to the model. Nil when none was sent.
+    var promptChars: Int? = nil
+    var promptHash: String? = nil
+    /// `ReportConfigFingerprint` at the time of the dictation.
+    var configHash: String? = nil
+    var appVersion: String? = nil
   }
 
-  /// Matches the number of rows in the "Recent Transcriptions" submenu. Small on purpose: this is
-  /// a rescue hatch for "where did my last dictation go", not an archive.
-  private static let maxEntries = 5
+  /// How many results are kept for the problem report. The status menu shows only `menuEntries`.
+  private static let maxEntries = 10
+
+  /// Rows in the "Recent Transcriptions" submenu.
+  static let menuEntries = 5
 
   static let fileName = "recent-transcriptions.json"
   private let queue = DispatchQueue(label: "com.whisper-shortcut.transcriptionhistory")
   /// Newest first.
   private var storage: [Entry] = []
+  /// Tests pass their own file so they never touch the user's history.
+  private let fileURLOverride: URL?
 
-  private lazy var fileURL: URL = {
-    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(Self.fileName)
-  }()
+  private var fileURL: URL {
+    fileURLOverride
+      ?? AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent(Self.fileName)
+  }
 
   private init() {
+    fileURLOverride = nil
     storage = loadFromDisk()
+  }
+
+  /// A store that reads and writes only `fileURL`.
+  init(fileURL: URL) {
+    fileURLOverride = fileURL
+    storage = loadFromDisk()
+  }
+
+  /// Waits until queued `record` calls have updated `entries`.
+  func waitForPendingWrites() {
+    queue.sync {}
   }
 
   // MARK: - Reading
@@ -62,13 +96,23 @@ final class TranscriptionHistoryStore {
     queue.sync { storage.first }
   }
 
+  /// Status-menu rows and "Copy Last Transcription". Dictate Prompt and template results stay in
+  /// `entries` for the problem report; they can contain rewritten selected text.
+  var dictationEntries: [Entry] {
+    entries.filter { $0.mode == nil || $0.mode == "Dictation" }
+  }
+
   // MARK: - Writing
 
   /// Records a dictation result. Ignores empty text and exact repeats of the newest entry, so a
   /// re-run that produces identical output doesn't push a useful older entry out of the list.
   func record(
     _ text: String, mode: String? = nil, transcriptionModel: String? = nil,
-    transcriptionModelName: String? = nil, glossaryEchoRemoved: [String]? = nil
+    transcriptionModelName: String? = nil, glossaryEchoRemoved: [String]? = nil,
+    rawOutput: String? = nil, audioDurationSeconds: Double? = nil,
+    templateName: String? = nil, templateID: UUID? = nil,
+    promptChars: Int? = nil, promptHash: String? = nil,
+    configHash: String? = nil, appVersion: String? = nil
   ) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
@@ -76,7 +120,11 @@ final class TranscriptionHistoryStore {
       if self.storage.first?.text == trimmed { return }
       self.storage.insert(Entry(
         ts: Date(), text: trimmed, mode: mode, transcriptionModel: transcriptionModel,
-        transcriptionModelName: transcriptionModelName, glossaryEchoRemoved: glossaryEchoRemoved), at: 0)
+        transcriptionModelName: transcriptionModelName, glossaryEchoRemoved: glossaryEchoRemoved,
+        rawOutput: rawOutput, audioDurationSeconds: audioDurationSeconds,
+        templateName: templateName, templateID: templateID,
+        promptChars: promptChars, promptHash: promptHash,
+        configHash: configHash, appVersion: appVersion), at: 0)
       if self.storage.count > Self.maxEntries {
         self.storage.removeLast(self.storage.count - Self.maxEntries)
       }

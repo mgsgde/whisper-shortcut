@@ -86,10 +86,18 @@ enum DictationOnlyMode {
   // MARK: - What the mode shows
 
   /// Settings tabs shown while the mode is on: General, Dictate, Permissions & Privacy, About.
+  /// Accounts is added while the selected transcription model is a cloud model: that tab is the
+  /// only place to enter its key, and the Dictate tab in this mode has no key field.
   private static let visibleTabSet: Set<SettingsTab> = [.general, .speechToText, .permissions, .about]
 
-  static func visibleTabs(_ all: [SettingsTab], enabled: Bool) -> [SettingsTab] {
-    enabled ? all.filter { visibleTabSet.contains($0) } : all
+  static func visibleTabs(
+    _ all: [SettingsTab], enabled: Bool,
+    selectedModelIsCloud: Bool = !TranscriptionModel.loadSelected().isOffline
+  ) -> [SettingsTab] {
+    guard enabled else { return all }
+    var kept = visibleTabSet
+    if selectedModelIsCloud { kept.insert(.accounts) }
+    return all.filter { kept.contains($0) }
   }
 
   /// Status-menu rows shown. With the mode off, every row.
@@ -116,11 +124,17 @@ enum DictationOnlyMode {
     return true
   }
 
-  /// Where a "go to Settings → X" link lands. A hidden tab is never opened: a missing key or
-  /// credential (Accounts) is a dictation problem here, so it goes to Dictate; anything else that
-  /// is hidden goes to General.
-  static func reachableTab(_ tab: SettingsTab, enabled: Bool) -> SettingsTab {
-    if visibleTabs([tab], enabled: enabled).contains(tab) { return tab }
+  /// Where a "go to Settings → X" link lands. A hidden tab is never opened. Accounts stays
+  /// reachable while a cloud transcription model is selected, because that tab holds its key.
+  /// With an offline model, a missing key or credential is a dictation problem, so Accounts goes
+  /// to Dictate; anything else that is hidden goes to General.
+  static func reachableTab(
+    _ tab: SettingsTab, enabled: Bool,
+    selectedModelIsCloud: Bool = !TranscriptionModel.loadSelected().isOffline
+  ) -> SettingsTab {
+    if visibleTabs([tab], enabled: enabled, selectedModelIsCloud: selectedModelIsCloud).contains(tab) {
+      return tab
+    }
     return tab == .accounts ? .speechToText : .general
   }
 
@@ -186,13 +200,19 @@ enum DictationOnlySettingsSwitch {
 /// change is saved first, so turning the mode off (`restore`) puts the user's own values back.
 enum DictationOnlyDefaults {
 
-  /// Every key `apply` can change. Offline Mode is part of it: `apply` switches it on.
+  /// Every key `apply` or the 🌐 step can change. Offline Mode is part of it: `apply` switches it
+  /// on. Fn dictation is not written here; the 🌐 step turns it on later and records that through
+  /// `recordApplied`, which only works because `apply` (and its snapshot) already ran.
   private static let snapshotKeys = [
     UserDefaultsKeys.offlineModeEnabled, UserDefaultsKeys.selectedTranscriptionModel,
     UserDefaultsKeys.whisperLanguage, UserDefaultsKeys.dictateMode, UserDefaultsKeys.punctuationMode,
+    UserDefaultsKeys.fnKeyDictation,
   ]
   private static let snapshotPresent = "present"
   private static let snapshotAbsent = "absent"
+  /// Values this pass wrote, keyed like `present`. A missing key is the string "absent", not a
+  /// removed entry, so `restore` can tell "the tour left it unset" from "the tour never recorded".
+  private static let snapshotApplied = "applied"
 
   enum LanguageOutcome: Equatable {
     /// Was Auto-detect; now the Mac's language.
@@ -221,13 +241,16 @@ enum DictationOnlyDefaults {
   /// Applies, in order: Offline Mode on, Parakeet selected, language, Dictate mode, spoken
   /// punctuation; then marks the defaults as applied. A second call changes nothing.
   /// Inputs are injectable so tests never touch real defaults or the real Offline Mode switch.
+  /// `notifySelectionsChanged` runs once after a pass that wrote, so listeners follow Parakeet
+  /// rather than whatever model the Offline Mode reconciler picked on the way.
   @MainActor
   static func apply(
     defaults: UserDefaults = .standard,
     preferredLanguages: [String] = Locale.preferredLanguages,
     isAppleSilicon: Bool = LiveDictation.isAppleSilicon,
     isAppStore: Bool = DictationOnlyDefaults.isAppStoreBuild,
-    switchOfflineOn: @MainActor () -> Void = { OfflineMode.switchTo(true, reason: "dictation-only defaults") }
+    switchOfflineOn: @MainActor () -> Void = { OfflineMode.switchTo(true, reason: "dictation-only defaults") },
+    notifySelectionsChanged: @MainActor () -> Void = { ModelSelectionReconciler.postSelectionsChanged() }
   ) -> Result {
     if defaults.bool(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied) {
       return Result(alreadyApplied: true, language: nil, dictateMode: nil)
@@ -256,9 +279,34 @@ enum DictationOnlyDefaults {
       defaults.set(punctuation(for: picked).rawValue, forKey: UserDefaultsKeys.punctuationMode)
     }
 
+    // After the writes, so `applied` is what this pass left, not what was there before.
+    recordAppliedValues(defaults: defaults)
     defaults.set(true, forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
     DebugLogger.log("DICTATION-ONLY: defaults applied (mode=\(mode.rawValue), language=\(language))")
+    notifySelectionsChanged()
     return Result(alreadyApplied: false, language: language, dictateMode: mode)
+  }
+
+  /// Remembers a value written after `apply` (the 🌐 step turns Fn dictation on). No snapshot, or
+  /// one from before `applied` existed, is left alone: inventing `applied` there would make
+  /// `restore` treat keys the old snapshot never captured.
+  static func recordApplied(key: String, value: Any, defaults: UserDefaults = .standard) {
+    guard var snapshot = defaults.dictionary(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot),
+      var applied = snapshot[snapshotApplied] as? [String: Any]
+    else { return }
+    applied[key] = value
+    snapshot[snapshotApplied] = applied
+    defaults.set(snapshot, forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
+  }
+
+  private static func recordAppliedValues(defaults: UserDefaults) {
+    guard var snapshot = defaults.dictionary(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot) else { return }
+    var applied: [String: Any] = [:]
+    for key in snapshotKeys {
+      applied[key] = defaults.object(forKey: key) ?? snapshotAbsent
+    }
+    snapshot[snapshotApplied] = applied
+    defaults.set(snapshot, forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
   }
 
   /// Saves the current value of every key `apply` changes, "absent" kept apart from a value so
@@ -275,11 +323,14 @@ enum DictationOnlyDefaults {
       forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
   }
 
-  /// Puts back what `apply` saved: every key exactly as it was (removed when it did not exist),
-  /// Offline Mode last and only when its state differs, so the model reconciler it runs sees the
-  /// restored selections. Then clears the snapshot and the applied flag, so a later opt-in
-  /// applies again. Without a snapshot (the Settings switch never applies) nothing changes.
-  /// Returns whether a snapshot was restored.
+  /// Puts back what `apply` saved. A snapshot that records `applied` restores a key only while it
+  /// still holds that value (both unset counts as equal); a key the user changed since stays, and
+  /// is logged. Offline Mode is last and only switches when it is still the applied value and the
+  /// before-value differs, so the model reconciler it runs sees the restored selections. An older
+  /// snapshot without `applied` restores every key it captured, which is what it did before.
+  /// Then clears the snapshot and the applied flag, so a later opt-in applies again. Without a
+  /// snapshot (the Settings switch never applies) nothing changes. Returns whether a snapshot
+  /// was restored.
   @MainActor
   @discardableResult
   static func restore(
@@ -292,15 +343,65 @@ enum DictationOnlyDefaults {
     let present = snapshot[snapshotPresent] as? [String: Any] ?? [:]
     let absent = snapshot[snapshotAbsent] as? [String] ?? []
     let offlineKey = UserDefaultsKeys.offlineModeEnabled
-    for key in snapshotKeys where key != offlineKey {
-      if let value = present[key] { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+    var kept: [String] = []
+    if let applied = snapshot[snapshotApplied] as? [String: Any] {
+      for key in snapshotKeys where key != offlineKey {
+        if let recorded = applied[key] {
+          if matchesApplied(current: defaults.object(forKey: key), recorded: recorded) {
+            writeBack(key, present: present, defaults: defaults)
+          } else {
+            kept.append(key)
+          }
+        } else if present[key] != nil || absent.contains(key) {
+          writeBack(key, present: present, defaults: defaults)
+        }
+      }
+      if let recorded = applied[offlineKey] {
+        if matchesApplied(current: defaults.object(forKey: offlineKey), recorded: recorded) {
+          switchOfflineBack(present: present, defaults: defaults, switchOffline: switchOffline)
+        } else {
+          kept.append(offlineKey)
+        }
+      } else {
+        switchOfflineBack(present: present, defaults: defaults, switchOffline: switchOffline)
+      }
+    } else {
+      // Keys added later (Fn) are not in this snapshot. Removing them would undo a choice the
+      // tour never saved.
+      for key in snapshotKeys where key != offlineKey {
+        if present[key] != nil || absent.contains(key) { writeBack(key, present: present, defaults: defaults) }
+      }
+      switchOfflineBack(present: present, defaults: defaults, switchOffline: switchOffline)
     }
-    let offlineBefore = (present[offlineKey] as? Bool) ?? false
     defaults.removeObject(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
     defaults.removeObject(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
-    if defaults.bool(forKey: offlineKey) != offlineBefore { switchOffline(offlineBefore) }
+    if !kept.isEmpty {
+      DebugLogger.log("DICTATION-ONLY: kept user changes (\(kept.joined(separator: ", ")))")
+    }
     DebugLogger.log("DICTATION-ONLY: restored previous settings (\(present.count + absent.count) keys)")
     return true
+  }
+
+  /// The before-value, or removal when the key did not exist.
+  private static func writeBack(_ key: String, present: [String: Any], defaults: UserDefaults) {
+    if let value = present[key] { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+  }
+
+  @MainActor
+  private static func switchOfflineBack(
+    present: [String: Any], defaults: UserDefaults, switchOffline: @MainActor (Bool) -> Void
+  ) {
+    let offlineKey = UserDefaultsKeys.offlineModeEnabled
+    let offlineBefore = (present[offlineKey] as? Bool) ?? false
+    if defaults.bool(forKey: offlineKey) != offlineBefore { switchOffline(offlineBefore) }
+  }
+
+  /// `recorded` is either a property-list value or the "absent" marker. Unset on both sides matches.
+  private static func matchesApplied(current: Any?, recorded: Any) -> Bool {
+    if let marker = recorded as? String, marker == snapshotAbsent { return current == nil }
+    guard let current else { return false }
+    guard let left = current as? NSObject, let right = recorded as? NSObject else { return false }
+    return left.isEqual(right)
   }
 
   private static func applyLanguage(

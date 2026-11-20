@@ -21,7 +21,7 @@ struct DictationOnlyOnboardingTests {
   @Test("Direct build with a 🌐 conflict: globe key first, then the fixed order")
   func stepsDirectWithConflict() {
     let steps = DictationOnlyStep.steps(isAppStore: false, globeConflict: true, modelReady: false)
-    #expect(steps == [.globeKey, .language, .permissions, .download, .test, .glossary, .done])
+    #expect(steps == [.globeKey, .language, .permissions, .download, .test, .done])
   }
 
   @Test("The globe step appears only on a conflict, and never in the App Store build")
@@ -31,16 +31,16 @@ struct DictationOnlyOnboardingTests {
     #expect(DictationOnlyStep.steps(isAppStore: false, globeConflict: true, modelReady: false).first == .globeKey)
   }
 
-  @Test("App Store build: language, permissions, download, test, glossary, done")
+  @Test("App Store build: language, permissions, download, test, done")
   func stepsAppStore() {
     let steps = DictationOnlyStep.steps(isAppStore: true, globeConflict: false, modelReady: false)
-    #expect(steps == [.language, .permissions, .download, .test, .glossary, .done])
+    #expect(steps == [.language, .permissions, .download, .test, .done])
   }
 
   @Test("The download step is left out when the model is already on this Mac")
   func downloadSkippedWhenReady() {
     let steps = DictationOnlyStep.steps(isAppStore: false, globeConflict: false, modelReady: true)
-    #expect(steps == [.language, .permissions, .test, .glossary, .done])
+    #expect(steps == [.language, .permissions, .test, .done])
   }
 
   @Test("New raw values never collide with the existing tour's")
@@ -73,6 +73,11 @@ struct DictationOnlyOnboardingTests {
   func resumeNewValue() {
     #expect(OnboardingPosition.resume(stored: 103, modeOn: true, steps: allSteps) == .dictationOnly(.permissions))
     #expect(OnboardingPosition.resume(stored: 107, modeOn: true, steps: allSteps) == .dictationOnly(.done))
+  }
+
+  @Test("A stored glossary step (106) resumes on Done")
+  func resumeRemovedGlossaryStep() {
+    #expect(OnboardingPosition.resume(stored: 106, modeOn: true, steps: allSteps) == .dictationOnly(.done))
   }
 
   @Test("A stored step no longer in the list resumes on the next one")
@@ -207,10 +212,12 @@ struct DictationOnlyOnboardingTests {
 
   @Test("Links to hidden tabs land on Dictate or General")
   func reachableTabs() {
-    #expect(DictationOnlyMode.reachableTab(.accounts, enabled: true) == .speechToText)
-    #expect(DictationOnlyMode.reachableTab(.chat, enabled: true) == .general)
-    #expect(DictationOnlyMode.reachableTab(.permissions, enabled: true) == .permissions)
-    #expect(DictationOnlyMode.reachableTab(.accounts, enabled: false) == .accounts)
+    #expect(
+      DictationOnlyMode.reachableTab(.accounts, enabled: true, selectedModelIsCloud: false) == .speechToText)
+    #expect(DictationOnlyMode.reachableTab(.chat, enabled: true, selectedModelIsCloud: false) == .general)
+    #expect(
+      DictationOnlyMode.reachableTab(.permissions, enabled: true, selectedModelIsCloud: false) == .permissions)
+    #expect(DictationOnlyMode.reachableTab(.accounts, enabled: false, selectedModelIsCloud: false) == .accounts)
   }
 
   // MARK: - Defaults: punctuation per language
@@ -220,13 +227,13 @@ struct DictationOnlyOnboardingTests {
     let english = makeDefaults()
     _ = DictationOnlyDefaults.apply(
       defaults: english, preferredLanguages: ["en-US"], isAppleSilicon: true, isAppStore: false,
-      switchOfflineOn: {})
+      switchOfflineOn: {}, notifySelectionsChanged: {})
     #expect(english.string(forKey: UserDefaultsKeys.punctuationMode) == PunctuationMode.automatic.rawValue)
 
     let unknown = makeDefaults()
     _ = DictationOnlyDefaults.apply(
       defaults: unknown, preferredLanguages: ["uk-UA"], isAppleSilicon: true, isAppStore: false,
-      switchOfflineOn: {})
+      switchOfflineOn: {}, notifySelectionsChanged: {})
     #expect(unknown.object(forKey: UserDefaultsKeys.punctuationMode) == nil)
     #expect(DictationOnlyDefaults.punctuation(for: .de) == .spokenOnly)
   }

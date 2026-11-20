@@ -97,6 +97,7 @@ enum ModelImportError: LocalizedError {
   case copyFailed(String)
   case notEnoughSpace(needed: String, available: String)
   case destinationExists(String)
+  case downloadInProgress(String)
 
   var errorDescription: String? {
     switch self {
@@ -114,6 +115,42 @@ enum ModelImportError: LocalizedError {
       )
     case .destinationExists(let name):
       return String(localized: "\(name) is already downloaded. Delete it first if you want to replace it.")
+    case .downloadInProgress(let name):
+      return String(
+        localized:
+          "\(name) is already being downloaded. Wait for it to finish, or cancel it, before importing."
+      )
+    }
+  }
+}
+
+/// What the stores say about a model before a copy starts.
+///
+/// Settings passes `.live`, which reads `isModelAvailable` (legacy folders and Hub
+/// `snapshots/<hash>` included) and `downloadingModels`. The default `.unchecked` does not
+/// touch the stores, so a test that copies into a temp folder is not refused because this Mac
+/// already has the model.
+struct ModelImportPreconditions {
+  var isDownloading: Bool
+  var isModelAvailable: Bool
+
+  static let unchecked = ModelImportPreconditions(isDownloading: false, isModelAvailable: false)
+
+  @MainActor
+  static func live(for family: ModelImportPlan.Family) -> ModelImportPreconditions {
+    switch family {
+    case .whisper(let type):
+      return ModelImportPreconditions(
+        isDownloading: ModelManager.shared.downloadingModels.contains(type),
+        isModelAvailable: ModelManager.shared.isModelAvailable(type))
+    case .mlx(let type):
+      return ModelImportPreconditions(
+        isDownloading: LocalLLMModelManager.shared.downloadingModels.contains(type),
+        isModelAvailable: LocalLLMModelManager.shared.isModelAvailable(type))
+    case .qwen3(let type):
+      return ModelImportPreconditions(
+        isDownloading: Qwen3ModelManager.shared.downloadingModels.contains(type),
+        isModelAvailable: Qwen3ModelManager.shared.isModelAvailable(type))
     }
   }
 }
@@ -138,21 +175,23 @@ enum ModelImporter {
     var plans: [ModelImportPlan] = []
 
     for type in OfflineModelType.offerable where type.engine == .whisperKit {
-      let destination = whisperDestination(for: type, in: importRoots)
+      let destination = ModelManager.importDestination(for: type, under: importRoots.whisper)
       guard !isComplete(at: destination, family: .whisper(type)) else { continue }
       if let plan = whisperPlan(for: type, in: searchedRoots, destination: destination) {
         plans.append(plan)
       }
     }
     for type in LocalLLMModelType.allCases where type.isOfferable {
-      let destination = mlxDestination(for: type, in: importRoots)
+      let destination = HubSnapshotLayout.importDestination(
+        for: type.huggingFaceID, under: importRoots.mlxHub)
       guard !isComplete(at: destination, family: .mlx(type)) else { continue }
       if let plan = mlxPlan(for: type, in: searchedRoots, destination: destination) {
         plans.append(plan)
       }
     }
     for type in Qwen3ModelType.allCases where type.isOfferable {
-      let destination = qwen3Destination(for: type, in: importRoots)
+      let destination = HubSnapshotLayout.importDestination(
+        for: type.huggingFaceID, under: importRoots.qwen3)
       guard !isComplete(at: destination, family: .qwen3(type)) else { continue }
       if let plan = qwen3Plan(for: type, in: searchedRoots, destination: destination) {
         plans.append(plan)
@@ -206,7 +245,7 @@ enum ModelImporter {
       let repoFolder = root.appendingPathComponent("models--argmaxinc--whisperkit-coreml")
       let snapshots = repoFolder.appendingPathComponent("snapshots")
       if let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) {
-        for hash in preferredOrder(in: repoFolder, among: hashes) {
+        for hash in HubSnapshotOrder.preferred(in: repoFolder, among: hashes) {
           let candidate = snapshots.appendingPathComponent(hash).appendingPathComponent(folderName)
           if ModelManager.incompleteComponent(at: candidate) == nil {
             return plan(
@@ -230,16 +269,6 @@ enum ModelImporter {
     return nil
   }
 
-  /// Where an imported Whisper model goes: the same `models/argmaxinc/whisperkit-coreml/…`
-  /// layout a download produces, so `resolveModelPath` finds it without a special case.
-  private static func whisperDestination(for type: OfflineModelType, in roots: ModelImportRoots) -> URL {
-    roots.whisper
-      .appendingPathComponent("models")
-      .appendingPathComponent("argmaxinc")
-      .appendingPathComponent("whisperkit-coreml")
-      .appendingPathComponent("openai_whisper-\(type.whisperKitModelName ?? type.rawValue)")
-  }
-
   /// A local `openai/whisper-<variant>` tokenizer cache snapshot in the same folder tree, if any
   /// — lets the import copy the tokenizer in instead of needing the network afterwards.
   private static func whisperTokenizerSource(for type: OfflineModelType, in roots: [URL]) -> URL? {
@@ -251,7 +280,7 @@ enum ModelImporter {
       guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else {
         continue
       }
-      for hash in preferredOrder(in: repoFolder, among: hashes) {
+      for hash in HubSnapshotOrder.preferred(in: repoFolder, among: hashes) {
         let candidate = snapshots.appendingPathComponent(hash)
         if FileManager.default.fileExists(
           atPath: candidate.appendingPathComponent("tokenizer.json").path) {
@@ -263,18 +292,6 @@ enum ModelImporter {
   }
 
   // MARK: - MLX and Qwen3
-
-  private static func mlxDestination(for type: LocalLLMModelType, in roots: ModelImportRoots) -> URL {
-    roots.mlxHub
-      .appendingPathComponent("models")
-      .appendingPathComponent(type.huggingFaceID)
-  }
-
-  private static func qwen3Destination(for type: Qwen3ModelType, in roots: ModelImportRoots) -> URL {
-    roots.qwen3
-      .appendingPathComponent("models")
-      .appendingPathComponent(type.huggingFaceID)
-  }
 
   /// An MLX chat model in the user's folder, or nil.
   private static func mlxPlan(
@@ -313,7 +330,7 @@ enum ModelImporter {
       let repoFolder = root.appendingPathComponent(cacheFolder)
       let snapshots = repoFolder.appendingPathComponent("snapshots")
       if let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) {
-        for hash in preferredOrder(in: repoFolder, among: hashes) {
+        for hash in HubSnapshotOrder.preferred(in: repoFolder, among: hashes) {
           let candidate = snapshots.appendingPathComponent(hash)
           if hasRequiredFiles(candidate) { return candidate }
         }
@@ -327,25 +344,8 @@ enum ModelImporter {
     return nil
   }
 
-  /// Orders a repo's snapshot hashes to try: the one `refs/main` names first — Hub keeps it
-  /// pointed at the default revision — then every other snapshot, newest-modified first. Plain
-  /// lexicographic order (`sorted()`) could land on an older, stale snapshot when a repo has more
-  /// than one.
-  private static func preferredOrder(in repoFolder: URL, among hashes: [String]) -> [String] {
-    let pinned = (try? String(contentsOf: repoFolder.appendingPathComponent("refs/main"), encoding: .utf8))?
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    let snapshots = repoFolder.appendingPathComponent("snapshots")
-    let rest = hashes.filter { $0 != pinned }.sorted { a, b in
-      modificationDate(of: snapshots.appendingPathComponent(a))
-        > modificationDate(of: snapshots.appendingPathComponent(b))
-    }
-    guard let pinned, hashes.contains(pinned) else { return rest }
-    return [pinned] + rest
-  }
-
   private static func modificationDate(of url: URL) -> Date {
-    (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-      ?? .distantPast
+    HubSnapshotOrder.modificationDate(of: url)
   }
 
   // MARK: - Plan construction
@@ -369,7 +369,8 @@ enum ModelImporter {
   static func byteCount(at directory: URL) -> Int64 {
     let fm = FileManager.default
     guard let enumerator = fm.enumerator(
-      at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+      at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey],
+      options: [.skipsHiddenFiles])
     else { return 0 }
     var total: Int64 = 0
     for case let url as URL in enumerator {
@@ -387,15 +388,28 @@ enum ModelImporter {
   ///
   /// The copy is written to a sibling temporary folder first and moved into place at the end, so
   /// an interrupted import never leaves a half-written model that `isModelAvailable` might mistake
-  /// for a complete one. If the destination already holds a partial download (not a complete
-  /// model), the import replaces it instead of refusing.
-  static func perform(_ plan: ModelImportPlan, onProgress: (Double) -> Void) throws {
+  /// for a complete one. A model the store already has — including a legacy folder or a Hub
+  /// snapshot that is not this destination — is refused. Only an occupied but incomplete
+  /// destination is replaced.
+  static func perform(
+    _ plan: ModelImportPlan,
+    preconditions: ModelImportPreconditions = .unchecked,
+    onProgress: (Double) -> Void
+  ) throws {
+    if preconditions.isDownloading {
+      throw ModelImportError.downloadInProgress(plan.displayName)
+    }
+    if preconditions.isModelAvailable {
+      throw ModelImportError.destinationExists(plan.displayName)
+    }
+
     let fm = FileManager.default
     let destination = plan.destination
     let parent = destination.deletingLastPathComponent()
 
     // A previous import that crashed or was force-quit mid-copy can leave its staging folder
-    // behind; clear it before starting a new one.
+    // behind; clear it before starting a new one. A folder another import is still writing is
+    // left alone.
     removeStaleStaging(in: parent)
 
     let destinationOccupied = fm.fileExists(atPath: destination.path)
@@ -416,7 +430,13 @@ enum ModelImporter {
     }
 
     let staging = parent.appendingPathComponent(".import-\(UUID().uuidString)")
-    defer { try? fm.removeItem(at: staging) }
+    // Register before the folder exists, so a second import's cleanup cannot delete it once
+    // the copy has been running long enough for the folder to look old.
+    beginStaging(staging)
+    defer {
+      endStaging(staging)
+      try? fm.removeItem(at: staging)
+    }
 
     var written: Int64 = 0
     let total = max(plan.byteCount, 1)
@@ -427,6 +447,10 @@ enum ModelImporter {
       }
       if destinationOccupied {
         let aside = parent.appendingPathComponent(".import-old-\(UUID().uuidString)")
+        // The move keeps the partial download's modification date, which can be hours old.
+        // Register it so a concurrent cleanup does not delete the copy we would roll back to.
+        beginStaging(aside)
+        defer { endStaging(aside) }
         try fm.moveItem(at: destination, to: aside)
         do {
           try fm.moveItem(at: staging, to: destination)
@@ -450,14 +474,53 @@ enum ModelImporter {
       "MODEL-IMPORT: imported \(plan.displayName) from \(plan.source.path) (\(plan.sizeLabel))")
   }
 
-  /// Removes `.import-*` staging (and swapped-aside) folders left in `parent` by a previous
-  /// import that never finished.
-  private static func removeStaleStaging(in parent: URL) {
-    guard let entries = try? FileManager.default.contentsOfDirectory(atPath: parent.path) else {
+  /// How long an `.import-*` folder may sit before a later import treats it as abandoned.
+  /// A copy still in progress is tracked in `activeStagingPaths` and is never removed, however
+  /// old its modification date has become.
+  static let staleStagingMaxAge: TimeInterval = 60 * 60
+
+  private static let stagingLock = NSLock()
+  private static var activeStagingPaths: Set<String> = []
+
+  /// Path key for the active-staging set. Symlinks in `/var` → `/private/var` must match on
+  /// both the register side and the directory listing.
+  static func stagingKey(_ url: URL) -> String {
+    url.resolvingSymlinksInPath().path
+  }
+
+  /// Registers `url` so `removeStaleStaging` will not delete it. Call before creating the folder.
+  static func beginStaging(_ url: URL) {
+    stagingLock.lock()
+    activeStagingPaths.insert(stagingKey(url))
+    stagingLock.unlock()
+  }
+
+  static func endStaging(_ url: URL) {
+    stagingLock.lock()
+    activeStagingPaths.remove(stagingKey(url))
+    stagingLock.unlock()
+  }
+
+  private static func activeStagingSnapshot() -> Set<String> {
+    stagingLock.lock()
+    defer { stagingLock.unlock() }
+    return activeStagingPaths
+  }
+
+  /// Removes abandoned `.import-*` folders in `parent`. Skips any folder `beginStaging` has
+  /// registered, and any other folder newer than `staleStagingMaxAge`. MLX imports share one
+  /// parent (`hub/models`), so a second import must not delete the first import's staging.
+  static func removeStaleStaging(in parent: URL, now: Date = Date()) {
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: parent.path) else {
       return
     }
-    for entry in entries where entry.hasPrefix(".import-") {
-      try? FileManager.default.removeItem(at: parent.appendingPathComponent(entry))
+    let active = activeStagingSnapshot()
+    let cutoff = now.addingTimeInterval(-staleStagingMaxAge)
+    for name in names where name.hasPrefix(".import-") {
+      let url = parent.appendingPathComponent(name)
+      if active.contains(stagingKey(url)) { continue }
+      guard modificationDate(of: url) < cutoff else { continue }
+      try? FileManager.default.removeItem(at: url)
     }
   }
 
@@ -497,7 +560,8 @@ enum ModelImporter {
 
     if values.isDirectory == true {
       try fm.createDirectory(at: to, withIntermediateDirectories: true)
-      for child in try fm.contentsOfDirectory(at: from, includingPropertiesForKeys: nil) {
+      for child in try fm.contentsOfDirectory(
+        at: from, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
         try copyDereferencing(
           child, to: to.appendingPathComponent(child.lastPathComponent), onBytes: onBytes)
       }

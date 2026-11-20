@@ -574,18 +574,6 @@ catalogue_dictation_only() {
     save_live_result
   fi
 
-  echo "── $L: glossary"
-  launch --onboarding-step glossary "${free[@]}" --audio-file "$(audio_path)"; wait_window
-  place_audio "$audio" >/dev/null
-  shot_window glossary "Glossary" "empty"
-  type_into_field "Kizomba"
-  click_nth 1; sleep 1   # Save
-  shot_window glossary-saved "Glossary" "word saved, try again offered"
-  click_nth 2   # Try dictation, below the saved word
-  wait_for_text "$(t "It works")" 90
-  sleep 0.5
-  shot_window glossary-retry "Glossary" "result of the second test dictation"
-
   echo "── $L: last screen"
   launch --onboarding-step done "${free[@]}" --download finished; wait_window
   shot_window done-ready "Done" "ready (🌐 key, Live)"

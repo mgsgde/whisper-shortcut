@@ -12,8 +12,8 @@
 //    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
 //                 speed button (cycles 0.75×…2×) — ⏸ becomes a spinner while the next chunk is
 //                 loading. While Read Aloud plays the pill takes key focus (non-activating):
-//                 Space pause/resume, ←/→ 5 s, Esc stop; any other key or a click elsewhere
-//                 hands focus back.
+//                 Space pause/resume, ←/→ 5 s, Esc stop; any other key is passed on to the app,
+//                 and a click elsewhere hands focus back.
 //  On success the pill hides immediately — the pasted/copied text itself is the
 //  feedback, and lingering UI would cover whatever the user is working on.
 //
@@ -22,6 +22,7 @@
 //
 
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 // MARK: - Model
@@ -33,6 +34,55 @@ enum RecordingIndicatorPhase: Equatable {
   case speaking
 }
 
+/// Who owns keyboard focus on the recording pill. Decided once, by
+/// `RecordingIndicatorModel.keyOwner`; every focus claim and release asks it.
+enum PillKeyOwner: Equatable {
+  /// The Dictate Prompt quick-action card.
+  case card
+  /// The Read Aloud speaking pill (transport keys).
+  case speakingPill
+  case none
+}
+
+/// What ↩ does in the quick-action card right now. Decided once, by
+/// `RecordingIndicatorModel.returnAction`; the key handler performs it, the field's submit falls
+/// back to it, and the footer words it.
+enum QuickActionReturn: Equatable {
+  /// The template picker is open: ↩ takes the highlighted template and keeps recording.
+  case chooseTemplate(Int)
+  /// A template is bound and no picker is open (or nothing is typed or highlighted): ↩ stops and
+  /// uses what was spoken.
+  case stopAndProcess
+  /// The field holds an instruction: ↩ runs it instead of the speech.
+  case runTyped
+  /// The highlighted entry runs.
+  case runAction(Int)
+  /// The card is not up; ↩ belongs to whoever is underneath.
+  case notHandled
+}
+
+/// Dictate Prompt: screen context that went to the model with this request, beyond the voice and
+/// the selection the user already knows about. The processing pill shows one symbol per member.
+struct PromptContextSent: OptionSet, Equatable {
+  let rawValue: Int
+  /// The text of the field around the cursor ("Text um den Cursor").
+  static let fieldText = PromptContextSent(rawValue: 1 << 0)
+  /// An image of the front window ("Fensterbild").
+  static let windowImage = PromptContextSent(rawValue: 1 << 1)
+
+  /// Symbol and spoken/hover description for each member, in display order.
+  var symbols: [(name: String, label: String)] {
+    var result: [(name: String, label: String)] = []
+    if contains(.fieldText) {
+      result.append(("text.cursor", String(localized: "The text around the cursor was sent as context")))
+    }
+    if contains(.windowImage) {
+      result.append(("macwindow", String(localized: "An image of the front window was sent as context")))
+    }
+    return result
+  }
+}
+
 final class RecordingIndicatorModel: ObservableObject {
   static let barCount = 10
 
@@ -40,6 +90,10 @@ final class RecordingIndicatorModel: ObservableObject {
   /// The status word next to the spinner / level bars. Names the mode ("Prompting", "Thinking")
   /// so Dictate and Dictate Prompt no longer both read "Listening"/"Transcribing".
   @Published var statusLabel = String(localized: "Listening")
+  /// `.recording` only: the CoreAudio name of the input device this recording actually uses
+  /// (the chosen mic when connected, else the macOS default). Shown dim in the pill so a wrong
+  /// headset is visible the moment recording starts. nil hides the suffix.
+  @Published var inputDeviceName: String?
   @Published var levels: [CGFloat] = Array(repeating: 0, count: RecordingIndicatorModel.barCount)
   /// `.speaking` only: whether playback is paused.
   @Published var isPaused = false
@@ -48,6 +102,8 @@ final class RecordingIndicatorModel: ObservableObject {
   /// `.processing` only: how far on-device Read Aloud synthesis is (0…1) while it holds audio
   /// back to pre-buffer. nil shows the indeterminate spinner.
   @Published var processingProgress: Double?
+  /// `.processing` only: screen context the running Dictate Prompt request carries.
+  @Published var promptContext: PromptContextSent = []
   /// `.speaking` only: the rate currently applied to playback.
   @Published var speed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
   /// `.speaking` only: playhead, total length and received audio, in seconds of source audio.
@@ -87,6 +143,40 @@ final class RecordingIndicatorModel: ObservableObject {
     guard templatePickerOpen, templateChoices.count > 1 else { return [] }
     if case .selection = quickActionContext { return [] }
     return templateChoices
+  }
+
+  /// The one place that answers "what does ↩ do". Plain values in, so it is unit-testable.
+  /// Order matters: the card being up, then a bound template (which hides the field, so it wins
+  /// over anything typed or highlighted), then typed text, then the highlighted entry, else stop.
+  /// An out-of-range `selectedIndex` counts as no highlight.
+  static func returnAction(
+    isVisible: Bool, templateBound: Bool, pickerChoiceCount: Int, pickerIndex: Int,
+    typedPrompt: String, selectedIndex: Int?, actionCount: Int
+  ) -> QuickActionReturn {
+    guard isVisible else { return .notHandled }
+    if templateBound {
+      return pickerChoiceCount > 0 ? .chooseTemplate(pickerIndex) : .stopAndProcess
+    }
+    if !typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .runTyped }
+    if let selectedIndex, (0..<actionCount).contains(selectedIndex) { return .runAction(selectedIndex) }
+    return .stopAndProcess
+  }
+
+  /// The one place that answers "who gets keys". The card wins over the speaking pill: while it is
+  /// up, the card owns focus and the speaking pill must neither claim nor release it.
+  static func keyOwner(phase: RecordingIndicatorPhase, quickActionsVisible: Bool) -> PillKeyOwner {
+    if quickActionsVisible { return .card }
+    return phase == .speaking ? .speakingPill : .none
+  }
+
+  var keyOwner: PillKeyOwner { Self.keyOwner(phase: phase, quickActionsVisible: quickActionsVisible) }
+
+  /// ↩ in the card, from the current state.
+  var returnAction: QuickActionReturn {
+    Self.returnAction(
+      isVisible: quickActionsVisible, templateBound: templateName != nil,
+      pickerChoiceCount: visibleTemplateChoices.count, pickerIndex: templateChoiceIndex,
+      typedPrompt: typedPrompt, selectedIndex: quickActionIndex, actionCount: quickActions.count)
   }
 
   func pushLevel(_ normalized: CGFloat) {
@@ -325,7 +415,7 @@ private enum QuickActionCardMetrics {
 /// from the start, and the recording controls.
 ///
 /// The list holds the user's own quick prompts in their fixed order (⌃n always runs the same one),
-/// or, when they have none, the instructions last run from the card, most recent first. Three rows
+/// or, when they have none, the instructions last run from the card, in fixed slots. Three rows
 /// show at once; longer lists scroll inside them, with a "9 prompts · ⌃1–⌃9 · ↑↓" line underneath. When the
 /// last run picked an entry, the card opens with it highlighted (scrolled into view), so ↩ runs it
 /// again; otherwise the field is selected and ↩ on it means the same as ✓ — stop and use what was
@@ -695,31 +785,45 @@ private struct QuickActionCardView: View {
 
   /// ↩ does what the footer says: the typed text, else the highlighted entry, else the speech.
   private func submit() {
-    if isTyping {
-      onSubmitTyped()
-    } else if let selectedIndex {
-      onSelect(selectedIndex)
-    } else {
-      onConfirm()
+    switch RecordingIndicatorModel.returnAction(
+      isVisible: true, templateBound: templateName != nil, pickerChoiceCount: templateChoices.count,
+      pickerIndex: templateChoiceIndex, typedPrompt: typedText, selectedIndex: selectedIndex,
+      actionCount: actions.count)
+    {
+    case .runTyped: onSubmitTyped()
+    case .runAction(let index): onSelect(index)
+    case .chooseTemplate(let index): onChooseTemplate(index)
+    case .stopAndProcess: onConfirm()
+    case .notHandled: break
     }
   }
 
   // MARK: Footer
 
   private var footerLabel: String {
-    if showsPicker { return String(localized: "Press a number to choose") }
-    if isTyping { return String(localized: "\u{21A9} runs what you typed") }
-    if let selectedIndex, actions.indices.contains(selectedIndex) {
-      return String(localized: "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}")
-    }
-    if showsTemplateHeader, templateEnabled, let templateName {
-      // The header names the template; the footer says what goes into it.
-      if case .selection(let text, _) = context {
-        return String(localized: "\u{21A9} formats the selection (\(text.count.formatted()) chars) as \u{201C}\(templateName)\u{201D}")
+    // Footer and key handler share one decision, so the label always words what ↩ does.
+    let action = RecordingIndicatorModel.returnAction(
+      isVisible: true, templateBound: showsPicker || templateName != nil,
+      pickerChoiceCount: showsPicker ? templateChoices.count : 0,
+      pickerIndex: templateChoiceIndex, typedPrompt: typedText, selectedIndex: selectedIndex,
+      actionCount: actions.count)
+    switch action {
+    case .chooseTemplate:
+      return String(localized: "Press a number to choose")
+    case .runTyped:
+      return String(localized: "\u{21A9} runs what you typed")
+    case .runAction(let index):
+      return String(localized: "\u{21A9} runs \u{201C}\(actions[index].text)\u{201D}")
+    case .stopAndProcess, .notHandled:
+      if showsTemplateHeader, templateEnabled, let templateName {
+        // The header names the template; the footer says what goes into it.
+        if case .selection(let text, _) = context {
+          return String(localized: "\u{21A9} formats the selection (\(text.count.formatted()) chars) as \u{201C}\(templateName)\u{201D}")
+        }
+        return String(localized: "\u{21A9} formats it as \u{201C}\(templateName)\u{201D}")
       }
-      return String(localized: "\u{21A9} formats it as \u{201C}\(templateName)\u{201D}")
+      return String(localized: "Speak your instruction")
     }
-    return String(localized: "Speak your instruction")
   }
 
   private var footer: some View {
@@ -747,6 +851,16 @@ private struct QuickActionCardView: View {
     .padding(.horizontal, 4)
     .frame(height: QuickActionCardMetrics.footerHeight)
   }
+}
+
+/// Layout of the Dictate Prompt context symbols at the end of the processing pill.
+enum ContextSymbolMetrics {
+  static let iconWidth: CGFloat = 14
+  static let spacing: CGFloat = 4
+  /// Width each symbol adds to the pill.
+  static let slot: CGFloat = iconWidth + spacing
+  /// Gap between the status word and the first symbol (the HStack already spaces by 8).
+  static let leadingGap: CGFloat = 12
 }
 
 struct RecordingIndicatorView: View {
@@ -780,11 +894,15 @@ struct RecordingIndicatorView: View {
     quickActions: [QuickAction],
     showsQuickActions: Bool,
     hasTemplate: Bool = false,
-    templateChoiceCount: Int = 0
+    templateChoiceCount: Int = 0,
+    inputDeviceName: String? = nil,
+    contextSymbolCount: Int = 0
   ) -> CGSize {
     let cardVisible = showsQuickActions && phase == .recording
       && (!quickActions.isEmpty || hasTemplate)
-    guard cardVisible else { return pillSize(for: phase) }
+    guard cardVisible else { return pillSize(
+      for: phase, inputDeviceName: inputDeviceName, contextSymbolCount: contextSymbolCount)
+    }
     // A template recording lists only the picker's templates, and never the field.
     let height = hasTemplate
       ? QuickActionCardMetrics.height(count: templateChoiceCount, field: false)
@@ -793,23 +911,45 @@ struct RecordingIndicatorView: View {
   }
 
   /// The pill grows with a status word so the user can tell listening from transcribing
-  /// without decoding icons (Wispr Flow Bar / Superwhisper parity).
-  static func pillSize(for phase: RecordingIndicatorPhase) -> CGSize {
+  /// without decoding icons (Wispr Flow Bar / Superwhisper parity). The recording pill also
+  /// grows to name the live microphone (implementer queue row 68, step 1).
+  /// The processing pill also grows by one slot per Dictate Prompt context symbol.
+  static func pillSize(
+    for phase: RecordingIndicatorPhase, inputDeviceName: String? = nil, contextSymbolCount: Int = 0
+  ) -> CGSize {
     switch phase {
-    case .recording: return CGSize(width: 218, height: 40)
-    case .processing: return CGSize(width: 168, height: 40)
+    case .recording:
+      let deviceExtra = inputDeviceName.map { Self.inputDeviceSuffixWidth($0) } ?? 0
+      return CGSize(width: 218 + deviceExtra, height: 40)
+    case .processing:
+      let contextExtra = contextSymbolCount == 0
+        ? 0 : ContextSymbolMetrics.leadingGap + CGFloat(contextSymbolCount) * ContextSymbolMetrics.slot
+      return CGSize(width: 168 + contextExtra, height: 40)
     case .speaking: return CGSize(width: 420, height: 40)
     }
   }
 
+  /// Width the dim "· <device>" suffix adds to the recording pill. Capped so an exotic
+  /// device name cannot balloon the pill — the name truncates instead.
+  private static func inputDeviceSuffixWidth(_ name: String) -> CGFloat {
+    let text = NSAttributedString(
+      string: "· \(name)",
+      attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .semibold)])
+    return min(ceil(text.size().width) + 12, 160)
+  }
+
   var body: some View {
-    let pill = Self.pillSize(for: model.phase)
+    let pill = Self.pillSize(
+      for: model.phase, inputDeviceName: model.inputDeviceName,
+      contextSymbolCount: model.promptContext.symbols.count)
     let panel = Self.panelSize(
       phase: model.phase,
       quickActions: model.quickActions,
       showsQuickActions: model.quickActionsVisible,
       hasTemplate: model.templateName != nil,
-      templateChoiceCount: model.visibleTemplateChoices.count)
+      templateChoiceCount: model.visibleTemplateChoices.count,
+      inputDeviceName: model.inputDeviceName,
+      contextSymbolCount: model.promptContext.symbols.count)
     Group {
       if panel != pill {
         QuickActionCardView(
@@ -850,6 +990,16 @@ struct RecordingIndicatorView: View {
         Text(model.statusLabel)
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
+        if let deviceName = model.inputDeviceName {
+          // Verbatim: the device name is a CoreAudio string, not a catalog key. Priority
+          // below the status word so a capped pill (160 pt suffix) truncates the name.
+          Text(verbatim: "· \(deviceName)")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(.white.opacity(0.55))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .layoutPriority(-1)
+        }
         PillCircleButton(
           symbolName: "checkmark", foreground: .black, background: .white,
           accessibilityLabel: "Stop and process", action: onConfirm)
@@ -865,6 +1015,21 @@ struct RecordingIndicatorView: View {
         Text(model.statusLabel)
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
+        let symbols = model.promptContext.symbols
+        if !symbols.isEmpty {
+          HStack(spacing: ContextSymbolMetrics.spacing) {
+            ForEach(symbols, id: \.name) { symbol in
+              Image(systemName: symbol.name)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.6))
+                .frame(width: ContextSymbolMetrics.iconWidth)
+                .help(symbol.label)
+                .accessibilityLabel(symbol.label)
+            }
+          }
+          .padding(.leading, ContextSymbolMetrics.leadingGap - 8)
+          .transition(.opacity)
+        }
       case .speaking:
         PillCircleButton(
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
@@ -923,8 +1088,8 @@ struct RecordingIndicatorView: View {
 /// app the user is dictating into. It takes key status while the user types a
 /// Dictate Prompt instruction (while the quick-action list is up) — non-activating, so
 /// the target app stays frontmost. While Read Aloud plays the pill takes key focus
-/// (non-activating): Space or ↩ pause/resume, ←/→ 5 s, Esc stop; any other key or a click
-/// elsewhere hands focus back.
+/// (non-activating): Space or ↩ pause/resume, ←/→ 5 s, Esc stop; any other key is passed on
+/// to the app, and a click elsewhere hands focus back.
 private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
   /// ⌃1–9 while the card has key focus. Returns true when the digit picked an entry.
@@ -941,11 +1106,56 @@ private final class RecordingIndicatorPanel: NSPanel {
   var onSpeakingKey: ((NSEvent) -> Bool)?
   /// A click landed on the pill. The event is still delivered afterwards.
   var onMouseDown: (() -> Void)?
+  /// Whether a drag may move the pill right now (not while a scrubber or text field needs it).
+  var canDrag: (() -> Bool)?
+  /// The user let go after moving the pill.
+  var onDragEnded: (() -> Void)?
+  private var dragStart: (event: NSEvent, mouse: NSPoint, origin: NSPoint)?
+  private var isDragging = false
   override var canBecomeKey: Bool { acceptsKeyInput }
   override var canBecomeMain: Bool { false }
 
+  /// Moves the pill by hand. The first few points of travel still belong to the click, so a
+  /// button press is unaffected; past that, the button gets a release far outside it (so it does
+  /// not fire) and the rest of the gesture moves the window.
+  private func handleDrag(_ event: NSEvent) -> Bool {
+    switch event.type {
+    case .leftMouseDown:
+      dragStart = (event, NSEvent.mouseLocation, frame.origin)
+      isDragging = false
+      return false
+    case .leftMouseDragged:
+      guard let start = dragStart else { return false }
+      let mouse = NSEvent.mouseLocation
+      let dx = mouse.x - start.mouse.x
+      let dy = mouse.y - start.mouse.y
+      if !isDragging {
+        guard hypot(dx, dy) > 4, canDrag?() == true else { return false }
+        isDragging = true
+        if let release = NSEvent.mouseEvent(
+          with: .leftMouseUp, location: NSPoint(x: -10_000, y: -10_000), modifierFlags: [],
+          timestamp: event.timestamp, windowNumber: windowNumber, context: nil,
+          eventNumber: start.event.eventNumber, clickCount: 1, pressure: 0)
+        {
+          super.sendEvent(release)
+        }
+      }
+      setFrameOrigin(NSPoint(x: start.origin.x + dx, y: start.origin.y + dy))
+      return true
+    case .leftMouseUp:
+      dragStart = nil
+      guard isDragging else { return false }
+      isDragging = false
+      onDragEnded?()
+      return true
+    default:
+      return false
+    }
+  }
+
   /// Caught here rather than in SwiftUI: the text field would otherwise take ⌃digit as input.
   override func sendEvent(_ event: NSEvent) {
+    if handleDrag(event) { return }
     // Read Aloud notices the click (to reclaim keys) but does not swallow it.
     if event.type == .leftMouseDown {
       onMouseDown?()
@@ -1047,9 +1257,16 @@ final class RecordingIndicatorManager {
   private var screenObserver: NSObjectProtocol?
   /// Logs when the Read Aloud pill gives up key status. Does not reclaim focus.
   private var keyResignObserver: NSObjectProtocol?
+  /// The display chosen when the pill came up. Kept while it is visible, so a resize (recording →
+  /// processing, the card growing) does not hop to another screen when focus moves meanwhile.
+  private var pillScreen: NSScreen?
 
   private enum Constants {
     static let bottomMargin: CGFloat = 28
+    /// Minimum gap to the screen edge for a pill the user moved.
+    static let edgeInset: CGFloat = 8
+    /// How close a drop must be to the center line or the default spot to snap onto it.
+    static let snapDistance: CGFloat = 24
     static let fadeDuration: TimeInterval = 0.18
     /// averagePower(dB) range mapped onto bar height 0…1.
     static let silenceFloorDB: Float = -48
@@ -1061,11 +1278,15 @@ final class RecordingIndicatorManager {
   // MARK: Phase transitions
 
   func showRecording(label: String = String(localized: "Listening")) {
-    if model.phase == .speaking, !model.quickActionsVisible {
+    if model.keyOwner == .speakingPill {
       releaseKeyFocus()
     }
     model.resetLevels()
     model.statusLabel = label
+    model.promptContext = []
+    // The pill names the device this recording actually uses (the chosen mic when
+    // connected, else the macOS default).
+    model.inputDeviceName = MicrophoneSelection.activeInputDeviceName()
     model.phase = .recording
     orderFrontPanel()
   }
@@ -1076,7 +1297,7 @@ final class RecordingIndicatorManager {
   /// processing pill up directly. Otherwise it stays a no-op so pill-less flows
   /// (e.g. file-based processing) don't suddenly grow a pill.
   func showProcessing(summonIfNeeded: Bool = false, label: String = String(localized: "Transcribing")) {
-    if model.phase == .speaking, !model.quickActionsVisible {
+    if model.keyOwner == .speakingPill {
       releaseKeyFocus()
     }
     model.statusLabel = label
@@ -1123,6 +1344,15 @@ final class RecordingIndicatorManager {
     if model.scrubPosition == nil { model.position = position }
   }
 
+  /// Dictate Prompt: names the screen context this request sends, as symbols on the processing
+  /// pill. Called once per request, after the context is captured; cleared by the next recording
+  /// and once the pill has faded out, so it never carries over into another run.
+  func showPromptContext(_ sent: PromptContextSent) {
+    guard model.promptContext != sent else { return }
+    model.promptContext = sent
+    if isVisible, let panel { position(panel) }
+  }
+
   /// Read Aloud: on-device synthesis progress while audio is held back to pre-buffer.
   func updateProcessingProgress(_ fraction: Double) {
     guard model.phase == .processing else { return }
@@ -1140,6 +1370,7 @@ final class RecordingIndicatorManager {
     stopKeepingInFront()
     guard isVisible, let panel else {
       isVisible = false
+      model.promptContext = []
       return
     }
     isVisible = false
@@ -1151,6 +1382,7 @@ final class RecordingIndicatorManager {
       // hide the pill that just came back.
       guard let self, !self.isVisible else { return }
       panel.orderOut(nil)
+      self.model.promptContext = []
     }
   }
 
@@ -1260,14 +1492,14 @@ final class RecordingIndicatorManager {
   private var keyFocusReturnApp: NSRunningApplication?
 
   private func takeKeyFocusIfListed(_ panel: RecordingIndicatorPanel) {
-    guard model.quickActionsVisible, !panel.acceptsKeyInput else { return }
+    guard model.keyOwner == .card, !panel.acceptsKeyInput else { return }
     claimKeyFocus(panel)
   }
 
   /// Read Aloud transport: the pill takes keys only while it is the speaking pill, not the
   /// Dictate Prompt card (that path owns focus through `takeKeyFocusIfListed`).
   private func takeKeyFocusForSpeaking(_ panel: RecordingIndicatorPanel) {
-    guard model.phase == .speaking, !model.quickActionsVisible else { return }
+    guard model.keyOwner == .speakingPill else { return }
     // A click into another app takes key status without clearing acceptsKeyInput; a click on
     // the pill then has to reclaim it.
     guard !(panel.acceptsKeyInput && panel.isKeyWindow) else { return }
@@ -1291,6 +1523,16 @@ final class RecordingIndicatorManager {
       app.activate()
     }
     keyFocusReturnApp = nil
+  }
+
+  /// A key the Read Aloud pill does not handle belongs to the app the user is typing in: after
+  /// focus is handed back, the same key is posted again so it is not lost. Needs Accessibility
+  /// (the App Store build usually lacks it); without it the key is dropped as before.
+  private static func forwardToFrontApp(_ event: NSEvent) {
+    guard AXIsProcessTrusted(), let cgEvent = event.cgEvent?.copy() else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+      cgEvent.post(tap: .cghidEventTap)
+    }
   }
 
   private func submitTyped() {
@@ -1318,6 +1560,7 @@ final class RecordingIndicatorManager {
   private func orderFrontPanel() {
     let panel = self.panel ?? makePanel()
     self.panel = panel
+    pillScreen = screenForNewPill()
     position(panel)
     panel.alphaValue = 0
     // Re-applied on every show: the panel is reused, and anything that lowers its level once
@@ -1325,10 +1568,7 @@ final class RecordingIndicatorManager {
     panel.level = .statusBar
     panel.orderFrontRegardless()
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-      guard let self, let panel = self.panel, panel.isVisible else { return }
-      DebugLogger.log(
-        "PILL: ordered front — onActiveSpace=\(panel.isOnActiveSpace) visible=\(panel.isVisible) policy=\(NSApp.activationPolicy().rawValue)"
-      )
+      self?.checkPillUncovered()
     }
     isVisible = true
     takeKeyFocusIfListed(panel)
@@ -1337,6 +1577,46 @@ final class RecordingIndicatorManager {
       panel.animator().alphaValue = 1
     }
     startKeepingInFront()
+  }
+
+  /// The screen of the window the user is working in (see `IndicatorPlacement`), else the one
+  /// under the mouse, else `NSScreen.main`.
+  private func screenForNewPill() -> NSScreen? {
+    let screens = NSScreen.screens
+    let index = IndicatorPlacement.screenIndex(
+      frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+      windows: IndicatorPlacement.onScreenWindows(),
+      screenFrames: screens.map(\.frame),
+      mouse: NSEvent.mouseLocation)
+    return index.map { screens[$0] } ?? NSScreen.main
+  }
+
+  /// Logs where the pill landed and, when another app's window covers it, lifts the pill above
+  /// that window. A tester saw no pill over Citrix/Outlook; this line says why on the next report.
+  private func checkPillUncovered() {
+    guard isVisible, let panel, panel.isVisible else { return }
+    let ownPID = ProcessInfo.processInfo.processIdentifier
+    let windows = IndicatorPlacement.onScreenWindows()
+    let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+    // AppKit → window-server coordinates: the same flip in the other direction.
+    let pillFrame = IndicatorPlacement.appKitRect(fromWindowServer: panel.frame, primaryHeight: primaryHeight)
+    let covering = IndicatorPlacement.coveringWindows(
+      windows, pillFrame: pillFrame, level: panel.level.rawValue + 1, ownPID: ownPID)
+    let front = NSWorkspace.shared.frontmostApplication
+    let occluded = !panel.occlusionState.contains(.visible)
+    DebugLogger.log(
+      "PILL: ordered front — screen=\(panel.screen?.localizedName ?? "nil") front=\(front?.bundleIdentifier ?? "nil") "
+        + "onActiveSpace=\(panel.isOnActiveSpace) occluded=\(occluded) level=\(panel.level.rawValue) "
+        + "policy=\(NSApp.activationPolicy().rawValue) screens=\(NSScreen.screens.count)"
+        + (covering.isEmpty ? "" : " covered by " + covering.map { "\($0.ownerName)@\($0.layer)" }.joined(separator: ","))
+    )
+    let level = IndicatorPlacement.level(
+      coveringLayers: covering.map(\.layer), base: NSWindow.Level.statusBar.rawValue,
+      cap: NSWindow.Level.screenSaver.rawValue)
+    guard level > panel.level.rawValue else { return }
+    panel.level = NSWindow.Level(rawValue: level)
+    panel.orderFrontRegardless()
+    DebugLogger.log("PILL: raised to level \(level) above \(covering.map(\.ownerName).joined(separator: ","))")
   }
 
   /// Re-raises the pill while it is visible when another app activates or the Space changes.
@@ -1436,22 +1716,23 @@ final class RecordingIndicatorManager {
       return true
     }
     panel.onReturn = { [weak self] in
-      if let self, self.model.quickActionsVisible, self.model.templateName != nil {
-        // The picker: ↩ takes the highlighted template and keeps recording. Without it the
-        // card has no field to submit, so ↩ stops, as the footer says.
-        if !self.model.visibleTemplateChoices.isEmpty {
-          self.chooseTemplate(self.model.templateChoiceIndex, close: true)
-        } else {
-          self.onConfirm?()
-        }
-        return true
+      guard let self else { return false }
+      let action = self.model.returnAction
+      switch action {
+      case .notHandled:
+        return false
+      case .chooseTemplate(let index):
+        // The picker: ↩ takes the highlighted template and keeps recording.
+        self.chooseTemplate(index, close: true)
+      case .stopAndProcess:
+        // No picker and no field to submit, so ↩ stops, as the footer says.
+        self.onConfirm?()
+      case .runTyped:
+        self.submitTyped()
+      case .runAction(let index):
+        DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")
+        self.onQuickAction?(index)
       }
-      guard let self, self.model.quickActionsVisible,
-        self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-        let index = self.model.quickActionIndex, self.model.quickActions.indices.contains(index)
-      else { return false }
-      DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")
-      self.onQuickAction?(index)
       return true
     }
     panel.onTab = { [weak self] in
@@ -1462,6 +1743,15 @@ final class RecordingIndicatorManager {
       self.toggleTemplate()
       return true
     }
+    panel.canDrag = { [weak self] in
+      guard let self else { return false }
+      return self.model.phase != .speaking && !self.model.quickActionsVisible
+    }
+    panel.onDragEnded = { [weak self] in
+      guard let self, let panel = self.panel else { return }
+      self.saveAnchor(of: panel)
+      self.position(panel)
+    }
     panel.onMouseDown = { [weak self] in
       guard let self, let panel = self.panel else { return }
       self.takeKeyFocusForSpeaking(panel)
@@ -1471,12 +1761,16 @@ final class RecordingIndicatorManager {
       }
     }
     panel.onSpeakingKey = { [weak self] event in
-      guard let self, self.model.phase == .speaking,
-        !self.model.quickActionsVisible, self.panel?.acceptsKeyInput == true
+      guard let self, self.model.keyOwner == .speakingPill,
+        self.panel?.acceptsKeyInput == true
       else { return false }
       let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-      // ⌘ shortcuts belong to the front app; leave the event for super.sendEvent.
-      if modifiers.contains(.command) { return false }
+      if modifiers.contains(.command) {
+        self.releaseKeyFocus()
+        Self.forwardToFrontApp(event)
+        DebugLogger.log("READ-ALOUD-KEYS: ⌘ shortcut, focus returned")
+        return true
+      }
       if modifiers.isEmpty {
         switch event.keyCode {
         case 49:
@@ -1509,6 +1803,7 @@ final class RecordingIndicatorManager {
         }
       }
       self.releaseKeyFocus()
+      Self.forwardToFrontApp(event)
       DebugLogger.log("READ-ALOUD-KEYS: Unhandled key, focus returned")
       return true
     }
@@ -1531,17 +1826,19 @@ final class RecordingIndicatorManager {
       quickActions: model.quickActions,
       showsQuickActions: model.quickActionsVisible,
       hasTemplate: model.templateName != nil,
-      templateChoiceCount: model.visibleTemplateChoices.count)
+      templateChoiceCount: model.visibleTemplateChoices.count,
+      inputDeviceName: model.inputDeviceName,
+      contextSymbolCount: model.promptContext.symbols.count)
     return NSSize(width: size.width, height: size.height)
   }
 
   /// Centers the panel bottom-center at the size matching the current phase, so the
-  /// clickable window area always matches the visible pill.
+  /// clickable window area always matches the visible pill, on the screen picked at show time.
   ///
   /// `keepingCurrentScreen` (a display was attached/detached/rearranged while visible): stay on the
   /// pill's screen if it still exists, otherwise move to the screen holding the mouse, then main.
   private func position(_ panel: NSPanel, keepingCurrentScreen: Bool = false) {
-    var target: NSScreen? = NSScreen.main
+    var target: NSScreen? = pillScreen.flatMap { NSScreen.screens.contains($0) ? $0 : nil } ?? NSScreen.main
     if keepingCurrentScreen {
       let mouse = NSEvent.mouseLocation
       target = panel.screen.flatMap { current in NSScreen.screens.contains(current) ? current : nil }
@@ -1549,13 +1846,58 @@ final class RecordingIndicatorManager {
         ?? NSScreen.main
     }
     guard let screen = target else { return }
+    pillScreen = screen
     let size = currentPanelSize()
     let visible = screen.visibleFrame
-    let origin = NSPoint(
+    var origin = NSPoint(
       x: visible.midX - size.width / 2,
       y: visible.minY + Constants.bottomMargin
     )
+    if let anchor = Self.savedAnchor() {
+      // The pill grows into a card for quick actions, so the anchor is the bottom-center point;
+      // clamping keeps the larger card on screen when the pill was parked near an edge.
+      let inset = Constants.edgeInset
+      origin.x = visible.minX + anchor.x * visible.width - size.width / 2
+      origin.y = visible.minY + anchor.y * visible.height
+      origin.x = min(max(origin.x, visible.minX + inset), visible.maxX - size.width - inset)
+      origin.y = min(max(origin.y, visible.minY + inset), visible.maxY - size.height - inset)
+    }
     panel.setFrame(NSRect(origin: origin, size: size), display: true)
+  }
+
+  // MARK: - Remembered position
+
+  /// Bottom-center of the pill as a fraction of the screen's visible frame, so it lands in the
+  /// same place on a screen of another size. Absent = the default spot, bottom center.
+  private static let anchorKey = "RecordingIndicatorAnchor"
+
+  private static func savedAnchor() -> NSPoint? {
+    guard let values = UserDefaults.standard.array(forKey: anchorKey) as? [Double], values.count == 2
+    else { return nil }
+    return NSPoint(x: values[0], y: values[1])
+  }
+
+  /// Saves where the user dropped the pill. Dropped near the default spot, it snaps back there
+  /// and the saved position is cleared; near the vertical center line it snaps onto it.
+  private func saveAnchor(of panel: NSPanel) {
+    guard let screen = panel.screen ?? pillScreen else { return }
+    pillScreen = screen
+    let visible = screen.visibleFrame
+    let snap = Constants.snapDistance
+    var midX = panel.frame.midX
+    let minY = panel.frame.minY
+    if abs(midX - visible.midX) < snap { midX = visible.midX }
+    if midX == visible.midX, abs(minY - (visible.minY + Constants.bottomMargin)) < snap {
+      UserDefaults.standard.removeObject(forKey: Self.anchorKey)
+      DebugLogger.log("PILL: dropped at default spot, saved position cleared")
+      return
+    }
+    let anchor = [
+      Double((midX - visible.minX) / visible.width),
+      Double((minY - visible.minY) / visible.height),
+    ]
+    UserDefaults.standard.set(anchor, forKey: Self.anchorKey)
+    DebugLogger.log("PILL: moved by user, anchor=\(anchor)")
   }
 }
 

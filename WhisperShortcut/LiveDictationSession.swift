@@ -40,7 +40,8 @@ final class LiveDictationSession {
   private var pieces = 0
   private var failedPieces = 0
   private var isCancelled = false
-  private let started = Date()
+  /// When this recording began, before the first piece was decoded.
+  let startedAt = Date()
 
   /// `holdsPeriods` is false in "Only when spoken" mode: every period there was said on purpose,
   /// so `LiveChunkJoiner` must never hold one back waiting to see whether the sentence continues.
@@ -93,7 +94,7 @@ final class LiveDictationSession {
       text: joiner.inserted, heldText: pending, pieces: pieces, failedPieces: failedPieces)
     DebugLogger.log(
       "LIVE-DICTATE: finished pieces=\(pieces) failed=\(failedPieces) chars=\(outcome.text.count) "
-        + "heldChars=\(pending.count) durationS=\(String(format: "%.1f", Date().timeIntervalSince(started)))")
+        + "heldChars=\(pending.count) durationS=\(String(format: "%.1f", Date().timeIntervalSince(startedAt)))")
     return outcome
   }
 

@@ -96,20 +96,21 @@ enum SpokenPunctuation {
     rule(#"\#(openGuard)[ \t,.;]*\#(closingParen)"#, ")"),
     // A comma before a spoken paragraph break is the ASR marking the pause; the sentence ended.
     // No capital marker: this stays ".\n\n", and the next word keeps the case it was spoken with.
-    // "Neuerabsatz" / "Neuenabsatz" / "Neuabsatz" are the glued forms (no space).
+    // "Neuerabsatz" / "Neuenabsatz" / "Neueabsatz" / "Neuabsatz" are the glued forms (no space).
+    // "Neue Absatz" (no -r or -n) is the same command.
     // With token timing (`timed`) a leftover comma is a spoken one ("Herren, neuer Absatz" is the
     // salutation's comma): it stays, as ",\n\n", and the break rule does not turn it into a period.
-    rule(#"[ \t]*,[ \t]*\bneu(?:e[rn])?[ \t]*absatz\b[ \t,.;:!?]*"#, timed ? ",\n\n" : ".\n\n"),
+    rule(#"[ \t]*,[ \t]*\bneu(?:e[rn]?)?[ \t]*absatz\b[ \t,.;:!?]*"#, timed ? ",\n\n" : ".\n\n"),
     // The model already ended the sentence ("Anamnese. Neuer Absatz, die Klägerin"): the next word
     // starts the new paragraph or line, so it gets a capital (marker, `capitalizeAfterGluedColon`).
     // "Neuzeile" / "Neuezeile" are "neue Zeile" glued into one word. "Neuzeilen" does not match.
-    rule(#"(?<=[.!?])[ \t]*\bneu(?:e[rn])?[ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    rule(#"(?<=[.!?])[ \t]*\bneu(?:e[rn]?)?[ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
     rule(#"(?<=[.!?])[ \t]*\#(zeile)\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
     // Paragraph break without a sentence mark before it. The next word still starts the new
     // paragraph, so it gets a capital too. A comma before "neuer Absatz" never reaches this rule —
     // the rule above already turned it into a period — so the comma in the prefix only restores
     // the old pattern.
-    rule(#"[ \t,;]*\bneu(?:e[rn])?[ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    rule(#"[ \t,;]*\bneu(?:e[rn]?)?[ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
     // A comma or semicolon before "neue Zeile" is the pause Parakeet wrote. Token timing keeps
     // those pause commas in "Only when spoken", so eating them here is what stops
     // "Befund, neue Zeile Inspektion" from staying "Befund,\nInspektion". No capital marker: the
@@ -144,8 +145,80 @@ enum SpokenPunctuation {
 
   private static let punktNumberWords =
     "eins|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf"
+
+  /// Lowercase words that really end in "Punkt". A spoken "Punkt" glued onto the previous
+  /// word ("Rollatorpunkt") is the command; these are not. A word that ends in one of these
+  /// stays whole too ("Untersuchungszeitpunkt", "Behandlungsschwerpunkt"), so a longer compound
+  /// is covered without being listed. `wholeWordOnlyPunktCompounds` are the exception: they match
+  /// only as the whole word, because a glued "stechend"/"Blutdruck"/"Fleck"/"Juckreiz" + "punkt"
+  /// ends in "endpunkt"/"druckpunkt"/"eckpunkt"/"reizpunkt" (and "hochpunkt"/"lichtpunkt" are the
+  /// same trap) and must still split. A stem ending in a real Fugen-s
+  /// (`(?:ung|ion|heit|keit|tät|t|g|ch)s`, case-insensitive: "…ungspunkt", "…tspunkt", "…gspunkt")
+  /// is treated as a compound too, in the rule, so it need not be listed. A stem that only ends in
+  /// "s" ("Diabetespunkt", "Ergebnispunkt") is the command. "ruhepunkt" is left out on purpose:
+  /// in dictation "in Ruhe Punkt" is far likelier than the word.
+  /// Dictate Live's trailing split uses this same list (`isRealPunktCompound`). The second group
+  /// is every compound that split already refuses to cut on a trailing word, so this rule does
+  /// not turn a kept "Schwachpunkt" into "Schwach."
+  static let realPunktCompounds: Set<String> = [
+    "schwerpunkt", "zeitpunkt", "standpunkt", "höhepunkt", "mittelpunkt", "treffpunkt",
+    "ausgangspunkt", "gesichtspunkt", "wendepunkt", "knackpunkt", "brennpunkt", "tiefpunkt",
+    "bezugspunkt", "schnittpunkt", "anknüpfungspunkt", "kritikpunkt", "programmpunkt",
+    "tagesordnungspunkt", "druckpunkt", "triggerpunkt", "schmerzpunkt", "messpunkt", "endpunkt",
+    "nullpunkt", "siedepunkt", "gefrierpunkt", "blickpunkt", "haltepunkt", "startpunkt",
+    "kernpunkt", "streitpunkt", "anhaltspunkt", "berührungspunkt", "angelpunkt", "doppelpunkt",
+    "strichpunkt", "prozentpunkt", "akupunkturpunkt", "druckschmerzpunkt", "fixpunkt", "eckpunkt",
+    "scheitelpunkt", "sammelpunkt", "tiefstpunkt", "höchstpunkt", "nadelpunkt", "kontaktpunkt",
+    "umkehrpunkt", "wassersiedepunkt",
+    "tenderpunkt", "akupressurpunkt", "knotenpunkt", "schmelzpunkt", "hauptpunkt", "pluspunkt",
+    "minuspunkt", "stützpunkt", "ankerpunkt", "kontrollpunkt", "drehpunkt", "aussichtspunkt",
+    "fluchtpunkt", "gipfelpunkt", "grenzpunkt", "sternpunkt", "zielpunkt", "zugangspunkt",
+    "einstichpunkt", "insertionspunkt", "ansatzpunkt", "auslösepunkt", "maximalpunkt",
+    "sattelpunkt", "lotpunkt", "fußpunkt", "reizpunkt", "knickpunkt", "taupunkt", "schwachpunkt",
+    "schlusspunkt", "kontrapunkt", "diskussionspunkt", "prüfpunkt", "hochpunkt", "lichtpunkt",
+    "einstiegspunkt", "verbindungspunkt", "orientierungspunkt", "gesprächspunkt",
+    "verhandlungspunkt", "abschlusspunkt", "wiedereinstiegspunkt", "kreuzungspunkt",
+  ]
+  /// In `realPunktCompounds`, but a longer word that only ends in one of these is still the
+  /// command. "stechendpunkt", "Blutdruckpunkt", "Fleckpunkt" and "Juckreizpunkt" end in
+  /// "endpunkt", "druckpunkt", "eckpunkt" and "reizpunkt"; "hochpunkt" and "lichtpunkt" are the
+  /// same kind of ending.
+  static let wholeWordOnlyPunktCompounds: Set<String> = [
+    "endpunkt", "druckpunkt", "eckpunkt", "hochpunkt", "lichtpunkt", "reizpunkt",
+  ]
+
+  /// True when `word` must stay unsplit: it equals a `realPunktCompounds` entry, or it ends in
+  /// one that is not `wholeWordOnlyPunktCompounds`.
+  static func isRealPunktCompound(_ word: String) -> Bool {
+    let lower = word.lowercased()
+    if realPunktCompounds.contains(lower) { return true }
+    return realPunktCompounds.contains { compound in
+      lower.count > compound.count && lower.hasSuffix(compound)
+        && !wholeWordOnlyPunktCompounds.contains(compound)
+    }
+  }
+
+  private static let wholeWordOnlyPunktCompoundAlternation =
+    wholeWordOnlyPunktCompounds.sorted().map { NSRegularExpression.escapedPattern(for: $0) }
+      .joined(separator: "|")
+  /// Every compound a longer word may end in. The whole-word-only entries are absent, so
+  /// "Blutdruckpunkt" is not kept just because it ends in "druckpunkt".
+  private static let realPunktCompoundSuffixAlternation =
+    realPunktCompounds.subtracting(wholeWordOnlyPunktCompounds).sorted()
+      .map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+  /// "ein/zu/in/einen Punkt" followed by one of these is still the command. Not part of
+  /// `functionWords`: that set also lower-cases a word at a piece seam, which would turn
+  /// "Sehr geehrte Frau X, Ihre …" into "ihre".
+  static let punktCommandPronouns: Set<String> = [
+    "ihre", "ihr", "ihren", "ihrem", "ihrer", "ihres",
+    "seine", "sein", "seinen", "seinem", "seiner",
+    "sie", "er", "es", "wir", "ich",
+    "dies", "dieser", "diese",
+    "dabei", "danach", "daher", "dann", "zudem", "außerdem",
+  ]
   private static let punktFunctionWordAlternation =
-    functionWords.sorted().map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+    functionWords.union(punktCommandPronouns).sorted()
+      .map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
 
   /// Only in `PunctuationMode.spokenOnly`, where the model adds no punctuation of its own. The mark
   /// attaches to the previous word with one space after; after ". ? !" the next word is
@@ -182,6 +255,18 @@ enum SpokenPunctuation {
     // the rule that actually converts them. A comma the model put on either side is the pause,
     // and goes. A period before the word stays ("usw. Semikolon"), the same way "Komma" leaves one.
     rule(#"[ \t,]*\b(?:semikolon|strichpunkt)\b[ \t,.;]*"#, "; "),
+    // Parakeet glues a spoken "Punkt" onto the word before it ("Rollatorpunkt", "anpunkt",
+    // "Wirbelsäulepunkt" at the end of the text). The stem (two letters or more) stays, the
+    // period is the command, and the next word is capitalised. A listed compound stays a word,
+    // including when a longer word ends in it (`realPunktCompounds`, see `isRealPunktCompound`);
+    // `wholeWordOnlyPunktCompounds` stay only as the whole word. A real Fugen-s
+    // (`(?:ung|ion|heit|keit|tät|t|g|ch)s`, "…ungspunkt") stays a word too. A stem that only ends
+    // in "s" ("Diabetespunkt") is the command. Inflections ("Punkte", "Punkten", "Punktes") do
+    // not end in "punkt". "Doppelpunkt" is already a colon (rules above, and it is listed);
+    // "Strichpunkt" was just converted.
+    rule(
+      #"\b(?!(?:\#(wholeWordOnlyPunktCompoundAlternation))\b)(?!\p{L}*(?:\#(realPunktCompoundSuffixAlternation))\b)(\p{L}{2,}(?<!(?:ung|ion|heit|keit|tät|t|g|ch)s))punkt\b[ \t,.;]*"#,
+      "$1. \u{1}"),
     // "drei Pünktchen", "drei Puenktchen", "Auslassungspunkte" → "…", attached to the previous
     // word. Spaces and a stray comma or semicolon before it go; comma, period and semicolon after
     // it go too. Not "drei Punkte" (a score). Before "Punkt", so "Pünktchen" is not read as one.
@@ -204,7 +289,8 @@ enum SpokenPunctuation {
     // After a particle that is also a verb prefix ("morgens ein Punkt", "den Befund zu Punkt",
     // "wieder in Punkt") the word is the command, unless a number or a noun follows ("ein Punkt
     // mehr", "in Punkt 3", "zu Punkt Anamnese"): a capitalised word that is not a function word
-    // counts as a noun. At the end of the text or piece it is always the command.
+    // or one of `punktCommandPronouns` counts as a noun. "ein Punkt Ihre" is the command;
+    // "Ihre" stays capital. At the end of the text or piece it is always the command.
     rule(
       #"[ \t,;]*(?<=\b(?:zu|ein|in|einen)[ \t])\bpunkt\b(?![ \t]*(?:\d|(?:\#(punktNumberWords))\b|mehr\b|weniger\b|(?!(?:\#(punktFunctionWordAlternation))\b)(?-i:\p{Lu})))[ \t,.;]*"#,
       ". \u{1}"),

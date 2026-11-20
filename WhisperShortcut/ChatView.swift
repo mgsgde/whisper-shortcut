@@ -215,7 +215,7 @@ class ChatViewModel: ObservableObject {
   var isCurrentSessionFinishingMeeting: Bool { isMeetingFinishing && isCurrentSessionTheActiveMeeting }
   private var meetingCancellable: AnyCancellable?
   private var meetingFinishingCancellable: AnyCancellable?
-  private var summaryCancellable: AnyCancellable?
+  private var titleChangedCancellable: AnyCancellable?
   /// Meeting stems we've already attempted to backfill a title for this app run, so a missing or
   /// failed summary doesn't trigger a fresh API call every time the meeting is viewed.
   private var attemptedMeetingTitleStems: Set<String> = []
@@ -228,11 +228,10 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var summaryRevision: UInt = 0
   /// True while a missing meeting summary is being regenerated, so the Notes tab can show progress.
   @Published private(set) var isRecoveringMeetingSummary: Bool = false
-  /// Disk-read notes of the ended meeting currently being viewed, keyed by stem and the notes
-  /// file's modification date. A resume writes the same `.notes.md`; without the date a later
-  /// hand edit would save the pre-resume list and drop the notes taken after it. See
-  /// `meetingNotesForDisplay`.
-  private var endedNotesCache: (stem: String, modified: Date?, notes: [LiveMeetingNote])?
+  /// Disk-read notes of the ended meeting currently being viewed. Dropped by
+  /// `invalidateEndedNotesCache()` whenever a start, resume, stop, chat switch or hand edit
+  /// rewrites `.notes.md`. See `meetingNotesForDisplay`.
+  private var endedNotesCache: (stem: String, notes: [LiveMeetingNote])?
   /// Invalidation tick — intentionally never read. A hand edit of an ended meeting's note rewrites
   /// the `.notes.md` file and bumps this so SwiftUI re-evaluates `meetingNotesForDisplay`, which
   /// then re-reads the file. Disk stays the source of truth.
@@ -266,8 +265,9 @@ class ChatViewModel: ObservableObject {
 
   /// Returns true if the given session has an in-flight request (for tab spinner).
   func isSendingSession(_ id: UUID) -> Bool { sendingSessionIds.contains(id) }
-  /// Maximum length for auto-generated session title from first user message.
-  private static let maxSessionTitleLength = 50
+  /// Maximum length for auto-generated session title from first user message. Internal for
+  /// `MeetingTitleService`, which applies the same cap app-level.
+  static let maxSessionTitleLength = 50
   /// Commands are slash-only (e.g. /new); do not use hotkeys/shortcuts for command actions.
   private static let newChatCommand = "/new"
   static let screenshotCommand = "/screenshot"
@@ -347,7 +347,7 @@ class ChatViewModel: ObservableObject {
     ("/unpin", "Make the window close when losing focus"),
     ("/meeting", "Start or stop live meeting recording"),
     ("/copy", "Copy the entire chat history to clipboard as Markdown"),
-    ("/feedback", "Message the developer, with the end of this chat attached"),
+    ("/feedback", "Report a problem, the end of this chat is added"),
   ]
   /// Menu text: descriptions in the app language.
   static let commandsBeforeModels: [(command: String, description: String)] =
@@ -553,23 +553,20 @@ class ChatViewModel: ObservableObject {
         }
       }
 
-    // When a meeting's final summary is ready, title its chat from that summary.
-    // Only the main sidebar view model handles this (not the meeting window's).
-    if !singleChatOnly {
-      summaryCancellable = NotificationCenter.default.publisher(for: .chatMeetingSummaryReady)
-        .receive(on: DispatchQueue.main)
-        .sink { [weak self] note in
-          guard let self,
-                let stem = note.userInfo?["stem"] as? String,
-                let summary = note.userInfo?["summary"] as? String else { return }
-          Task {
-            // No title-empty precheck here — `generateMeetingTitle` already early-returns when the
-            // title is non-empty, and `generateAndApplyTitle` re-checks post-network before writing.
-            guard let targetId = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem })?.id else { return }
-            await self.generateMeetingTitle(targetId: targetId, summary: summary)
-          }
+    // MeetingTitleService writes the title and posts this. Copy it into the session on screen
+    // so a later store.save(session) does not persist a nil title over the one just stored.
+    // Every window listens: the meeting chat and the sidebar can each hold that session.
+    titleChangedCancellable = NotificationCenter.default.publisher(for: .chatSessionTitleChanged)
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] note in
+        guard let self else { return }
+        if let id = note.userInfo?["sessionId"] as? UUID,
+           id == self.session.id,
+           let title = note.userInfo?["title"] as? String {
+          self.session.title = title
         }
-    }
+        self.refreshRecentSessions()
+      }
 
     backfillMeetingTitleIfNeeded()
     if let notice = store.consumeCorruptionNotice() {
@@ -986,34 +983,26 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Copied chat (\(target.messages.count) messages, \(markdown.count) chars) to clipboard")
   }
 
-  /// `/feedback` — opens WhatsApp with the tail of this chat already quoted.
+  /// `/feedback` — opens the report window on general feedback, with the tail of this chat in
+  /// the details. The message field stays empty so the user can say what went wrong.
   ///
-  /// This is the lowest-friction report the app can offer: the user is already typing sentences
-  /// about their problem here, so the alternative is asking them to describe it a second time
-  /// somewhere else. The transcript is *prefilled*, not sent — WhatsApp opens with the text
-  /// visible and the user presses send, so nothing from their chat leaves the machine unseen.
+  /// The user is already typing sentences about their problem here, so the alternative is asking
+  /// them to describe it a second time. The transcript is prefilled, not sent.
   func sendFeedbackFromChat() {
     let excerpt = recentTranscriptForFeedback()
-    let context = excerpt.isEmpty
-      ? nil
-      : "Here is the end of my chat for context:\n\n\(excerpt)"
-    guard FeedbackLinks.open(.whatsApp, context: context) else {
-      showNotice("Couldn't open WhatsApp — use Settings → About for the other contact options.")
-      return
-    }
-    showNotice(
-      excerpt.isEmpty
-        ? ("Opened WhatsApp. Edit the message before sending." as LocalizedStringResource)
-        : "Opened WhatsApp with the end of this chat attached. Edit before sending.")
+    ProblemReport.open(
+      message: nil,
+      details: excerpt.isEmpty ? nil : excerpt,
+      startOnGeneral: true)
   }
 
-  /// The last few turns of this chat, oldest first, clamped to what a URL can carry.
+  /// The last few turns of this chat, oldest first, clamped so the report stays readable.
   private func recentTranscriptForFeedback() -> String {
     let recent = messages.suffix(6)
     guard !recent.isEmpty else { return "" }
     let rendered = recent.map { message -> String in
       let who = message.role == .user ? "Me" : "Assistant" // sent to the developer in English
-      // One line per turn: a pasted multi-line reply makes the WhatsApp draft unreadable.
+      // One line per turn: a pasted multi-line reply makes the report hard to read.
       let body = message.content
         .replacingOccurrences(of: "\n", with: " ")
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1310,8 +1299,9 @@ class ChatViewModel: ObservableObject {
   /// meeting/workspace gates must follow that session — not whichever one is on screen.
   private func buildToolDeclarations(for target: ChatSession? = nil) -> [LLMToolDeclaration] {
     let s = target ?? session
-    let calendarConnected = GoogleAccountOAuthService.shared.isConnected
-    let trelloConnected = TrelloOAuthService.shared.isConnected
+    // Offline Mode blocks Google and Trello at the network layer; same gating as DictatePromptAgent.availableTools().
+    let calendarConnected = !OfflineMode.isEnabled && GoogleAccountOAuthService.shared.isConnected
+    let trelloConnected = !OfflineMode.isEnabled && TrelloOAuthService.shared.isConnected
     // Image generation renders via the Gemini image model regardless of the chat model,
     // so the tool is offered exactly when a Gemini credential exists.
     let imageGenerationAvailable = GeminiCredentialProvider.shared.hasCredential()
@@ -2060,9 +2050,7 @@ class ChatViewModel: ObservableObject {
   /// memory and app-config tools, shared folders and what we learned about them.
   private func toolAndWorkspaceInstructions(
     for s: ChatSession,
-    // Same value as `openChatModel.supportsGrounding`. `Self` is illegal in a default
-    // argument, and that property is main-actor-isolated.
-    webSearch: Bool = PromptModel.loadSelectedChatModel().supportsGrounding
+    webSearch: Bool
   ) -> String {
     var text = ""
     // Order matters for provider prompt caching (Anthropic cache_control, OpenAI/Gemini implicit
@@ -2080,12 +2068,18 @@ class ChatViewModel: ObservableObject {
     } else {
       text += "\n\nNO WEB SEARCH: You cannot search the web in this chat. Answer from what you know; for prices, versions, release dates, news or anything else that may have changed, say in one short sentence that it may be out of date. Never claim to have searched and never cite sources you did not get from a tool."
     }
-    if GoogleAccountOAuthService.shared.isConnected {
+    // Mirrors buildToolDeclarations: in Offline Mode the Google and Trello tools are not declared,
+    // so the prompt must not claim a connection (or push the connect link) either.
+    if OfflineMode.isEnabled {
+      text += "\n\nOFFLINE MODE: Google Calendar, Google Tasks, Gmail and Trello are unavailable while Offline Mode is on, whatever is connected. Never offer or promise to look up or change anything there; if the user asks, say in one short sentence that Offline Mode has to be turned off first."
+    } else if GoogleAccountOAuthService.shared.isConnected {
       text += Self.googleConnectedInstructions(timeZoneID: TimeZone.current.identifier)
     } else {
       text += "\n\nGOOGLE ACCOUNT NOT CONNECTED: You have no access to the user's Google Calendar, Google Tasks or Gmail in this session. Never offer or promise to create, change or look up calendar events, tasks or emails there. The first time the user asks for any of that, answer with one short sentence that the Google account isn't connected yet, plus this markdown link (link text in the user's language): [Google-Konto verbinden](whispershortcut://settings/accounts). For a calendar event you may also offer a Google Calendar quick-add link (https://calendar.google.com/calendar/render?action=TEMPLATE&text=...&dates=...) as a fallback."
     }
-    if TrelloOAuthService.shared.isConnected {
+    if OfflineMode.isEnabled {
+      // Covered by the OFFLINE MODE line above.
+    } else if TrelloOAuthService.shared.isConnected {
       text += "\n\nTRELLO: You are connected to the user's Trello through the trello_* tools. If earlier messages in this conversation said you had no access, that is outdated — the user has connected since; call the tool now."
     } else {
       text += "\n\nTRELLO NOT CONNECTED: You have no access to the user's Trello boards or cards. Never offer or promise to look up or change them. The first time the user asks, answer with one short sentence that Trello isn't connected yet, plus this markdown link (link text in the user's language): [Trello verbinden](whispershortcut://settings/accounts)."
@@ -2149,9 +2143,7 @@ class ChatViewModel: ObservableObject {
   /// Gmail invents both. Memory and meeting context still apply — they need no tool.
   private func buildSystemInstruction(
     for target: ChatSession? = nil, offline: Bool = false,
-    // Same value as `openChatModel.supportsGrounding`. `Self` is illegal in a default
-    // argument, and that property is main-actor-isolated.
-    webSearch: Bool = PromptModel.loadSelectedChatModel().supportsGrounding
+    webSearch: Bool
   ) -> [String: Any] {
     let s = target ?? session
     var text = offline
@@ -2378,7 +2370,7 @@ class ChatViewModel: ObservableObject {
     let isCurrentSession = resolved.isCurrent
     var target = resolved.session
 
-    // Meetings are titled from their summary (`generateMeetingTitle`), never from a chat message —
+    // Meetings are titled from their summary (`MeetingTitleService`), never from a chat message —
     // and that summary path only fires while the title is still empty. So we must NOT stamp a
     // first-message fallback onto a meeting, or it would permanently block the summary-based title
     // and leave the row showing whatever the user happened to ask first.
@@ -2444,16 +2436,14 @@ class ChatViewModel: ObservableObject {
       """
     // Replace the first-message fallback from appendMessage only while the title is still that
     // fallback. generateAndApplyTitle refuses the write once the user has renamed the chat.
-    await generateAndApplyTitle(targetId: sessionId, prompt: prompt, overwriteExisting: true, logLabel: "AI")
+    await generateAndApplyTitle(targetId: sessionId, prompt: prompt, logLabel: "AI")
   }
 
-  /// Generates a short title via the title model and applies it to `targetId`. With
-  /// `overwriteExisting` true (chat titles) the generated title replaces the session title only
-  /// while it is still empty or the first-message fallback `appendMessage` stamped. A manual
-  /// rename is kept. With `overwriteExisting` false (meetings) the title is only set while the
-  /// session is still untitled or holding the stale first-message fallback. Shared by both
-  /// paths so the model id, length cap, and UI sync stay in one place.
-  private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
+  /// Generates a short chat title via the title model and applies it to `targetId`.
+  /// The generated title replaces the session title only while it is still empty or the
+  /// first-message fallback `appendMessage` stamped. A manual rename is kept.
+  /// Meeting titles do not come through here; `MeetingTitleService` owns them.
+  private func generateAndApplyTitle(targetId: UUID, prompt: String, logLabel: String) async {
     // The title model is a Gemini call, which Offline Mode blocks; failing it only adds retries.
     if OfflineMode.isEnabled {
       DebugLogger.log("TITLE-\(logLabel.uppercased()): Skipping title generation (Offline Mode)")
@@ -2484,19 +2474,11 @@ class ChatViewModel: ObservableObject {
       let title = Self.cleanTitleResponse((obj["title"] as? String) ?? "")
       guard !title.isEmpty else { return }
       guard var updated = store.session(by: targetId) else { return }
-      // A stale meeting first-message fallback counts as "untitled" here: it must yield to the
-      // summary-based title even under `overwriteExisting: false` (which only guards manual renames).
-      let isStaleMeetingFallback =
-        updated.isMeeting && updated.title == Self.meetingFirstMessageFallbackTitle(for: updated)
-      if overwriteExisting {
-        guard Self.mayApplyGeneratedTitle(
-          current: updated.title,
-          firstMessageFallback: Self.meetingFirstMessageFallbackTitle(for: updated)
-        ) else {
-          DebugLogger.log("GEMINI-CHAT: \(logLabel) title kept for \(targetId) — renamed away from the first-message title")
-          return
-        }
-      } else if !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback {
+      guard Self.mayApplyGeneratedTitle(
+        current: updated.title,
+        firstMessageFallback: Self.meetingFirstMessageFallbackTitle(for: updated)
+      ) else {
+        DebugLogger.log("GEMINI-CHAT: \(logLabel) title kept for \(targetId) — renamed away from the first-message title")
         return
       }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
@@ -2509,10 +2491,10 @@ class ChatViewModel: ObservableObject {
     }
   }
 
-  /// Recovers a meeting title that the live `.chatMeetingSummaryReady` notification missed (e.g. no
-  /// chat window was open when the summary finished). If the current session is an untitled meeting
-  /// whose summary is already on disk, generate the title now — at most once per stem per app run so
-  /// a missing or failed summary doesn't re-fire an API call on every view.
+  /// Recovers a meeting title when the live pass did not apply one (the summary was already on
+  /// disk when this tab opened). If the current session still needs a title and the summary is
+  /// on disk, generate it now — at most once per stem per app run so a missing or failed summary
+  /// doesn't re-fire a model call on every view.
   private func backfillMeetingTitleIfNeeded() {
     guard !singleChatOnly,
           session.isMeeting,
@@ -2526,35 +2508,19 @@ class ChatViewModel: ObservableObject {
     titleOpenMeetingFromSummary(summary)
   }
 
-  /// Titles `self.session` from `summary`. Used by the backfill and recovery paths to avoid the
-  /// `allSessions()` stem match used by the live `.chatMeetingSummaryReady` path, which can miss
-  /// the just-opened session and leave the meeting stuck on its first-message fallback title.
-  /// The save here is a safety net: ensure the session row exists in the store before the async
-  /// title generator reads it via `store.session(by:)`. Both callers gate on an empty in-memory
-  /// title, so we're persisting an untitled row.
+  /// Titles `self.session` from `summary` through `MeetingTitleService`. The save makes sure the
+  /// session row exists before the service reads it. If the store already has a real title, that
+  /// title is copied into memory instead: saving the untitled in-memory session would wipe it.
+  /// Otherwise the applied title comes back through `.chatSessionTitleChanged`.
   private func titleOpenMeetingFromSummary(_ summary: String) {
     let targetId = session.id
+    if let stored = store.session(by: targetId), !Self.meetingTitleNeedsGeneration(stored) {
+      session.title = stored.title
+      refreshRecentSessions()
+      return
+    }
     store.save(session)
-    Task { await generateMeetingTitle(targetId: targetId, summary: summary) }
-  }
-
-  /// Titles a meeting chat (by session id) from its summary, unless it's already titled.
-  private func generateMeetingTitle(targetId: UUID, summary: String) async {
-    guard let target = store.session(by: targetId), Self.meetingTitleNeedsGeneration(target) else { return }
-    let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !summaryText.isEmpty else { return }
-    let prompt = """
-      \(ChatDateContext.stableLine())
-
-      Give this meeting a short title (2–4 words) that captures its main topic. \
-      Begin with a single emoji that fits the topic, then one space, then the words. \
-      Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
-      Example: 🤝 Vendor Negotiation
-
-      Meeting summary:
-      \(String(summaryText.prefix(1200)))
-      """
-    await generateAndApplyTitle(targetId: targetId, prompt: prompt, overwriteExisting: false, logLabel: "Meeting")
+    Task { _ = await MeetingTitleService.generateAndPersistTitle(sessionId: targetId, summary: summary) }
   }
 
   // MARK: - Local model messages (slash commands)
@@ -3058,14 +3024,10 @@ class ChatViewModel: ObservableObject {
     }
     guard let stem = session.meetingStem else { return [] }
     // The chat stream reads this on every layout pass, so an ended meeting's notes are read from
-    // disk once per stem and file generation. A rewrite (resume, an outside save) changes the
-    // modification date and misses the cache.
-    let modified = endedNotesModificationDate(stem: stem)
-    if let cached = endedNotesCache, cached.stem == stem, cached.modified == modified {
-      return cached.notes
-    }
+    // disk once per stem until invalidated.
+    if let cached = endedNotesCache, cached.stem == stem { return cached.notes }
     let notes = MeetingListService.shared.loadNotes(forStem: stem)
-    endedNotesCache = (stem, modified, notes)
+    endedNotesCache = (stem, notes)
     return notes
   }
 
@@ -3073,15 +3035,6 @@ class ChatViewModel: ObservableObject {
   private func invalidateEndedNotesCache() {
     endedNotesCache = nil
     notesRevision &+= 1
-  }
-
-  /// Modification date of `<stem>.notes.md`, when MeetingListService can point at that file.
-  /// Missing file → nil, which still participates in the cache key.
-  private func endedNotesModificationDate(stem: String) -> Date? {
-    let url = MeetingListService.notesURL(
-      transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
-    let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-    return attributes?[.modificationDate] as? Date
   }
 
   /// Saves a hand edit of one note. Works for both cases the Notes tab shows: while the meeting
@@ -4141,7 +4094,7 @@ struct ChatView: View {
                 .help("Remove from queue")
                 .accessibilityLabel("Remove from queue")
                 Text(queued.displayContent)
-                  .font(.system(size: 14))
+                  .font(ChatTheme.bodyFont(size: 14))
                   .foregroundColor(ChatTheme.secondaryText)
                   .padding(.horizontal, 12)
                   .padding(.vertical, 8)
@@ -4677,14 +4630,15 @@ struct ChatView: View {
           ForEach(Array(note.bullets.enumerated()), id: \.offset) { _, bullet in
             HStack(alignment: .top, spacing: 6) {
               Text("•")
-                .font(.system(size: 13))
+                .font(ChatTheme.bodyFont(size: 13))
                 .foregroundColor(ChatTheme.secondaryText)
               // Selectable NSTextView, DELIBERATELY not SwiftUI `.textSelection(.enabled)`: these rows
               // render inline in the chat stream, and SelectionOverlay's updateNSView loop pinned the
               // main thread there (hang-20261103-182004). Invariant: no .textSelection in the transcript.
+              // The note prose follows the chat typeface like the rest of the transcript.
               SelectableProseText(
                 plain: bullet,
-                font: .systemFont(ofSize: 13),
+                font: ChatTheme.bodyNSFont(size: 13),
                 color: NSColor(ChatTheme.primaryText))
             }
           }
@@ -4739,7 +4693,7 @@ struct ChatView: View {
   private func noteEditor(_ note: LiveMeetingNote) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       TextEditor(text: $noteDraft)
-        .font(.system(size: 13))
+        .font(ChatTheme.bodyFont(size: 13))
         .foregroundColor(ChatTheme.primaryText)
         .scrollContentBackground(.hidden)
         .frame(minHeight: 44, maxHeight: 200)
@@ -4809,9 +4763,10 @@ struct ChatView: View {
         if let summary, !summary.isEmpty {
           // NSTextView, not SwiftUI `.textSelection`: hovering a note row below re-renders this
           // view, which is exactly the churn that wedges SelectionOverlay (hang-20261103-182004).
+          // The summary is prose like the transcript, so it follows the chat typeface too.
           SelectableProseText(
             plain: summary,
-            font: .systemFont(ofSize: 14),
+            font: ChatTheme.bodyNSFont(size: 14),
             color: NSColor(ChatTheme.primaryText))
           if !notes.isEmpty {
             Divider().padding(.vertical, 8)
@@ -6292,7 +6247,7 @@ private struct ModelReplyView: View {
             prose.append(AttributedString("\n"))
           }
           var bullet = AttributedString(item.marker)
-          bullet.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
+          bullet.font = ChatTheme.bodyFont(size: ChatTheme.bodyFontSize, weight: .regular)
           bullet.foregroundColor = ChatTheme.primaryText.opacity(0.5)
           bullet[ListLevelHint.self] = item.level
           prose.append(bullet)
@@ -6497,7 +6452,7 @@ private struct FailedTurnRow: View {
         .foregroundColor(Color.red.opacity(0.8))
       VStack(alignment: .leading, spacing: 6) {
         Text(message)
-          .font(.system(size: 14))
+          .font(ChatTheme.bodyFont(size: 14))
           .foregroundColor(ChatTheme.secondaryText)
           .fixedSize(horizontal: false, vertical: true)
         RetryButtonView(action: onRetry)
@@ -6528,7 +6483,7 @@ private struct LocalNoticeRow: View {
       Image(systemName: "info.circle")
         .font(.system(size: 11))
       Text(attributed)
-        .font(.system(size: 13))
+        .font(ChatTheme.bodyFont(size: 13))
         .fixedSize(horizontal: false, vertical: true)
     }
     .foregroundColor(ChatTheme.secondaryText)

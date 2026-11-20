@@ -110,6 +110,9 @@ RESULT_BUNDLE="${RESULT_BUNDLE:-/tmp/WhisperShortcutTestResults-$(date +%s).xcre
 # THIS checkout interrupt a test run in the same way. Costs one cold build per checkout; `build/`
 # is gitignored.
 DERIVED_DATA="$PROJECT_DIR/build/DerivedData-tests"
+DEFAULTS_DOMAIN="com.magnusgoedde.whispershortcut.dev"
+DEFAULTS_SNAPSHOT=""
+DEFAULTS_SNAPSHOTTED=0
 
 # The app the user actually runs day-to-day is the default WhisperShortcut build
 # produced by rebuild-and-restart.sh (fixed derivedData path). We relaunch it once
@@ -179,9 +182,19 @@ dump_teardown_evidence() {
   pgrep -fl WhisperShortcut || echo "  none"
 }
 
+# Model-selection keys only. Called before relaunch so the Dev app reads the
+# values from before the test host overwrote them. Must not abort the EXIT trap.
+restore_dev_defaults() {
+  if [[ "${DEFAULTS_SNAPSHOTTED:-0}" -eq 1 ]]; then
+    python3 "$SCRIPT_DIR/lib/defaults-guard.py" restore "$DEFAULTS_DOMAIN" "$DEFAULTS_SNAPSHOT" || true
+    rm -f "$DEFAULTS_SNAPSHOT" || true
+  fi
+}
+
 on_exit() {
   # Lock first: a long relaunch or evidence dump must not keep the next run waiting.
   release_build_lock
+  restore_dev_defaults || true
   dump_teardown_evidence
   relaunch_app
 }
@@ -248,6 +261,18 @@ fi
 
 if (( ${#ONLY_TESTING[@]} > 0 )); then
   XCODEBUILD_ARGS+=("${ONLY_TESTING[@]}")
+fi
+
+# The test host shares the UserDefaults domain of the daily "WhisperShortcut Dev"
+# app (com.magnusgoedde.whispershortcut.dev). Tests write offline models through
+# UserDefaults.standard because the host cannot read the keychain. On 2026-11-17
+# a run at 13:20 switched a live meeting's chat to the offline model. The guarded
+# key set is narrow on purpose, so a still-running protected Dev app's other
+# state is never rolled back.
+if [[ "${CI:-}" != "true" ]]; then
+  DEFAULTS_SNAPSHOT=$(mktemp "${TMPDIR:-/tmp}/ws-test-defaults.XXXXXX")
+  python3 "$SCRIPT_DIR/lib/defaults-guard.py" snapshot "$DEFAULTS_DOMAIN" "$DEFAULTS_SNAPSHOT" \
+    && [[ -s "$DEFAULTS_SNAPSHOT" ]] && DEFAULTS_SNAPSHOTTED=1 || true
 fi
 
 xcodebuild "${XCODEBUILD_ARGS[@]}"

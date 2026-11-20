@@ -10,7 +10,7 @@
 //
 //  Arguments (each optional):
 //    --onboarding-step <id>      open the Welcome Tour on that step. Dictation-only path: mode,
-//                                globe, language, permissions, download, test, glossary, done.
+//                                globe, language, permissions, download, test, done.
 //                                Full path: full-setup, full-permissions, full-try, full-done.
 //    --dictation-only on|off     the mode at launch, Welcome Tour closed (Settings, status menu).
 //    --settings-tab <tab>        open Settings on that tab at launch (general, dictate, permissions, about).
@@ -26,6 +26,8 @@
 //    --live-audio-file <path>    Dictate Live runs from this WAV into a text view (no microphone,
 //                                no Accessibility). Absolute path only, same rule as --audio-file.
 //    --glossary-terms "<a;b;c>"  the Glossary at launch: these terms, separated by `;`, one per line.
+//    --sample-results            one invented dictation, Prompt answer and Read Aloud, so
+//                                Report a Problem… has all three.
 //
 
 import Foundation
@@ -61,6 +63,8 @@ struct TestProfileOverrides: Equatable {
   var liveAudioFile: String?
   /// Terms the Glossary starts with (trimmed, empties dropped), or nil. Ignored outside a test profile.
   var glossaryTerms: [String]?
+  /// Seed one result per feature for the report window. Ignored outside a test profile.
+  var sampleResults = false
 
   static let none = TestProfileOverrides()
 
@@ -115,6 +119,7 @@ struct TestProfileOverrides: Equatable {
     result.audioFile = value("--audio-file").flatMap { $0.hasPrefix("/") ? $0 : nil }
     result.liveAudioFile = value("--live-audio-file").flatMap { $0.hasPrefix("/") ? $0 : nil }
     result.glossaryTerms = value("--glossary-terms").map(glossaryTerms)
+    result.sampleResults = arguments.contains("--sample-results")
     return result
   }
 
@@ -140,7 +145,6 @@ struct TestProfileOverrides: Equatable {
     case "permissions": return .dictationOnly(.permissions)
     case "download": return .dictationOnly(.download)
     case "test": return .dictationOnly(.test)
-    case "glossary": return .dictationOnly(.glossary)
     case "done": return .dictationOnly(.done)
     case "full-setup": return .full(.dictationSetup)
     case "full-permissions": return .full(.permissions)
@@ -165,6 +169,23 @@ struct TestProfileOverrides: Equatable {
     let overrides = current
     guard TestProfile.isActive, !overrides.isEmpty else { return }
     let defaults = UserDefaults.standard
+    if overrides.sampleResults {
+      // The dictation is stamped now, so the window opens on it; the other two sit behind
+      // "Report Something Else".
+      let now = Date()
+      TranscriptionHistoryStore.shared.record(
+        "Ich sehe diese Session noch nicht auf dem Handy. Woran liegt das?", mode: "Dictation",
+        transcriptionModel: "gemini-3.1-flash-lite", transcriptionModelName: "Gemini 3.1 Flash-Lite",
+        glossaryEchoRemoved: [])
+      LastResultStore.shared.recordPrompt(.init(
+        ts: now.addingTimeInterval(-120), instruction: "Fasse das in zwei Sätzen zusammen",
+        selectedText: "Der Termin am Donnerstag verschiebt sich auf nächste Woche.",
+        response: "Der Termin am Donnerstag fällt aus. Er findet nächste Woche statt.",
+        model: "gemini-3.5-flash", provider: "Gemini", hadScreenshot: false))
+      LastResultStore.shared.recordReadAloud(.init(
+        ts: now.addingTimeInterval(-30), text: "Die Besprechung beginnt um 14 Uhr im Raum 3.",
+        model: "gemini-3.5-flash-tts", voice: "Kore"))
+    }
     func enterDictationOnly() {
       defaults.set(true, forKey: UserDefaultsKeys.dictationOnlyMode)
       _ = DictationOnlyDefaults.apply(preferredLanguages: overrides.preferredLanguages)

@@ -11,11 +11,11 @@ enum SystemPromptSectionGuide {
     case .dictationAdditions:
       return "Additions to the built-in transcription instructions (Dictate: speech becomes text, verbatim, cleaned of fillers). Belongs here: who the user is, their field, spelling and formatting preferences. Single terms go to whisper_glossary. Ignored by GPT Transcribe and offline models, which use only the glossary."
     case .promptModeAdditions:
-      return "Additions to the built-in Dictate Prompt instructions. With text selected, the user speaks an instruction applied to it ('rephrase', 'shorter', 'translate'); with nothing selected, the spoken words become finished text. Belongs here: role and context, tone per app, list style, how composed text should look. A different output format for a specific job (a report layout) belongs in a Template."
+      return "Additions to the built-in Dictate Prompt instructions. With text selected, the user speaks an instruction applied to it ('rephrase', 'shorter', 'translate'); with nothing selected, the spoken words become finished text. Belongs here: role and context, tone per app, list style, how composed text should look. A different output format for a specific job (a report layout) belongs in a Template (create_template). Templates have their own shortcut and never run through Dictate Prompt, so text added here does not reach them."
     case .dictation:
       return "Legacy full prompt for Dictation. When this text is non-empty it replaces the built-in transcription instructions, so later improvements to those instructions do not apply. Prefer Dictation Additions for context, vocabulary and style."
     case .promptMode:
-      return "Legacy full prompt for Dictate Prompt. When this text is non-empty it replaces the built-in instructions. Prefer Dictate Prompt Additions for role, context and style, and a Template for a job-specific output format."
+      return "Legacy full prompt for Dictate Prompt. When this text is non-empty it replaces the built-in instructions. Prefer Dictate Prompt Additions for role, context and style, and a Template (own shortcut, does not run via Dictate Prompt) for a job-specific output format."
     case .whisperGlossary:
       return "Names and terms the recognizer should spell as the user writes them. One term per line, optionally Term (not \"wrong\"). Offline models and GPT Transcribe use only this list."
     case .chat:

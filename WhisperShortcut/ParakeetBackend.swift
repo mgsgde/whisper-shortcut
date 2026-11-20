@@ -37,14 +37,17 @@ final class ParakeetBackend: @unchecked Sendable {
   // MARK: - Files
 
   /// FluidAudio's model root (`Application Support/FluidAudio/Models`). Holds the Parakeet
-  /// download (Ultra + the CTC model). The Silero VAD model is stored in this same directory.
-  /// Settings deletes and sizes the folder, so deleting Parakeet also removes the VAD model,
-  /// which re-downloads on next launch.
+  /// download (Ultra + the CTC model) and, beside those, the Silero VAD model (`silero-vad*`).
+  /// Delete and the size readout use `modelDirectories` only, so removing Parakeet leaves the
+  /// VAD model in place.
   static var modelsRoot: URL {
     AsrModels.defaultCacheDirectory(for: version).deletingLastPathComponent()
   }
 
-  private static var ultraDirectory: URL { AsrModels.defaultCacheDirectory(for: version) }
+  /// Ultra and the CTC model. Never a `silero-vad*` folder, which shares `modelsRoot`.
+  static var modelDirectories: [URL] { [ultraDirectory, ctcDirectory] }
+
+  static var ultraDirectory: URL { AsrModels.defaultCacheDirectory(for: version) }
   /// Internal (not private) so the live test can remove just this part and watch it re-download.
   static var ctcDirectory: URL { CtcModels.defaultCacheDirectory(for: .ctc110m) }
 
@@ -239,12 +242,28 @@ private actor VocabularyBooster {
         return ParakeetVocabularyGuard.Replacement(
           originalSpan: replacement.originalWord, term: term)
       }
+      // The CTC booster knows no aliases: a span the glossary lists as `Term (not "span")` is
+      // taken from the glossary text here and passes the guard without the similarity floor.
+      let misheardForms = ParakeetVocabularyGuard.misheardForms(
+        fromGlossary: SystemPromptsStore.shared.loadWhisperGlossary())
+      // Rule (m): NSSpellChecker is main-thread only and this is an actor, so the verdicts for
+      // the candidate spans are computed in one `await MainActor.run` (the actor suspends, the
+      // main thread never waits on it, no deadlock) and the guard gets a pure lookup.
+      let spans = Set(candidates.compactMap { ParakeetVocabularyGuard.singleWord(of: $0.originalSpan) })
+      let knownWords = await MainActor.run { () -> Set<String> in
+        guard GlossaryFastLearner.dictationDictionariesAvailable() else { return [] }
+        return spans.filter(GlossaryFastLearner.isKnownWordInDictationLanguages)
+      }
+      let isKnownWord: (String) -> Bool = { knownWords.contains($0) }
       let applied = ParakeetVocabularyGuard.apply(
-        to: result.text, replacements: candidates, glossaryTerms: terms)
+        to: result.text, replacements: candidates, glossaryTerms: terms,
+        misheardForms: misheardForms, isKnownWord: isKnownWord)
       // The span is dictated text (possibly patient data): only a test profile may log it.
       for candidate in candidates {
         guard
-          let reason = ParakeetVocabularyGuard.rejectionReason(candidate, glossaryTerms: terms)
+          let reason = ParakeetVocabularyGuard.rejectionReason(
+            candidate, glossaryTerms: terms, misheardForms: misheardForms,
+            isKnownWord: isKnownWord)
         else { continue }
         if TestProfile.isActive {
           DebugLogger.log(

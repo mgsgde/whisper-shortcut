@@ -9,6 +9,8 @@ import Security
 final class MCPServer: ObservableObject {
   static let shared = MCPServer()
   static let defaultPort: UInt16 = 47823
+  /// Ports past the default a second macOS user may try when 47823 is already taken.
+  static let fallbackPortCount: UInt16 = 16
   private static let tokenAccount = "mcp-server-token"
   private static let writeTokenAccount = "mcp-server-write-token"
 
@@ -36,9 +38,32 @@ final class MCPServer: ObservableObject {
     }
   }
 
+  /// The port clients should use. While running, the port actually bound; otherwise the first
+  /// candidate (an override, the sticky fallback, or the default).
   var port: UInt16 {
-    let stored = UserDefaults.standard.integer(forKey: UserDefaultsKeys.mcpServerPort)
-    return (stored > 0 && stored <= Int(UInt16.max)) ? UInt16(stored) : Self.defaultPort
+    if case .running(let bound) = status { return bound }
+    return Self.candidatePorts(
+      override: UserDefaults.standard.integer(forKey: UserDefaultsKeys.mcpServerPort),
+      sticky: UserDefaults.standard.integer(forKey: UserDefaultsKeys.mcpServerBoundPort),
+      fallbackEnabled: UserDefaults.standard.object(forKey: UserDefaultsKeys.mcpPortFallbackEnabled) as? Bool ?? true
+    ).first ?? Self.defaultPort
+  }
+
+  /// Ports to try, in order. An explicit override is used alone. With fallback disabled, only the
+  /// default. Otherwise the sticky port first when it lies in the default window, then the default,
+  /// then the next `fallbackPortCount` ports. Duplicates are dropped; order is kept.
+  static func candidatePorts(override: Int, sticky: Int, fallbackEnabled: Bool) -> [UInt16] {
+    if (1...65535).contains(override) { return [UInt16(override)] }
+    if !fallbackEnabled { return [defaultPort] }
+    let first = Int(defaultPort)
+    let last = first + Int(fallbackPortCount)
+    var ports: [UInt16] = []
+    if (first...last).contains(sticky) { ports.append(UInt16(sticky)) }
+    for value in first...last {
+      let candidate = UInt16(value)
+      if !ports.contains(candidate) { ports.append(candidate) }
+    }
+    return ports
   }
 
   var endpointURL: String { "http://127.0.0.1:\(port)/mcp" }
@@ -52,14 +77,22 @@ final class MCPServer: ObservableObject {
   /// Accounts whose latest `saveSecret` returned false. `saveSecret` still keeps that value in
   /// its session cache, so the next lookup must not be treated as a token that was stored.
   private var unpersistedAccounts = Set<String>()
+  /// One client-config repair after this process starts serving the other build's shared token.
+  private var didScheduleAdoptedTokenRepair = false
 
   /// nil when the Keychain cannot be read or the new token could not be stored. Never cache a
   /// token that was not saved — a later request would hand clients a key that disappears on restart.
   func token() -> String? {
-    stateLock.lock(); defer { stateLock.unlock() }
-    if let cachedToken { return cachedToken }
-    guard let fresh = loadOrCreateToken(account: Self.tokenAccount, label: "read token") else { return nil }
-    cachedToken = fresh
+    stateLock.lock()
+    if let cachedToken {
+      stateLock.unlock()
+      return cachedToken
+    }
+    let (fresh, shouldRepair) = loadOrCreateToken(account: Self.tokenAccount, label: "read token")
+    if let fresh { cachedToken = fresh }
+    stateLock.unlock()
+    // After the lock: repair reads both tokens, and it must not run while this lock is held.
+    if shouldRepair { repairClientTokens() }
     return fresh
   }
 
@@ -82,10 +115,15 @@ final class MCPServer: ObservableObject {
   /// Grants read and write. Created on first use, cached like the read token. nil when the
   /// Keychain cannot be read or the new token could not be stored — see `token()`.
   func writeToken() -> String? {
-    stateLock.lock(); defer { stateLock.unlock() }
-    if let cachedWriteToken { return cachedWriteToken }
-    guard let fresh = loadOrCreateToken(account: Self.writeTokenAccount, label: "write token") else { return nil }
-    cachedWriteToken = fresh
+    stateLock.lock()
+    if let cachedWriteToken {
+      stateLock.unlock()
+      return cachedWriteToken
+    }
+    let (fresh, shouldRepair) = loadOrCreateToken(account: Self.writeTokenAccount, label: "write token")
+    if let fresh { cachedWriteToken = fresh }
+    stateLock.unlock()
+    if shouldRepair { repairClientTokens() }
     return fresh
   }
 
@@ -105,8 +143,8 @@ final class MCPServer: ObservableObject {
     repairClientTokens()
   }
 
-  /// Rewrites stale tokens in client configs that already hold our entry, once the server is
-  /// running. Silent: no UI, never adds an entry to a client that has none.
+  /// Rewrites a stale token or a previous loopback URL in client configs that already hold our
+  /// entry, once the server is running. Silent: no UI, never adds an entry to a client that has none.
   private func repairClientTokens() {
     Task { @MainActor [weak self] in
       guard let self, case .running = self.status,
@@ -118,37 +156,45 @@ final class MCPServer: ObservableObject {
     }
   }
 
-  /// Caller holds `stateLock`. Returns a token only when it is already in the Keychain or was just
-  /// saved there. The caller caches that value; nil is not cached.
-  private func loadOrCreateToken(account: String, label: String) -> String? {
-    switch KeychainManager.shared.secretLookup(account: account) {
-    case .found(let existing) where !existing.isEmpty:
-      if unpersistedAccounts.contains(account) { return nil }
-      return existing
-    case .found, .notFound:
-      guard let fresh = makeAndStoreToken(account: account) else {
-        unpersistedAccounts.insert(account)
-        return nil
+  /// Caller holds `stateLock`. Returns a token only when it is already stored or was just saved.
+  /// The caller caches that value; nil is not cached. `shouldRepair` is true once per process,
+  /// when this load adopted the other build's shared token and the local copy differed.
+  private func loadOrCreateToken(account: String, label: String) -> (String?, shouldRepair: Bool) {
+    // A failed `saveSecret` still caches the value for the session. That cache must not be
+    // handed out as a token that disappears on restart. Checked before `load`, which would
+    // otherwise promote the cached value into the shared group.
+    if unpersistedAccounts.contains(account) {
+      if case .found(let existing) = KeychainManager.shared.secretLookup(account: account), !existing.isEmpty {
+        return (nil, false)
       }
-      unpersistedAccounts.remove(account)
-      return fresh
-    case .failed(let status):
-      DebugLogger.logError("MCP-SERVER: Keychain read failed for the \(label): status=\(status)")
-      return nil
     }
+
+    let store = makeTokenStore()
+    guard let fresh = store.load(account: account) else {
+      if let status = store.lastReadFailureStatus {
+        DebugLogger.logError("MCP-SERVER: Keychain read failed for the \(label): status=\(status)")
+        return (nil, false)
+      }
+      unpersistedAccounts.insert(account)
+      return (nil, false)
+    }
+    unpersistedAccounts.remove(account)
+    let shouldRepair = store.adoptedSharedToken && !didScheduleAdoptedTokenRepair
+    if shouldRepair { didScheduleAdoptedTokenRepair = true }
+    return (fresh, shouldRepair)
   }
 
-  /// nil when random bytes could not be drawn or the Keychain refused the write. The value is
-  /// not cached by the caller in that case.
+  private func makeTokenStore() -> MCPSharedTokenStore {
+    MCPSharedTokenStore(
+      keychain: SystemMCPTokenKeychain(),
+      sharedGroup: MCPSharedTokenStore.sharedAccessGroup())
+  }
+
+  /// nil when random bytes could not be drawn or neither keychain accepted the write. The value
+  /// is not cached by the caller in that case.
   private func makeAndStoreToken(account: String = MCPServer.tokenAccount) -> String? {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    let randomStatus = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    guard randomStatus == errSecSuccess else {
-      DebugLogger.logError("MCP-SERVER: Could not generate a token (SecRandomCopyBytes status=\(randomStatus))")
-      return nil
-    }
-    let token = bytes.map { String(format: "%02x", $0) }.joined()
-    guard KeychainManager.shared.saveSecret(token, account: account) else {
+    guard let token = MCPSharedTokenStore.generateToken() else { return nil }
+    guard makeTokenStore().store(token, account: account) else {
       DebugLogger.logError("MCP-SERVER: Could not store the token in the Keychain (account \(account))")
       return nil
     }
@@ -189,43 +235,61 @@ final class MCPServer: ObservableObject {
           liveStem: { [weak self] in self?.currentLiveStem() },
           meetingTitles: { Self.meetingTitlesFromSessions() }),
         configTools: MCPConfigTools(env: .live))
-      let requested = port
-      do {
-        let s = try LoopbackHTTPServer(
-          port: requested,
-          onFailure: { [weak self] reason in
-            DispatchQueue.main.async {
-              guard let self else { return }
-              self.status = .failed(String(localized: "The local server stopped: \(reason). Turn it off and on again."))
-              DebugLogger.log("MCP-SERVER: Accept loop stopped: \(reason)")
-            }
-          }
-        ) { [weak self] request in
-          guard let self else { return .empty(503) }
-          // Offline Mode promises nothing leaves this Mac; an AI app reading transcripts would send
-          // them to its provider. Checked per request so turning the mode on takes effect at once.
-          if OfflineMode.isEnabled { return .empty(503) }
-          guard let readToken = self.token(), let writeToken = self.writeToken() else {
-            DebugLogger.logError("MCP-SERVER: Keychain unavailable, refusing request")
-            return HTTPResponse.json(["error": "keychain unavailable"], status: 503)
-          }
-          return Self.handle(
-            request, readToken: readToken, writeToken: writeToken, dispatcher: dispatcher)
+      let defaults = UserDefaults.standard
+      let override = defaults.integer(forKey: UserDefaultsKeys.mcpServerPort)
+      let candidates = Self.candidatePorts(
+        override: override,
+        sticky: defaults.integer(forKey: UserDefaultsKeys.mcpServerBoundPort),
+        fallbackEnabled: defaults.object(forKey: UserDefaultsKeys.mcpPortFallbackEnabled) as? Bool ?? true)
+      let onFailure: (String) -> Void = { [weak self] reason in
+        DispatchQueue.main.async {
+          guard let self else { return }
+          self.status = .failed(String(localized: "The local server stopped: \(reason). Turn it off and on again."))
+          DebugLogger.log("MCP-SERVER: Accept loop stopped: \(reason)")
         }
-        server = s
-        status = .running(port: s.port)
-        DebugLogger.log("MCP-SERVER: Listening on 127.0.0.1:\(s.port)")
-        repairClientTokens()
-      } catch {
-        let message: String
-        if let e = error as? LoopbackHTTPServer.ServerError, e.errno == EADDRINUSE {
-          message = String(localized: "Port \(requested) is in use by another app. Quit it or choose a different port.")
-        } else {
-          message = error.localizedDescription
-        }
-        status = .failed(message)
-        DebugLogger.log("MCP-SERVER: Start failed: \(message)")
       }
+      let handler: (HTTPRequest) -> HTTPResponse = { [weak self] request in
+        guard let self else { return .empty(503) }
+        // Offline Mode promises nothing leaves this Mac; an AI app reading transcripts would send
+        // them to its provider. Checked per request so turning the mode on takes effect at once.
+        if OfflineMode.isEnabled { return .empty(503) }
+        guard let readToken = self.token(), let writeToken = self.writeToken() else {
+          DebugLogger.logError("MCP-SERVER: Keychain unavailable, refusing request")
+          return HTTPResponse.json(["error": "keychain unavailable"], status: 503)
+        }
+        return Self.handle(
+          request, readToken: readToken, writeToken: writeToken, dispatcher: dispatcher)
+      }
+      for candidate in candidates {
+        do {
+          let s = try LoopbackHTTPServer(port: candidate, onFailure: onFailure, handler: handler)
+          server = s
+          let bound = s.port
+          if bound == Self.defaultPort || (1...65535).contains(override) {
+            defaults.removeObject(forKey: UserDefaultsKeys.mcpServerBoundPort)
+          } else {
+            defaults.set(Int(bound), forKey: UserDefaultsKeys.mcpServerBoundPort)
+            DebugLogger.log("MCP-SERVER: Default port taken (other macOS user?), using \(bound)")
+          }
+          status = .running(port: bound)
+          DebugLogger.log("MCP-SERVER: Listening on 127.0.0.1:\(bound)")
+          repairClientTokens()
+          return
+        } catch {
+          if let e = error as? LoopbackHTTPServer.ServerError, e.errno == EADDRINUSE {
+            DebugLogger.log("MCP-SERVER: Port \(candidate) in use, trying next")
+            continue
+          }
+          let message = error.localizedDescription
+          status = .failed(message)
+          DebugLogger.log("MCP-SERVER: Start failed: \(message)")
+          return
+        }
+      }
+      let first = candidates.first ?? Self.defaultPort
+      let message = String(localized: "Port \(first) is in use by another app. Quit it or choose a different port.")
+      status = .failed(message)
+      DebugLogger.log("MCP-SERVER: Start failed: \(message)")
     }
   }
 
@@ -321,6 +385,7 @@ final class MCPServer: ObservableObject {
     let isWrite = constantTimeEqual(supplied, "Bearer \(writeToken)")
     let isRead = constantTimeEqual(supplied, "Bearer \(readToken)")
     guard isWrite || isRead else {
+      noteRejectedBearer(supplied)
       return HTTPResponse(
         status: 401, headers: ["WWW-Authenticate": "Bearer"],
         body: Data(#"{"error":"unauthorized"}"#.utf8))
@@ -346,6 +411,24 @@ final class MCPServer: ObservableObject {
 
   static func isLoopbackOriginHost(_ host: String) -> Bool {
     host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
+  }
+
+  private static let bearerRejectLogLock = NSLock()
+  private static var bearerRejectLoggedAt = Date.distantPast
+
+  /// A supplied bearer matched neither token. At most once a minute: the 401 itself is unchanged.
+  private static func noteRejectedBearer(_ supplied: String) {
+    let scheme = "bearer "
+    guard supplied.lowercased().hasPrefix(scheme), !supplied.dropFirst(scheme.count).isEmpty else { return }
+    bearerRejectLogLock.lock()
+    let now = Date()
+    let shouldLog = now.timeIntervalSince(bearerRejectLoggedAt) >= 60
+    if shouldLog { bearerRejectLoggedAt = now }
+    bearerRejectLogLock.unlock()
+    guard shouldLog else { return }
+    DebugLogger.logWarning(
+      "MCP-SERVER: Rejected a bearer token that matches neither the read nor the write token. If two WhisperShortcut builds are installed, the client may hold the other build's token; reconnect it in Settings > AI Apps."
+    )
   }
 
   private static func constantTimeEqual(_ a: String, _ b: String) -> Bool {

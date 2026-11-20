@@ -371,6 +371,15 @@ class SettingsViewModel: ObservableObject {
     // by field.
     guard let excludingLabel = Self.configurableShortcutSlots.first(where: { $0.field == field })?.label
     else { return nil }
+    return appSlotConflict(candidate, excludingLabel: excludingLabel)
+      ?? Self.templateKeyConflict(
+        candidate, templates: DictationTemplateStore.load(),
+        pickerShortcut: DictationTemplateStore.loadPickerShortcut())
+  }
+
+  private func appSlotConflict(_ candidate: ShortcutDefinition, excludingLabel: String)
+    -> ShortcutConflict?
+  {
     let slots: [(name: String, definition: ShortcutDefinition?)] = Self.configurableShortcutSlots.map {
       ($0.label, $0.read(data))
     }
@@ -382,10 +391,51 @@ class SettingsViewModel: ObservableObject {
     return ShortcutConflict(field: conflictField, label: conflictLabel)
   }
 
+  /// The Template key or a template's own key already bound to `candidate`, as a conflict whose
+  /// Reassign `clearShortcut(for:)` can clear. App slots are checked by the caller first; between
+  /// the two template owners the Template key wins, as in `TemplateShortcuts`. Pure so tests can
+  /// call it without touching UserDefaults.
+  nonisolated static func templateKeyConflict(
+    _ candidate: ShortcutDefinition, templates: [DictationTemplate],
+    pickerShortcut: ShortcutDefinition?
+  ) -> ShortcutConflict? {
+    guard candidate.isEnabled else { return nil }
+    if let picker = pickerShortcut, picker.isEnabled, picker.key == candidate.key,
+      picker.modifiers == candidate.modifiers, templates.contains(where: \.isUsable)
+    {
+      return ShortcutConflict(field: .templatePickerShortcut, label: String(localized: "Template"))
+    }
+    guard
+      let owner = templates.first(where: { template in
+        guard template.isUsable, let shortcut = template.shortcut, shortcut.isEnabled else { return false }
+        return shortcut.key == candidate.key && shortcut.modifiers == candidate.modifiers
+      })
+    else { return nil }
+    return ShortcutConflict(
+      field: .templateShortcut(owner.id),
+      label: String(localized: "Template “\(owner.displayName)”"))
+  }
+
   /// Used by the recorder's "Reassign" action — clears the conflicting slot
   /// without saving. The recorder's `onChanged` triggers a single `saveSettings`
   /// afterwards that captures both the cleared slot and the new binding.
   func clearShortcut(for field: SettingsFocusField) {
+    // Template keys live in the template store, not in `data`; saving it posts
+    // `.dictationTemplatesChanged`, which re-registers the hotkeys.
+    switch field {
+    case .templatePickerShortcut:
+      DictationTemplateStore.savePickerShortcut(nil)
+      return
+    case .templateShortcut(let id):
+      var templates = DictationTemplateStore.load()
+      if let index = templates.firstIndex(where: { $0.id == id }) {
+        templates[index].shortcut = nil
+        DictationTemplateStore.save(templates)
+      }
+      return
+    default:
+      break
+    }
     guard let slot = Self.configurableShortcutSlots.first(where: { $0.field == field }) else {
       assertionFailure("clearShortcut(for:): missing slot for \(field) — add it to configurableShortcutSlots")
       return
@@ -591,14 +641,8 @@ class SettingsViewModel: ObservableObject {
   }
 
   // MARK: - Feedback
-  func openWhatsAppFeedback() {
-    FeedbackLinks.open(.whatsApp)
-  }
-
-  /// The fallback for everyone without WhatsApp — regionally common, and blocked outright on many
-  /// managed Macs, in which case the WhatsApp button is a dead end.
-  func openEmailFeedback() {
-    FeedbackLinks.open(.email)
+  func openProblemReport() {
+    ProblemReport.open(startOnGeneral: true)
   }
 
   // MARK: - App Store Link
@@ -649,13 +693,6 @@ class SettingsViewModel: ObservableObject {
     } else {
       DebugLogger.logError("GITHUB: Invalid GitHub URL")
     }
-  }
-
-  /// Prefills a new GitHub issue with version, OS, and any hang-*.txt names so the
-  /// report is actionable without a round-trip. The files themselves stay on disk;
-  /// Reveal Hang Reports is how the user attaches them.
-  func openGitHubIssue() {
-    FeedbackLinks.open(.gitHub)
   }
 
   /// Reveals `hang-*.txt` watchdog captures in Finder (the Logs folder if none exist yet).

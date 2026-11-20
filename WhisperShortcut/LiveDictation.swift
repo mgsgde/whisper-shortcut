@@ -92,111 +92,17 @@ enum LiveDictation {
     }
   }
 
-  /// One decoded Dictate Live piece as normal offline Dictate finishes a transcript: standalone
-  /// fillers dropped, model punctuation stripped in "Only when spoken" mode, then the spoken
-  /// layout commands. Edge line breaks ("neuer Absatz" at the very end of a piece) are kept —
-  /// `LiveChunkJoiner` relies on them to lay out the next piece without adding a space after.
+  /// One decoded Dictate Live piece, finished by `OfflineTranscriptFinisher`. Edge line breaks stay
+  /// (`keepsEdgeBreaks: true`): a trailing "neuer Absatz" is "\n\n", which `LiveChunkJoiner` needs
+  /// to lay out the next piece without adding a space after it.
   /// `timedMarks`: the piece's commas, periods, "?" and "!" were already filtered by token timing
-  /// (`ParakeetPunctuationTiming`, done in the decode for "Only when spoken"). Strip then removes
-  /// only semicolons; a "?" or "!" the timing kept stays. Without timings, model "?" and "!" are
-  /// still dropped.
-  /// Last, quantity number words become digits (`GermanNumberWords`): after the spoken commands, so
-  /// "drei Pünktchen" is already "…" and "zwei Komma fünf" already "2,5" when it runs.
+  /// (`ParakeetPunctuationTiming`, done in the decode for "Only when spoken"). The finisher then
+  /// strips only semicolons; a "?" or "!" the timing kept stays. Without timings, model "?" and "!"
+  /// are still dropped.
   static func finishPiece(_ text: String, mode: PunctuationMode, timedMarks: Bool = false) -> String {
-    let withoutFillers = removingFillers(text)
-    let unglued = mode == .spokenOnly ? splittingGluedTrailingPunkt(withoutFillers) : withoutFillers
-    let source =
-      mode == .spokenOnly
-      ? SpokenPunctuation.stripModelPunctuation(from: unglued, timedMarks: timedMarks)
-      : unglued
-    let punctuated = SpokenPunctuation.apply(
-      to: source, mode: mode, keepsEdgeBreaks: true, timedMarks: timedMarks)
-    return GermanNumberWords.digitizingQuantities(in: punctuated)
+    OfflineTranscriptFinisher.finish(
+      text, mode: mode, timedMarks: timedMarks, keepsEdgeBreaks: true)
   }
-
-  /// Parakeet glues a spoken "Punkt" before a pause onto the last word of the piece
-  /// («Die Haut ist trockenpunkt»), so the spoken-punctuation rules never see the command. This
-  /// splits it back to «trocken Punkt». Only the piece's last word is looked at (in ~20 live
-  /// samples the glue was always on the last word, never mid-piece). Real "-punkt" compounds
-  /// ("Triggerpunkt", "Zeitpunkt") stay via `realPunktCompounds` (last word equal to an entry; an
-  /// explicit allow-list is used because Apple's spell checker calls "Kniepunkt" correct and
-  /// "Triggerpunkt" wrong). Not a suffix match: a glued "stechend"/"Blutdruck"/"Fleck" + "punkt"
-  /// would end in a listed word ("endpunkt", "druckpunkt", "eckpunkt") and stay unsplit.
-  /// Kill switch: UserDefaults bool `liveDisableGluedPunktSplit` (default false = step active).
-  static func splittingGluedTrailingPunkt(_ text: String) -> String {
-    if UserDefaults.standard.bool(forKey: "liveDisableGluedPunktSplit") { return text }
-    let range = NSRange(text.startIndex..., in: text)
-    guard let match = gluedPunktRegex.firstMatch(in: text, range: range),
-      let wordRange = Range(match.range(at: 1), in: text),
-      let stemRange = Range(match.range(at: 2), in: text)
-    else { return text }
-    let word = String(text[wordRange])
-    let lower = word.lowercased()
-    if lower == "punkt" || lower == "doppelpunkt" || lower == "strichpunkt" { return text }
-    if realPunktCompounds.contains(lower) { return text }
-    let stem = String(text[stemRange])
-    DebugLogger.log("LIVE-PUNKT: split glued «\(word)»")
-    return text.replacingCharacters(in: wordRange, with: stem + " Punkt")
-  }
-
-  // swiftlint:disable:next force_try
-  private static let gluedPunktRegex = try! NSRegularExpression(
-    pattern: #"((\p{L}{2,})punkt)[.,;:!?…]*\s*$"#, options: [.caseInsensitive])
-
-  /// Lowercase real German words ending in "punkt" (plus the Dictate-relevant medical ones); a last
-  /// word equal to one of these is not split (exact match, not suffix; see
-  /// `splittingGluedTrailingPunkt`). "ruhepunkt" is left out on purpose: in dictation "in Ruhe
-  /// Punkt" is far likelier than the word.
-  static let realPunktCompounds: Set<String> = [
-    "zeitpunkt", "schwerpunkt", "standpunkt", "mittelpunkt", "höhepunkt", "treffpunkt",
-    "ausgangspunkt", "druckpunkt", "triggerpunkt", "tenderpunkt", "akupunkturpunkt",
-    "akupressurpunkt", "schmerzpunkt", "messpunkt", "tiefpunkt", "wendepunkt", "knotenpunkt",
-    "endpunkt", "startpunkt", "nullpunkt", "siedepunkt", "gefrierpunkt", "schmelzpunkt",
-    "blickpunkt", "brennpunkt", "gesichtspunkt", "anhaltspunkt", "kernpunkt", "hauptpunkt",
-    "kritikpunkt", "programmpunkt", "tagesordnungspunkt", "pluspunkt", "minuspunkt",
-    "streitpunkt", "knackpunkt", "schnittpunkt", "bezugspunkt", "fixpunkt", "haltepunkt",
-    "sammelpunkt", "stützpunkt", "ankerpunkt", "kontrollpunkt", "umkehrpunkt", "scheitelpunkt",
-    "drehpunkt", "angelpunkt", "aussichtspunkt", "berührungspunkt", "eckpunkt", "fluchtpunkt",
-    "gipfelpunkt", "grenzpunkt", "kontaktpunkt", "sternpunkt", "zielpunkt", "zugangspunkt",
-    "einstichpunkt", "insertionspunkt", "ansatzpunkt", "auslösepunkt",
-    "maximalpunkt", "sattelpunkt", "lotpunkt", "fußpunkt", "reizpunkt", "druckschmerzpunkt",
-    "knickpunkt", "taupunkt",
-    "schwachpunkt", "schlusspunkt", "kontrapunkt", "diskussionspunkt", "anknüpfungspunkt",
-    "prüfpunkt", "hochpunkt", "lichtpunkt", "einstiegspunkt", "verbindungspunkt",
-    "orientierungspunkt", "höchstpunkt", "gesprächspunkt", "verhandlungspunkt", "abschlusspunkt",
-    "wiedereinstiegspunkt", "kreuzungspunkt",
-  ]
-
-  /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
-  /// one comma, period or semicolon glued on, and the spaces around them. "Um", "ah", "aha",
-  /// "achso" and "oh" stay — they are real German words. A piece of only fillers comes back "".
-  private static func removingFillers(_ text: String) -> String {
-    let text = leadingOhRegex.stringByReplacingMatches(
-      in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
-    let range = NSRange(text.startIndex..., in: text)
-    guard fillerRegex.firstMatch(in: text, range: range) != nil else { return text }
-    let replaced = fillerRegex.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
-    let collapsed = fillerSpaceRun.stringByReplacingMatches(
-      in: replaced, range: NSRange(replaced.startIndex..., in: replaced), withTemplate: " ")
-    return collapsed.trimmingCharacters(in: .whitespaces)
-  }
-
-  // Parakeet hears the breath before a lone spoken command as "Oh," ("Oh, Doppelpunkt." for a piece
-  // that is only "Doppelpunkt"), which turned the colon into "Oh:". "Oh" stays a real word
-  // everywhere else; it goes only at the start of a piece, right before a spoken colon.
-  // swiftlint:disable:next force_try
-  private static let leadingOhRegex = try! NSRegularExpression(
-    pattern: #"^[ \t]*oh[,.]?[ \t]+(?=doppel[ \t-]?(?:punkt|gun)\b)"#,
-    options: [.caseInsensitive])
-
-  // "hmm" is two or more m's; "hm" is the single one. Longer forms come first so a word boundary
-  // still decides, and "ähm" is not eaten as "äh".
-  // swiftlint:disable:next force_try
-  private static let fillerRegex = try! NSRegularExpression(
-    pattern: #"[ \t]*\b(?:mm-hmm|mmhmm|m-hm|mhm|hm{2,}|hm|ähm|äh|öhm|ehm)\b[,.;]?[ \t]*"#,
-    options: [.caseInsensitive])
-  // swiftlint:disable:next force_try
-  private static let fillerSpaceRun = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
 
   /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
   /// piece appears right after the pause; a cloud model would add a network round trip per piece.

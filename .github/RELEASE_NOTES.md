@@ -1,23 +1,20 @@
-## Dictation
-- **Spoken slash between numbers:** in Dictate Live with punctuation set to "Only when spoken", "sechs Schrägstrich fünfundzwanzig" now becomes "6/25" instead of "6-25", for dates, file numbers or "LWK 4/5".
-- Fixed: pressing Fn and another key very quickly could leave dictation stuck until the app was restarted.
+## Microphone
+- Settings › Dictate › Microphone: pick which microphone WhisperShortcut records from, for example a SpeechMike or a headset, instead of always using the macOS default. "System default" keeps following macOS.
 
-## Chat
-- **Improve:** click Improve in an empty chat or type `/improve`. The Chat reviews your settings, permissions, models and (with "Save usage data" on) your recent dictations, and suggests one change at a time that you approve. It runs on a strong model for the review only; a chip "Improve: <model> ✕" next to the model picker lets you switch or end it.
-- A prompt with nothing selected now says so instead of making up content.
+## Dictate Live
+- Choosing Dictate Live switches to Parakeet Ultra automatically when it is downloaded, and switching back to Dictate gives you your previous model again.
 
-## Read Aloud
-- Return and Enter pause and resume, like Space. The arrow keys skip 5 seconds; the ⏪/⏩ buttons still skip 10.
-- Pausing no longer loses keyboard control, so a second Return resumes.
+## Settings
+- The Welcome Tour can now be opened from Settings › General.
+- New installs that finish the Welcome Tour with All features get "Save usage data" turned on, shown on the tour's last step as a switch you can turn off, with what is kept and for how long. Existing installs, Dictation only and Offline Mode are unchanged.
 
-## Writing Style
-- Suggestions for your writing style profile no longer pop up in a window. A dot on the menu bar icon and "Review Writing Style Suggestion…" in the menu show them, at most once every 14 days. Each change lists the quotes from your own messages that back it.
+## Connected AI apps (MCP)
+- The release and Dev builds now share one access token, so Claude Code and other clients no longer get "unauthorized" when the other build is running.
 
-## Other
-- The recording pill now also shows over apps in full screen.
-- Retired models: gpt-4o-transcribe is no longer offered (GPT Transcribe takes over). OpenAI's Read Aloud voice gpt-4o-mini-tts, which OpenAI shuts down in January 2027, is replaced by Gemini 3.8 Flash-Lite TTS if you have a Gemini key, otherwise by the macOS voice.
+## Under the hood
+- Dictate Prompt and Read Aloud Prompt share one start path, and the recording pill decides in one place which part gets the keyboard.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.92...v8.93
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v9.02...v9.03

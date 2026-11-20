@@ -159,7 +159,8 @@ final class SystemPromptsStore {
     loadSection(.dictationAdditions)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
-  /// Legacy Dictation prompt. Non-empty means it replaces the built-in instructions entirely.
+  /// Legacy Dictation prompt, trimmed. Empty when the section is missing or blank.
+  /// Whether that text replaces the built-in is `legacyReplacesBuiltIn`, not "non-empty".
   func loadLegacyDictationPrompt() -> String {
     loadSection(.dictation)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
@@ -169,16 +170,39 @@ final class SystemPromptsStore {
     loadSection(.promptModeAdditions)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
-  /// Legacy Dictate Prompt. Non-empty means it replaces the built-in instructions entirely.
+  /// Legacy Dictate Prompt, trimmed. Empty when the section is missing or blank.
+  /// Whether that text replaces the built-in is `legacyReplacesBuiltIn`, not "non-empty".
   func loadLegacyDictatePrompt() -> String {
     loadSection(.promptMode)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
+  /// A legacy full prompt replaces the built-in core only when it is the user's own text.
+  /// Blank text and any wording this app has shipped, including a copy that differs only by
+  /// surrounding whitespace, count as empty so the core and the additions apply.
+  static func legacyReplacesBuiltIn(_ legacy: String, section: SystemPromptSection) -> Bool {
+    let trimmed = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return false }
+    if SystemPromptDefaultsHistory.isShippedDefault(legacy, for: section) { return false }
+    if SystemPromptDefaultsHistory.isShippedDefault(trimmed, for: section) { return false }
+    return true
+  }
+
   /// The legacy full prompt that replaces the built-in for this additions section, when one is active.
+  /// Active means `legacyReplacesBuiltIn` on the paired legacy section (`.dictation` or `.promptMode`).
   func legacyFullPrompt(for additionsSection: SystemPromptSection) -> String? {
+    Self.legacyFullPrompt(for: additionsSection, in: loadAllSections() ?? [:])
+  }
+
+  /// Same, from sections already read with `loadAllSections`, so a caller that needs several
+  /// sections does not read the file once per lookup. Nil when the legacy text is blank or a
+  /// shipped default: those do not replace the built-in.
+  static func legacyFullPrompt(
+    for additionsSection: SystemPromptSection, in sections: [SystemPromptSection: String]
+  ) -> String? {
     guard let legacy = additionsSection.promptPair?.legacy else { return nil }
-    let text = (loadSection(legacy) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    return text.isEmpty ? nil : text
+    let text = (sections[legacy] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard legacyReplacesBuiltIn(text, section: legacy) else { return nil }
+    return text
   }
 
   /// Turns a legacy full prompt into additions. Strips a shipped core when every line of some
@@ -196,10 +220,18 @@ final class SystemPromptsStore {
     let legacyText = (parsed[pair.legacy] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !legacyText.isEmpty else { return false }
     let sets = SystemPromptDefaultsHistory.shippedLineSets[pair.legacy] ?? []
-    let moved = Self.strippingShippedCore(legacyText, lineSets: sets) ?? legacyText
+    let outcome = Self.migrateLegacyPrompt(legacyText, section: pair.legacy, lineSets: sets)
+    let moved: String
+    switch outcome.caseNumber {
+    case 1: moved = ""
+    case 2: moved = outcome.additions
+    default: moved = Self.strippingAnyShippedLines(legacyText, lineSets: sets)
+    }
     let existing = (parsed[pair.additions] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     parsed[pair.legacy] = ""
-    parsed[pair.additions] = existing.isEmpty ? moved : moved + "\n\n" + existing
+    if !moved.isEmpty {
+      parsed[pair.additions] = existing.isEmpty ? moved : moved + "\n\n" + existing
+    }
     guard write(formatContent(parsed), reason: "convert legacy \(pair.legacy.rawValue) to additions") else { return false }
     recordChanges(from: before, source: .settings)
     NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
@@ -224,6 +256,8 @@ final class SystemPromptsStore {
   /// the user sees, so every outcome carries the term it is talking about.
   enum GlossaryAppendResult: Equatable {
     case added(String)
+    /// Added together with the spelling the engine produced instead (`Term (not "misheard")`).
+    case learned(String, misheard: String)
     case duplicate(String)
     /// The selection was not a term: empty, a whole sentence, or an implausible length.
     case notATerm(String)
@@ -232,7 +266,7 @@ final class SystemPromptsStore {
 
     var termIfAny: String? {
       switch self {
-      case .added(let t), .duplicate(let t), .notATerm(let t), .budgetExceeded(let t): return t
+      case .added(let t), .learned(let t, _), .duplicate(let t), .notATerm(let t), .budgetExceeded(let t): return t
       }
     }
   }
@@ -251,27 +285,182 @@ final class SystemPromptsStore {
 
   /// Adds a user-selected spelling to the Glossary, if it is a term and not already there.
   ///
-  /// Deliberately dumb: no model, no fuzzy matching, no network. The user has told the app the
-  /// correct spelling by selecting it — the app's job is to store it verbatim, which is also what
-  /// makes this usable in Offline Mode, where every model-driven learning path is switched off.
-  func appendToWhisperGlossary(_ raw: String, source: PromptHistorySource) -> GlossaryAppendResult {
+  /// Deliberately dumb: no model, no network, no fuzzy matching of its own. The user has told the app the correct spelling by
+  /// selecting it — the app stores it verbatim, which is also what makes this usable in Offline
+  /// Mode, where every model-driven learning path is switched off. `misheard`, when the caller
+  /// found what the engine heard instead, is stored as `Term (not "misheard")` so the offline
+  /// vocabulary guard rewrites it even below its similarity threshold.
+  ///
+  /// One term through `mergeGlossary`, so the validation, duplicate and budget rules live once.
+  func appendToWhisperGlossary(
+    _ raw: String, misheard rawMisheard: String? = nil, source: PromptHistorySource
+  ) -> GlossaryAppendResult {
     let term = Self.normaliseTerm(raw)
-    guard !term.isEmpty, term.count <= Self.maxTermCharacters,
-      term.split(separator: " ").count <= Self.maxTermWords
-    else {
-      return .notATerm(term.isEmpty ? raw.trimmingCharacters(in: .whitespacesAndNewlines) : term)
+    let line: String
+    if term.isEmpty {
+      line = raw
+    } else if let misheard = Self.acceptedMisheard(rawMisheard, for: term) {
+      line = GlossaryLearning.annotatedLine(term: term, rejected: [misheard])
+    } else {
+      line = term
     }
+    return mergeGlossary([line], source: source).first
+      ?? .notATerm(term.isEmpty ? raw.trimmingCharacters(in: .whitespacesAndNewlines) : term)
+  }
 
-    let existing = loadWhisperGlossary()
-    if Self.glossaryContains(term, in: existing) { return .duplicate(term) }
-    guard existing.count + term.count + 2 <= Self.glossaryCharBudget else {
+  /// Appends many terms in one locked read of the glossary. Each term is judged on its own
+  /// (validation, duplicate, budget); the file is written once, so a second writer cannot
+  /// land between the terms and be overwritten.
+  ///
+  /// A term may be bare or `Term (not "misheard", "misheard2")`. Call `currentFile` /
+  /// `prepareFile` before taking `migrationLock`: both can lock, and the lock is not recursive.
+  func mergeGlossary(_ terms: [String], source: PromptHistorySource) -> [GlossaryAppendResult] {
+    switch currentFile() {
+    case .unreadable:
+      _ = refuseWrite("merge glossary")
+      return Self.applyingGlossaryTerms(terms, to: "").results
+    case .missing, .contents:
+      break
+    }
+    prepareFile()
+    let (results, changed) = mergeGlossaryWhileLocked(terms, source: source)
+    if changed {
+      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    }
+    return results
+  }
+
+  /// The per-term rules, with no file access, so a proposal can show the same merge the
+  /// apply path will write. `glossary` is kept verbatim apart from a trailing trim; terms
+  /// already present, including a spelling the user marked wrong, are not added again.
+  static func applyingGlossaryTerms(
+    _ terms: [String], to glossary: String
+  ) -> (glossary: String, results: [GlossaryAppendResult]) {
+    var existing = glossary.trimmingCharacters(in: .whitespacesAndNewlines)
+    var results: [GlossaryAppendResult] = []
+    for raw in terms {
+      results.append(applyGlossaryTerm(raw, to: &existing))
+    }
+    return (existing, results)
+  }
+
+  /// Caller holds `migrationLock`.
+  private func mergeGlossaryWhileLocked(
+    _ terms: [String], source: PromptHistorySource
+  ) -> (results: [GlossaryAppendResult], changed: Bool) {
+    migrationLock.lock()
+    defer { migrationLock.unlock() }
+    let parsed: [SystemPromptSection: String]
+    switch readFile() {
+    case .unreadable:
+      return (Self.applyingGlossaryTerms(terms, to: "").results, false)
+    case .contents(let existing):
+      parsed = parseSections(from: existing)
+    case .missing:
+      parsed = parseSections(from: defaultFormattedContent())
+    }
+    var sections = parsed
+    let body = sections[.whisperGlossary] ?? ""
+    let applied = Self.applyingGlossaryTerms(terms, to: body)
+    guard applied.glossary != body else { return (applied.results, false) }
+    sections[.whisperGlossary] = applied.glossary
+    guard writeAssumingLockHeld(formatContent(sections), reason: "merge glossary") else {
+      return (applied.results, false)
+    }
+    recordChanges(from: parsed, source: source)
+    let added = applied.results.reduce(0) { count, result in
+      switch result {
+      case .added, .learned: return count + 1
+      default: return count
+      }
+    }
+    if added > 0 {
+      DebugLogger.log("GLOSSARY: Merged \(added) term(s) (\(applied.glossary.count) chars total)")
+    }
+    return (applied.results, true)
+  }
+
+  private static func applyGlossaryTerm(_ raw: String, to existing: inout String) -> GlossaryAppendResult {
+    let offer = glossaryOffer(raw)
+    let term = offer.term
+    guard !term.isEmpty, term.count <= maxTermCharacters,
+      term.split(separator: " ").count <= maxTermWords
+    else {
+      return .notATerm(offer.notATermLabel)
+    }
+    // A misheard form that is already a correct term teaches the model both spellings.
+    let rejected = offer.rejected.filter { !glossaryListsAsTerm($0, in: existing) }
+    if glossaryContains(term, in: existing) {
+      var updated = existing
+      var learned: String?
+      for form in rejected {
+        guard let next = GlossaryMisheard.addingMisheard(form, for: term, to: updated),
+          next.count <= glossaryCharBudget
+        else { continue }
+        updated = next
+        if learned == nil { learned = form }
+      }
+      if let learned, updated != existing {
+        existing = updated
+        return .learned(term, misheard: learned)
+      }
+      return .duplicate(term)
+    }
+    let entry = rejected.isEmpty
+      ? term
+      : GlossaryLearning.annotatedLine(term: term, rejected: rejected)
+    // `+ 2` is the separator (", " or a newline). Refusing here beats appending a term
+    // Whisper will never read.
+    guard existing.count + entry.count + 2 <= glossaryCharBudget else {
       return .budgetExceeded(term)
     }
-
-    let updated = existing.isEmpty ? term : existing + ", " + term
-    updateSection(.whisperGlossary, content: updated, source: source)
-    DebugLogger.log("GLOSSARY: Added \(DebugLogger.redacted(term)) (\(updated.count) chars total)")
+    existing = appendingEntry(entry, to: existing)
+    if rejected.count == 1, let only = rejected.first {
+      return .learned(term, misheard: only)
+    }
     return .added(term)
+  }
+
+  /// Bare term, or one annotated line. Anything else is handed to the term-length rules as
+  /// a single string, which is what a selection that is not a term must hit.
+  private static func glossaryOffer(_ raw: String) -> (term: String, rejected: [String], notATermLabel: String) {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if GlossaryDocument.carriesAnnotation(trimmed) {
+      let entries = GlossaryDocument.parse(trimmed).entries
+      if entries.count == 1 {
+        let term = normaliseTerm(entries[0].term)
+        let rejected = entries[0].rejectedSpellings.compactMap { acceptedMisheard($0, for: term) }
+        return (term, rejected, term.isEmpty ? trimmed : term)
+      }
+    }
+    let term = normaliseTerm(trimmed)
+    return (term, [], term.isEmpty ? trimmed : term)
+  }
+
+  /// Same bar `appendToWhisperGlossary` used before the rules moved into the merge: empty,
+  /// punctuation that would break the `(not …)` line, or a spelling identical to the term.
+  private static func acceptedMisheard(_ raw: String?, for term: String) -> String? {
+    guard let misheard = raw.map(normaliseTerm), !misheard.isEmpty,
+      !misheard.contains(where: { "\",()".contains($0) }),
+      GlossaryDocument.fold(misheard) != GlossaryDocument.fold(term)
+    else { return nil }
+    return misheard
+  }
+
+  private static func acceptedMisheard(_ raw: String, for term: String) -> String? {
+    acceptedMisheard(Optional(raw), for: term)
+  }
+
+  /// Joins a new entry onto the glossary text. A plain comma list stays comma-joined; a
+  /// line-based glossary (any newline, or a last line carrying a `(not …)` annotation) gets the
+  /// entry on its own line, because after `Supraspinatus (not "Super Spinatus"), Lasègue` the
+  /// parser would hand the new term the previous line's misheard forms.
+  static func appendingEntry(_ entry: String, to existing: String) -> String {
+    if existing.isEmpty { return entry }
+    let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lastLine = trimmed.components(separatedBy: .newlines).last ?? trimmed
+    let lineBased = trimmed.contains("\n") || GlossaryDocument.carriesAnnotation(lastLine)
+    return lineBased ? trimmed + "\n" + entry : trimmed + ", " + entry
   }
 
   /// Trims the selection to what belongs in a vocabulary list: no surrounding whitespace, no
@@ -306,6 +495,17 @@ final class SystemPromptsStore {
       }
     }
     return false
+  }
+
+  /// True when `term` is a correct spelling in `glossary`, not merely a rejected one.
+  /// A rejected spelling must not be offered again as the right form (`glossaryContains`),
+  /// but it may still be named as the mishearing of a different term.
+  private static func glossaryListsAsTerm(_ term: String, in glossary: String) -> Bool {
+    let needle = GlossaryDocument.fold(normaliseTerm(term))
+    guard !needle.isEmpty else { return false }
+    return GlossaryDocument.parse(glossary).entries.contains {
+      GlossaryDocument.fold(normaliseTerm($0.term)) == needle
+    }
   }
 
   /// Read Aloud rewrite prompt. Returns default if section missing or empty.
@@ -358,7 +558,24 @@ final class SystemPromptsStore {
     case .unreadable: return refuseWrite("update section \(section.rawValue)")
     case .missing, .contents: break
     }
+    // Migration takes the lock itself. Take it only after that returns: NSLock is not
+    // recursive, and a read that happens before the lock is what a concurrent glossary
+    // merge overwrites.
     prepareFile()
+    let wrote = updateSectionWhileLocked(section, content: content, source: source)
+    if wrote {
+      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    }
+    return wrote
+  }
+
+  /// Caller must not hold `migrationLock`. Holds it across read, parse and write.
+  /// Does not call `currentFile`, `prepareFile` or `write` (each of those locks).
+  private func updateSectionWhileLocked(
+    _ section: SystemPromptSection, content: String, source: PromptHistorySource
+  ) -> Bool {
+    migrationLock.lock()
+    defer { migrationLock.unlock() }
     var parsed: [SystemPromptSection: String]
     switch readFile() {
     case .contents(let existing): parsed = parseSections(from: existing)
@@ -367,19 +584,30 @@ final class SystemPromptsStore {
     }
     let before = parsed
     parsed[section] = content
-    guard write(formatContent(parsed), reason: "update section \(section.rawValue)") else { return false }
+    guard writeAssumingLockHeld(formatContent(parsed), reason: "update section \(section.rawValue)") else {
+      return false
+    }
     recordChanges(from: before, source: source)
-    NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
     return true
   }
 
   /// Current content for a section (raw, for display or comparison).
   /// Nil when the section is absent or the file cannot be read (see `unreadableReason`).
   func loadSection(_ section: SystemPromptSection) -> String? {
-    guard case .contents = currentFile() else { return nil }
-    prepareFile()
-    guard case .contents(let content) = readFile() else { return nil }
-    return parseSections(from: content)[section]
+    loadAllSections()?[section]
+  }
+
+  /// Every section from one read of the file (plus a second only when the one-time lift or
+  /// migration just rewrote it). Nil exactly when `loadSection` would be nil for every section:
+  /// the file is missing or unreadable. A caller that needs several sections uses this instead of
+  /// calling `loadSection` once per section.
+  func loadAllSections() -> [SystemPromptSection: String]? {
+    guard case .contents(var content) = currentFile() else { return nil }
+    if prepareFile() {
+      guard case .contents(let fresh) = readFile() else { return nil }
+      content = fresh
+    }
+    return parseSections(from: content)
   }
 
   /// One line per section — custom, default or empty, plus a character count — and one for the file
@@ -467,7 +695,9 @@ final class SystemPromptsStore {
   /// current wording before it is classified. The whole pass, including its writes, holds
   /// `migrationLock` so it runs once and no other write interleaves. Proposal decline is
   /// scheduled on the main queue after the lock is released, never via `main.sync`.
-  private func prepareFile() {
+  /// Returns whether the lift or migration rewrote the file.
+  @discardableResult
+  private func prepareFile() -> Bool {
     migrationLock.lock()
     let liftWrote = liftUnchangedDefaultsOnce()
     let migration = migrateAdditionsOnce()
@@ -475,12 +705,14 @@ final class SystemPromptsStore {
     if liftWrote || migration.wrote {
       NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
     }
-    guard !migration.superseded.isEmpty else { return }
+    let wrote = liftWrote || migration.wrote
+    guard !migration.superseded.isEmpty else { return wrote }
     let sections = migration.superseded
     let decline = declineLegacyProposals
     DispatchQueue.main.async {
       decline?(sections)
     }
+    return wrote
   }
 
   /// Once per launch: sections the user never edited — still equal to some default this app has
@@ -544,10 +776,23 @@ final class SystemPromptsStore {
     }
     let matches = lineSets.filter { !$0.isEmpty && $0.isSubset(of: present) }
     guard let best = matches.max(by: { $0.count < $1.count }) else { return nil }
+    return dropping(best, from: text)
+  }
+
+  /// Lines of `text` minus every line that appears in any shipped core. Same header, newline
+  /// and trim rules as `strippingShippedCore`.
+  static func strippingAnyShippedLines(_ text: String, lineSets: [Set<String>]) -> String {
+    dropping(Set(lineSets.joined()), from: text)
+  }
+
+  /// Drops lines whose fingerprint is in `fingerprints` (empty-normalised lines stay), then a
+  /// ":" header whose next line was dropped. Collapses runs of 3 or more newlines and trims.
+  private static func dropping(_ fingerprints: Set<String>, from text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
     var drop = Array(repeating: false, count: lines.count)
     for (index, line) in lines.enumerated() {
       let norm = SystemPromptDefaultsHistory.normalized(line)
-      if !norm.isEmpty, best.contains(SystemPromptDefaultsHistory.fingerprint(line)) {
+      if !norm.isEmpty, fingerprints.contains(SystemPromptDefaultsHistory.fingerprint(line)) {
         drop[index] = true
       }
     }

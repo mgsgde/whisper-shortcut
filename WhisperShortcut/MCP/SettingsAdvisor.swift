@@ -59,6 +59,22 @@ struct ImproveSuppressions {
   func isSuppressed(id: String, currentValue: String) -> Bool {
     stored[id] == currentValue
   }
+
+  func storedLabel(for id: String) -> String? {
+    stored[id]
+  }
+
+  /// Drops one dismissal. Used when the value it was stored against is no longer current, so a
+  /// later return to that same label is raised again instead of staying hidden.
+  func clear(id: String) {
+    var all = stored
+    guard all.removeValue(forKey: id) != nil else { return }
+    if all.isEmpty {
+      defaults.removeObject(forKey: Self.defaultsKey)
+    } else {
+      defaults.set(all, forKey: Self.defaultsKey)
+    }
+  }
 }
 
 enum SettingsAdvisor {
@@ -246,14 +262,14 @@ enum SettingsAdvisor {
       out.append(SettingsFinding(
         id: accessibilityID, title: String(localized: "Accessibility permission"),
         benefit: String(localized: "Auto-paste and Fn dictation are on but can't work without it."),
-        priority: .blocker, current: "Missing", recommended: "Granted",
+        priority: .blocker, current: permissionLabel(granted: false), recommended: permissionLabel(granted: true),
         fix: .userAction(where: String(localized: "Settings → Permissions"))))
     }
     if blocked(.screenRecording) {
       out.append(SettingsFinding(
         id: screenRecordingID, title: String(localized: "Screen Recording permission"),
         benefit: String(localized: "Front window picture is on but does nothing without it."),
-        priority: .blocker, current: "Missing", recommended: "Granted",
+        priority: .blocker, current: permissionLabel(granted: false), recommended: permissionLabel(granted: true),
         fix: .userAction(where: String(localized: "Settings → Permissions"))))
     }
 
@@ -297,6 +313,7 @@ enum SettingsAdvisor {
   static func findings(
     catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies, suppressions: ImproveSuppressions
   ) -> [SettingsFinding] {
+    expirePermissionDismissals(suppressions, deps: deps)
     let all = candidates(catalog: catalog, deps: deps)
     return sorted(all.filter { !suppressions.isSuppressed(id: $0.id, currentValue: $0.current) })
   }
@@ -316,6 +333,7 @@ enum SettingsAdvisor {
   static func review(
     catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies, suppressions: ImproveSuppressions
   ) -> (findings: [SettingsFinding], suppressedCount: Int) {
+    expirePermissionDismissals(suppressions, deps: deps)
     let all = candidates(catalog: catalog, deps: deps)
     let suppressedCount = all.filter { suppressions.isSuppressed(id: $0.id, currentValue: $0.current) }.count
     let shown = sorted(all.filter { !suppressions.isSuppressed(id: $0.id, currentValue: $0.current) })
@@ -327,18 +345,72 @@ enum SettingsAdvisor {
 
   /// English label of what a finding id is currently set to, i.e. the value a suppression is
   /// stored against. Nil for an id that is neither a permission nor a catalog setting.
-  static func currentLabel(forFindingID id: String, catalog: [MCPSetting]) -> String? {
-    if id == accessibilityID || id == screenRecordingID { return "Missing" }
-    guard let s = catalog.first(where: { $0.id == id }) else { return nil }
-    return MCPSettingsCatalog.label(for: s.read(), kind: s.kind)
+  ///
+  /// Accessibility and Screen Recording used to answer "Missing" always, so a dismissal stored
+  /// against that word matched again after the permission was granted and then revoked. The live
+  /// check (injected in tests) is what a later review compares.
+  static func currentLabel(
+    forFindingID id: String, catalog: [MCPSetting],
+    permissionStatus: (PermissionKind) -> PermissionStatus = { PermissionStatusChecker.status(for: $0) }
+  ) -> String? {
+    switch id {
+    case accessibilityID:
+      return permissionLabel(granted: permissionStatus(.accessibility) == .granted)
+    case screenRecordingID:
+      return permissionLabel(granted: permissionStatus(.screenRecording) == .granted)
+    default:
+      guard let s = catalog.first(where: { $0.id == id }) else { return nil }
+      return MCPSettingsCatalog.label(for: s.read(), kind: s.kind)
+    }
+  }
+
+  /// The two words a permission finding and its dismissal share. Anything but granted is
+  /// "Missing": denied and not-yet-asked look the same to this review.
+  private static func permissionLabel(granted: Bool) -> String {
+    granted ? "Granted" : "Missing"
+  }
+
+  /// A dismissal remembers the label it saw. Once that label moves (Missing → Granted), drop it.
+  /// Otherwise a later revoke stays hidden: the finding only exists while the label is "Missing",
+  /// which is exactly the word the dismissal stored.
+  private static func expirePermissionDismissals(
+    _ suppressions: ImproveSuppressions, deps: MCPSettingsCatalog.Dependencies
+  ) {
+    let status: (PermissionKind) -> PermissionStatus = { kind in
+      switch kind {
+      case .accessibility:
+        return deps.hasAccessibilityPermission() ? .granted : .denied
+      case .screenRecording:
+        return deps.hasScreenRecordingPermission() ? .granted : .denied
+      case .microphone:
+        return .notDetermined
+      }
+    }
+    for id in [accessibilityID, screenRecordingID] {
+      guard let live = currentLabel(forFindingID: id, catalog: [], permissionStatus: status),
+        let stored = suppressions.storedLabel(for: id), stored != live
+      else { continue }
+      suppressions.clear(id: id)
+    }
   }
 
   /// The Settings tab that holds a finding's setting, when that is certain.
+  ///
+  /// Prefixes whose settings all live on one tab map together. `dictation` does not: the Fn key
+  /// (`dictation.fn_key`) is on General, the transcription model (`dictation.transcription_model`)
+  /// is on Dictate. Any other `dictation.*` id, and anything that is not one setting on one tab
+  /// (for example MCP-only `recent_interactions`), stays nil.
   static func settingsTab(forFindingID id: String) -> SettingsTab? {
+    switch id {
+    case "dictation.fn_key": return .general
+    case "dictation.transcription_model": return .speechToText
+    default: break
+    }
     switch id.split(separator: ".").first.map(String.init) {
     case "privacy", "permission": return .permissions
     case "dictate_prompt", "writing_style": return .speechToPrompt
-    case "general": return .general
+    case "general", "clipboard": return .general
+    case "chat": return .chat
     default: return nil
     }
   }

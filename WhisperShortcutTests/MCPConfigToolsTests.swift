@@ -1,3 +1,5 @@
+import AppKit
+import HotKey
 import Testing
 import Foundation
 @testable import WhisperShortcut_AppStore
@@ -36,6 +38,8 @@ final class MCPTestEnv: @unchecked Sendable {
     var hasScreenshotFolder = true
     var launchAtLogin = false
     var shortcutConfig: ShortcutConfig = .default
+    var templates: [DictationTemplate] = []
+    var templatePicker: ShortcutDefinition?
     var notifications: [(Notification.Name, Any?)] = []
     var writingStyleToggles: [Bool] = []
   }
@@ -49,9 +53,12 @@ final class MCPTestEnv: @unchecked Sendable {
     writingStyle = WritingStyleStore(
       directory: dir.appendingPathComponent("ws"), isEnabled: { true }, defaults: testDefaults)
     commands = UserCommandStore(directoryURL: dir.appendingPathComponent("commands"), reservedNames: { ["help"] })
-    let targets = MCPConfigTargets(systemPrompts: systemPrompts, writingStyle: writingStyle, commands: commands)
     let box = Box()
     self.box = box
+    var targets = MCPConfigTargets(systemPrompts: systemPrompts, writingStyle: writingStyle, commands: commands)
+    targets.loadTemplates = { box.templates }
+    targets.saveTemplates = { box.templates = $0 }
+    targets.loadTemplatePicker = { box.templatePicker }
     let deps = MCPSettingsCatalog.Dependencies(
       defaults: testDefaults,
       hasAccessibilityPermission: { box.hasAccessibility },
@@ -61,6 +68,8 @@ final class MCPTestEnv: @unchecked Sendable {
       setLaunchAtLogin: { box.launchAtLogin = $0 },
       loadShortcutConfig: { box.shortcutConfig },
       saveShortcutConfig: { box.shortcutConfig = $0 },
+      loadTemplates: { box.templates },
+      loadTemplatePicker: { box.templatePicker },
       postNotification: { name, object in box.notifications.append((name, object)) },
       // The live hook posts into the user's app. Record the call on the same notification list
       // the catalog tests already read.
@@ -109,7 +118,7 @@ struct MCPConfigToolsTests {
 
   private let writeTools: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "report_problem",
+    "delete_command", "create_template", "update_template", "delete_template", "report_problem",
   ]
 
   private func obj(_ r: MCPToolResult) -> [String: Any] {
@@ -372,6 +381,99 @@ struct MCPConfigToolsTests {
     #expect(FileManager.default.fileExists(atPath: env.commands.fileURL(forName: "weekly-note").path))
   }
 
+  // MARK: templates
+
+  private func shortcutActions(_ r: MCPToolResult) -> [String] {
+    (obj(r)["shortcuts"] as? [[String: Any]] ?? []).compactMap { $0["action"] as? String }
+  }
+
+  @Test("get_configuration lists templates and every bound shortcut, template keys included")
+  func configurationListsTemplatesAndShortcuts() {
+    let env = MCPTestEnv(level: .apply)
+    let key = ShortcutDefinition(key: .six, modifiers: [.command])
+    env.box.templates = [
+      DictationTemplate(name: "Befund", instructions: "Anamnese, Befund, Therapie.", shortcut: key),
+      DictationTemplate(name: "Plain", instructions: "x"),
+    ]
+    env.box.templatePicker = ShortcutDefinition(key: .seven, modifiers: [.command])
+    let r = env.tools().call(name: "get_configuration", arguments: ["include": ["templates"]], access: .write)
+    let templates = obj(r)["templates"] as? [[String: Any]] ?? []
+    #expect(templates.map { $0["name"] as? String } == ["Befund", "Plain"])
+    #expect(templates[0]["text_length"] as? Int == 27)
+    #expect((obj(r)["template_texts"] as? [[String: Any]])?.first?["text"] as? String == "Anamnese, Befund, Therapie.")
+    let actions = shortcutActions(r)
+    #expect(actions.contains("Template: Befund"))
+    #expect(!actions.contains("Template: Plain"))
+    #expect(actions.contains { $0.hasPrefix("Template (") })
+  }
+
+  @Test("App shortcut rows add Add to Glossary and Dictate Live outside the App Store build")
+  func appShortcutRowsComplete() {
+    let direct = MCPConfigTools.appShortcutRows(config: .default, isAppStore: false).compactMap { $0["action"] as? String }
+    #expect(direct.contains("Dictate Live"))
+    #expect(direct.contains("Add to Glossary"))
+    let store = MCPConfigTools.appShortcutRows(config: .default, isAppStore: true).compactMap { $0["action"] as? String }
+    #expect(!store.contains("Dictate Live"))
+  }
+
+  @Test("create, update and delete template: apply, propose, validate, undo")
+  func templateTools() {
+    let env = MCPTestEnv(level: .apply)
+    let t = env.tools()
+    let created = t.call(name: "create_template",
+      arguments: ["name": "Befund", "text": String(repeating: "a", count: 2_599), "rationale": "r"], access: .write)
+    #expect(obj(created)["status"] as? String == "applied")
+    #expect(env.box.templates.count == 1)
+    #expect(env.box.templates[0].instructions.count == 2_599)
+    let id = env.box.templates[0].id.uuidString
+
+    // Limits and validation
+    #expect(t.call(name: "create_template", arguments: ["name": "X", "text": String(repeating: "a", count: 8_001), "rationale": "r"], access: .write).isError)
+    #expect(t.call(name: "create_template", arguments: ["name": "", "text": "x", "rationale": "r"], access: .write).isError)
+    #expect(t.call(name: "update_template", arguments: ["id": id, "rationale": "r"], access: .write).isError)
+    #expect(t.call(name: "update_template", arguments: ["id": "nope", "name": "n", "rationale": "r"], access: .write).isError)
+
+    // Update keeps the shortcut
+    env.box.templates[0].shortcut = ShortcutDefinition(key: .six, modifiers: [.command])
+    let updated = t.call(name: "update_template", arguments: ["id": id, "name": "Neu", "rationale": "r"], access: .write)
+    #expect(obj(updated)["status"] as? String == "applied")
+    #expect(env.box.templates[0].name == "Neu")
+    #expect(env.box.templates[0].shortcut != nil)
+
+    // Undo of the update restores the name
+    let changeID = obj(updated)["change_id"] as? String ?? ""
+    #expect(env.changeLog.undo(changeID) == .undone)
+    #expect(env.box.templates[0].name == "Befund")
+
+    // Propose level: nothing is written until accepted
+    env.level = .propose
+    let proposed = t.call(name: "update_template", arguments: ["id": id, "text": "new text", "rationale": "r"], access: .write)
+    #expect(obj(proposed)["status"] as? String == "pending_review")
+    #expect(env.box.templates[0].instructions.count == 2_599)
+    let pid = obj(proposed)["id"] as? String ?? ""
+    if case .failure = env.proposals.accept(pid) { Issue.record("accept failed") }
+    #expect(env.box.templates[0].instructions == "new text")
+
+    // Delete, then undo brings it back with its shortcut
+    env.level = .apply
+    let deleted = t.call(name: "delete_template", arguments: ["id": id, "rationale": "r"], access: .write)
+    #expect(obj(deleted)["status"] as? String == "applied")
+    #expect(env.box.templates.isEmpty)
+    #expect(env.changeLog.undo(obj(deleted)["change_id"] as? String ?? "") == .undone)
+    #expect(env.box.templates.count == 1)
+    #expect(env.box.templates[0].shortcut != nil)
+  }
+
+  @Test("update_settings refuses a shortcut a template already holds")
+  func settingsShortcutConflictsWithTemplate() {
+    let env = MCPTestEnv(level: .apply)
+    env.box.templates = [DictationTemplate(name: "Befund", instructions: "x", shortcut: ShortcutDefinition(key: .six, modifiers: [.command]))]
+    let r = env.tools().call(name: "update_settings",
+      arguments: ["changes": ["shortcuts.screenshot": ["key": "6", "modifiers": ["command"]]], "rationale": "r"], access: .write)
+    #expect(r.isError)
+    #expect(r.text.contains("Befund"))
+  }
+
   @Test("UserCommandStore.save round-trips through the parser; invalid and reserved names rejected")
   func saveRoundTrip() throws {
     let env = MCPTestEnv()
@@ -562,6 +664,8 @@ struct MCPConfigToolsTests {
     ], access: .write)
     #expect(!r.isError)
     #expect(r.text.contains("Saved as a problem report"))
+    #expect(r.text.contains("Report a Problem"))
+    #expect(!r.text.contains("GitHub"))
     #expect(env.proposals.pending.count == 1)
     #expect(env.changeLog.changes.isEmpty)
     let proposal = env.proposals.pending[0]
@@ -604,6 +708,17 @@ struct MCPConfigToolsTests {
       #expect(r.text.contains(messageFragment), "\(row.note)")
     }
     #expect(env.proposals.pending.isEmpty, "\(row.note)")
+  }
+
+  @Test("App docs tools are listed, and an unknown doc name is an error")
+  func appDocsTools() {
+    let t = MCPTestEnv().tools()
+    let names = Set(t.toolDefinitions(access: .read).compactMap { $0["name"] as? String })
+    #expect(names.contains("list_whisper_shortcut_docs"))
+    #expect(names.contains("read_whisper_shortcut_doc"))
+    let r = t.call(name: "read_whisper_shortcut_doc", arguments: ["name": "no-such-doc"], access: .read)
+    #expect(r.isError)
+    #expect(r.text.contains("Unknown doc"))
   }
 
   // MARK: prompts and resources

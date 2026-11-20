@@ -95,7 +95,7 @@ struct ModelImportSection: View {
   /// The user's Hugging Face cache, or LM Studio's models folder if that is the one that exists.
   private static var defaultImportDirectory: URL? {
     let fm = FileManager.default
-    let home = fm.homeDirectoryForCurrentUser
+    let home = URL(fileURLWithPath: AppConstants.realHomeDirectory, isDirectory: true)
     for candidate in [".cache/huggingface/hub", ".lmstudio/models"] {
       let url = home.appendingPathComponent(candidate)
       if fm.fileExists(atPath: url.path) { return url }
@@ -171,13 +171,26 @@ struct ModelImportSection: View {
   /// freeze Settings for its whole duration, and so that Cancel can stop it directly — a
   /// detached task is not cancelled by cancelling an enclosing `Task`.
   private func importOne(_ plan: ModelImportPlan) {
+    let preconditions = ModelImportPreconditions.live(for: plan.family)
+    // Refuse before marking the model busy. The copy below passes `.unchecked` so the busy
+    // flag this import is about to set is not read back as "a download is in progress".
+    if preconditions.isDownloading || preconditions.isModelAvailable {
+      do {
+        try ModelImporter.perform(plan, preconditions: preconditions) { _ in }
+      } catch {
+        onError(error.localizedDescription)
+      }
+      return
+    }
+
+    Self.setImporting(plan.family, true)
     isImporting = true
     progress = 0
     currentName = plan.displayName
 
     activeImport = Task.detached(priority: .userInitiated) {
       do {
-        try ModelImporter.perform(plan) { fraction in
+        try ModelImporter.perform(plan, preconditions: .unchecked) { fraction in
           Task { @MainActor in progress = fraction }
         }
 
@@ -190,10 +203,10 @@ struct ModelImportSection: View {
         }
 
         await MainActor.run {
+          Self.setImporting(plan.family, false)
           isImporting = false
           plans.removeAll { $0.id == plan.id }
           if plans.isEmpty { showSheet = false }
-          notifyStore(for: plan.family)
           if needsInternet {
             PopupNotificationWindow.showInfo(
               verbatim: String(
@@ -209,9 +222,13 @@ struct ModelImportSection: View {
           }
         }
       } catch is CancellationError {
-        await MainActor.run { isImporting = false }
+        await MainActor.run {
+          Self.setImporting(plan.family, false)
+          isImporting = false
+        }
       } catch {
         await MainActor.run {
+          Self.setImporting(plan.family, false)
           isImporting = false
           onError(error.localizedDescription)
         }
@@ -219,14 +236,14 @@ struct ModelImportSection: View {
     }
   }
 
-  /// The imported model's store does not touch its own `@Published` state during an import, so
-  /// its rows (bound via `@ObservedObject`) would not otherwise notice the model is now on disk.
+  /// Puts `family`'s model in its store's `downloadingModels` set for the duration of the copy,
+  /// which is what hides Download. Clearing it refreshes the row from disk.
   @MainActor
-  private func notifyStore(for family: ModelImportPlan.Family) {
+  private static func setImporting(_ family: ModelImportPlan.Family, _ importing: Bool) {
     switch family {
-    case .whisper: ModelManager.shared.objectWillChange.send()
-    case .mlx: LocalLLMModelManager.shared.objectWillChange.send()
-    case .qwen3: Qwen3ModelManager.shared.objectWillChange.send()
+    case .whisper(let type): ModelManager.shared.setImporting(type, importing)
+    case .mlx(let type): LocalLLMModelManager.shared.setImporting(type, importing)
+    case .qwen3(let type): Qwen3ModelManager.shared.setImporting(type, importing)
     }
   }
 }

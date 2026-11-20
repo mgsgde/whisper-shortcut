@@ -149,6 +149,50 @@ struct SettingsAdvisorTests {
     #expect(f.ids().isEmpty)
   }
 
+  @Test("Permission labels follow the grant state, so a Missing dismissal returns after grant and revoke")
+  func permissionDismissalExpiresAfterGrantRevoke() {
+    var accessibility = PermissionStatus.notDetermined
+    var screen = PermissionStatus.denied
+    let status: (PermissionKind) -> PermissionStatus = { kind in
+      switch kind {
+      case .accessibility: return accessibility
+      case .screenRecording: return screen
+      default: return .notDetermined
+      }
+    }
+    #expect(SettingsAdvisor.currentLabel(
+      forFindingID: SettingsAdvisor.accessibilityID, catalog: [], permissionStatus: status) == "Missing")
+    #expect(SettingsAdvisor.currentLabel(
+      forFindingID: SettingsAdvisor.screenRecordingID, catalog: [], permissionStatus: status) == "Missing")
+    accessibility = .granted
+    screen = .granted
+    #expect(SettingsAdvisor.currentLabel(
+      forFindingID: SettingsAdvisor.accessibilityID, catalog: [], permissionStatus: status) == "Granted")
+    #expect(SettingsAdvisor.currentLabel(
+      forFindingID: SettingsAdvisor.screenRecordingID, catalog: [], permissionStatus: status) == "Granted")
+
+    let f = Fixture()
+    f.setAllGood()
+    f.hasAccessibility = false
+    #expect(f.ids().contains(SettingsAdvisor.accessibilityID))
+    f.suppressions.suppress(id: SettingsAdvisor.accessibilityID, currentValue: "Missing")
+    #expect(!f.ids().contains(SettingsAdvisor.accessibilityID))
+    // The review while it is granted sees a different label and drops the dismissal.
+    f.hasAccessibility = true
+    #expect(!f.ids().contains(SettingsAdvisor.accessibilityID))
+    f.hasAccessibility = false
+    #expect(f.ids().contains(SettingsAdvisor.accessibilityID))
+
+    f.hasScreenRecording = false
+    #expect(f.ids().contains(SettingsAdvisor.screenRecordingID))
+    f.suppressions.suppress(id: SettingsAdvisor.screenRecordingID, currentValue: "Missing")
+    #expect(!f.ids().contains(SettingsAdvisor.screenRecordingID))
+    f.hasScreenRecording = true
+    _ = f.findings()
+    f.hasScreenRecording = false
+    #expect(f.ids().contains(SettingsAdvisor.screenRecordingID))
+  }
+
   @Test("A suppressed recommendation stays quiet until its value changes")
   func suppressionHoldsUntilValueChanges() {
     let f = Fixture()
@@ -286,5 +330,31 @@ struct SettingsAdvisorTests {
     let text = ChatViewModel.improveOfflineMessage(findings: f.findings(), footer: "FOOTER")
     #expect(text.components(separatedBy: "• **").count - 1 == 3)
     #expect(text.hasSuffix("FOOTER"))
+  }
+
+  /// Every id `SettingsAdvisor.candidates` can append. There is no static list on the type:
+  /// blockers (`privacy.save_usage_data`, the two permissions), recommended feature states
+  /// (`mcpFeatureOrder`'s five settings), the three `modelIDs`, and `writing_style.enabled`.
+  /// `recent_interactions` is MCP `not_yet_enabled` only and names two controls, so it stays nil.
+  @Test("Every finding the advisor can emit points at the tab that shows that setting")
+  func findingSettingsTabs() {
+    let tabs: [String: SettingsTab] = [
+      "privacy.save_usage_data": .permissions,
+      "permission.accessibility": .permissions,
+      "permission.screen_recording": .permissions,
+      "dictation.fn_key": .general,
+      "clipboard.auto_paste": .general,
+      "dictate_prompt.field_text_context": .speechToPrompt,
+      "dictate_prompt.screenshot_context": .speechToPrompt,
+      "general.launch_at_login": .general,
+      "dictation.transcription_model": .speechToText,
+      "chat.model": .chat,
+      "dictate_prompt.model": .speechToPrompt,
+      "writing_style.enabled": .speechToPrompt,
+    ]
+    for (id, tab) in tabs {
+      #expect(SettingsAdvisor.settingsTab(forFindingID: id) == tab, "\(id)")
+    }
+    #expect(SettingsAdvisor.settingsTab(forFindingID: "recent_interactions") == nil)
   }
 }

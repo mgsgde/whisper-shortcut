@@ -1,23 +1,20 @@
-## Diktat
-- **Gesprochener Schrägstrich zwischen Zahlen:** In Dictate Live mit der Satzzeichen-Einstellung „Nur gesprochen“ wird „sechs Schrägstrich fünfundzwanzig“ jetzt zu „6/25“ statt „6-25“, etwa für Datum, Aktenzeichen oder „LWK 4/5“.
-- Behoben: Wer Fn und eine weitere Taste sehr schnell hintereinander drückte, konnte das Diktat bis zum Neustart der App blockieren.
+## Mikrofon
+- Einstellungen › Diktieren › Mikrofon: Wählen Sie, mit welchem Mikrofon WhisperShortcut aufnimmt, zum Beispiel ein SpeechMike oder ein Headset, statt immer mit dem macOS-Standard. „Systemstandard“ folgt weiter macOS.
 
-## Chat
-- **Verbessern:** Klicken Sie im leeren Chat auf „Verbessern“ oder tippen Sie `/improve`. Der Chat prüft Ihre Einstellungen, Berechtigungen, Modelle und (bei eingeschaltetem „Nutzungsdaten speichern“) Ihre letzten Diktate und schlägt jeweils eine Änderung vor, die Sie bestätigen. Für die Prüfung läuft er auf einem starken Modell; ein Chip „Verbessern: <Modell> ✕“ neben der Modellauswahl wechselt oder beendet sie.
-- Ein Prompt ohne markierten Text sagt das jetzt, statt Inhalte zu erfinden.
+## Live diktieren
+- Wählen Sie „Live diktieren“, wird automatisch Parakeet Ultra verwendet, sofern es geladen ist. Zurück bei „Diktieren“ erhalten Sie Ihr vorheriges Modell wieder.
 
-## Vorlesen
-- Return und Enter pausieren und setzen fort, wie die Leertaste. Die Pfeiltasten springen 5 Sekunden, die Knöpfe ⏪/⏩ weiterhin 10.
-- Nach einer Pause bleibt die Tastatursteuerung erhalten, ein zweites Return setzt fort.
+## Einstellungen
+- Die Einführung lässt sich jetzt unter Einstellungen › Allgemein öffnen.
+- Neue Installationen, die die Einführung mit „Alle Funktionen“ abschließen, haben „Nutzungsdaten speichern“ eingeschaltet. Der letzte Schritt der Einführung zeigt das als Schalter, den Sie ausschalten können, mit Angaben, was wie lange gespeichert wird. Bestehende Installationen, „Nur Diktat“ und der Offline-Modus bleiben unverändert.
 
-## Schreibstil
-- Vorschläge für Ihr Schreibstil-Profil öffnen kein Fenster mehr. Ein Punkt am Menüleisten-Symbol und „Schreibstil-Vorschlag prüfen…“ im Menü zeigen sie an, höchstens alle 14 Tage. Jede Änderung nennt die Zitate aus Ihren eigenen Nachrichten, auf die sie sich stützt.
+## Verbundene KI-Apps (MCP)
+- Release- und Dev-Version teilen sich jetzt ein Zugangstoken. Claude Code und andere Programme bekommen also kein „nicht autorisiert“ mehr, wenn gerade die andere Version läuft.
 
-## Sonstiges
-- Das Aufnahme-Panel erscheint jetzt auch über Apps im Vollbild.
-- Abgelöste Modelle: gpt-4o-transcribe wird nicht mehr angeboten (GPT Transcribe übernimmt). Die OpenAI-Vorlesestimme gpt-4o-mini-tts, die OpenAI im Januar 2027 abschaltet, wird durch Gemini 3.8 Flash-Lite TTS ersetzt, wenn ein Gemini-Schlüssel hinterlegt ist, sonst durch die macOS-Stimme.
+## Intern
+- Dictate Prompt und Read Aloud Prompt starten über denselben Weg, und die Aufnahme-Pill entscheidet an einer Stelle, welcher Teil die Tastatur bekommt.
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.92...v8.93
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v9.02...v9.03

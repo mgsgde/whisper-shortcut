@@ -1727,8 +1727,13 @@ enum SettingsTab: String, CaseIterable {
   static var sections: [SettingsSection] { sections(enabled: DictationOnlyMode.isEnabled) }
 
   /// Sections that still have a tab while "Dictation only" is `enabled`; empty ones disappear.
-  static func sections(enabled: Bool) -> [SettingsSection] {
-    SettingsSection.allCases.filter { !$0.tabs(enabled: enabled).isEmpty }
+  static func sections(
+    enabled: Bool,
+    selectedModelIsCloud: Bool = !TranscriptionModel.loadSelected().isOffline
+  ) -> [SettingsSection] {
+    SettingsSection.allCases.filter {
+      !$0.tabs(enabled: enabled, selectedModelIsCloud: selectedModelIsCloud).isEmpty
+    }
   }
 
   /// A sidebar section header. Purely presentational: it groups tabs, it does not own settings.
@@ -1752,8 +1757,13 @@ enum SettingsTab: String, CaseIterable {
     var tabs: [SettingsTab] { tabs(enabled: DictationOnlyMode.isEnabled) }
 
     /// `tabs` with "Dictation only" passed in, for tests.
-    func tabs(enabled: Bool) -> [SettingsTab] {
-      DictationOnlyMode.visibleTabs(SettingsTab.allCases, enabled: enabled).filter { $0.section == self }
+    func tabs(
+      enabled: Bool,
+      selectedModelIsCloud: Bool = !TranscriptionModel.loadSelected().isOffline
+    ) -> [SettingsTab] {
+      DictationOnlyMode.visibleTabs(
+        SettingsTab.allCases, enabled: enabled, selectedModelIsCloud: selectedModelIsCloud
+      ).filter { $0.section == self }
     }
   }
 }

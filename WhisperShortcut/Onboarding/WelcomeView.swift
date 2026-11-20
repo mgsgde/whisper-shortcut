@@ -257,8 +257,6 @@ struct WelcomeView: View {
       DictationOnlyDownloadStep()
     case .test:
       DictationOnlyTestStep(onSuccess: { testSucceeded = true })
-    case .glossary:
-      DictationOnlyGlossaryStep()
     case .done:
       DictationOnlyDoneStep()
     }
@@ -361,7 +359,7 @@ struct WelcomeView: View {
     case .download:
       let model = DictationOnlyDownloadStep.model
       return !modelManager.isModelAvailable(model) && !modelManager.downloadingModels.contains(model)
-    case .language, .glossary, .done, .none: return false
+    case .language, .done, .none: return false
     }
   }
 
@@ -408,7 +406,7 @@ struct WelcomeView: View {
       switch dictationStep {
       case .language: return DictationOnlyLanguageStep.isUsable(dictationLanguage)
       case .permissions: return micStatus == .granted || micStatus == .denied
-      case .globeKey, .download, .test, .glossary, .done: return true
+      case .globeKey, .download, .test, .done: return true
       }
     }
     switch step {

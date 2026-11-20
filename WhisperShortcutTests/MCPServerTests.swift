@@ -137,6 +137,7 @@ struct MCPServerTests {
     #expect(Set(list.compactMap { $0["name"] as? String }) == [
       "get_live_transcript", "list_meetings", "get_meeting", "search_meetings",
       "get_configuration", "get_recent_interactions", "get_config_history", "get_settings", "get_proposal_status",
+      "list_whisper_shortcut_docs", "read_whisper_shortcut_doc",
     ])
   }
 
@@ -251,5 +252,13 @@ struct MCPServerTests {
 
     gate.signal()
     await MainActor.run {}
+  }
+
+  @Test("A wrong bearer still yields 401 with the unauthorized body")
+  func wrongBearerBody() {
+    let response = handle(req(auth: "Bearer nope"), tools())
+    #expect(response.status == 401)
+    #expect(response.headers["WWW-Authenticate"] == "Bearer")
+    #expect(String(data: response.body, encoding: .utf8) == "{\"error\":\"unauthorized\"}")
   }
 }

@@ -124,17 +124,39 @@ nonisolated enum LeakedPlanningStrip {
   }
 
   /// Index of the uppercase letter that starts the answer, where punctuation is glued to it.
+  /// The word before the punctuation must be at least 3 characters and end in a lowercase letter
+  /// or digit, so "U.S.", "Dr.Meyer" and similar abbreviations never cut a real answer.
   private static func gluedAnswerStart(in text: String) -> String.Index? {
     guard let anchor = lastPlanningLineStart(in: text) else { return nil }
     var index = anchor
     while index < text.endIndex {
       let next = text.index(after: index)
-      if next < text.endIndex, gluePunctuation.contains(text[index]), text[next].isUppercase {
+      if next < text.endIndex, gluePunctuation.contains(text[index]), text[next].isUppercase,
+        isGlueWord(endingBefore: index, in: text, from: anchor)
+      {
         return next
       }
       index = next
     }
     return nil
+  }
+
+  private static func isGlueWord(
+    endingBefore punctuation: String.Index, in text: String, from anchor: String.Index
+  ) -> Bool {
+    var count = 0
+    var cursor = punctuation
+    var last: Character?
+    while cursor > anchor {
+      let previous = text.index(before: cursor)
+      let character = text[previous]
+      guard character.isLetter || character.isNumber else { break }
+      if last == nil { last = character }
+      count += 1
+      cursor = previous
+    }
+    guard count >= 3, let last else { return false }
+    return last.isLowercase || last.isNumber
   }
 
   private static func logIfDropped(from original: String, to kept: String, parts: [String]) {

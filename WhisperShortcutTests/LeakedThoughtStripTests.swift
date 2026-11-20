@@ -181,6 +181,23 @@ struct LeakedThoughtStripTests {
     #expect(SpeechService.dictatePromptText(from: response) == "Hi Christina, danke.")
   }
 
+  @Test("A glue point after an abbreviation or a short word never cuts a real answer")
+  func abbreviationsDoNotCut() {
+    let usOffice = "Task: Ship it to the U.S. office"
+    #expect(LeakedPlanningStrip.strip(parts: [usOffice]) == usOffice)
+    let doctor = "Details: call Dr.Meyer tomorrow"
+    #expect(LeakedPlanningStrip.strip(parts: [doctor]) == doctor)
+  }
+
+  @Test("A glued leak after a lowercase word or a digit still cuts")
+  func gluedLeakAfterWordOrDigitCuts() {
+    #expect(
+      LeakedPlanningStrip.strip(parts: ["Task: rewrite the email politely.Hello Anna, thanks"])
+        == "Hello Anna, thanks")
+    #expect(
+      LeakedPlanningStrip.strip(parts: ["Plan: list 2025.Results follow"]) == "Results follow")
+  }
+
   private static func decodeResponse(_ json: String) throws -> GeminiChatResponse {
     try JSONDecoder().decode(GeminiChatResponse.self, from: Data(json.utf8))
   }

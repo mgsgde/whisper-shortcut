@@ -76,7 +76,7 @@ enum DictationOnlyStep: Int, CaseIterable {
   /// Skipped when the model is already on this Mac.
   case download = 104
   case test = 105
-  case glossary = 106
+  // 106 was the glossary step. It is not a case anymore; resume sends a stored 106 to `.done`.
   case done = 107
 
   static func isDictationOnly(rawValue: Int) -> Bool {
@@ -90,7 +90,7 @@ enum DictationOnlyStep: Int, CaseIterable {
       switch step {
       case .globeKey: return !isAppStore && globeConflict
       case .download: return !modelReady
-      case .language, .permissions, .test, .glossary, .done: return true
+      case .language, .permissions, .test, .done: return true
       }
     }
   }
@@ -103,6 +103,7 @@ enum OnboardingPosition: Equatable {
 
   /// Resumes from the stored raw value. `WelcomeStep.resume` alone would read 101+ as `.done`.
   /// - Dictation-only value, mode on: that step, or the next one still in `steps`.
+  ///   A stored 106 (the removed glossary step) has no case; the next step is `.done`.
   /// - Dictation-only value, mode off (switched off in Settings meanwhile): the first screen.
   /// - Old value, mode on: 0 is the first screen; anything else is the start of the path.
   /// - Old value, mode off: unchanged behaviour.

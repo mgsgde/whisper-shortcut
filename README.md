@@ -8,9 +8,9 @@ Bring your own API key (GPT, Gemini, Grok, Claude, OpenRouter or your own server
 [![macOS 15.5+](https://img.shields.io/badge/macOS-15.5%2B-blue)](#download)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-green)](LICENSE)
 
-![Dictating an email with WhisperShortcut: press the shortcut, speak, and the text lands in Apple Mail](docs/assets/demo.gif)
+[![Press ⌃⌥1, speak, and the sentence appears at the cursor in Mail, Slack or Cursor](docs/assets/demo.gif)](https://whispershortcut.com)
 
-▶️ [Watch the full demo on YouTube](https://youtu.be/gc1s0okfHbU) · [whispershortcut.com](https://whispershortcut.com) · [User Guide](docs/guide.md) · Made by [Magnus Gödde](https://magnus-goedde.de)
+[whispershortcut.com](https://whispershortcut.com) · [User Guide](docs/guide.md) · Made by [Magnus Gödde](https://magnus-goedde.de)
 
 ## Download
 
@@ -27,12 +27,13 @@ The welcome tour on first launch walks you through permissions, picking a provid
 **Dictation**
 - **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right. Settings → Dictate offers one-click starter lists of German specialist terms (orthopedics, psychiatry/psychotherapy, expert reports).
 - **Dictate Live**: text appears at the cursor after every short pause while you keep talking (on-device, Apple silicon).
+- **Microphone choice**: with a headset or dictation microphone (such as a SpeechMike) plugged in, pick it in Settings → Dictate → Microphone and Dictate and Live Meeting record from it, whatever macOS has as its input. If it is unplugged, the app records from the system default and says so.
 - **Dictation only**: a mode for people who only want to dictate. It hides Chat, meetings, Dictate Prompt, Read Aloud and the other features; nothing is deleted, and switching it off in Settings → General brings them back. Picked on the first screen of the welcome tour, it also sets up offline dictation with spoken punctuation and walks through a test dictation.
 - **Offline dictation**: [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) transcribes 25 European languages on your Mac in a fraction of a second; Whisper covers the rest.
 
 **Writing with your voice**
 - **Dictate Prompt**: select text and say "make this shorter" or "translate to English". With nothing selected, it writes what you ask for, in your own writing style if you turn that on.
-- **Templates**: dictate into a fixed format you set up once, such as a clinical note with Anamnese, Befund and Therapie.
+- **Templates**: dictate into a fixed format you set up once, such as a clinical note with Anamnese, Befund and Therapie. One template can also hold several related formats that you pick by saying their name first, for example "CT" or "Servicebericht" in an inspection-report template.
 - **Read Aloud**: select any text and hear it, with cloud voices or on-device ones, from a small player with pause, skip and speed.
 - **Read Aloud Prompt**: select text and say what you want to hear, such as "summarize this in two sentences" or "read it in English". The answer is read aloud instead of pasted. With nothing selected, it reads out the answer to your question.
 
@@ -40,7 +41,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 - **Chat**: a chat window (⌥Space) with every supported model, screenshots, files, web search and YouTube videos. It works with Google Calendar, Tasks and Gmail, Trello, IMAP mailboxes and folders you share, including your `AGENTS.md` / `CLAUDE.md` context files.
 - **Improve**: type `/improve` or click Improve in an empty chat. The Chat reviews your settings (features that are off, missing permissions, models) and, with "Save usage data" on, your recent dictations, and suggests one change at a time, a setting, a glossary term or a rule, which you approve before it changes anything. It runs on a strong model (Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol, whichever you have a key for) while the review lasts; your usual chat model stays as it is. A chip next to the model picker shows the review model: switch to another one there, continue with your own, or end the review with ✕. Your pick is remembered for the next review.
 - **Live Meeting**: records your meeting (with headphones too), transcribes it as it goes, writes live notes into the chat and answers questions about anything said so far.
-- **Claude, Claude Code and Codex over MCP**: connect them with one click. They read your meetings, even the one running right now, and tune your dictation from your logs, one glossary term or rule at a time that you approve. Examples at [whispershortcut.com/mcp](https://whispershortcut.com/mcp).
+- **Claude, Claude Code and Codex over MCP**: connect them with one click. They read your meetings, even the one running right now, and tune your dictation from your logs, one glossary term or rule at a time that you approve. They can also list every shortcut that is taken (including Dictate Live and each template's key) and create, change or delete Templates, with your approval unless you allowed them to apply changes. Examples at [whispershortcut.com/mcp](https://whispershortcut.com/mcp).
 
 **Privacy**
 - **Offline Mode**: one switch that keeps everything on your Mac. Dictation, Dictate Prompt, Chat and Read Aloud run on-device, network requests the app builds are blocked, and nothing is written to the usage log. Built for regulated dictation such as patient findings.
@@ -55,7 +56,7 @@ Dictate and Dictate Prompt have built-in instructions that always apply, because
 - **Belongs there**: who you are and your field ("I work in hospital IT"), tone per app ("Teams messages short and informal"), spelling and list style ("no em dashes").
 - **Does not belong there**: a whole prompt. Don't start with "You are…" or "Your task…", and don't paste a dictation prompt into Dictate Prompt. The mode stays the same; only the result changes.
 - **Single names and terms** go in the Glossary.
-- **A different output format** for one job, such as a clinical note, goes in a Template. A template replaces the instructions for that one recording.
+- **A different output format** for one job, such as a clinical note, goes in a Template. A template replaces the instructions for that one recording, has its own shortcut and does not run through Dictate Prompt.
 
 Settings, Chat and connected AI apps show a warning when the additions read like a whole prompt. Full prompts from earlier versions that replace the built-in instructions keep working and show a button to convert them.
 
@@ -116,7 +117,7 @@ Useful scripts: `scripts/logs.sh` (filter app logs), `scripts/run-tests.sh`, `sc
 
 ## Feedback and contributing
 
-Found a bug or missing something? [Open an issue](https://github.com/mgsgde/whisper-shortcut/issues), or use **Send Feedback** in the menu bar, which can attach your last dictation. Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md).
+Found a bug or missing something? Report a Problem… in the menu bar (and in Settings → About) opens one window that sends the report by email with your configuration attached as a file; you see everything before it is sent. Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
