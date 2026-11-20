@@ -30183,6 +30183,86 @@
         }
       }
     },
+    "Configuration as a file: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konfiguration als Datei: %@"
+          }
+        }
+      }
+    },
+    "Contains your message and your configuration, including the glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihre Nachricht und Ihre Konfiguration samt Glossar."
+          }
+        }
+      }
+    },
+    "Contains only your message, the app version and the macOS version." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält nur Ihre Nachricht, App-Version und macOS-Version."
+          }
+        }
+      }
+    },
+    "Contains your dictated text and your configuration, including the glossary. You can remove names from the text under Details." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihren diktierten Text und Ihre Konfiguration samt Glossar. Namen im Text können Sie unter „Details“ entfernen."
+          }
+        }
+      }
+    },
+    "Contains the text of this result and your configuration, including the glossary. You can remove names from the text under Details." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält den Text dieses Ergebnisses und Ihre Konfiguration samt Glossar. Namen im Text können Sie unter „Details“ entfernen."
+          }
+        }
+      }
+    },
+    "Message: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachricht: %@"
+          }
+        }
+      }
+    },
+    "View and edit details" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details ansehen und bearbeiten"
+          }
+        }
+      }
+    },
+    "Report a problem, the end of this chat is added" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem melden, das Ende dieses Chats wird eingefügt"
+          }
+        }
+      }
+    },
     "Sent as a file." : {
       "localizations" : {
         "de" : {

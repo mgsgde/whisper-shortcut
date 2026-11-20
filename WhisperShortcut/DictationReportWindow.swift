@@ -187,7 +187,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
 
   /// The message names the file, so the developer notices when it was not pasted.
   static func withFileNote(_ context: String, file: URL) -> String {
-    context + "\n\n" + String(localized: "Settings attached as a file: \(file.lastPathComponent)")
+    context + "\n\n" + String(localized: "Configuration as a file: \(file.lastPathComponent)")
   }
 
   /// Writes the report file and offers it through the system share picker. The window stays open.
@@ -334,12 +334,16 @@ struct DictationReportView: View {
 
   private var privacyNote: LocalizedStringKey {
     switch (kind, includeConfiguration) {
-    case (.general, _):
-      return "Contains your settings. Remove names before sending."
+    // The configuration cannot be edited here, so the note only asks for what the user can do:
+    // names in the text, under Details.
+    case (.general, true):
+      return "Contains your message and your configuration, including the glossary."
+    case (.general, false):
+      return "Contains only your message, the app version and the macOS version."
     case (.dictation, true):
-      return "Contains your dictated text and your settings. Remove names before sending."
+      return "Contains your dictated text and your configuration, including the glossary. You can remove names from the text under Details."
     case (_, true):
-      return "Contains the text of this result and your settings. Remove names before sending."
+      return "Contains the text of this result and your configuration, including the glossary. You can remove names from the text under Details."
     case (.dictation, false):
       return "Contains your dictated text. Remove names or anything else private before you send it."
     case (.prompt, false):
@@ -375,7 +379,9 @@ struct DictationReportView: View {
     let note = problem.trimmingCharacters(in: .whitespacesAndNewlines)
     let body = details.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !note.isEmpty else { return body }
-    return String(localized: "What went wrong: \(note)") + "\n\n\(body)"
+    let lead = kind == .general
+      ? String(localized: "Message: \(note)") : String(localized: "What went wrong: \(note)")
+    return lead + "\n\n\(body)"
   }
 
   private func sendEmail() {
@@ -453,7 +459,7 @@ struct DictationReportView: View {
           .frame(minHeight: 180)
           .padding(.top, 6)
       } label: {
-        sectionLabel("Details (editable)")
+        sectionLabel("View and edit details")
           .contentShape(Rectangle())
           .onTapGesture { withAnimation { showDetails.toggle() } }
       }

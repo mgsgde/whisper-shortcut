@@ -347,7 +347,7 @@ class ChatViewModel: ObservableObject {
     ("/unpin", "Make the window close when losing focus"),
     ("/meeting", "Start or stop live meeting recording"),
     ("/copy", "Copy the entire chat history to clipboard as Markdown"),
-    ("/feedback", "Report a problem, with the end of this chat attached"),
+    ("/feedback", "Report a problem, the end of this chat is added"),
   ]
   /// Menu text: descriptions in the app language.
   static let commandsBeforeModels: [(command: String, description: String)] =
