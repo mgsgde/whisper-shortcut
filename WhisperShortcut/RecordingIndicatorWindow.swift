@@ -90,8 +90,8 @@ final class RecordingIndicatorModel: ObservableObject {
   /// The status word next to the spinner / level bars. Names the mode ("Prompting", "Thinking")
   /// so Dictate and Dictate Prompt no longer both read "Listening"/"Transcribing".
   @Published var statusLabel = String(localized: "Listening")
-  /// `.recording` only: the CoreAudio name of the input device the recording captures from
-  /// (AVAudioRecorder always uses the macOS default input). Shown dim in the pill so a wrong
+  /// `.recording` only: the CoreAudio name of the input device this recording actually uses
+  /// (the chosen mic when connected, else the macOS default). Shown dim in the pill so a wrong
   /// headset is visible the moment recording starts. nil hides the suffix.
   @Published var inputDeviceName: String?
   @Published var levels: [CGFloat] = Array(repeating: 0, count: RecordingIndicatorModel.barCount)
@@ -1284,9 +1284,9 @@ final class RecordingIndicatorManager {
     model.resetLevels()
     model.statusLabel = label
     model.promptContext = []
-    // Read at show time, not once at launch: the default input changes with every
-    // headset connect/disconnect, and the pill must name the device this recording uses.
-    model.inputDeviceName = AudioInputDeviceCatalog.defaultInputDeviceName()
+    // The pill names the device this recording actually uses (the chosen mic when
+    // connected, else the macOS default).
+    model.inputDeviceName = MicrophoneSelection.activeInputDeviceName()
     model.phase = .recording
     orderFrontPanel()
   }

@@ -1,6 +1,96 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Which microphone Dictate and Live Meeting record from. System default follows the input chosen in macOS." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit welchem Mikrofon Diktieren und Live-Meeting aufnehmen. Systemstandard folgt dem in macOS gewählten Eingang."
+          }
+        }
+      }
+    },
+    "System default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemstandard"
+          }
+        }
+      }
+    },
+    "System default (%@)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemstandard (%@)"
+          }
+        }
+      }
+    },
+    "%@ (not connected)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (nicht verbunden)"
+          }
+        }
+      }
+    },
+    "%@ is not connected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist nicht verbunden"
+          }
+        }
+      }
+    },
+    "Recordings use the system default until it is plugged in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen nutzen den Systemstandard, bis es wieder angeschlossen ist."
+          }
+        }
+      }
+    },
+    "Use System Default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemstandard verwenden"
+          }
+        }
+      }
+    },
+    "Selected microphone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewähltes Mikrofon"
+          }
+        }
+      }
+    },
+    "The selected microphone is not connected. Recording with the system default instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ausgewählte Mikrofon ist nicht verbunden. Die Aufnahme nutzt stattdessen den Systemstandard."
+          }
+        }
+      }
+    },
     "Work from any app. Press once to start, again to stop." : {
       "localizations" : {
         "de" : {

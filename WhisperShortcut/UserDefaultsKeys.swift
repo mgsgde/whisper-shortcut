@@ -89,6 +89,12 @@ enum UserDefaultsKeys {
   /// One-shot migration flag: chat-window and Smart Improvement defaults moved 3.7 Flash → 3.8 Flash.
   static let didMigrateDefaultsTo38Flash = "didMigrateDefaultsTo38Flash"
 
+  // MARK: - Microphone
+  /// CoreAudio UID of the chosen input; absent means follow the macOS default.
+  static let selectedMicrophoneUID = "selectedMicrophoneUID"
+  /// Display name of that device when it was chosen; names it in Settings while it is unplugged.
+  static let selectedMicrophoneName = "selectedMicrophoneName"
+
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
 

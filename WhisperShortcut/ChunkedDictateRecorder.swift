@@ -3,7 +3,7 @@ import Foundation
 
 /// Chunk-capable Dictate recorder — slice 1 of plans/active/streaming-dictate.md.
 ///
-/// Records through double-buffered AVAudioRecorders that rotate ONLY at silence
+/// Records through double-buffered MicrophoneRecorders that rotate ONLY at silence
 /// boundaries (≥ `AppConstants.dictateChunkSilenceDuration` below the threshold, after
 /// `AppConstants.dictateChunkMinDuration`), mirroring LiveMeetingRecorder's proven
 /// pattern. The rotation silence threshold is relative to the measured noise floor (+10 dB, clamped -45…-30 dB).
@@ -152,9 +152,9 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     label: "com.whispershortcut.chunked-dictate-recorder", qos: .userInitiated)
 
   // MARK: - State
-  private var recorderA: AVAudioRecorder?
-  private var recorderB: AVAudioRecorder?
-  private var activeRecorder: AVAudioRecorder?
+  private var recorderA: MicrophoneRecorder?
+  private var recorderB: MicrophoneRecorder?
+  private var activeRecorder: MicrophoneRecorder?
   private var isRecorderAActive = true
   private var isSessionActive = false
 
@@ -242,7 +242,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     )
 
     // Queued behind any in-flight record()/stop(), so it can never overtake a rotation.
-    // Final delivery continues in audioRecorderDidFinishRecording.
+    // Final delivery continues in microphoneRecorderDidFinishRecording.
     audioQueue.async { recorder.stop() }
     return true
   }
@@ -328,7 +328,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   /// Builds a configured recorder. Allocation is cheap and its failure is the one the
   /// callers can still recover from, so it stays synchronous and keeps throwing; only the
   /// blocking `record()` moves to `audioQueue` (see `startChunkRecorder`).
-  private func makeChunkRecorder() throws -> AVAudioRecorder {
+  private func makeChunkRecorder() throws -> MicrophoneRecorder {
     let documentsPath =
       FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
       ?? FileManager.default.temporaryDirectory
@@ -345,9 +345,8 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
     ]
 
-    let recorder = try AVAudioRecorder(url: url, settings: settings)
+    let recorder = try MicrophoneRecorderFactory.make(url: url, settings: settings)
     recorder.delegate = self
-    recorder.isMeteringEnabled = true
     return recorder
   }
 
@@ -553,9 +552,9 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   }
 }
 
-// MARK: - AVAudioRecorderDelegate
-extension ChunkedDictateRecorder: AVAudioRecorderDelegate {
-  func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+// MARK: - MicrophoneRecorderDelegate
+extension ChunkedDictateRecorder: MicrophoneRecorderDelegate {
+  func microphoneRecorderDidFinishRecording(_ recorder: MicrophoneRecorder, successfully flag: Bool) {
     // Deferred release, identity-checked — same CoreAudio I/O-cycle courtesy as AudioRecorder.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak recorder] in
       guard let self, let recorder else { return }
@@ -581,7 +580,7 @@ extension ChunkedDictateRecorder: AVAudioRecorderDelegate {
     }
   }
 
-  func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+  func microphoneRecorderEncodeErrorDidOccur(_ recorder: MicrophoneRecorder, error: Error?) {
     if let error {
       delegate?.audioRecorderDidFailWithError(error)
     }
