@@ -5,6 +5,13 @@ description: Build the macOS App Store variant, export a signed .pkg, upload it 
 
 # Submit to App Store (macOS)
 
+**Submission now runs automatically every Tuesday after the Stable promotion**, via
+`scripts/appstore-submit-job.sh` (owner decision, Magnus, 2026-11-20): the same version
+that is promoted to Stable is submitted to the Mac App Store the same week, release
+type `AFTER_APPROVAL`, so Apple ships it on its own once reviewed. This command stays
+for manual or hotfix submissions — a version that needs to go to the App Store outside
+that weekly cycle, or a run that needs a human watching it.
+
 Automates the Mac App Store submission that is otherwise done by hand in Xcode
 (**Product → Archive → Distribute → App Store Connect → Upload → Submit for Review**),
 using the `asc` CLI. This is **separate** from `/release`, which only bumps the
