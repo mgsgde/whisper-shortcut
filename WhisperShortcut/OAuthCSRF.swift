@@ -1,4 +1,15 @@
+import CryptoKit
 import Foundation
+
+extension Data {
+  /// base64url without padding (RFC 4648 §5), as used by PKCE and OAuth `state`.
+  var base64URLEncoded: String {
+    base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+  }
+}
 
 /// CSRF `state` for OAuth authorize/callback.
 ///
@@ -16,10 +27,12 @@ enum OAuthCSRF {
       DebugLogger.logError("OAUTH-CSRF: SecRandomCopyBytes failed — falling back to UUID state")
       return UUID().uuidString + UUID().uuidString
     }
-    return Data(bytes).base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
+    return Data(bytes).base64URLEncoded
+  }
+
+  /// PKCE S256 `code_challenge` for a `code_verifier`.
+  static func codeChallengeS256(verifier: String) -> String {
+    Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncoded
   }
 
   /// True when the callback's `state` matches the one we sent. Logs a reason on mismatch so a
