@@ -33,6 +33,13 @@ enum ReportSender {
     return true
   }
 
+  /// Puts the file itself on the clipboard, as Finder's Copy does: ⌘V in a WhatsApp chat or a
+  /// mail attaches it, which is easier to find than dragging it out of a Finder window.
+  @MainActor static func copyFileToClipboard(_ url: URL) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.writeObjects([url as NSURL])
+  }
+
   @MainActor static func revealInFinder(_ url: URL) {
     NSWorkspace.shared.activateFileViewerSelecting([url])
   }

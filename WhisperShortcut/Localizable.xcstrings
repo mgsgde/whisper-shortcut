@@ -20815,12 +20815,12 @@
         }
       }
     },
-    "The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in WhatsApp or Mail." : {
+    "The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in your mail app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Entwickler bekommt den Text und die Details unten, Sie müssen also weder Version noch Modell heraussuchen. Gesendet wird erst, wenn Sie in WhatsApp oder Mail auf Senden drücken."
+            "value" : "Der Entwickler bekommt den Text und die Details unten, Sie müssen also weder Version noch Modell heraussuchen. Gesendet wird erst, wenn Sie in Ihrem Mailprogramm auf Senden drücken."
           }
         }
       }
@@ -30083,6 +30083,16 @@
         }
       }
     },
+    "Settings attached as a file: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen als Datei angehängt: %@"
+          }
+        }
+      }
+    },
     "Sent as a file." : {
       "localizations" : {
         "de" : {
@@ -30103,22 +30113,12 @@
         }
       }
     },
-    "The file is selected in Finder. Drag it into the chat." : {
+    "Your settings are copied as a file. Press ⌘V in the email to attach them." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Datei ist im Finder markiert. Ziehen Sie sie in den Chat."
-          }
-        }
-      }
-    },
-    "The file is selected in Finder. Drag it into the email." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Datei ist im Finder markiert. Ziehen Sie sie in die E-Mail."
+            "value" : "Ihre Einstellungen sind als Datei kopiert. Drücken Sie in der E-Mail ⌘V, um sie anzuhängen."
           }
         }
       }

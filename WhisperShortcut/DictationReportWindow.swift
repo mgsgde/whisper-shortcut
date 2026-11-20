@@ -7,7 +7,8 @@ import SwiftUI
 /// dictation started with a round-trip ("which model? which version? what exactly came out?").
 /// This window starts from the dictation itself: the pasted text and the facts the app recorded
 /// for it (`DictationReport`). The user can edit or delete any of it, and nothing leaves the Mac
-/// until they press send in WhatsApp or Mail.
+/// until they press send in their mail app. WhatsApp is not offered here: it cannot carry the
+/// settings file without the user pasting it, and nobody reports from a Mac through WhatsApp.
 final class DictationReportWindowController: NSObject, NSWindowDelegate {
 
   static let shared = DictationReportWindowController()
@@ -66,9 +67,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
     switch channel {
     case .email:
       return sendEmail(clampedContext: clamped, attachment: attachment)
-    case .whatsApp:
-      return sendWhatsApp(clampedContext: clamped, attachment: attachment)
-    case .gitHub:
+    case .whatsApp, .gitHub:
       openClamped(channel, context: clamped)
       return false
     }
@@ -107,8 +106,12 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
         return false
       }
     }
-    let opened = FeedbackLinks.open(.email, context: clampedContext)
-    MainActor.assumeIsolated { ReportSender.revealInFinder(file) }
+    MainActor.assumeIsolated {
+      ReportSender.revealInFinder(file)
+      ReportSender.copyFileToClipboard(file)
+    }
+    let opened = FeedbackLinks.open(
+      .email, context: Self.withFileNote(clampedContext, file: file))
     if opened {
       DebugLogger.log("DICTATION-REPORT: Opened mailto and revealed \(file.lastPathComponent)")
     } else {
@@ -118,26 +121,9 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
     return true
   }
 
-  /// WhatsApp has no attachment API, so the link opens as before and Finder selects the file for
-  /// the user to drag in.
-  private func sendWhatsApp(clampedContext: String, attachment: String) -> Bool {
-    let file: URL
-    do {
-      file = try ReportAttachment.write(attachment)
-    } catch {
-      DebugLogger.logWarning(
-        "DICTATION-REPORT: Could not write the report file: \(error.logDescription)")
-      showSettingsFileAlert()
-      return false
-    }
-    let opened = FeedbackLinks.open(.whatsApp, context: clampedContext)
-    MainActor.assumeIsolated { ReportSender.revealInFinder(file) }
-    if opened {
-      DebugLogger.log("DICTATION-REPORT: Opened whatsApp and revealed \(file.lastPathComponent)")
-    } else {
-      DebugLogger.log("DICTATION-REPORT: Revealed \(file.lastPathComponent)")
-    }
-    return true
+  /// The message names the file, so the developer notices when it was not pasted.
+  static func withFileNote(_ context: String, file: URL) -> String {
+    context + "\n\n" + String(localized: "Settings attached as a file: \(file.lastPathComponent)")
   }
 
   /// Writes the report file and offers it through the system share picker. The window stays open.
@@ -198,9 +184,9 @@ struct DictationReportView: View {
   @State private var includeGlossary = true
   @State private var includePrompts = true
   @State private var includeTemplates = true
-  /// Set after a send that left the file selected in Finder; the window stays open and says where
-  /// the file is, since the chat or mail does not have it yet.
-  @State private var revealedFor: FeedbackLinks.Channel?
+  /// Set after an email send that could not attach the file (no Apple Mail); the window stays
+  /// open and says how to add it, since the mail does not have it yet.
+  @State private var fileOnClipboard = false
   /// Returns true when the report file was revealed in Finder instead of attached.
   let onSend: (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Bool
   let onShare: (_ context: String, _ attachment: String?) -> Void
@@ -295,14 +281,8 @@ struct DictationReportView: View {
     "Sent as a file."
   }
 
-  private func revealedHint(_ channel: FeedbackLinks.Channel) -> LocalizedStringKey {
-    channel == .whatsApp
-      ? "The file is selected in Finder. Drag it into the chat."
-      : "The file is selected in Finder. Drag it into the email."
-  }
-
-  private func sendTapped(_ channel: FeedbackLinks.Channel) {
-    if onSend(channel, context, attachmentText) { revealedFor = channel }
+  private func sendEmail() {
+    if onSend(.email, context, attachmentText) { fileOnClipboard = true }
   }
 
   private var settingsOffHint: LocalizedStringKey {
@@ -346,7 +326,7 @@ struct DictationReportView: View {
             .pointerCursorOnHover()
           }
         }
-        Text("The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in WhatsApp or Mail.")
+        Text("The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in your mail app.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -410,11 +390,11 @@ struct DictationReportView: View {
           .fixedSize(horizontal: false, vertical: true)
       }
 
-      if let channel = revealedFor {
+      if fileOnClipboard {
         HStack(alignment: .top, spacing: 8) {
           Image(systemName: "doc.badge.arrow.up")
             .foregroundColor(.accentColor)
-          Text(revealedHint(channel))
+          Text("Your settings are copied as a file. Press ⌘V in the email to attach them.")
             .font(.callout)
             .fontWeight(.medium)
             .fixedSize(horizontal: false, vertical: true)
@@ -440,16 +420,13 @@ struct DictationReportView: View {
         Button("Share…") { onShare(context, attachmentText) }
           .pointerCursorOnHover()
 
-        Button("Send by Email") { sendTapped(.email) }
-          .pointerCursorOnHover()
-
         // No default-action shortcut: Return in the "what went wrong" field must not send.
-        if revealedFor != nil {
+        if fileOnClipboard {
           Button("Done") { onCancel() }
             .buttonStyle(.borderedProminent)
             .pointerCursorOnHover()
         } else {
-          Button("Send via WhatsApp") { sendTapped(.whatsApp) }
+          Button("Send by Email") { sendEmail() }
             .buttonStyle(.borderedProminent)
             .pointerCursorOnHover()
         }
