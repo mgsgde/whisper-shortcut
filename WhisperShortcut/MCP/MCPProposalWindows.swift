@@ -124,7 +124,8 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     for proposal in pending where !knownPending.contains(proposal.id) && !proposal.isFromWritingStyle {
       show(proposal, activate: false)
     }
-    // A problem report is accepted inside `show`, so re-read before closing windows.
+    // Problem reports stay pending until the user sends, shares or copies. Re-read so a proposal
+    // resolved while its review window was open still closes.
     let stillPending = Set(MCPProposalStore.shared.pending.map(\.id))
     for (id, window) in windows where !stillPending.contains(id) { window.close() }
     knownPending = stillPending
@@ -144,8 +145,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     }
   }
 
-  /// Opens the report window with the proposal prefilled and marks it accepted, so
-  /// `get_proposal_status` reports it handed to the user. Nothing is sent until they send the email.
+  /// Opens the report window with the proposal prefilled. It stays pending until the user sends,
+  /// shares or copies, so Cancel and a second report do not count as handed over.
+  /// `get_proposal_status` stays pending until then. Nothing is sent until they send the email.
   private func handOffProblemReport(_ proposal: MCPProposal) {
     guard MCPProposalStore.shared.pending.contains(where: { $0.id == proposal.id }) else { return }
     let title = proposal.title ?? ""
@@ -155,15 +157,27 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     let description = report.components(separatedBy: "## Configuration (added by WhisperShortcut)")
       .first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? report
     let message = title.isEmpty ? description : "\(title)\n\n\(description)"
+    let id = proposal.id
     MainActor.assumeIsolated {
-      ProblemReport.open(message: message, startOnGeneral: true)
-    }
-    switch MCPProposalStore.shared.accept(proposal.id, editedContent: report) {
-    case .success:
-      DebugLogger.log("MCP-CONFIG: problem report handed to the user id=\(proposal.id)")
-    case .failure(let error):
-      DebugLogger.logError(
-        "MCP-CONFIG: could not mark problem report accepted: \(error.logDescription)")
+      // One report window at a time. A second pending report stays pending for Review….
+      if DictationReportWindowController.shared.isShowing {
+        DebugLogger.log(
+          "MCP-CONFIG: problem report left pending; a report window is already open id=\(id)")
+        return
+      }
+      ProblemReport.open(
+        message: message,
+        startOnGeneral: true,
+        activate: false,
+        onHandedOff: { body in
+          switch MCPProposalStore.shared.accept(id, editedContent: body) {
+          case .success:
+            DebugLogger.log("MCP-CONFIG: problem report handed to the user id=\(id)")
+          case .failure(let error):
+            DebugLogger.logError(
+              "MCP-CONFIG: could not mark problem report accepted: \(error.logDescription)")
+          }
+        })
     }
   }
 

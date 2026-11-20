@@ -104,7 +104,7 @@ Für Gespräche mit Praxen. Bitte nichts versprechen, was unter „Kann nicht“
 
 ## 9. Probleme melden
 
-Ein Weg für alles: **direkt nach dem Problem in der Menüleiste „Feedback senden“ → „Problem mit letztem Ergebnis melden…“** wählen und in einem Satz schreiben, was erwartet war. Die App zeigt das betroffene Ergebnis zur Kontrolle und schickt es mit Modell und Version. Das ersetzt Screenshots, Nachfragen nach der Version und lange Beschreibungen per WhatsApp.
+Ein Weg für alles: **Problem melden …** in der Menüleiste (und unter Einstellungen → Über) öffnet ein Fenster, das den Bericht per E-Mail schickt, mit Ihrer Konfiguration als Datei im Anhang. Sie sehen alles, bevor es gesendet wird.
 
 Wünsche und Fragen sammeln und gebündelt besprechen, nicht einzeln zwischendurch.
 

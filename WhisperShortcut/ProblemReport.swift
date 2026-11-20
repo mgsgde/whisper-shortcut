@@ -17,16 +17,35 @@ enum ProblemReport {
     return candidates.first?.id ?? ""
   }
 
-  /// Opens the report window. `message` prefills "What went wrong?". `startOnGeneral` selects the
-  /// general candidate instead of the newest result.
-  @MainActor static func open(message: String? = nil, startOnGeneral: Bool = false) {
+  /// Opens the report window. `message` prefills "What went wrong?". `details`, when set, is placed
+  /// above the general candidate's own lines (the chat tail from `/feedback`). `startOnGeneral`
+  /// selects that candidate instead of the newest result. `activate` is false when the window
+  /// must not take the keyboard from the app the user is typing in. `onHandedOff` runs once, with
+  /// the report text, the first time the user sends, shares or copies; Cancel does not call it.
+  @MainActor static func open(
+    message: String? = nil,
+    details: String? = nil,
+    startOnGeneral: Bool = false,
+    activate: Bool = true,
+    onHandedOff: ((_ body: String) -> Void)? = nil
+  ) {
+    let candidates = preparedCandidates(details: details)
+    DictationReportWindowController.shared.show(
+      candidates: candidates,
+      message: message,
+      startOnGeneral: startOnGeneral,
+      activate: activate,
+      onHandedOff: onHandedOff)
+  }
+
+  /// The candidates `open` shows. `details` is written above the general candidate's lines.
+  static func preparedCandidates(details: String? = nil) -> [ResultReport.Candidate] {
     let provided = candidatesProvider?() ?? []
-    let candidates = provided.isEmpty
+    let base = provided.isEmpty
       ? ResultReport.candidates(
         dictations: [], glossaryTerms: [], offlineMode: OfflineMode.isEnabled,
         prompt: nil, readAloud: nil)
       : provided
-    DictationReportWindowController.shared.show(
-      candidates: candidates, message: message, startOnGeneral: startOnGeneral)
+    return ResultReport.applyingExtraDetails(details, to: base)
   }
 }

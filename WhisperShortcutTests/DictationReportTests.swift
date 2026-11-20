@@ -153,9 +153,18 @@ struct DictationReportTests {
     #expect(empty.last?.preview.isEmpty == true)
     #expect(empty.last?.technical.isEmpty == true)
     #expect(empty.last?.menuLabel == nil)
-    #expect(empty.last?.details.contains(AppConstants.appVersion) == true)
-    #expect(empty.last?.details.contains("macOS:") == true)
+    #expect(empty.last?.details.contains("App version:") == false)
+    #expect(empty.last?.details.contains("macOS:") == false)
     #expect(empty.last?.details.contains("Offline Mode: on") == true)
+    let file = DictationReportWindowController.fileText(
+      context: empty.last?.details ?? "", technical: "", configuration: nil)
+    let mailed = FeedbackLinks.messageBody(context: empty.last?.details)
+    #expect(file == mailed)
+    #expect(file.contains("macOS:"))
+    #expect(file.contains(AppConstants.appVersion))
+    #expect(
+      file.components(separatedBy: "macOS:").count
+        == FeedbackLinks.messageBody(context: "x").components(separatedBy: "macOS:").count)
 
     let entry = TranscriptionHistoryStore.Entry(
       ts: Date(timeIntervalSince1970: 1_700_000_000), text: "hello")
@@ -182,5 +191,40 @@ struct DictationReportTests {
     let candidates = ProblemReport.candidatesProvider?() ?? []
     #expect(ProblemReport.initialSelection(candidates: candidates, startOnGeneral: true) == "general")
     #expect(ProblemReport.initialSelection(candidates: candidates, startOnGeneral: false) == "newer")
+    let prepared = ProblemReport.preparedCandidates(details: "Me: hi")
+    #expect(prepared.first { $0.id == "general" }?.details.hasPrefix("Me: hi\n\n") == true)
+    #expect(prepared.first { $0.id == "newer" }?.details == "details")
+  }
+
+  @Test("Chat tail is placed above the general candidate, and a blank tail changes nothing")
+  func extraDetailsAboveGeneral() {
+    let list = ResultReport.candidates(
+      dictations: [], glossaryTerms: [], offlineMode: false, prompt: nil, readAloud: nil)
+    let withTail = ResultReport.applyingExtraDetails("Me: the paste was empty", to: list)
+    #expect(withTail.last?.details == "Me: the paste was empty\n\nOffline Mode: off")
+    #expect(withTail.last?.details.contains("macOS:") == false)
+    #expect(ResultReport.applyingExtraDetails("  \n", to: list).last?.details == list.last?.details)
+  }
+
+  @Test("The report file is the mail body, then technical lines, then the configuration")
+  func reportFileCarriesTheMailFooterOnce() {
+    let context = "Offline Mode: off"
+    let technical = "Prompt sent: 12 chars, hash abc"
+    let configuration = "Glossary: Ada"
+    let file = DictationReportWindowController.fileText(
+      context: context, technical: technical, configuration: configuration)
+    let mailed = FeedbackLinks.messageBody(context: context)
+    #expect(file.hasPrefix(mailed))
+    #expect(file.hasSuffix("\(technical)\n\n\(configuration)"))
+    #expect(
+      file.components(separatedBy: "macOS:").count
+        == mailed.components(separatedBy: "macOS:").count)
+    #expect(
+      file.components(separatedBy: "App version:").count
+        == mailed.components(separatedBy: "App version:").count)
+    let withoutConfiguration = DictationReportWindowController.fileText(
+      context: context, technical: technical, configuration: nil)
+    #expect(withoutConfiguration == "\(mailed)\n\n\(technical)")
+    #expect(!withoutConfiguration.contains("Glossary: Ada"))
   }
 }

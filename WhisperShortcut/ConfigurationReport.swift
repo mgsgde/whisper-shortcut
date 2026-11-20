@@ -1,6 +1,6 @@
 import Foundation
 
-/// A paste-able snapshot of the user's configuration, for WhatsApp or mail.
+/// A snapshot of the user's configuration, attached as a file to a problem report.
 ///
 /// Mirrors what the MCP `get_configuration` tool exposes (model names, shortcuts, prompt sections)
 /// and nothing else. The base report carries no text the user wrote; prompt, glossary and template

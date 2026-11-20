@@ -1,35 +1,70 @@
 import AppKit
 import SwiftUI
 
-/// Opens the "Report a Problem" window for the newest result.
+/// The one "Report a Problem" window.
 ///
-/// The plain Send Feedback entries only know the app and macOS version, so a report about a bad
-/// dictation started with a round-trip ("which model? which version? what exactly came out?").
-/// This window starts from the dictation itself: the pasted text and the facts the app recorded
-/// for it (`DictationReport`). The user can edit or delete any of it, and nothing leaves the Mac
-/// until they press send in their mail app. WhatsApp is not offered here: it cannot carry the
-/// settings file without the user pasting it, and nobody reports from a Mac through WhatsApp.
+/// The menu bar, Settings → About, an error popup, `/feedback` and an MCP problem report all
+/// open this window. The user edits the message and the details, then sends by email, shares the
+/// report file, or copies it. The file is the same text the mail carries: the report, then the
+/// app and macOS version and the hang excerpt, then the technical lines, then the configuration
+/// (glossary, instructions, templates, settings) when that switch is on. Nothing leaves the Mac
+/// until they press send in their mail app.
 final class DictationReportWindowController: NSObject, NSWindowDelegate {
 
   static let shared = DictationReportWindowController()
 
   private var window: NSWindow?
+  /// The user changed the message or the details since this window opened. A new open keeps it.
+  private var draftEdited = false
+  /// Set once, the first time this window's report is sent, shared or copied.
+  private var didHandOff = false
+  private var onHandedOff: ((String) -> Void)?
 
-  /// One window at a time. A second open closes the current window and opens a fresh one with the
-  /// new text, so a report started from an error does not keep the previous draft.
+  /// True while a report window is on screen, edited or not.
+  var isShowing: Bool { window != nil }
+
+  /// The text written to the report file, copied, and attached to the mail. `messageBody` first
+  /// (the report, the hang excerpt, app and macOS version), then technical lines, then the
+  /// configuration. One build, so every route carries the same footer.
+  static func fileText(context: String, technical: String, configuration: String?) -> String {
+    var parts = [FeedbackLinks.messageBody(context: context)]
+    let technical = technical.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !technical.isEmpty { parts.append(technical) }
+    if let configuration = configuration?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !configuration.isEmpty
+    {
+      parts.append(configuration)
+    }
+    return parts.joined(separator: "\n\n")
+  }
+
+  /// One window at a time. An edited draft stays; an untouched window is replaced. `activate` is
+  /// false when the window must not take the keyboard (an MCP report arriving while the user types).
   func show(
-    candidates: [ResultReport.Candidate], message: String? = nil, startOnGeneral: Bool = false
+    candidates: [ResultReport.Candidate],
+    message: String? = nil,
+    startOnGeneral: Bool = false,
+    activate: Bool = true,
+    onHandedOff: ((String) -> Void)? = nil
   ) {
     guard !candidates.isEmpty else {
       DebugLogger.logWarning("DICTATION-REPORT: Open requested with no candidates")
       return
     }
     if let existing = window {
+      if draftEdited {
+        DebugLogger.log("DICTATION-REPORT: Kept the open draft")
+        present(existing, activate: activate)
+        return
+      }
       DebugLogger.log("DICTATION-REPORT: Closing the open report window to show new content")
       existing.delegate = nil
       window = nil
       existing.close()
     }
+    draftEdited = false
+    didHandOff = false
+    self.onHandedOff = onHandedOff
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 660, height: 380),
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -46,18 +81,42 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
         self?.share(context: context, attachment: attachment)
       },
       onPreview: { [weak self] text in self?.preview(text) },
-      onCancel: { [weak self] in self?.close() }))
+      onCancel: { [weak self] in self?.close() },
+      onEditedChange: { [weak self] edited in
+        self?.draftEdited = edited
+      },
+      onHandedOff: { [weak self] body in
+        self?.noteHandedOff(body)
+      }))
     window.isReleasedWhenClosed = false
     window.delegate = self
     window.center()
     self.window = window
-    window.makeKeyAndOrderFront(nil)
-    NSApp.activate(ignoringOtherApps: true)
+    present(window, activate: activate)
     let selectedID = ProblemReport.initialSelection(
       candidates: candidates, startOnGeneral: startOnGeneral)
     let opened = candidates.first { $0.id == selectedID } ?? candidates[0]
     DebugLogger.log(
       "DICTATION-REPORT: Opened report window on \(opened.kind.rawValue) (\(candidates.count) results, \(opened.details.count) chars)")
+  }
+
+  /// `activate` makes the window key and brings the app forward. Otherwise the window comes
+  /// forward without taking the keyboard.
+  private func present(_ window: NSWindow, activate: Bool) {
+    if activate {
+      window.makeKeyAndOrderFront(nil)
+      NSApp.activate(ignoringOtherApps: true)
+    } else {
+      window.orderFront(nil)
+    }
+  }
+
+  /// The first send, share or copy hands the report text to the opener (an MCP proposal accepts
+  /// here). Later presses, and Cancel, do not.
+  private func noteHandedOff(_ body: String) {
+    guard !didHandOff else { return }
+    didHandOff = true
+    onHandedOff?(body)
   }
 
   /// True when the report file was revealed in Finder for the user to drag in: the window then
@@ -78,6 +137,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
   private func openClamped(_ channel: FeedbackLinks.Channel, context: String) {
     if FeedbackLinks.open(channel, context: context) {
       DebugLogger.log("DICTATION-REPORT: Opened \(channel.rawValue) with the report")
+      noteHandedOff(FeedbackLinks.messageBody(context: context))
       close()
     }
   }
@@ -104,6 +164,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       }
       if sent {
         DebugLogger.log("DICTATION-REPORT: Opened email with \(file.lastPathComponent) attached")
+        noteHandedOff(attachment)
         close()
         return false
       }
@@ -120,6 +181,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       DebugLogger.logWarning(
         "DICTATION-REPORT: mailto did not open; revealed \(file.lastPathComponent)")
     }
+    noteHandedOff(attachment)
     return true
   }
 
@@ -145,6 +207,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       return
     }
     MainActor.assumeIsolated { ReportSender.share(file, relativeTo: view) }
+    noteHandedOff(text)
     DebugLogger.log("DICTATION-REPORT: Offered \(file.lastPathComponent) to share")
   }
 
@@ -180,6 +243,9 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
 
   func windowWillClose(_ notification: Notification) {
     window = nil
+    draftEdited = false
+    didHandOff = false
+    onHandedOff = nil
   }
 }
 
@@ -209,6 +275,12 @@ struct DictationReportView: View {
   let onShare: (_ context: String, _ attachment: String?) -> Void
   let onPreview: (_ text: String) -> Void
   let onCancel: () -> Void
+  /// True when the message differs from what the window opened with, or any details were edited.
+  let onEditedChange: (Bool) -> Void
+  /// The report text the first time the user sends, shares or copies.
+  let onHandedOff: (String) -> Void
+  /// The message field's text when the window opened. Compared to `problem` to see a draft.
+  private let openedProblem: String
 
   init(
     candidates: [ResultReport.Candidate],
@@ -217,16 +289,22 @@ struct DictationReportView: View {
     onSend: @escaping (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Bool,
     onShare: @escaping (_ context: String, _ attachment: String?) -> Void,
     onPreview: @escaping (_ text: String) -> Void,
-    onCancel: @escaping () -> Void
+    onCancel: @escaping () -> Void,
+    onEditedChange: @escaping (Bool) -> Void,
+    onHandedOff: @escaping (String) -> Void
   ) {
     self.candidates = candidates
     self._selected = State(initialValue: ProblemReport.initialSelection(
       candidates: candidates, startOnGeneral: startOnGeneral))
-    self._problem = State(initialValue: initialMessage ?? "")
+    let opened = initialMessage ?? ""
+    self.openedProblem = opened
+    self._problem = State(initialValue: opened)
     self.onSend = onSend
     self.onShare = onShare
     self.onPreview = onPreview
     self.onCancel = onCancel
+    self.onEditedChange = onEditedChange
+    self.onHandedOff = onHandedOff
   }
 
   private var current: ResultReport.Candidate? {
@@ -301,20 +379,32 @@ struct DictationReportView: View {
   }
 
   private func sendEmail() {
-    if onSend(.email, context, attachmentText) { fileOnClipboard = true }
+    let text = reportFileText
+    let attachment = includeConfiguration ? text : nil
+    if onSend(.email, context, attachment) { fileOnClipboard = true }
   }
 
-  /// Nil when the configuration is off. Otherwise the edited details, the technical lines, then
-  /// the configuration. Copy uses this too, so those lines travel with it.
-  private var attachmentText: String? {
-    guard includeConfiguration else { return nil }
-    var parts = [context]
-    if let technical = current?.technical, !technical.isEmpty {
-      parts.append(technical)
+  /// What Send attaches, Share writes, View Report opens and Copy puts on the clipboard.
+  /// The configuration section is omitted when the switch is off.
+  private var reportFileText: String {
+    let configuration = includeConfiguration
+      ? ConfigurationReport.build(.init(
+        includeGlossary: true, includePrompts: true, includeTemplates: true))
+      : nil
+    return DictationReportWindowController.fileText(
+      context: context,
+      technical: current?.technical ?? "",
+      configuration: configuration)
+  }
+
+  /// True when the message or the details differ from what this window opened with.
+  private func publishEdited() {
+    let messageDiffers = problem != openedProblem
+    let detailsEdited = editedDetails.contains { id, text in
+      let original = candidates.first { $0.id == id }?.details ?? ""
+      return text != original
     }
-    parts.append(ConfigurationReport.build(.init(
-      includeGlossary: true, includePrompts: true, includeTemplates: true)))
-    return parts.joined(separator: "\n\n")
+    onEditedChange(messageDiffers || detailsEdited)
   }
 
   private func sectionLabel(_ text: LocalizedStringKey) -> some View {
@@ -377,8 +467,8 @@ struct DictationReportView: View {
         )
         .toggleStyle(.checkbox)
         Spacer(minLength: 0)
-        if let text = attachmentText {
-          Button("View Report") { onPreview(text) }
+        if includeConfiguration {
+          Button("View Report") { onPreview(reportFileText) }
             .buttonStyle(.link)
             .pointerCursorOnHover()
         }
@@ -416,15 +506,16 @@ struct DictationReportView: View {
         // Copy takes everything, configuration included: the clipboard has no length limit, and
         // it is the one route that works from Citrix or a remote Outlook.
         Button(copied ? String(localized: "Copied") : String(localized: "Copy")) {
+          let text = reportFileText
           NSPasteboard.general.clearContents()
-          NSPasteboard.general.setString(
-            FeedbackLinks.messageBody(context: attachmentText ?? context), forType: .string)
+          NSPasteboard.general.setString(text, forType: .string)
           copied = true
+          onHandedOff(text)
         }
         .pointerCursorOnHover()
 
-        Button("Share…") { onShare(context, attachmentText) }
-          .pointerCursorOnHover()
+        Button("Share…") { onShare(context, reportFileText) }
+        .pointerCursorOnHover()
 
         // No default-action shortcut: Return in the message field must not send.
         if fileOnClipboard {
@@ -443,7 +534,13 @@ struct DictationReportView: View {
     // Exactly as tall as its content: the window grows when Details opens instead of leaving an
     // empty area under the buttons.
     .fixedSize(horizontal: false, vertical: true)
-    .onChange(of: editedDetails) { copied = false }
-    .onChange(of: problem) { copied = false }
+    .onChange(of: editedDetails) {
+      copied = false
+      publishEdited()
+    }
+    .onChange(of: problem) {
+      copied = false
+      publishEdited()
+    }
   }
 }

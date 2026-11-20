@@ -185,8 +185,9 @@ enum ResultReport {
     return list.sorted { $0.ts > $1.ts } + [generalCandidate(offlineMode: offlineMode)]
   }
 
-  /// Environment only: there is no dictation, prompt or reading to quote. Appended after the
-  /// time sort so it stays last even though its timestamp is now.
+  /// Offline Mode only. There is no dictation, prompt or reading to quote. App version, macOS and
+  /// the hang excerpt are added once by `FeedbackLinks.messageBody` when the report file is built,
+  /// so they are not repeated here. Appended after the time sort so it stays last.
   private static func generalCandidate(offlineMode: Bool) -> Candidate {
     let offline = offlineMode
       ? String(localized: "Offline Mode: on")
@@ -196,9 +197,30 @@ enum ResultReport {
       kind: .general,
       ts: Date(),
       preview: "",
-      details: "\(FeedbackLinks.environmentBlock)\n\(offline)",
+      details: offline,
       technical: "",
       menuLabel: nil)
+  }
+
+  /// Puts `extra` above the general candidate's details, with a blank line between. Other
+  /// candidates stay as they are. Blank `extra` changes nothing.
+  static func applyingExtraDetails(_ extra: String?, to candidates: [Candidate]) -> [Candidate] {
+    guard let extra = extra?.trimmingCharacters(in: .whitespacesAndNewlines), !extra.isEmpty else {
+      return candidates
+    }
+    return candidates.map { candidate in
+      guard candidate.id == "general" else { return candidate }
+      let base = candidate.details.trimmingCharacters(in: .whitespacesAndNewlines)
+      let combined = base.isEmpty ? extra : "\(extra)\n\n\(base)"
+      return Candidate(
+        id: candidate.id,
+        kind: candidate.kind,
+        ts: candidate.ts,
+        preview: candidate.preview,
+        details: combined,
+        technical: candidate.technical,
+        menuLabel: candidate.menuLabel)
+    }
   }
 
   private static func candidateID(kind: Kind, ts: Date, extra: String) -> String {

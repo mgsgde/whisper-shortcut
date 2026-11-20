@@ -446,7 +446,7 @@ class PopupNotificationWindow: NSWindow {
     let error = FeedbackLinks.truncated(errorText, limit: 500)
     let prefix = String(localized: "I encountered this error:")
     MainActor.assumeIsolated {
-      ProblemReport.open(message: "\(prefix)\n\n\(error)")
+      ProblemReport.open(message: "\(prefix)\n\n\(error)", startOnGeneral: true)
     }
   }
 

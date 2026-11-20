@@ -983,16 +983,17 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Copied chat (\(target.messages.count) messages, \(markdown.count) chars) to clipboard")
   }
 
-  /// `/feedback` — opens the report window on general feedback, with the tail of this chat prefilled.
+  /// `/feedback` — opens the report window on general feedback, with the tail of this chat in
+  /// the details. The message field stays empty so the user can say what went wrong.
   ///
   /// The user is already typing sentences about their problem here, so the alternative is asking
   /// them to describe it a second time. The transcript is prefilled, not sent.
   func sendFeedbackFromChat() {
     let excerpt = recentTranscriptForFeedback()
-    let message = excerpt.isEmpty
-      ? nil
-      : "Here is the end of my chat for context:\n\n\(excerpt)"
-    ProblemReport.open(message: message, startOnGeneral: true)
+    ProblemReport.open(
+      message: nil,
+      details: excerpt.isEmpty ? nil : excerpt,
+      startOnGeneral: true)
   }
 
   /// The last few turns of this chat, oldest first, clamped so the report stays readable.
