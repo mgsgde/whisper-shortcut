@@ -133,7 +133,7 @@ struct MCPConfigTools {
 
   static let readToolNames: Set<String> = [
     "get_configuration", "get_recent_interactions", "get_config_history", "get_settings",
-    "get_proposal_status",
+    "get_proposal_status", "list_whisper_shortcut_docs", "read_whisper_shortcut_doc",
   ]
   static let writeToolNames: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
@@ -180,6 +180,28 @@ struct MCPConfigTools {
       "description": ConfigHistoryTool.description,
       "inputSchema": ConfigHistoryTool.parameters,
       "annotations": ["title": "Get Config History", "readOnlyHint": true, "openWorldHint": false],
+    ],
+    [
+      "name": "list_whisper_shortcut_docs",
+      "description":
+        "Lists WhisperShortcut's own documentation (overview, full user guide, data folders, practice playbook) with live shortcut bindings. Read these before explaining how the app works or recommending settings.",
+      "inputSchema": [
+        "type": "object",
+        "properties": [:] as [String: Any],
+      ] as [String: Any],
+      "annotations": ["title": "List WhisperShortcut Docs", "readOnlyHint": true, "openWorldHint": false],
+    ],
+    [
+      "name": "read_whisper_shortcut_doc",
+      "description": "Returns one WhisperShortcut doc by name from list_whisper_shortcut_docs.",
+      "inputSchema": [
+        "type": "object",
+        "properties": [
+          "name": ["type": "string", "description": "Doc name from list_whisper_shortcut_docs."],
+        ],
+        "required": ["name"],
+      ] as [String: Any],
+      "annotations": ["title": "Read WhisperShortcut Doc", "readOnlyHint": true, "openWorldHint": false],
     ],
     [
       "name": "get_settings",
@@ -345,6 +367,8 @@ struct MCPConfigTools {
     case "get_configuration": return getConfiguration(arguments)
     case "get_recent_interactions": return getRecentInteractions(arguments)
     case "get_config_history": return getConfigHistory(arguments)
+    case "list_whisper_shortcut_docs": return listWhisperShortcutDocs()
+    case "read_whisper_shortcut_doc": return readWhisperShortcutDoc(arguments)
     case "add_glossary_terms": return addGlossaryTerms(arguments)
     case "update_system_prompt": return updateSystemPrompt(arguments)
     case "update_writing_style_profile": return updateWritingStyle(arguments)
@@ -521,6 +545,30 @@ struct MCPConfigTools {
     }
     let text = json(ConfigHistoryReader.result(rows: env.configHistory(), query: query))
     log("get_config_history", "applied", "read", len: text.count)
+    return (text, false)
+  }
+
+  // MARK: - WhisperShortcut docs
+
+  /// Same bundled docs the in-app Chat reads. Off the main thread, like `get_config_history`:
+  /// it only reads the bundle and the shortcut config.
+  private func listWhisperShortcutDocs() -> MCPToolResult {
+    let text = json(ChatToolRegistry.listDocsResult())
+    log("list_whisper_shortcut_docs", "applied", "read", len: text.count)
+    return (text, false)
+  }
+
+  private func readWhisperShortcutDoc(_ args: [String: Any]) -> MCPToolResult {
+    let tool = "read_whisper_shortcut_doc"
+    guard let name = args["name"] as? String else {
+      return reject(tool, "missing name", "Missing required argument: name")
+    }
+    let object = ChatToolRegistry.readDocResult(name: name)
+    if let error = object["error"] as? String {
+      return reject(tool, "error", error)
+    }
+    let text = json(object)
+    log(tool, "applied", "read", len: text.count)
     return (text, false)
   }
 

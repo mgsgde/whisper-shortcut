@@ -1832,7 +1832,7 @@ class MenuBarController: NSObject {
       ownTextWindowAtRecordStart = Self.ownFocusedTextWindowNumber()
       // For the usage log's appBundleId/appName. Our own windows (the Chat input) are not a
       // target app worth naming.
-      let isOwn = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+      let isOwn = frontmost?.isCurrentProcess == true
       ContextLogger.shared.noteRecordingTarget(
         frontmost.flatMap { isOwn ? nil : InteractionTargetApp(bundleId: $0.bundleIdentifier, name: $0.localizedName) })
     }
@@ -2078,6 +2078,7 @@ class MenuBarController: NSObject {
   /// and the Screen Recording check: a service selection is never read from a screenshot.
   /// Invoking it again while recording stops the recording, the same way the shortcut does.
   func dictatePromptFromService(text: String) {
+    if DictationOnlyMode.blocks("Dictate Prompt (service)") { return }
     switch availability(.dictatePrompt) {
     case .start:
       let isMeeting = isLiveMeetingActive
@@ -3568,16 +3569,10 @@ class MenuBarController: NSObject {
           }
         }
         transcriptLatencyMs = Int(Date().timeIntervalSince(dictationStart) * 1000)
-        // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the
-        // whole transcript, after streamed chunks are joined, so a command at a chunk edge still
-        // attaches to the word before it.
-        guard transcriptionModelForCapture.isOffline else { return transcript }
-        let timedMarks = transcriptionModelForCapture.offlineModelType?.engine == .parakeet
-        let source =
-          punctuationMode == .spokenOnly
-          ? SpokenPunctuation.stripModelPunctuation(from: transcript, timedMarks: timedMarks)
-          : transcript
-        return SpokenPunctuation.apply(to: source, mode: punctuationMode, timedMarks: timedMarks)
+        // Offline Dictate, on the joined transcript so a command at a chunk edge still attaches.
+        // Cloud text is unchanged. Same steps as Dictate Live (`OfflineTranscriptFinisher`).
+        return OfflineTranscriptFinisher.finish(
+          transcript, model: transcriptionModelForCapture, mode: punctuationMode)
       },
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*
@@ -3953,7 +3948,7 @@ class MenuBarController: NSObject {
     // One row per user request, here at the single entry every Read Aloud path goes through.
     let readAloudModel = ReadAloudPreferences.model
     let frontmost = NSWorkspace.shared.frontmostApplication
-    let isOwnApp = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+    let isOwnApp = frontmost?.isCurrentProcess == true
     ContextLogger.shared.logReadAloud(
       text: text, model: readAloudModel.rawValue, voice: ReadAloudPreferences.voice(for: readAloudModel),
       app: frontmost.flatMap { isOwnApp ? nil : InteractionTargetApp(bundleId: $0.bundleIdentifier, name: $0.localizedName) })
@@ -4093,7 +4088,7 @@ class MenuBarController: NSObject {
     // user's selection, so a later snapshot would "restore" that instead of what they copied.
     captureClipboardRestorePointIfEnabled()
     // At press time, on the main actor: a WhisperShortcut window in front receives the ⌘C.
-    let ownAppFrontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier
+    let ownAppFrontmost = NSWorkspace.shared.isOwnAppFrontmost
     if ownAppFrontmost {
       DebugLogger.log("\(logPrefix): WhisperShortcut window was frontmost at press — ⌘C cannot see the other app's selection")
     }
@@ -4431,7 +4426,16 @@ class MenuBarController: NSObject {
   @MainActor
   private func recordDictatedWritingSample(_ text: String) {
     guard UserDefaults.standard.bool(forKey: UserDefaultsKeys.writingStyleEnabled) else { return }
-    let context = WritingContextResolver.context(forBundleID: pasteTargetAtRecordStart?.bundleId)
+    let bundleID = pasteTargetAtRecordStart?.bundleId
+    let frontmostIsRecordedApp = pasteTargetAtRecordStart.map {
+      NSWorkspace.shared.frontmostApplication?.processIdentifier == $0.pid
+    } ?? false
+    let context: WritingContext
+    if frontmostIsRecordedApp, WritingContextResolver.isBrowser(bundleID: bundleID) {
+      context = WritingContextResolver.context(forBundleID: bundleID, webURL: FocusedWebURL.current())
+    } else {
+      context = WritingContextResolver.context(forBundleID: bundleID)
+    }
     guard context != .defaultContext,
       let sample = WritingStyleStore.dictatedSample(text: text, context: context)
     else { return }

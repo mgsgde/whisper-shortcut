@@ -77,9 +77,18 @@ struct FeedbackLinksTests {
 
   @Test("A hang-report attachment survives encoding into a GitHub issue URL")
   func hangAttachmentEncodesIntoGitHubIssue() {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyyMMdd-HHmmss"
+    guard let now = formatter.date(from: "20260902-100000") else {
+      Issue.record("could not parse hang timestamp")
+      return
+    }
     let attachment = HangReports.feedbackAttachment(
       reportURLs: [URL(fileURLWithPath: "/tmp/hang-20260902-100000.txt")],
-      newestContents: "WATCHDOG: main thread hang")
+      newestContents: "WATCHDOG: main thread hang",
+      now: now)
     guard let attachment else {
       Issue.record("expected an attachment")
       return
@@ -90,7 +99,7 @@ struct FeedbackLinksTests {
     }
     #expect(url.path.hasSuffix("/issues/new"))
     #expect(url.absoluteString.removingPercentEncoding?.contains("hang-20260902-100000.txt") == true)
-    #expect(url.absoluteString.removingPercentEncoding?.contains("Reveal Hang Reports") == true)
+    #expect(url.absoluteString.removingPercentEncoding?.contains("App hang in the last 24 hours") == true)
   }
 
   @Test("An AI problem-report URL carries the title, body and ai-report label")

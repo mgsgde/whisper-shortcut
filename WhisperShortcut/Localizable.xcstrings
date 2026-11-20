@@ -6202,6 +6202,16 @@
         }
       }
     },
+    "Checked app settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen geprüft"
+          }
+        }
+      }
+    },
     "Checked the app docs" : {
       "localizations" : {
         "de" : {
@@ -6238,6 +6248,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufgaben geprüft"
+          }
+        }
+      }
+    },
+    "Checking app settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen werden geprüft"
           }
         }
       }
@@ -10374,6 +10394,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alles vergessen, was sich der Chat gemerkt hat"
+          }
+        }
+      }
+    },
+    "Forget: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vergessen: %@"
           }
         }
       }
@@ -21301,6 +21331,26 @@
         }
       }
     },
+    "The text around the cursor was sent as context" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text um den Cursor wurde als Kontext gesendet"
+          }
+        }
+      }
+    },
+    "An image of the front window was sent as context" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Bild des vorderen Fensters wurde als Kontext gesendet"
+          }
+        }
+      }
+    },
     "Thinking effort" : {
       "localizations" : {
         "de" : {
@@ -29879,6 +29929,176 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus „Komma“ wird ein Komma, aus „Punkt“ ein Punkt."
+          }
+        }
+      }
+    },
+    "%lld terms. In this text: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Begriffe, in diesem Text: %@"
+          }
+        }
+      }
+    },
+    "%lld terms. None in this text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Begriffe, keiner davon in diesem Text."
+          }
+        }
+      }
+    },
+    "App hang in the last 24 hours (%@):" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App hing in den letzten 24 Stunden (%@):"
+          }
+        }
+      }
+    },
+    "App hang in the last 24 hours (%@, +%lld more):" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App hing in den letzten 24 Stunden (%@, +%lld weitere):"
+          }
+        }
+      }
+    },
+    "App version: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Version: %@"
+          }
+        }
+      }
+    },
+    "Dictated: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiert: %@"
+          }
+        }
+      }
+    },
+    "empty" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "leer"
+          }
+        }
+      }
+    },
+    "Glossary echo removed: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entferntes Glossar-Echo: %@"
+          }
+        }
+      }
+    },
+    "Glossary: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glossar: %@"
+          }
+        }
+      }
+    },
+    "Hi! I have feedback about WhisperShortcut:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hallo, ich habe Feedback zu WhisperShortcut:"
+          }
+        }
+      }
+    },
+    "Mode: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modus: %@"
+          }
+        }
+      }
+    },
+    "none" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "keins"
+          }
+        }
+      }
+    },
+    "Offline Mode: off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modus: aus"
+          }
+        }
+      }
+    },
+    "Offline Mode: on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modus: an"
+          }
+        }
+      }
+    },
+    "Pasted text:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingefügter Text:"
+          }
+        }
+      }
+    },
+    "Transcription model: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionsmodell: %@"
+          }
+        }
+      }
+    },
+    "WhisperShortcut feedback (%@)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feedback zu WhisperShortcut (%@)"
           }
         }
       }

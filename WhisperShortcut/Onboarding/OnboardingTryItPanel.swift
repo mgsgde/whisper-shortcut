@@ -307,19 +307,13 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
     }
   }
 
-  /// The same post-processing real dictation does (`MenuBarController`): offline engines write a
-  /// spoken "Komma" out as a word. Without it the test showed "Komma" where dictation later puts
-  /// ",", so the one screen meant to build trust showed a result the app never produces.
+  /// The same post-processing real dictation does (`OfflineTranscriptFinisher`): offline engines
+  /// write a spoken "Komma" out as a word. Without it the test showed "Komma" where dictation later
+  /// puts ",", so the one screen meant to build trust showed a result the app never produces.
   static func applySpokenPunctuation(
     _ transcript: String, model: TranscriptionModel, mode: PunctuationMode
   ) -> String {
-    guard model.isOffline else { return transcript }
-    let timedMarks = model.offlineModelType?.engine == .parakeet
-    let source =
-      mode == .spokenOnly
-      ? SpokenPunctuation.stripModelPunctuation(from: transcript, timedMarks: timedMarks)
-      : transcript
-    return SpokenPunctuation.apply(to: source, mode: mode, timedMarks: timedMarks)
+    OfflineTranscriptFinisher.finish(transcript, model: model, mode: mode)
   }
 
   /// Where a failed try-it recording should send the user in Settings.

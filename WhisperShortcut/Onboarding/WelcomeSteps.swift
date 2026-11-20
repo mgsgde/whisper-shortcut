@@ -466,6 +466,7 @@ struct OnboardingOfflineRow: View {
         forKey: UserDefaultsKeys.selectedTranscriptionModel)
       DebugLogger.log(
         "ONBOARDING: chose Offline; \(modelType.displayName) set as transcription model")
+      ModelSelectionReconciler.postSelectionsChanged()
     }
     prepareOfflinePromptModel()
     onReady()

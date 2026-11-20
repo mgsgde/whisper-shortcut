@@ -212,10 +212,12 @@ struct DictationOnlyOnboardingTests {
 
   @Test("Links to hidden tabs land on Dictate or General")
   func reachableTabs() {
-    #expect(DictationOnlyMode.reachableTab(.accounts, enabled: true) == .speechToText)
-    #expect(DictationOnlyMode.reachableTab(.chat, enabled: true) == .general)
-    #expect(DictationOnlyMode.reachableTab(.permissions, enabled: true) == .permissions)
-    #expect(DictationOnlyMode.reachableTab(.accounts, enabled: false) == .accounts)
+    #expect(
+      DictationOnlyMode.reachableTab(.accounts, enabled: true, selectedModelIsCloud: false) == .speechToText)
+    #expect(DictationOnlyMode.reachableTab(.chat, enabled: true, selectedModelIsCloud: false) == .general)
+    #expect(
+      DictationOnlyMode.reachableTab(.permissions, enabled: true, selectedModelIsCloud: false) == .permissions)
+    #expect(DictationOnlyMode.reachableTab(.accounts, enabled: false, selectedModelIsCloud: false) == .accounts)
   }
 
   // MARK: - Defaults: punctuation per language
@@ -225,13 +227,13 @@ struct DictationOnlyOnboardingTests {
     let english = makeDefaults()
     _ = DictationOnlyDefaults.apply(
       defaults: english, preferredLanguages: ["en-US"], isAppleSilicon: true, isAppStore: false,
-      switchOfflineOn: {})
+      switchOfflineOn: {}, notifySelectionsChanged: {})
     #expect(english.string(forKey: UserDefaultsKeys.punctuationMode) == PunctuationMode.automatic.rawValue)
 
     let unknown = makeDefaults()
     _ = DictationOnlyDefaults.apply(
       defaults: unknown, preferredLanguages: ["uk-UA"], isAppleSilicon: true, isAppStore: false,
-      switchOfflineOn: {})
+      switchOfflineOn: {}, notifySelectionsChanged: {})
     #expect(unknown.object(forKey: UserDefaultsKeys.punctuationMode) == nil)
     #expect(DictationOnlyDefaults.punctuation(for: .de) == .spokenOnly)
   }

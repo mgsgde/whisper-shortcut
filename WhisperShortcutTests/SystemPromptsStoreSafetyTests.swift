@@ -187,4 +187,25 @@ struct SystemPromptsStoreSafetyTests {
     #expect(SystemPromptsStore.legacyFullPrompt(for: .promptModeAdditions, in: all)
       == store.legacyFullPrompt(for: .promptModeAdditions))
   }
+
+  @Test("A legacy full prompt is returned only when it replaces the built-in")
+  func legacyFullPromptFollowsReplaceRule() {
+    #expect(SystemPromptSection.dictationAdditions.promptPair?.legacy == .dictation)
+    #expect(SystemPromptSection.promptModeAdditions.promptPair?.legacy == .promptMode)
+
+    let shipped = AppConstants.defaultTranscriptionSystemPrompt
+    #expect(SystemPromptDefaultsHistory.isShippedDefault(shipped, for: .dictation))
+    #expect(SystemPromptsStore.legacyFullPrompt(for: .dictationAdditions, in: [:]) == nil)
+    #expect(SystemPromptsStore.legacyFullPrompt(for: .dictationAdditions, in: [.dictation: ""]) == nil)
+    #expect(SystemPromptsStore.legacyFullPrompt(for: .dictationAdditions, in: [.dictation: "  \n"]) == nil)
+    #expect(SystemPromptsStore.legacyFullPrompt(for: .dictationAdditions, in: [.dictation: shipped]) == nil)
+    #expect(
+      SystemPromptsStore.legacyFullPrompt(for: .dictationAdditions, in: [.dictation: "\n" + shipped + "\n"]) == nil)
+
+    let custom = "Always write in the voice of a harbour master."
+    #expect(SystemPromptsStore.legacyFullPrompt(for: .dictationAdditions, in: [.dictation: custom]) == custom)
+    #expect(
+      SystemPromptsStore.legacyFullPrompt(for: .dictationAdditions, in: [.dictation: "  \(custom)  "]) == custom)
+    #expect(SystemPromptsStore.legacyFullPrompt(for: .chat, in: [.dictation: custom]) == nil)
+  }
 }

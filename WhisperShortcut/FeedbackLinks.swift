@@ -74,7 +74,7 @@ enum FeedbackLinks {
       guard let url, url.scheme == "https", url.host == "wa.me" else { return nil }
       return url
     case .email:
-      guard let subject = encode("WhisperShortcut feedback (\(AppConstants.appVersion))"),
+      guard let subject = encode(String(localized: "WhisperShortcut feedback (\(AppConstants.appVersion))")),
             let encoded = encode(body) else { return nil }
       return URL(string: "mailto:\(supportEmail)?subject=\(subject)&body=\(encoded)")
     case .gitHub:
@@ -108,7 +108,7 @@ enum FeedbackLinks {
   /// The message every channel starts from: a greeting, the caller's context, and the environment
   /// facts a report is useless without.
   static func messageBody(context: String? = nil) -> String {
-    var parts = ["Hi! I have feedback about WhisperShortcut:"]
+    var parts = [String(localized: "Hi! I have feedback about WhisperShortcut:")]
     if let context = context?.trimmingCharacters(in: .whitespacesAndNewlines), !context.isEmpty {
       parts.append(context)
     }
@@ -130,9 +130,11 @@ enum FeedbackLinks {
 
   static var environmentBlock: String {
     let os = ProcessInfo.processInfo.operatingSystemVersion
+    let version = AppConstants.appVersion
+    let versionLine = String(localized: "App version: \(version)")
     return """
       ---
-      App version: \(AppConstants.appVersion)
+      \(versionLine)
       macOS: \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)
       """
   }

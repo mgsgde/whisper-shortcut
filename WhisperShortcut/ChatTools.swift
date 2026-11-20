@@ -94,6 +94,7 @@ enum ChatToolRegistry {
          "google_tasks_create", "google_tasks_update", "google_tasks_complete", "google_tasks_delete",
          "trello_create_card", "trello_move_card", "trello_update_card", "trello_archive_card",
          rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
+         forgetAboutUserToolName, "forget_file_location",
          "write_text_file", "append_to_file", "edit_text_file":
       return true
     case updateInstructionsToolName:
@@ -114,6 +115,7 @@ enum ChatToolRegistry {
   static func allowsChatWideApproval(_ name: String) -> Bool {
     switch name {
     case rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
+         forgetAboutUserToolName, "forget_file_location",
          updateInstructionsToolName, AppSettingsChatTool.name, "open_url",
          "write_text_file", "append_to_file", "edit_text_file",
          "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card":
@@ -187,6 +189,8 @@ enum ChatToolRegistry {
       return note.isEmpty
         ? String(localized: "Remember folder: \(folder)")
         : String(localized: "Remember folder: \(folder) — \(preview(note, limit: 300))")
+    case forgetAboutUserToolName, "forget_file_location":
+      return String(localized: "Forget: \(preview(arg("matching"), limit: 200))")
     case "remember_dictation_term":
       return String(localized: "Add to dictation glossary: \(preview(arg("term"), limit: 100))")
     case updateInstructionsToolName:
@@ -1224,7 +1228,7 @@ enum ChatToolRegistry {
   /// Keep descriptions short and stable; the model reads the full doc body via
   /// `read_whisper_shortcut_doc`, so the description only needs to disambiguate which file
   /// to read.
-  private static let availableDocs:
+  static let availableDocs:
     [(name: String, title: String, description: String, filename: String)] = [
       (
         name: "readme",
@@ -1247,7 +1251,60 @@ enum ChatToolRegistry {
           "Where WhisperShortcut stores app data on macOS (settings, logs, prompts, sessions, recordings).",
         filename: "data-directories.md"
       ),
+      (
+        name: "praxis-playbook",
+        title: "Praxis-Playbook (German)",
+        description:
+          "German setup rules for medical and therapy practices: which function for findings, emails and plain dictation, recommended keys, templates, glossary, writing style, what the app can and cannot do, how to report problems.",
+        filename: "praxis-playbook.md"
+      ),
     ]
+
+  /// Payload for `list_whisper_shortcut_docs` (in-app Chat and MCP).
+  static func listDocsResult() -> [String: Any] {
+    let docsList: [[String: Any]] = availableDocs.map { doc in
+      ["name": doc.name, "title": doc.title, "description": doc.description]
+    }
+    // Live shortcut bindings from the user's actual config, so keyboard-shortcut answers can
+    // never go stale against a hardcoded doc table. Feature prose still lives in README.
+    let config = ShortcutConfigManager.shared.loadConfiguration()
+    let shortcuts: [[String: Any]] = config.assistantFacingRows.map { row in
+      [
+        "action": row.action,
+        "shortcut": row.definition.displayStringWithSeparator,
+        "enabled": row.definition.isEnabled,
+      ]
+    }
+    DebugLogger.logSuccess(
+      "GEMINI-CHAT-TOOL: listed \(docsList.count) bundled docs + \(shortcuts.count) live shortcuts")
+    return [
+      "docs": docsList,
+      "shortcuts": shortcuts,
+      "app_version": AppConstants.appVersion,
+      "build_number": AppConstants.appBuildNumber,
+    ]
+  }
+
+  /// Payload for `read_whisper_shortcut_doc`. `name` is an identifier from `listDocsResult`.
+  static func readDocResult(name: String) -> [String: Any] {
+    guard let doc = availableDocs.first(where: { $0.name == name }) else {
+      let validNames = availableDocs.map { $0.name }.joined(separator: ", ")
+      return ["error": "Unknown doc '\(name)'. Available: \(validNames)"]
+    }
+    let base = (doc.filename as NSString).deletingPathExtension
+    let ext = (doc.filename as NSString).pathExtension
+    let url =
+      Bundle.main.url(forResource: base, withExtension: ext, subdirectory: "Docs")
+      ?? Bundle.main.url(forResource: base, withExtension: ext)
+    guard let url, let content = try? String(contentsOf: url, encoding: .utf8) else {
+      DebugLogger.logError(
+        "GEMINI-CHAT-TOOL: doc '\(name)' missing from bundle (\(doc.filename))")
+      return ["error": "Doc '\(name)' is not bundled with this build of WhisperShortcut."]
+    }
+    DebugLogger.logSuccess(
+      "GEMINI-CHAT-TOOL: returned doc '\(name)' (\(content.utf8.count) bytes)")
+    return ["name": doc.name, "title": doc.title, "content": content + UILabelGlossary.appendix()]
+  }
 
   static let appDocsFunctionDeclarations: [[String: Any]] = [
     [
@@ -2079,49 +2136,13 @@ enum ChatToolRegistry {
       }
 
     case "list_whisper_shortcut_docs":
-      let docsList: [[String: Any]] = availableDocs.map { doc in
-        ["name": doc.name, "title": doc.title, "description": doc.description]
-      }
-      // Live shortcut bindings from the user's actual config, so keyboard-shortcut answers can
-      // never go stale against a hardcoded doc table. Feature prose still lives in README.
-      let config = ShortcutConfigManager.shared.loadConfiguration()
-      let shortcuts: [[String: Any]] = config.assistantFacingRows.map { row in
-        [
-          "action": row.action,
-          "shortcut": row.definition.displayStringWithSeparator,
-          "enabled": row.definition.isEnabled,
-        ]
-      }
-      DebugLogger.logSuccess(
-        "GEMINI-CHAT-TOOL: listed \(docsList.count) bundled docs + \(shortcuts.count) live shortcuts")
-      return [
-        "docs": docsList,
-        "shortcuts": shortcuts,
-        "app_version": AppConstants.appVersion,
-        "build_number": AppConstants.appBuildNumber,
-      ]
+      return listDocsResult()
 
     case "read_whisper_shortcut_doc":
       guard let docName = args["name"] as? String else {
         return ["error": "Missing required argument: name"]
       }
-      guard let doc = availableDocs.first(where: { $0.name == docName }) else {
-        let validNames = availableDocs.map { $0.name }.joined(separator: ", ")
-        return ["error": "Unknown doc '\(docName)'. Available: \(validNames)"]
-      }
-      let base = (doc.filename as NSString).deletingPathExtension
-      let ext = (doc.filename as NSString).pathExtension
-      let url =
-        Bundle.main.url(forResource: base, withExtension: ext, subdirectory: "Docs")
-        ?? Bundle.main.url(forResource: base, withExtension: ext)
-      guard let url, let content = try? String(contentsOf: url, encoding: .utf8) else {
-        DebugLogger.logError(
-          "GEMINI-CHAT-TOOL: doc '\(docName)' missing from bundle (\(doc.filename))")
-        return ["error": "Doc '\(docName)' is not bundled with this build of WhisperShortcut."]
-      }
-      DebugLogger.logSuccess(
-        "GEMINI-CHAT-TOOL: returned doc '\(docName)' (\(content.utf8.count) bytes)")
-      return ["name": doc.name, "title": doc.title, "content": content + UILabelGlossary.appendix()]
+      return readDocResult(name: docName)
 
     // Workspace file tools run detached: a directory walk over a large tree on the main
     // thread would block the UI and trip the hang watchdog.

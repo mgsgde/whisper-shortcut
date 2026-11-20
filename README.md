@@ -33,7 +33,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 
 **Writing with your voice**
 - **Dictate Prompt**: select text and say "make this shorter" or "translate to English". With nothing selected, it writes what you ask for, in your own writing style if you turn that on.
-- **Templates**: dictate into a fixed format you set up once, such as a clinical note with Anamnese, Befund and Therapie.
+- **Templates**: dictate into a fixed format you set up once, such as a clinical note with Anamnese, Befund and Therapie. One template can also hold several related formats that you pick by saying their name first, for example "CT" or "Servicebericht" in an inspection-report template.
 - **Read Aloud**: select any text and hear it, with cloud voices or on-device ones, from a small player with pause, skip and speed.
 - **Read Aloud Prompt**: select text and say what you want to hear, such as "summarize this in two sentences" or "read it in English". The answer is read aloud instead of pasted. With nothing selected, it reads out the answer to your question.
 

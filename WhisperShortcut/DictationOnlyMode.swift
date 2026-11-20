@@ -86,10 +86,18 @@ enum DictationOnlyMode {
   // MARK: - What the mode shows
 
   /// Settings tabs shown while the mode is on: General, Dictate, Permissions & Privacy, About.
+  /// Accounts is added while the selected transcription model is a cloud model: that tab is the
+  /// only place to enter its key, and the Dictate tab in this mode has no key field.
   private static let visibleTabSet: Set<SettingsTab> = [.general, .speechToText, .permissions, .about]
 
-  static func visibleTabs(_ all: [SettingsTab], enabled: Bool) -> [SettingsTab] {
-    enabled ? all.filter { visibleTabSet.contains($0) } : all
+  static func visibleTabs(
+    _ all: [SettingsTab], enabled: Bool,
+    selectedModelIsCloud: Bool = !TranscriptionModel.loadSelected().isOffline
+  ) -> [SettingsTab] {
+    guard enabled else { return all }
+    var kept = visibleTabSet
+    if selectedModelIsCloud { kept.insert(.accounts) }
+    return all.filter { kept.contains($0) }
   }
 
   /// Status-menu rows shown. With the mode off, every row.
@@ -116,11 +124,17 @@ enum DictationOnlyMode {
     return true
   }
 
-  /// Where a "go to Settings → X" link lands. A hidden tab is never opened: a missing key or
-  /// credential (Accounts) is a dictation problem here, so it goes to Dictate; anything else that
-  /// is hidden goes to General.
-  static func reachableTab(_ tab: SettingsTab, enabled: Bool) -> SettingsTab {
-    if visibleTabs([tab], enabled: enabled).contains(tab) { return tab }
+  /// Where a "go to Settings → X" link lands. A hidden tab is never opened. Accounts stays
+  /// reachable while a cloud transcription model is selected, because that tab holds its key.
+  /// With an offline model, a missing key or credential is a dictation problem, so Accounts goes
+  /// to Dictate; anything else that is hidden goes to General.
+  static func reachableTab(
+    _ tab: SettingsTab, enabled: Bool,
+    selectedModelIsCloud: Bool = !TranscriptionModel.loadSelected().isOffline
+  ) -> SettingsTab {
+    if visibleTabs([tab], enabled: enabled, selectedModelIsCloud: selectedModelIsCloud).contains(tab) {
+      return tab
+    }
     return tab == .accounts ? .speechToText : .general
   }
 
@@ -227,13 +241,16 @@ enum DictationOnlyDefaults {
   /// Applies, in order: Offline Mode on, Parakeet selected, language, Dictate mode, spoken
   /// punctuation; then marks the defaults as applied. A second call changes nothing.
   /// Inputs are injectable so tests never touch real defaults or the real Offline Mode switch.
+  /// `notifySelectionsChanged` runs once after a pass that wrote, so listeners follow Parakeet
+  /// rather than whatever model the Offline Mode reconciler picked on the way.
   @MainActor
   static func apply(
     defaults: UserDefaults = .standard,
     preferredLanguages: [String] = Locale.preferredLanguages,
     isAppleSilicon: Bool = LiveDictation.isAppleSilicon,
     isAppStore: Bool = DictationOnlyDefaults.isAppStoreBuild,
-    switchOfflineOn: @MainActor () -> Void = { OfflineMode.switchTo(true, reason: "dictation-only defaults") }
+    switchOfflineOn: @MainActor () -> Void = { OfflineMode.switchTo(true, reason: "dictation-only defaults") },
+    notifySelectionsChanged: @MainActor () -> Void = { ModelSelectionReconciler.postSelectionsChanged() }
   ) -> Result {
     if defaults.bool(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied) {
       return Result(alreadyApplied: true, language: nil, dictateMode: nil)
@@ -266,6 +283,7 @@ enum DictationOnlyDefaults {
     recordAppliedValues(defaults: defaults)
     defaults.set(true, forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied)
     DebugLogger.log("DICTATION-ONLY: defaults applied (mode=\(mode.rawValue), language=\(language))")
+    notifySelectionsChanged()
     return Result(alreadyApplied: false, language: language, dictateMode: mode)
   }
 
