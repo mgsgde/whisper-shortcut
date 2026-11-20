@@ -325,6 +325,7 @@ struct ChatToolHardeningTests {
       #expect(text.contains("action='read'"))
       #expect(text.contains("Do NOT say it is an app bug, do NOT say it is not an app bug"))
       #expect(text.contains("cursor context"))
+      #expect(text.contains("fieldContextChars"))
     }
   }
 
