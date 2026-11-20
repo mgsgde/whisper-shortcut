@@ -96,6 +96,12 @@ final class TranscriptionHistoryStore {
     queue.sync { storage.first }
   }
 
+  /// Status-menu rows and "Copy Last Transcription". Dictate Prompt and template results stay in
+  /// `entries` for the problem report; they can contain rewritten selected text.
+  var dictationEntries: [Entry] {
+    entries.filter { $0.mode == nil || $0.mode == "Dictation" }
+  }
+
   // MARK: - Writing
 
   /// Records a dictation result. Ignores empty text and exact repeats of the newest entry, so a

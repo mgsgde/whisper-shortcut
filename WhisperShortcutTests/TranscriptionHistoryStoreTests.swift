@@ -44,6 +44,23 @@ struct TranscriptionHistoryStoreTests {
     #expect(TranscriptionHistoryStore.menuEntries == 5)
     #expect(Array(store.entries.prefix(TranscriptionHistoryStore.menuEntries)).count == 5)
   }
+
+  @Test("The menu list is dictations only")
+  func dictationEntriesExcludePromptAndTemplate() throws {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("history-dictations-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptionHistoryStore(
+      fileURL: dir.appendingPathComponent(TranscriptionHistoryStore.fileName))
+    store.record("prompted", mode: "Dictate Prompt")
+    store.record("templated", mode: "Template", templateName: "SOAP")
+    store.record("said", mode: "Dictation")
+    store.record("legacy")
+    store.waitForPendingWrites()
+    #expect(store.entries.count == 4)
+    #expect(store.dictationEntries.map(\.text) == ["legacy", "said"])
+  }
 }
 
 @Suite("Report config fingerprint")
@@ -103,12 +120,46 @@ struct RequestTraceTests {
       date: since.addingTimeInterval(5))
     let traces = service.requestTraces(since: since)
     #expect(traces.map(\.rawOutput) == ["first", "second"])
+  }
 
-    let joined = service.recordedTrace(since: since)
-    #expect(joined.rawOutput == "first\nsecond")
-    #expect(joined.audioDurationSeconds == 3.75)
-    #expect(joined.promptChars == "the-prompt".count)
-    #expect(joined.promptHash == ReportConfigFingerprint.shortHash("the-prompt"))
-    #expect(joined.promptHash?.count == 12)
+  @Test("recordedTrace keeps one job, orders chunks, and hashes the last prompt")
+  func recordedTraceByJob() {
+    let service = SpeechService()
+    let job = UUID()
+    let other = UUID()
+    let start = Date(timeIntervalSince1970: 2_000)
+
+    SpeechService.$requestTraceJob.withValue(other) {
+      service.noteRequestTrace(
+        rawOutput: "other-job", prompt: "other", date: start)
+    }
+    service.noteRequestTrace(rawOutput: "meeting", prompt: "meeting-prompt", date: start)
+
+    SpeechService.$requestTraceJob.withValue(job) {
+      service.noteRequestTrace(
+        rawOutput: "second", audioDurationSeconds: 2, prompt: "with-glossary",
+        chunkIndex: 1, date: start.addingTimeInterval(1))
+      service.noteRequestTrace(
+        rawOutput: "first", audioDurationSeconds: 1.5, prompt: "later-but-earlier-chunk",
+        chunkIndex: 0, date: start.addingTimeInterval(2))
+    }
+    let chunked = service.recordedTrace(job: job)
+    #expect(chunked.rawOutput == "first\nsecond")
+    #expect(chunked.audioDurationSeconds == 3.5)
+    #expect(chunked.promptChars == "with-glossary".count)
+    #expect(chunked.promptHash == ReportConfigFingerprint.shortHash("with-glossary"))
+
+    let retryJob = UUID()
+    SpeechService.$requestTraceJob.withValue(retryJob) {
+      service.noteRequestTrace(
+        rawOutput: "echoed", prompt: "with-glossary", date: start)
+      service.noteRequestTrace(
+        rawOutput: "clean", audioDurationSeconds: 4, prompt: "without-glossary",
+        date: start.addingTimeInterval(5))
+    }
+    let retried = service.recordedTrace(job: retryJob)
+    #expect(retried.rawOutput == "echoed\nclean")
+    #expect(retried.promptHash == ReportConfigFingerprint.shortHash("without-glossary"))
+    #expect(service.recordedTrace(job: UUID()).rawOutput == nil)
   }
 }

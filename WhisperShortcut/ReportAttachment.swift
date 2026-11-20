@@ -10,7 +10,7 @@ enum ReportAttachment {
   static func write(_ text: String, now: Date = Date(), directory: URL? = nil) throws -> URL {
     let folder = directory ?? AppSupportPaths.reportsURL()
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-    prune(folder: folder, now: now)
+    pruneOld(now: now, directory: folder)
     let url = folder.appendingPathComponent(fileName(for: now))
     try text.write(to: url, atomically: true, encoding: .utf8)
     DebugLogger.log("DICTATION-REPORT: Wrote \(url.lastPathComponent) (\(text.count) chars)")
@@ -26,9 +26,13 @@ enum ReportAttachment {
     return "WhisperShortcut-Report-\(formatter.string(from: now)).txt"
   }
 
-  /// Drops regular files last modified more than 7 days before `now`. A file that cannot be
-  /// dated or removed stays: losing one old draft is not a reason to fail the report the user
-  /// is sending.
+  /// Drops report files last modified more than 7 days before `now`. Called when a report is
+  /// written and once at launch. A missing folder, or a file that cannot be dated or removed,
+  /// is left alone: losing one old draft is not a reason to fail the report the user is sending.
+  static func pruneOld(now: Date = Date(), directory: URL? = nil) {
+    prune(folder: directory ?? AppSupportPaths.reportsURL(), now: now)
+  }
+
   private static func prune(folder: URL, now: Date) {
     let cutoff = now.addingTimeInterval(-retention)
     let fm = FileManager.default

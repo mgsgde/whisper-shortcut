@@ -29983,12 +29983,12 @@
         }
       }
     },
-    "Settings changed since this dictation" : {
+    "Note: settings were changed after this dictation" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einstellungen seit diesem Diktat geändert"
+            "value" : "Hinweis: Einstellungen wurden nach diesem Diktat geändert"
           }
         }
       }
@@ -30109,6 +30109,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Was ist schiefgelaufen: %@"
+          }
+        }
+      }
+    },
+    "The settings file could not be created." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einstellungsdatei konnte nicht erstellt werden."
+          }
+        }
+      }
+    },
+    "Use Copy instead: it puts everything on the clipboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzen Sie stattdessen „Kopieren“: Damit landet alles in der Zwischenablage."
+          }
+        }
+      }
+    },
+    "Share…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen …"
           }
         }
       }

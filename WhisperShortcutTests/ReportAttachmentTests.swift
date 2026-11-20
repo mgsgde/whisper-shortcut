@@ -62,3 +62,14 @@ struct ReportAttachmentTests {
     #expect(try String(contentsOf: url, encoding: .utf8) == "kept")
   }
 }
+
+@Suite("Report sender")
+struct ReportSenderTests {
+
+  @Test("Only Apple Mail gets the compose service")
+  func prefersAppleMail() {
+    #expect(ReportSender.prefersAppleMail(mailtoHandlerBundleID: "com.apple.mail"))
+    #expect(!ReportSender.prefersAppleMail(mailtoHandlerBundleID: "com.microsoft.Outlook"))
+    #expect(!ReportSender.prefersAppleMail(mailtoHandlerBundleID: nil))
+  }
+}

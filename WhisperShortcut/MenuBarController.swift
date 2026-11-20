@@ -144,6 +144,9 @@ class MenuBarController: NSObject {
     var discardOnFinish = false
     /// Dictate Live: pieces go to the cursor while the user speaks (`liveDictationSession`).
     var isLiveDictation = false
+    /// Ties this recording's model returns together. Nil for a live meeting, whose chunks must
+    /// not land in a dictation's report. Streaming and live pieces read it while the user talks.
+    var traceJobID: UUID?
     /// Set by the first stop press (before the tail delay). Until the recorder delivers the audio a
     /// further press must not stop again: the recorder answers "nothing running", which used to
     /// reset the app to idle while the finished audio was still on its way, and the audio was then
@@ -795,16 +798,10 @@ class MenuBarController: NSObject {
     // prompt recordings and non-cloud STT models — the callbacks are then no-ops).
     if let chunkedRecorder = audioRecorder as? ChunkedDictateRecorder {
       chunkedRecorder.onChunkFinalized = { [weak self] url, index, isSilent in
-        self?.dictateStreamingSession?.addChunk(url: url, index: index, isSilent: isSilent)
-        if self?.recording?.isLiveDictation == true {
-          self?.liveDictationSession?.add(url, isSilent: isSilent)
-        }
+        self?.deliverDictationChunk(url: url, index: index, isSilent: isSilent, isFinal: false)
       }
       chunkedRecorder.onFinalChunk = { [weak self] url, index, isSilent in
-        self?.dictateStreamingSession?.addFinalChunk(url: url, index: index, isSilent: isSilent)
-        if self?.recording?.isLiveDictation == true {
-          self?.liveDictationSession?.add(url, isSilent: isSilent)
-        }
+        self?.deliverDictationChunk(url: url, index: index, isSilent: isSilent, isFinal: true)
       }
     }
     // Dictate Live holds pieces while another app is in front; try again when one comes forward.
@@ -1641,9 +1638,10 @@ class MenuBarController: NSObject {
   /// from a background queue, and the menu is cheap to regenerate (at most five rows).
   private func updateTranscriptionHistoryItems(_ menu: NSMenu) {
     let entries = Array(
-      TranscriptionHistoryStore.shared.entries.prefix(TranscriptionHistoryStore.menuEntries))
+      TranscriptionHistoryStore.shared.dictationEntries.prefix(TranscriptionHistoryStore.menuEntries))
     menu.item(withTag: MenuTag.copyLastTranscription.rawValue)?.isHidden = entries.isEmpty
-    let hasReportableResult = !entries.isEmpty
+    // Prompt and template rows stay out of this submenu, but they are still a result to report.
+    let hasReportableResult = !TranscriptionHistoryStore.shared.entries.isEmpty
       || LastResultStore.shared.lastPrompt != nil
       || LastResultStore.shared.lastReadAloud != nil
     reportResultItem?.isHidden = !hasReportableResult
@@ -1722,7 +1720,7 @@ class MenuBarController: NSObject {
   }()
 
   @objc private func copyLastTranscription() {
-    guard let entry = TranscriptionHistoryStore.shared.mostRecent else {
+    guard let entry = TranscriptionHistoryStore.shared.dictationEntries.first else {
       DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Copy requested but history is empty")
       return
     }
@@ -1733,7 +1731,7 @@ class MenuBarController: NSObject {
     // Resolve against the live list instead of capturing the text in the menu item: a dictation
     // that finished while the menu was open would otherwise copy a shifted entry.
     let entries = Array(
-      TranscriptionHistoryStore.shared.entries.prefix(TranscriptionHistoryStore.menuEntries))
+      TranscriptionHistoryStore.shared.dictationEntries.prefix(TranscriptionHistoryStore.menuEntries))
     guard sender.tag >= 0, sender.tag < entries.count else {
       DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Entry \(sender.tag) no longer exists")
       return
@@ -1841,6 +1839,9 @@ class MenuBarController: NSObject {
     }
     clipboardOnlyForNextResult = false
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
+    if mode == .transcription || mode == .prompt {
+      recording?.traceJobID = UUID()
+    }
     recording?.promptSelection = promptSelection
     recording?.speakResult = speakResult
     if mode == .prompt, meetingSegment == nil, let template {
@@ -2623,7 +2624,7 @@ class MenuBarController: NSObject {
 
   @objc private func reportLastResult() {
     let candidates = ResultReport.candidates(
-      dictation: TranscriptionHistoryStore.shared.mostRecent,
+      dictations: TranscriptionHistoryStore.shared.entries,
       glossaryTerms: speechService.glossaryTermsForReport(),
       offlineMode: OfflineMode.isEnabled,
       prompt: LastResultStore.shared.lastPrompt,
@@ -3344,18 +3345,39 @@ class MenuBarController: NSObject {
     }
   }
 
-  /// Writes one history row, including the model trace collected since `since`.
+  /// Hands a rotated or final dictate chunk to streaming and Dictate Live, inside this
+  /// recording's trace job so a parallel meeting chunk cannot join its raw output.
+  private func deliverDictationChunk(url: URL, index: Int, isSilent: Bool, isFinal: Bool) {
+    let deliver = {
+      if isFinal {
+        self.dictateStreamingSession?.addFinalChunk(url: url, index: index, isSilent: isSilent)
+      } else {
+        self.dictateStreamingSession?.addChunk(url: url, index: index, isSilent: isSilent)
+      }
+      if self.recording?.isLiveDictation == true {
+        self.liveDictationSession?.add(url, isSilent: isSilent)
+      }
+    }
+    if let job = recording?.traceJobID {
+      SpeechService.$requestTraceJob.withValue(job, operation: deliver)
+    } else {
+      deliver()
+    }
+  }
+
+  /// Writes one history row, including the model trace for `traceJob`.
   private func recordTranscriptionHistory(
     _ text: String,
     mode: String,
     modelRaw: String,
     modelName: String,
     since: Date,
+    traceJob: UUID,
     glossaryEchoRemoved: [String]? = nil,
     templateName: String? = nil,
     templateID: UUID? = nil
   ) {
-    let trace = speechService.recordedTrace(since: since)
+    let trace = speechService.recordedTrace(job: traceJob)
     TranscriptionHistoryStore.shared.record(
       text, mode: mode, transcriptionModel: modelRaw, transcriptionModelName: modelName,
       glossaryEchoRemoved: glossaryEchoRemoved,
@@ -3368,7 +3390,10 @@ class MenuBarController: NSObject {
   /// After Stop: insert the rest, then finish the dictation like Dictate does — history, usage
   /// log, success pill — without pasting the whole text a second time.
   @MainActor
-  private func performLiveDictation(audioURL: URL, job: VoiceJob, session: LiveDictationSession) async {
+  private func performLiveDictation(
+    audioURL: URL, job: VoiceJob, session: LiveDictationSession, traceJobID: UUID? = nil
+  ) async {
+    let traceJob = traceJobID ?? UUID()
     defer {
       if liveDictationSession === session { liveDictationSession = nil }
     }
@@ -3376,7 +3401,9 @@ class MenuBarController: NSObject {
     let model = TranscriptionModel.loadSelected()
     let outcome: LiveDictationSession.Outcome
     do {
-      outcome = try await session.finish(deliveredAudio: audioURL)
+      outcome = try await SpeechService.$requestTraceJob.withValue(traceJob) {
+        try await session.finish(deliveredAudio: audioURL)
+      }
     } catch {
       // Only a cancel ends here. The cancel path reset the state and kept the recording.
       DebugLogger.log("LIVE-DICTATE: Ended by cancellation")
@@ -3399,8 +3426,10 @@ class MenuBarController: NSObject {
     if outcome.failedPieces > 0 {
       // A piece is missing from the document. The whole recording, decoded once, is the full copy.
       liveClipboardSnapshot = nil
-      let whole = try? await Self.decodeLivePiece(
-        audioURL, speechService: service, punctuationMode: livePunctuationMode)
+      let whole = try? await SpeechService.$suppressRequestTrace.withValue(true) {
+        try await Self.decodeLivePiece(
+          audioURL, speechService: service, punctuationMode: livePunctuationMode)
+      }
       if isSuperseded(job) {
         processedAudioURLs.remove(audioURL)
         return
@@ -3444,7 +3473,7 @@ class MenuBarController: NSObject {
       }
       recordTranscriptionHistory(
         finalText, mode: "Dictation", modelRaw: model.rawValue, modelName: modelName,
-        since: session.startedAt)
+        since: session.startedAt, traceJob: traceJob)
       ContextLogger.shared.logTranscription(
         result: finalText, model: modelName, transcriptionModel: model.rawValue)
       let insertedChars = outcome.text.count - outcome.heldText.count
@@ -3503,7 +3532,8 @@ class MenuBarController: NSObject {
 
   /// `job` is nil for a live-meeting segment.
   @MainActor
-  private func performTranscription(audioURL: URL, job: VoiceJob?) async {
+  private func performTranscription(audioURL: URL, job: VoiceJob?, traceJobID: UUID? = nil) async {
+    let traceJob = traceJobID ?? UUID()
     let duringMeeting = job == nil
     // Capture the session but leave the property set: cancelInFlightTranscription must
     // still be able to cancel it while we await the chunk transcripts below. Cleared on
@@ -3560,6 +3590,7 @@ class MenuBarController: NSObject {
       audioURL: audioURL,
       job: job,
       produce: {
+        try await SpeechService.$requestTraceJob.withValue(traceJob) {
         let stopTime = CFAbsoluteTimeGetCurrent()
         let transcript: String
         if let streamed = try await streamingSession?.finalTranscript() {
@@ -3605,6 +3636,7 @@ class MenuBarController: NSObject {
         // Cloud text is unchanged. Same steps as Dictate Live (`OfflineTranscriptFinisher`).
         return OfflineTranscriptFinisher.finish(
           transcript, model: transcriptionModelForCapture, mode: punctuationMode)
+        }
       },
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*
@@ -3612,7 +3644,7 @@ class MenuBarController: NSObject {
         let modelDisplayName = await self.speechService.getTranscriptionModelInfo()
         self.recordTranscriptionHistory(
           result, mode: "Dictation", modelRaw: transcriptionModelForCapture.rawValue,
-          modelName: modelDisplayName, since: traceSince,
+          modelName: modelDisplayName, since: traceSince, traceJob: traceJob,
           glossaryEchoRemoved: self.speechService.glossaryEchoStrips(since: dictationStart))
         ContextLogger.shared.logTranscription(
           result: result,
@@ -3638,8 +3670,10 @@ class MenuBarController: NSObject {
     templateID: UUID? = nil,
     recordingWasSilent: Bool = false,
     selection: DictatePromptSelectionCapture?,
-    speakResult: Bool = false
+    speakResult: Bool = false,
+    traceJobID: UUID? = nil
   ) async {
+    let traceJob = traceJobID ?? UUID()
     // Words of the on-device reply the dictation does not contain (Offline Mode only). They
     // replace the result popup with a warning; the pasted text is never touched.
     var undictatedWords: [String] = []
@@ -3690,15 +3724,17 @@ class MenuBarController: NSObject {
           fieldContext = nil
           fieldAllowsWindowImage = true
         }
-        let result = try await self.speechService.executePrompt(
-          audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
-          isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
-          templateName: templateName, selectedText: selectedText,
-          recordingWasSilent: recordingWasSilent,
-          selectionIsFromService: selection?.isFromService ?? false,
-          fieldContext: fieldContext,
-          fieldAllowsWindowImage: fieldAllowsWindowImage,
-          outputIsSpoken: speakResult)
+        let result = try await SpeechService.$requestTraceJob.withValue(traceJob) {
+          try await self.speechService.executePrompt(
+            audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
+            isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
+            templateName: templateName, selectedText: selectedText,
+            recordingWasSilent: recordingWasSilent,
+            selectionIsFromService: selection?.isFromService ?? false,
+            fieldContext: fieldContext,
+            fieldAllowsWindowImage: fieldAllowsWindowImage,
+            outputIsSpoken: speakResult)
+        }
         if !speakResult {
           undictatedWords = self.speechService.lastPromptUnsupportedWords
           if self.speechService.lastPromptReplyTruncated {
@@ -3716,7 +3752,7 @@ class MenuBarController: NSObject {
           mode: isTemplate ? "Template" : "Dictate Prompt",
           modelRaw: identity.rawValue,
           modelName: identity.displayName,
-          since: promptStartedAt,
+          since: promptStartedAt, traceJob: traceJob,
           templateName: isTemplate ? templateName : nil,
           templateID: isTemplate ? templateID : nil)
         // A spoken result is not a writing sample and is not kept as a template recording.
@@ -4753,10 +4789,11 @@ extension MenuBarController: AudioRecorderDelegate {
         DebugLogger.log("MEETING-SEGMENT: Recording finished for segment \(segment), dispatching pipeline")
         self.processedAudioURLs.insert(audioURL)
         self.markMeetingSegmentProcessing()
+        let traceJobID = intent?.traceJobID
         Task { @MainActor in
           switch segment {
           case .dictation:
-            await self.performTranscription(audioURL: audioURL, job: nil)
+            await self.performTranscription(audioURL: audioURL, job: nil, traceJobID: traceJobID)
           case .prompt:
             await self.performPrompting(
               audioURL: audioURL, job: nil,
@@ -4764,7 +4801,8 @@ extension MenuBarController: AudioRecorderDelegate {
               isEditQuickAction: intent?.isEditQuickAction ?? false,
               recordingWasSilent: self.audioRecorder.lastRecordingWasSilent,
               selection: intent?.promptSelection,
-              speakResult: intent?.speakResult ?? false)
+              speakResult: intent?.speakResult ?? false,
+              traceJobID: traceJobID)
           }
         }
         return
@@ -4930,6 +4968,7 @@ extension MenuBarController: AudioRecorderDelegate {
             let mode = recordingMode
             let inputs = promptInputs
             let instruction = quickActionInstruction
+            let traceJobID = intent?.traceJobID
             Task {
               let text = await selection.value()
               DispatchQueue.main.async { [weak self] in
@@ -4939,7 +4978,8 @@ extension MenuBarController: AudioRecorderDelegate {
                 } else {
                   self.startProcessingFinishedRecording(
                     audioURL: url, recordingMode: mode,
-                    quickActionInstruction: instruction, promptInputs: inputs)
+                    quickActionInstruction: instruction, promptInputs: inputs,
+                    traceJobID: traceJobID)
                 }
               }
             }
@@ -4956,7 +4996,8 @@ extension MenuBarController: AudioRecorderDelegate {
 
       self.startProcessingFinishedRecording(
         audioURL: audioURL, recordingMode: recordingMode,
-        quickActionInstruction: quickActionInstruction, promptInputs: promptInputs)
+        quickActionInstruction: quickActionInstruction, promptInputs: promptInputs,
+        traceJobID: intent?.traceJobID)
     }
   }
 
@@ -4991,7 +5032,8 @@ extension MenuBarController: AudioRecorderDelegate {
     audioURL: URL,
     recordingMode: AppState.RecordingMode,
     quickActionInstruction: String?,
-    promptInputs: FinishedPromptInputs
+    promptInputs: FinishedPromptInputs,
+    traceJobID: UUID? = nil
   ) {
     if !self.appState.isProcessing {
       self.appState = self.appState.stopRecording()
@@ -5002,7 +5044,8 @@ extension MenuBarController: AudioRecorderDelegate {
       if let live = liveDictationSession {
         // Dictate Live: most of the text is already at the cursor; insert the rest.
         self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
-          await self.performLiveDictation(audioURL: audioURL, job: job, session: live)
+          await self.performLiveDictation(
+            audioURL: audioURL, job: job, session: live, traceJobID: traceJobID)
         }
         return
       }
@@ -5010,7 +5053,7 @@ extension MenuBarController: AudioRecorderDelegate {
       // actually happening (downloading N%, preparing, transcribing) from inside the
       // transcription path, instead of one static "can take several minutes" line.
       self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
-        await self.performTranscription(audioURL: audioURL, job: job)
+        await self.performTranscription(audioURL: audioURL, job: job, traceJobID: traceJobID)
       }
     case .prompt:
       self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
@@ -5021,7 +5064,8 @@ extension MenuBarController: AudioRecorderDelegate {
           templateName: promptInputs.templateName,
           templateID: promptInputs.templateID,
           recordingWasSilent: promptInputs.recordingWasSilent, selection: promptInputs.selection,
-          speakResult: promptInputs.speakResult)
+          speakResult: promptInputs.speakResult,
+          traceJobID: traceJobID)
       }
     case .liveMeeting:
       DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")

@@ -33,10 +33,11 @@ struct DictationReportTests {
         Dictated: \(Self.localString(ts))
         Mode: Dictation
         Transcription model: Gemini 3.5 Flash Lite (gemini-3.5-flash-lite)
-        Glossary echo removed: "Joschka SumUp"
         Glossary: 3 terms. In this text: Joschka, SumUp
         Offline Mode: off
         """)
+    #expect(DictationReport.technicalLines(entry: entry) == "Glossary echo removed: \"Joschka SumUp\"")
+    #expect(!body.contains("Glossary echo removed"))
   }
 
   @Test("Old entry omits mode, model and echo lines")
@@ -46,6 +47,7 @@ struct DictationReportTests {
     #expect(!body.contains("Mode: Dictation"))
     #expect(!body.contains("Transcription model"))
     #expect(!body.contains("Glossary echo"))
+    #expect(DictationReport.technicalLines(entry: entry).isEmpty)
     #expect(body.contains("Glossary: 1 terms. None in this text."))
     #expect(body.hasSuffix("Offline Mode: on"))
   }
@@ -66,11 +68,14 @@ struct DictationReportTests {
     let entry = TranscriptionHistoryStore.Entry(
       ts: Date(), text: "Hallo", glossaryEchoRemoved: [])
     let body = DictationReport.body(entry: entry, glossaryTerms: [], offlineMode: false)
+    let technical = DictationReport.technicalLines(entry: entry)
     #expect(body.contains("Glossary: empty"))
-    #expect(body.contains("Glossary echo removed: none"))
+    #expect(technical == "Glossary echo removed: none")
+    #expect(!body.contains("Glossary echo"))
     #expect(!body.contains("Template:"))
     #expect(!body.contains("Audio length:"))
     #expect(!body.contains("Prompt sent:"))
+    #expect(!technical.contains("Prompt sent:"))
     #expect(!body.contains("App version at dictation:"))
     #expect(!body.contains("Settings changed"))
     #expect(!body.contains("Model output before cleanup:"))
@@ -87,11 +92,13 @@ struct DictationReportTests {
     let shown = DictationReport.body(
       entry: present, glossaryTerms: [], offlineMode: false,
       currentConfigHash: "222222222222")
+    let technical = DictationReport.technicalLines(entry: present)
     #expect(shown.contains("Template: SOAP"))
     #expect(shown.contains("Audio length: 3.5 s"))
-    #expect(shown.contains("Prompt sent: 120 chars, hash abc123def456"))
+    #expect(!shown.contains("Prompt sent:"))
+    #expect(technical == "Prompt sent: 120 chars, hash abc123def456")
     #expect(shown.contains("App version at dictation: 9.9.9"))
-    #expect(shown.contains("Settings changed since this dictation"))
+    #expect(shown.contains("Note: settings were changed after this dictation"))
     #expect(shown.contains("Model output before cleanup:"))
     #expect(shown.contains("Lumbarroll\nA firm foam roll for the lower back."))
 
@@ -108,5 +115,30 @@ struct DictationReportTests {
     #expect(!hidden.contains("Model output before cleanup:"))
     #expect(!hidden.contains("Settings changed"))
     #expect(!hidden.contains("Template:"))
+  }
+
+  @Test("Ten history entries become ten dictation candidates, newest first, with unique ids")
+  func tenDictationCandidates() {
+    var entries: [TranscriptionHistoryStore.Entry] = []
+    for index in 0..<10 {
+      let mode = index == 3 ? "Template" : "Dictation"
+      let name: String? = index == 3 ? "SOAP" : nil
+      entries.append(TranscriptionHistoryStore.Entry(
+        ts: Date(timeIntervalSince1970: TimeInterval(1_700_000_000 + index)),
+        text: "line \(index)",
+        mode: mode,
+        templateName: name))
+    }
+    let list = ResultReport.candidates(
+      dictations: entries, glossaryTerms: [], offlineMode: false, prompt: nil, readAloud: nil)
+    let kinds = list.map { candidate in candidate.kind }
+    #expect(list.count == 10)
+    #expect(kinds.allSatisfy { $0 == ResultReport.Kind.dictation })
+    #expect(Set(list.map { candidate in candidate.id }).count == 10)
+    let times = list.map { candidate in candidate.ts }
+    #expect(times == times.sorted(by: >))
+    #expect(list.first?.preview == "line 9")
+    #expect(list.contains { $0.menuLabel == "SOAP" && $0.preview == "line 3" })
+    #expect(list.contains { $0.menuLabel == nil })
   }
 }

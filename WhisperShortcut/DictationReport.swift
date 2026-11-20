@@ -40,13 +40,6 @@ enum DictationReport {
       lines.append(String(localized: "Transcription model: \(modelDescription)"))
     }
 
-    if let removed = entry.glossaryEchoRemoved {
-      let value = removed.isEmpty
-        ? String(localized: "none")
-        : removed.map { "\"\($0)\"" }.joined(separator: ", ")
-      lines.append(String(localized: "Glossary echo removed: \(value)"))
-    }
-
     let summary = glossarySummary(terms: glossaryTerms, text: entry.text)
     lines.append(String(localized: "Glossary: \(summary)"))
     lines.append(offlineMode
@@ -60,18 +53,30 @@ enum DictationReport {
       let shown = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), seconds)
       lines.append(String(localized: "Audio length: \(shown) s"))
     }
-    if let chars = entry.promptChars, let hash = entry.promptHash {
-      lines.append(String(localized: "Prompt sent: \(chars) chars, hash \(hash)"))
-    }
     if let version = entry.appVersion {
       lines.append(String(localized: "App version at dictation: \(version)"))
     }
     if let saved = entry.configHash, let current = currentConfigHash, saved != current {
-      lines.append(String(localized: "Settings changed since this dictation"))
+      lines.append(String(localized: "Note: settings were changed after this dictation"))
     }
     if let raw = entry.rawOutput, raw != entry.text {
       lines.append(String(localized: "Model output before cleanup:"))
       lines.append(raw)
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  /// Glossary-echo and prompt-hash lines. They go in the settings file, not the editable details.
+  static func technicalLines(entry: TranscriptionHistoryStore.Entry) -> String {
+    var lines: [String] = []
+    if let removed = entry.glossaryEchoRemoved {
+      let value = removed.isEmpty
+        ? String(localized: "none")
+        : removed.map { "\"\($0)\"" }.joined(separator: ", ")
+      lines.append(String(localized: "Glossary echo removed: \(value)"))
+    }
+    if let chars = entry.promptChars, let hash = entry.promptHash {
+      lines.append(String(localized: "Prompt sent: \(chars) chars, hash \(hash)"))
     }
     return lines.joined(separator: "\n")
   }
@@ -111,9 +116,10 @@ enum DictationReport {
   }
 }
 
-/// Report bodies for the last dictation, the last Prompt answer and the last Read Aloud.
-/// Plain English and not localized, because the developer reads them. Each kind contributes at
-/// most its latest result. App version and macOS are appended later by `FeedbackLinks.messageBody`.
+/// Report bodies for recent dictations, the last Prompt answer and the last Read Aloud.
+/// Plain English and not localized, because the developer reads them. Dictation history
+/// contributes one candidate per entry (up to 10, every mode). Prompt and Read Aloud contribute
+/// their latest result. App version and macOS are appended later by `FeedbackLinks.messageBody`.
 enum ResultReport {
 
   enum Kind: String, Equatable {
@@ -121,15 +127,21 @@ enum ResultReport {
   }
 
   struct Candidate: Equatable {
+    let id: String
     let kind: Kind
     let ts: Date
     let preview: String
     let details: String
+    /// Glossary-echo and prompt-hash lines. Empty when this result has none.
+    let technical: String
+    /// Replaces the kind name in "Report Something Else". A template's own name.
+    let menuLabel: String?
   }
 
-  /// Newest first. Each kind at most once (its latest). Nil inputs are left out.
+  /// Newest first. One candidate per history entry (at most 10), plus the latest prompt and
+  /// Read Aloud when those exist. A template entry is a dictation candidate.
   static func candidates(
-    dictation: TranscriptionHistoryStore.Entry?,
+    dictations: [TranscriptionHistoryStore.Entry],
     glossaryTerms: [String],
     offlineMode: Bool,
     prompt: LastResultStore.PromptResult?,
@@ -137,30 +149,46 @@ enum ResultReport {
     currentConfigHash: String? = nil
   ) -> [Candidate] {
     var list: [Candidate] = []
-    if let dictation {
+    for (index, entry) in dictations.prefix(10).enumerated() {
       list.append(Candidate(
+        id: candidateID(kind: .dictation, ts: entry.ts, extra: "\(index)"),
         kind: .dictation,
-        ts: dictation.ts,
-        preview: preview(dictation.text),
+        ts: entry.ts,
+        preview: preview(entry.text),
         details: DictationReport.body(
-          entry: dictation, glossaryTerms: glossaryTerms, offlineMode: offlineMode,
-          currentConfigHash: currentConfigHash)))
+          entry: entry, glossaryTerms: glossaryTerms, offlineMode: offlineMode,
+          currentConfigHash: currentConfigHash),
+        technical: DictationReport.technicalLines(entry: entry),
+        menuLabel: entry.mode == "Template" ? entry.templateName : nil))
     }
     if let prompt {
       list.append(Candidate(
+        id: candidateID(kind: .prompt, ts: prompt.ts, extra: ""),
         kind: .prompt,
         ts: prompt.ts,
         preview: preview(prompt.instruction),
-        details: promptBody(prompt, offlineMode: offlineMode)))
+        details: promptBody(prompt, offlineMode: offlineMode),
+        technical: "",
+        menuLabel: nil))
     }
     if let readAloud {
       list.append(Candidate(
+        id: candidateID(kind: .readAloud, ts: readAloud.ts, extra: ""),
         kind: .readAloud,
         ts: readAloud.ts,
         preview: preview(readAloud.text),
-        details: readAloudBody(readAloud)))
+        details: readAloudBody(readAloud),
+        technical: "",
+        menuLabel: nil))
     }
     return list.sorted { $0.ts > $1.ts }
+  }
+
+  private static func candidateID(kind: Kind, ts: Date, extra: String) -> String {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    let stamp = formatter.string(from: ts)
+    return extra.isEmpty ? "\(stamp)|\(kind.rawValue)" : "\(stamp)|\(kind.rawValue)|\(extra)"
   }
 
   static func promptBody(_ result: LastResultStore.PromptResult, offlineMode: Bool) -> String {

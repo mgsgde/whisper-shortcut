@@ -77,6 +77,11 @@ class SpeechService {
   /// sent; both are nil when the call sent none.
   struct RequestTrace: Equatable {
     let date: Date
+    /// The dictation, Dictate Prompt or template run that produced this return. Nil for a
+    /// live-meeting chunk, which must never appear in another recording's report.
+    let job: UUID?
+    /// Set when the caller knows which piece of a chunked or streaming recording this is.
+    let chunkIndex: Int?
     let rawOutput: String
     let audioDurationSeconds: Double?
     let promptChars: Int?
@@ -88,11 +93,17 @@ class SpeechService {
   /// Set around a transcription whose text is only an input to a later model call (prompt
   /// history, the local path's instruction step), so it does not mix into the result trace.
   @TaskLocal static var suppressRequestTrace = false
+  /// The recording whose model returns `noteRequestTrace` should keep. Live-meeting chunks
+  /// leave it unset.
+  @TaskLocal static var requestTraceJob: UUID?
+  /// Piece index for a streaming chunk, read when `noteRequestTrace` is not given one directly.
+  @TaskLocal static var requestTraceChunkIndex: Int?
 
   func noteRequestTrace(
     rawOutput: String,
     audioDurationSeconds: Double? = nil,
     prompt: String? = nil,
+    chunkIndex: Int? = nil,
     date: Date = Date()
   ) {
     guard !Self.suppressRequestTrace else { return }
@@ -100,6 +111,8 @@ class SpeechService {
     requestTracesLock.lock()
     recentRequestTraces.append(RequestTrace(
       date: date,
+      job: Self.requestTraceJob,
+      chunkIndex: chunkIndex ?? Self.requestTraceChunkIndex,
       rawOutput: rawOutput,
       audioDurationSeconds: audioDurationSeconds,
       promptChars: prompt.map(\.count),
@@ -118,7 +131,8 @@ class SpeechService {
   }
 
   /// The fields a history entry stores for one dictation: raw texts joined by newlines,
-  /// durations summed, prompt size and hash taken from the first trace.
+  /// durations summed, prompt size and hash taken from the last trace. The last trace is the
+  /// run that produced the text (a glossary-echo retry sends no glossary).
   struct RecordedTrace: Equatable {
     var rawOutput: String?
     var audioDurationSeconds: Double?
@@ -126,18 +140,33 @@ class SpeechService {
     var promptHash: String?
   }
 
-  func recordedTrace(since: Date) -> RecordedTrace {
-    let traces = requestTraces(since: since)
-    guard let first = traces.first else {
+  /// Traces for `job` only. Ordered by chunk index when every trace has one, otherwise by date.
+  func recordedTrace(job: UUID) -> RecordedTrace {
+    requestTracesLock.lock()
+    let matching = recentRequestTraces.filter { $0.job == job }
+    requestTracesLock.unlock()
+    guard !matching.isEmpty else {
       return RecordedTrace(
         rawOutput: nil, audioDurationSeconds: nil, promptChars: nil, promptHash: nil)
     }
-    let durations = traces.compactMap(\.audioDurationSeconds)
+    let ordered: [RequestTrace]
+    if matching.allSatisfy({ $0.chunkIndex != nil }) {
+      ordered = matching.sorted {
+        let left = $0.chunkIndex ?? 0
+        let right = $1.chunkIndex ?? 0
+        if left != right { return left < right }
+        return $0.date < $1.date
+      }
+    } else {
+      ordered = matching.sorted { $0.date < $1.date }
+    }
+    let durations = ordered.compactMap(\.audioDurationSeconds)
+    let last = ordered[ordered.count - 1]
     return RecordedTrace(
-      rawOutput: traces.map(\.rawOutput).joined(separator: "\n"),
+      rawOutput: ordered.map(\.rawOutput).joined(separator: "\n"),
       audioDurationSeconds: durations.isEmpty ? nil : durations.reduce(0, +),
-      promptChars: first.promptChars,
-      promptHash: first.promptHash)
+      promptChars: last.promptChars,
+      promptHash: last.promptHash)
   }
 
   /// Glossary terms for the problem report.
@@ -4259,9 +4288,12 @@ class SpeechService {
       model: model,
       prompt: prompt,
       glossaryTerms: glossaryTermsForEchoCheck(),
-      onRawModelText: { raw, duration, sentPrompt in
+      onRawModelText: { raw, duration, sentPrompt, index in
+        // A streaming chunk that is split again keeps the streaming index. Sub-chunk
+        // indexes would collide with the other streaming pieces of the same recording.
         self.noteRequestTrace(
-          rawOutput: raw, audioDurationSeconds: duration, prompt: sentPrompt)
+          rawOutput: raw, audioDurationSeconds: duration, prompt: sentPrompt,
+          chunkIndex: Self.requestTraceChunkIndex ?? index)
       }
     )
   }

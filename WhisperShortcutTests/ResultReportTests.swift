@@ -99,7 +99,7 @@ struct ResultReportTests {
     let readAloud = LastResultStore.ReadAloudResult(ts: middle, text: spoken, model: "v", voice: "Kore")
 
     let all = ResultReport.candidates(
-      dictation: dictation, glossaryTerms: [], offlineMode: false,
+      dictations: [dictation], glossaryTerms: [], offlineMode: false,
       prompt: prompt, readAloud: readAloud)
     #expect(all.map(\.kind) == [.prompt, .readAloud, .dictation])
     #expect(all.map(\.ts) == [newest, middle, oldest])
@@ -110,7 +110,7 @@ struct ResultReportTests {
     #expect(all[1].preview.count == 41)
 
     let withoutReadAloud = ResultReport.candidates(
-      dictation: nil, glossaryTerms: [], offlineMode: false, prompt: prompt, readAloud: nil)
+      dictations: [], glossaryTerms: [], offlineMode: false, prompt: prompt, readAloud: nil)
     #expect(withoutReadAloud.map(\.kind) == [.prompt])
   }
 
