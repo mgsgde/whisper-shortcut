@@ -30093,6 +30093,96 @@
         }
       }
     },
+    "Your message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Nachricht"
+          }
+        }
+      }
+    },
+    "What is it about?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worum geht es?"
+          }
+        }
+      }
+    },
+    "Send my configuration (glossary, instructions, templates, settings)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konfiguration mitsenden (Glossar, Anweisungen, Vorlagen, Einstellungen)"
+          }
+        }
+      }
+    },
+    "View Report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht ansehen"
+          }
+        }
+      }
+    },
+    "Contains the text of this result and your settings. Remove names before sending." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält den Text dieses Ergebnisses und Ihre Einstellungen. Entfernen Sie Namen vor dem Senden."
+          }
+        }
+      }
+    },
+    "The file is selected in Finder and copied. Press ⌘V in the email or drag the file into it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei ist im Finder markiert und kopiert. Drücken Sie in der E-Mail ⌘V oder ziehen Sie die Datei hinein."
+          }
+        }
+      }
+    },
+    "Something not working, an idea or a question? Report it here. Your configuration goes with it, so I can reproduce the problem." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert etwas nicht, haben Sie eine Idee oder eine Frage? Melden Sie es hier. Ihre Konfiguration geht mit, damit ich das Problem nachstellen kann."
+          }
+        }
+      }
+    },
+    "Send a problem, an idea or a question to the developer, with your configuration attached. You see everything before it is sent." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schicken Sie dem Entwickler ein Problem, eine Idee oder eine Frage, mit Ihrer Konfiguration im Anhang. Sie sehen alles, bevor es gesendet wird."
+          }
+        }
+      }
+    },
+    "Or write to" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oder schreiben Sie an"
+          }
+        }
+      }
+    },
     "Sent as a file." : {
       "localizations" : {
         "de" : {

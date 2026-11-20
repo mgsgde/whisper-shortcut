@@ -150,7 +150,11 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     guard MCPProposalStore.shared.pending.contains(where: { $0.id == proposal.id }) else { return }
     let title = proposal.title ?? ""
     let report = proposal.proposedContent ?? ""
-    let message = title.isEmpty ? report : "\(title)\n\n\(report)"
+    // The stored body ends with its own configuration snapshot; the window attaches the full
+    // configuration as a file, so only the AI app's description goes into the message field.
+    let description = report.components(separatedBy: "## Configuration (added by WhisperShortcut)")
+      .first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? report
+    let message = title.isEmpty ? description : "\(title)\n\n\(description)"
     MainActor.assumeIsolated {
       ProblemReport.open(message: message, startOnGeneral: true)
     }

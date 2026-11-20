@@ -31,7 +31,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       existing.close()
     }
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
+      contentRect: NSRect(x: 0, y: 0, width: 660, height: 380),
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
       backing: .buffered, defer: false)
     window.title = String(localized: "Report a Problem")
@@ -45,6 +45,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       onShare: { [weak self] context, attachment in
         self?.share(context: context, attachment: attachment)
       },
+      onPreview: { [weak self] text in self?.preview(text) },
       onCancel: { [weak self] in self?.close() }))
     window.isReleasedWhenClosed = false
     window.delegate = self
@@ -147,6 +148,20 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
     DebugLogger.log("DICTATION-REPORT: Offered \(file.lastPathComponent) to share")
   }
 
+  /// "View Report": writes the same file the send buttons would and opens it, so the user sees
+  /// exactly what leaves the Mac before sending it.
+  func preview(_ text: String) {
+    do {
+      let file = try ReportAttachment.write(text)
+      NSWorkspace.shared.open(file)
+      DebugLogger.log("DICTATION-REPORT: Opened \(file.lastPathComponent) for review")
+    } catch {
+      DebugLogger.logWarning(
+        "DICTATION-REPORT: Could not write the report file: \(error.logDescription)")
+      showSettingsFileAlert()
+    }
+  }
+
   /// Settings were requested and the file that would carry them could not be written.
   /// Sending the message alone would drop them without saying so.
   private func showSettingsFileAlert() {
@@ -181,16 +196,18 @@ struct DictationReportView: View {
   /// Edits per result, so switching away and back does not throw away what the user removed.
   @State private var editedDetails: [String: String] = [:]
   @State private var copied = false
-  /// "Also send my settings". All three start on; see the comment at the checkboxes.
-  @State private var includeGlossary = true
-  @State private var includePrompts = true
-  @State private var includeTemplates = true
+  /// One switch for the whole configuration (glossary, instructions, templates, settings). Parts
+  /// of it cannot reproduce a report, so there is nothing to pick; off is for the rare user who
+  /// will not send any of it.
+  @State private var includeConfiguration = true
+  @State private var showDetails = false
   /// Set after an email send that could not attach the file (no Apple Mail); the window stays
   /// open and says how to add it, since the mail does not have it yet.
   @State private var fileOnClipboard = false
   /// Returns true when the report file was revealed in Finder instead of attached.
   let onSend: (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Bool
   let onShare: (_ context: String, _ attachment: String?) -> Void
+  let onPreview: (_ text: String) -> Void
   let onCancel: () -> Void
 
   init(
@@ -199,6 +216,7 @@ struct DictationReportView: View {
     startOnGeneral: Bool = false,
     onSend: @escaping (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Bool,
     onShare: @escaping (_ context: String, _ attachment: String?) -> Void,
+    onPreview: @escaping (_ text: String) -> Void,
     onCancel: @escaping () -> Void
   ) {
     self.candidates = candidates
@@ -207,6 +225,7 @@ struct DictationReportView: View {
     self._problem = State(initialValue: initialMessage ?? "")
     self.onSend = onSend
     self.onShare = onShare
+    self.onPreview = onPreview
     self.onCancel = onCancel
   }
 
@@ -222,17 +241,8 @@ struct DictationReportView: View {
       set: { editedDetails[selected] = $0 })
   }
 
-  private var others: [ResultReport.Candidate] {
-    candidates.filter { $0.id != selected }
-  }
-
-  private var headline: LocalizedStringKey {
-    switch kind {
-    case .dictation: return "Report a Problem with Your Last Dictation"
-    case .prompt: return "Report a Problem with Your Last Prompt Answer"
-    case .readAloud: return "Report a Problem with the Last Read Aloud"
-    case .general: return "Send Feedback"
-    }
+  private var messageLabel: LocalizedStringKey {
+    kind == .general ? "Your message" : "What went wrong?"
   }
 
   private var placeholder: LocalizedStringKey {
@@ -245,17 +255,19 @@ struct DictationReportView: View {
   }
 
   private var privacyNote: LocalizedStringKey {
-    switch kind {
-    case .dictation where sendsSettings:
-      return "Contains your dictated text and your settings. Remove names before sending."
-    case .dictation:
-      return "Contains your dictated text. Remove names or anything else private before you send it."
-    case .prompt:
-      return "Contains your instruction, part of the selected text and the answer. Remove names or anything else private before you send it."
-    case .readAloud:
-      return "Contains the text that was read aloud. Remove names or anything else private before you send it."
-    case .general:
+    switch (kind, includeConfiguration) {
+    case (.general, _):
       return "Contains your settings. Remove names before sending."
+    case (.dictation, true):
+      return "Contains your dictated text and your settings. Remove names before sending."
+    case (_, true):
+      return "Contains the text of this result and your settings. Remove names before sending."
+    case (.dictation, false):
+      return "Contains your dictated text. Remove names or anything else private before you send it."
+    case (.prompt, false):
+      return "Contains your instruction, part of the selected text and the answer. Remove names or anything else private before you send it."
+    case (.readAloud, false):
+      return "Contains the text that was read aloud. Remove names or anything else private before you send it."
     }
   }
 
@@ -269,11 +281,14 @@ struct DictationReportView: View {
   }
 
   /// "Prompt Answer · 08:02 · Fasse das kurz zusammen…": what it was, when, and how it started,
-  /// which is enough to recognise it without opening it.
+  /// which is enough to recognise it without opening it. General feedback has neither.
   private static func menuTitle(_ candidate: ResultReport.Candidate) -> String {
+    guard candidate.kind != .general else { return kindLabel(.general) }
     let time = candidate.ts.formatted(date: .omitted, time: .shortened)
     let kind = candidate.menuLabel ?? kindLabel(candidate.kind)
-    return "\(kind) · \(time) · \(candidate.preview)"
+    let preview = candidate.preview.count > 48
+      ? String(candidate.preview.prefix(48)) + "…" : candidate.preview
+    return "\(kind) · \(time) · \(preview)"
   }
 
   /// What every channel sends: the user's sentence first, because it is what the developer reads
@@ -285,78 +300,58 @@ struct DictationReportView: View {
     return String(localized: "What went wrong: \(note)") + "\n\n\(body)"
   }
 
-  private var sendsSettings: Bool { includeGlossary || includePrompts || includeTemplates }
-
-  private var settingsOnHint: LocalizedStringKey {
-    "Sent as a file."
-  }
-
   private func sendEmail() {
     if onSend(.email, context, attachmentText) { fileOnClipboard = true }
   }
 
-  private var settingsOffHint: LocalizedStringKey {
-    "Only the details above are sent."
-  }
-
-  /// Nil when every section is off. Otherwise the edited details, the technical lines, then the
-  /// configuration. Copy uses this when settings are on, so those lines travel with the settings.
+  /// Nil when the configuration is off. Otherwise the edited details, the technical lines, then
+  /// the configuration. Copy uses this too, so those lines travel with it.
   private var attachmentText: String? {
-    guard includeGlossary || includePrompts || includeTemplates else { return nil }
+    guard includeConfiguration else { return nil }
     var parts = [context]
     if let technical = current?.technical, !technical.isEmpty {
       parts.append(technical)
     }
     parts.append(ConfigurationReport.build(.init(
-      includeGlossary: includeGlossary,
-      includePrompts: includePrompts,
-      includeTemplates: includeTemplates)))
+      includeGlossary: true, includePrompts: true, includeTemplates: true)))
     return parts.joined(separator: "\n\n")
   }
 
+  private func sectionLabel(_ text: LocalizedStringKey) -> some View {
+    Text(text)
+      .font(.subheadline)
+      .fontWeight(.medium)
+      .foregroundColor(.secondary)
+  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      VStack(alignment: .leading, spacing: 4) {
-        HStack(alignment: .firstTextBaseline) {
-          Text(headline)
-            .font(.headline)
-          Spacer()
-          if !others.isEmpty {
-            Menu("Report Something Else") {
-              ForEach(others, id: \.id) { candidate in
-                Button(Self.menuTitle(candidate)) {
-                  selected = candidate.id
-                  copied = false
-                  DebugLogger.log("DICTATION-REPORT: Switched to \(candidate.kind.rawValue)")
-                }
-              }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .pointerCursorOnHover()
+    VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 6) {
+        sectionLabel("What is it about?")
+        Picker("What is it about?", selection: $selected) {
+          ForEach(candidates, id: \.id) { candidate in
+            Text(Self.menuTitle(candidate)).tag(candidate.id)
           }
         }
-        Text("The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in your mail app.")
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .pointerCursorOnHover()
+        .onChange(of: selected) { _, id in
+          copied = false
+          DebugLogger.log("DICTATION-REPORT: Switched to \(id)")
+        }
       }
 
       VStack(alignment: .leading, spacing: 6) {
-        Text("What went wrong?")
-          .font(.subheadline)
-          .fontWeight(.medium)
-          .foregroundColor(.secondary)
+        sectionLabel(messageLabel)
         TextField(placeholder, text: $problem, axis: .vertical)
-        .lineLimit(2...4)
-        .textFieldStyle(.roundedBorder)
+          .lineLimit(3...6)
+          .textFieldStyle(.roundedBorder)
       }
 
-      VStack(alignment: .leading, spacing: 6) {
-        Text("Details (editable)")
-          .font(.subheadline)
-          .fontWeight(.medium)
-          .foregroundColor(.secondary)
+      // Collapsed: the recorded facts matter to the developer, not to the person reporting.
+      // Open, they can be read and edited (a patient name in the dictated text, say).
+      DisclosureGroup(isExpanded: $showDetails) {
         TextEditor(text: details)
           .font(.system(.body, design: .monospaced))
           .scrollContentBackground(.hidden)
@@ -365,28 +360,28 @@ struct DictationReportView: View {
           .cornerRadius(6)
           .overlay(
             RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor), lineWidth: 1))
-          .frame(minHeight: 220)
+          .frame(minHeight: 180)
+          .padding(.top, 6)
+      } label: {
+        sectionLabel("Details (editable)")
+          .contentShape(Rectangle())
+          .onTapGesture { withAnimation { showDetails.toggle() } }
       }
 
-      // On by default: without the glossary, prompts and templates a report about a wrong word
-      // cannot be reproduced, and asking for them through the person who set the app up costs a
-      // round trip per question. They are configuration, not patient data; the dictated text
-      // above is the sensitive part and is already in the details.
-      VStack(alignment: .leading, spacing: 6) {
-        Text("Also send my settings")
-          .font(.subheadline)
-          .fontWeight(.medium)
-          .foregroundColor(.secondary)
-        HStack(spacing: 18) {
-          Toggle("Glossary", isOn: $includeGlossary)
-          Toggle("Additional Instructions", isOn: $includePrompts)
-          Toggle("Templates", isOn: $includeTemplates)
-        }
+      // On by default: without the configuration a report about a wrong word cannot be
+      // reproduced, and asking for it through the person who set the app up costs a round trip.
+      HStack(alignment: .firstTextBaseline, spacing: 12) {
+        Toggle(
+          "Send my configuration (glossary, instructions, templates, settings)",
+          isOn: $includeConfiguration
+        )
         .toggleStyle(.checkbox)
-        Text(sendsSettings ? settingsOnHint : settingsOffHint)
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+        Spacer(minLength: 0)
+        if let text = attachmentText {
+          Button("View Report") { onPreview(text) }
+            .buttonStyle(.link)
+            .pointerCursorOnHover()
+        }
       }
 
       // The details hold what was dictated, selected or read; in a practice that can be a
@@ -404,7 +399,7 @@ struct DictationReportView: View {
         HStack(alignment: .top, spacing: 8) {
           Image(systemName: "doc.badge.arrow.up")
             .foregroundColor(.accentColor)
-          Text("Your settings are copied as a file. Press ⌘V in the email to attach them.")
+          Text("The file is selected in Finder and copied. Press ⌘V in the email or drag the file into it.")
             .font(.callout)
             .fontWeight(.medium)
             .fixedSize(horizontal: false, vertical: true)
@@ -418,7 +413,8 @@ struct DictationReportView: View {
 
         Spacer()
 
-        // Copy takes everything, settings included: the clipboard has no length limit.
+        // Copy takes everything, configuration included: the clipboard has no length limit, and
+        // it is the one route that works from Citrix or a remote Outlook.
         Button(copied ? String(localized: "Copied") : String(localized: "Copy")) {
           NSPasteboard.general.clearContents()
           NSPasteboard.general.setString(
@@ -430,7 +426,7 @@ struct DictationReportView: View {
         Button("Share…") { onShare(context, attachmentText) }
           .pointerCursorOnHover()
 
-        // No default-action shortcut: Return in the "what went wrong" field must not send.
+        // No default-action shortcut: Return in the message field must not send.
         if fileOnClipboard {
           Button("Done") { onCancel() }
             .buttonStyle(.borderedProminent)
@@ -443,7 +439,10 @@ struct DictationReportView: View {
       }
     }
     .padding(20)
-    .frame(minWidth: 560, minHeight: 520)
+    .frame(minWidth: 600)
+    // Exactly as tall as its content: the window grows when Details opens instead of leaving an
+    // empty area under the buttons.
+    .fixedSize(horizontal: false, vertical: true)
     .onChange(of: editedDetails) { copied = false }
     .onChange(of: problem) { copied = false }
   }

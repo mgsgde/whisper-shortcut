@@ -9,64 +9,31 @@ import AppKit
 struct SupportFeedbackSection: View {
   @ObservedObject var viewModel: SettingsViewModel
 
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
-  @State private var usageReport: String?
-  @State private var showFeedbackSheet = false
-  @State private var isBuildingReport = false
-
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Support & Feedback",
         systemImage: "bubble.left.and.bubble.right",
         subtitle:
-          "If you have feedback, if something doesn't work, or if you have suggestions for improvement, message me on WhatsApp or send an email — whichever suits you."
+          "Something not working, an idea or a question? Report it here. Your configuration goes with it, so I can reproduce the problem."
       )
 
       VStack(alignment: .leading, spacing: 20) {
-        VStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+          // The one way to give feedback, the same window as the menu bar's "Report a Problem…".
+          // It attaches the configuration, which no plain message can carry.
           Button(action: {
             viewModel.openProblemReport()
           }) {
             HStack(alignment: .center, spacing: 12) {
-              Image("WhatsApp")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 18, height: 18)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .opacity(0.85)
-
-              Text("Contact me on WhatsApp")
-                .font(.body)
-                .fontWeight(.medium)
-                .textSelection(.enabled)
-
-              Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(SettingsConstants.cornerRadius)
-          }
-          .buttonStyle(PlainButtonStyle())
-          .help("Contact via WhatsApp")
-          .pointerCursorOnHover()
-
-          // Sits right under WhatsApp so the alternative is visible in the same glance — someone
-          // without WhatsApp should not have to hunt for a second way to reach the developer.
-          Button(action: {
-            viewModel.openProblemReport()
-          }) {
-            HStack(alignment: .center, spacing: 12) {
-              Image(systemName: "envelope.fill")
+              Image(systemName: "exclamationmark.bubble.fill")
                 .font(.system(size: 18))
-                .foregroundColor(.blue)
-                .opacity(0.85)
+                .foregroundColor(.accentColor)
+                .opacity(0.9)
 
-              Text("Email me")
+              Text("Report a Problem…")
                 .font(.body)
                 .fontWeight(.medium)
-                .textSelection(.enabled)
 
               Spacer()
             }
@@ -76,53 +43,18 @@ struct SupportFeedbackSection: View {
             .cornerRadius(SettingsConstants.cornerRadius)
           }
           .buttonStyle(PlainButtonStyle())
-          .help("Email the developer")
+          .help("Send a problem, an idea or a question to the developer, with your configuration attached. You see everything before it is sent.")
           .pointerCursorOnHover()
 
-          // Sits with the two contact channels because it is one: a report of how the app behaved
-          // and how it is configured is feedback, just the kind nobody can type from memory. The
-          // usage part does blocking file I/O over up to 30 days of JSONL, so it is built off the
-          // main thread — this window must not beachball on a button press. Usable without "Save
-          // usage data": the configuration part does not depend on it, only the counts do.
-          Button(action: {
-            guard !isBuildingReport else { return }
-            guard saveUsageData else {
-              usageReport = nil
-              showFeedbackSheet = true
-              return
-            }
-            isBuildingReport = true
-            Task.detached(priority: .userInitiated) {
-              let report = UsageReport.build()
-              await MainActor.run {
-                isBuildingReport = false
-                usageReport = report
-                showFeedbackSheet = true
-              }
-            }
-          }) {
-            HStack(alignment: .center, spacing: 12) {
-              Image(systemName: "paperplane.fill")
-                .font(.system(size: 18))
-                .foregroundColor(.purple)
-                .opacity(0.85)
-
-              Text(isBuildingReport ? ("Preparing…" as LocalizedStringKey) : "Send My Settings")
-                .font(.body)
-                .fontWeight(.medium)
-                .textSelection(.enabled)
-
-              Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(SettingsConstants.cornerRadius)
+          // For people who just want to write: plain text, selectable, no second feedback flow.
+          HStack(spacing: 4) {
+            Text("Or write to")
+              .foregroundColor(.secondary)
+            Text(verbatim: FeedbackLinks.supportEmail)
+              .textSelection(.enabled)
           }
-          .buttonStyle(PlainButtonStyle())
-          .disabled(isBuildingReport)
-          .help("Share your settings with the developer when something didn't work. You see and can edit everything first.")
-          .pointerCursorOnHover()
+          .font(.callout)
+          .padding(.leading, 2)
 
           #if APP_STORE
           // App Store build only: the direct build never sends people to the App Store
@@ -177,56 +109,6 @@ struct SupportFeedbackSection: View {
           .help(viewModel.data.appStoreLinkCopied ? ("App Store link copied to clipboard" as LocalizedStringKey) : "Copy App Store link to clipboard")
           .pointerCursorOnHover()
           #endif
-
-          Button(action: {
-            viewModel.revealHangReports()
-          }) {
-            HStack(alignment: .center, spacing: 12) {
-              Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 18))
-                .foregroundColor(.orange)
-                .opacity(0.85)
-
-              Text("Reveal Hang Reports")
-                .font(.body)
-                .fontWeight(.medium)
-                .textSelection(.enabled)
-
-              Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(SettingsConstants.cornerRadius)
-          }
-          .buttonStyle(PlainButtonStyle())
-          .help("Show hang-*.txt watchdog captures in Finder so you can attach them to a report")
-          .pointerCursorOnHover()
-
-          Button(action: {
-            viewModel.openProblemReport()
-          }) {
-            HStack(alignment: .center, spacing: 12) {
-              Image(systemName: "ladybug")
-                .font(.system(size: 18))
-                .foregroundColor(.secondary)
-                .opacity(0.85)
-
-              Text("File a GitHub Issue")
-                .font(.body)
-                .fontWeight(.medium)
-                .textSelection(.enabled)
-
-              Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(SettingsConstants.cornerRadius)
-          }
-          .buttonStyle(PlainButtonStyle())
-          .help("Open a prefilled GitHub issue; attach hang-*.txt from Reveal Hang Reports")
-          .pointerCursorOnHover()
 
           Button(action: {
             viewModel.openGitHub()
