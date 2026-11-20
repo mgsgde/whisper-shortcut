@@ -25,6 +25,13 @@ struct InteractionLogEntry: Codable {
   /// Whether a screenshot was attached to a `prompt`-mode request. Lets analysis distinguish
   /// screenshot-grounded output from fabrication when `selectedText` is empty. Nil for other modes.
   let hadScreenshot: Bool?
+  /// Dictate Prompt only: characters of focused-field text (the text around the cursor) sent with
+  /// the request; 0 when none was sent (setting off, edit or template turn, no readable field).
+  /// Nil for other modes and rows from before 2026-11-20.
+  let fieldContextChars: Int?
+  /// Dictate Prompt only: earlier turns sent as conversation history (0 on compose, template and
+  /// Offline Mode turns). Nil for other modes and older rows.
+  let historyTurns: Int?
   /// End-to-end Dictate Prompt time, from `performPrompt` entry until the turn is logged; for
   /// `transcription`, from job start until the transcript is ready. Nil for other modes.
   let latencyMs: Int?
@@ -63,6 +70,7 @@ struct InteractionLogEntry: Codable {
     userInstruction: String?, modelResponse: String?, text: String?, voice: String?,
     transcriptionModel: String?, hadScreenshot: Bool?, latencyMs: Int?,
     provider: String?, loadMs: Int?, template: String? = nil,
+    fieldContextChars: Int? = nil, historyTurns: Int? = nil,
     toolCalls: [InteractionToolCall]? = nil,
     context: InteractionContext = InteractionContext()
   ) {
@@ -77,6 +85,8 @@ struct InteractionLogEntry: Codable {
     self.voice = voice
     self.transcriptionModel = transcriptionModel
     self.hadScreenshot = hadScreenshot
+    self.fieldContextChars = fieldContextChars
+    self.historyTurns = historyTurns
     self.latencyMs = latencyMs
     self.provider = provider
     self.loadMs = loadMs
@@ -493,7 +503,8 @@ class ContextLogger {
   func logPrompt(
     mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String,
     model: String? = nil, hadScreenshot: Bool? = nil, latencyMs: Int? = nil, provider: String? = nil,
-    loadMs: Int? = nil, template: String? = nil, durationMs: Int? = nil
+    loadMs: Int? = nil, template: String? = nil,
+    fieldContextChars: Int? = nil, historyTurns: Int? = nil, durationMs: Int? = nil
   ) {
     TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
     guard isLoggingEnabled else { return }
@@ -525,6 +536,8 @@ class ContextLogger {
       provider: provider,
       loadMs: loadMs,
       template: template,
+      fieldContextChars: fieldContextChars,
+      historyTurns: historyTurns,
       context: recordingContext(section: .promptMode, durationMs: durationMs)
     )
     writeEntry(entry)

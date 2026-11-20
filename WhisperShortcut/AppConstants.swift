@@ -638,6 +638,9 @@ Transcript:
   /// `response_format` is `pcm` (s16le, 24 kHz, mono).
   /// Reference: https://platform.openai.com/docs/api-reference/audio/createSpeech
   static let openAISpeechEndpoint = "https://api.openai.com/v1/audio/speech"
+  /// Realtime API WebSocket — the only endpoint `gpt-realtime-2.1-mini` serves (its model page
+  /// marks `v1/audio/speech` "Not supported"). The model id travels as the `?model=` query item.
+  static let openAIRealtimeEndpoint = "wss://api.openai.com/v1/realtime"
   /// xAI (Grok) text-to-speech endpoint. Returns raw PCM when `output_format.codec` is `pcm` at
   /// `sample_rate` 24000. Takes no `model` field from us — the voice is selected via `voice_id`.
   /// Reference: https://docs.x.ai/developers/model-capabilities/audio/text-to-speech

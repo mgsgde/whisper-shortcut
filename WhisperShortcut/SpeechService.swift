@@ -1520,10 +1520,14 @@ class SpeechService {
     /// Focused-field context for a compose turn. Request-only: conversation history stores the
     /// selection, never this block.
     let fieldBlock: String?
+    /// Characters of field text in `fieldBlock`; 0 when `fieldBlock` is nil. For the usage log.
+    let fieldContextChars: Int
     /// The selection with its header, or — on a compose turn — the NO SELECTED TEXT marker. Nil only
     /// in screenshot-selection mode, where the selection is the highlighted region of the image.
     let selectionBlock: String?
     let history: [PromptHistoryTurn]
+    /// Earlier turns sent as conversation history. Two `history` entries are one turn.
+    var historyTurns: Int { history.count / 2 }
     let systemPrompt: String
 
     var hadScreenshot: Bool { screenshot != nil }
@@ -1641,14 +1645,16 @@ class SpeechService {
       PromptHistoryTurn(isUser: $0.role != "model", text: $0.parts.compactMap { $0.text }.joined())
     }
 
+    let fieldBlock = PromptScreenContextDecision.fieldBlock(
+      field, isComposeTurn: isComposeTurn, isTemplate: promptTurnKind.isTemplate,
+      fieldTextEnabled: fieldTextEnabled)
     let envelope = DictatePromptEnvelope(
       screenshot: screenshot,
       screenshotLabel: screenshotSelectionMode
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
         : "Front window of the app the user is writing in (context only, do not describe it):",
-      fieldBlock: PromptScreenContextDecision.fieldBlock(
-        field, isComposeTurn: isComposeTurn, isTemplate: promptTurnKind.isTemplate,
-        fieldTextEnabled: fieldTextEnabled),
+      fieldBlock: fieldBlock,
+      fieldContextChars: fieldBlock == nil ? 0 : (field?.totalCount ?? 0),
       selectionBlock: selectionBlock,
       history: history,
       systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
@@ -1947,7 +1953,7 @@ class SpeechService {
     mode: PromptMode,
     clipboardContext: String?,
     model: String,
-    hadScreenshot: Bool,
+    envelope: DictatePromptEnvelope,
     logPrefix: String,
     promptStarted: ContinuousClock.Instant,
     providerLabel: String,
@@ -1986,7 +1992,7 @@ class SpeechService {
     // A screenshot is the selection in screenshot mode, and the timeout placeholder is not
     // evidence the user asked for an edit.
     if DictatePromptSelectionDecision.refusesEditWithoutSelection(
-      hasSelection: clipboardContext != nil, hadScreenshot: hadScreenshot,
+      hasSelection: clipboardContext != nil, hadScreenshot: envelope.hadScreenshot,
       instruction: userInstruction, isEditQuickAction: promptIsEditQuickAction,
       isTemplateTurn: promptTurnKind.isTemplate)
     {
@@ -2018,18 +2024,20 @@ class SpeechService {
       response: normalizedText,
       model: model,
       provider: providerLabel,
-      hadScreenshot: hadScreenshot))
+      hadScreenshot: envelope.hadScreenshot))
     ContextLogger.shared.logPrompt(
       mode: mode,
       selectedText: clipboardContext,
       userInstruction: userInstruction,
       modelResponse: normalizedText,
       model: model,
-      hadScreenshot: hadScreenshot,
+      hadScreenshot: envelope.hadScreenshot,
       latencyMs: latencyMs,
       provider: providerLabel,
       loadMs: loadMs,
       template: promptTurnKind.templateLogName,
+      fieldContextChars: envelope.fieldContextChars,
+      historyTurns: envelope.historyTurns,
       durationMs: AudioDuration.milliseconds(audioURL)
     )
     DebugLogger.logSuccess("\(logPrefix): Completed successfully (\(normalizedText.count) chars)")
@@ -2201,7 +2209,7 @@ class SpeechService {
       mode: mode,
       clipboardContext: clipboardContext,
       model: model.rawValue,
-      hadScreenshot: envelope.hadScreenshot,
+      envelope: envelope,
       logPrefix: "PROMPT-MODE-GEMINI",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
@@ -2392,7 +2400,7 @@ class SpeechService {
       mode: mode,
       clipboardContext: clipboardContext,
       model: requestModel.rawValue,
-      hadScreenshot: envelope.hadScreenshot,
+      envelope: envelope,
       logPrefix: "PROMPT-MODE-OPENAI",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
@@ -2708,7 +2716,7 @@ class SpeechService {
         mode: mode,
         clipboardContext: clipboardContext,
         model: "\(providerTag):\(modelLabel)",
-        hadScreenshot: false,
+        envelope: envelope,
         logPrefix: "PROMPT-MODE-LOCAL",
         promptStarted: promptStarted,
         providerLabel: providerLabel,
@@ -2790,7 +2798,7 @@ class SpeechService {
       mode: mode,
       clipboardContext: clipboardContext,
       model: speedTag,
-      hadScreenshot: false,
+      envelope: envelope,
       logPrefix: "PROMPT-MODE-LOCAL",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
@@ -3078,6 +3086,12 @@ class SpeechService {
     case .openai:
       synthesizeChunk = { [weak self] chunkText, onPartial in
         guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
+        // gpt-realtime-2.1-mini serves only the Realtime API (a WebSocket); every other OpenAI
+        // TTS id still goes to /v1/audio/speech.
+        if model == .openAIRealtimeMiniTTS {
+          return try await self.synthesizeOpenAIRealtimeTTS(
+            text: chunkText, voice: voice, model: model, onPartial: onPartial)
+        }
         return try await self.synthesizeOpenAITTS(text: chunkText, voice: voice, model: model, onPartial: onPartial)
       }
     case .xai:
@@ -3352,6 +3366,166 @@ class SpeechService {
       throw TranscriptionError.networkError("OpenAI TTS failed (HTTP \(http.statusCode)): \(bodyText)")
     }
     return data
+  }
+
+  // MARK: - OpenAI Realtime TTS (gpt-realtime-2.1-mini)
+
+  /// OpenAI's named replacement for the retired `/v1/audio/speech` models (tts-1, tts-1-hd,
+  /// gpt-4o-mini-tts; deprecated 2026-10-01, shutdown 2027-01-06 —
+  /// https://developers.openai.com/api/docs/deprecations). `gpt-realtime-2.1-mini` serves only
+  /// the Realtime API: its model page marks `v1/audio/speech` "Not supported", so one-shot Read
+  /// Aloud runs a short WebSocket session at `wss://api.openai.com/v1/realtime?model=…` —
+  /// configure the session for audio-only output as s16le 24 kHz mono (the app's PCM contract),
+  /// add the text as an `input_text` item, `response.create`, and collect
+  /// `response.output_audio.delta` events until `response.done`
+  /// (https://developers.openai.com/api/docs/guides/realtime-conversations).
+  ///
+  /// The Realtime model is conversational, not a dedicated TTS engine — OpenAI support states
+  /// the docs "don't guarantee verbatim reading" (community forum, 2026-10-08). The session
+  /// instructions pin it to reading the given text exactly; a model that still drifts is a
+  /// quality issue the user hears, not an error we can detect.
+  private func synthesizeOpenAIRealtimeTTS(
+    text: String, voice: String, model: TTSModel,
+    onPartial: ((Data) async -> Void)? = nil
+  ) async throws -> Data {
+    let token = try ProviderCredentials.require(.openAI)
+    guard let url = URL(string: "\(AppConstants.openAIRealtimeEndpoint)?model=\(model.rawValue)")
+    else { throw TranscriptionError.invalidRequest }
+    var request = URLRequest(url: url)
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+    let logPrefix = "TTS-OPENAI-REALTIME"
+    let started = CFAbsoluteTimeGetCurrent()
+    let ws = makeTranscriptionURLSession().webSocketTask(with: request)
+    ws.resume()
+
+    // Stop must fail a pending receive() immediately. Without this the socket stays open until
+    // the stall watchdog, and Read Aloud keeps the "speaking" state for that whole wait.
+    return try await withTaskCancellationHandler {
+      // Stall watchdog, same shape as the Gemini stream (`synthesizeGeminiTTSChunk`): cancels the
+      // socket when the session stops delivering events, so the receive loop below throws and the
+      // catch converts it into a retryable error for `ChunkRetryPolicy`.
+      let progress = StreamProgressClock()
+      progress.touch(chunk: false)
+      let watchdog = progress.startWatchdog(
+        pollInterval: AppConstants.ttsStreamWatchdogPollInterval,
+        firstChunkTimeout: AppConstants.ttsStreamFirstAudioTimeout,
+        stallTimeout: AppConstants.ttsStreamStallTimeout,
+        logPrefix: logPrefix,
+        noun: "audio",
+        firstLabel: "before first audio",
+        midLabel: "mid-stream",
+        cancel: { ws.cancel(with: .goingAway, reason: nil) })
+      defer {
+        watchdog.cancel()
+        ws.cancel(with: .normalClosure, reason: nil)
+      }
+
+      func send(_ event: [String: Any]) async throws {
+        let data = try JSONSerialization.data(withJSONObject: event)
+        guard let raw = String(data: data, encoding: .utf8) else {
+          throw TranscriptionError.invalidRequest
+        }
+        try await ws.send(.string(raw))
+      }
+
+      // Audio-only session, s16le 24 kHz mono out — the app's PCM contract.
+      // GA interface: do not send OpenAI-Beta: realtime=v1.
+      try await send([
+        "type": "session.update",
+        "session": [
+          "type": "realtime",
+          "model": model.rawValue,
+          "output_modalities": ["audio"],
+          "instructions":
+            "You are a text-to-speech engine. Read the user's message aloud verbatim, exactly as written, in its original language. Do not answer, comment, translate, shorten or add anything.",
+          "audio": [
+            "output": [
+              "format": ["type": "audio/pcm", "rate": 24000] as [String: Any],
+              "voice": voice,
+            ]
+          ],
+        ] as [String: Any],
+      ])
+      try await send([
+        "type": "conversation.item.create",
+        "item": [
+          "type": "message",
+          "role": "user",
+          "content": [["type": "input_text", "text": text]],
+        ] as [String: Any],
+      ])
+      try await send(["type": "response.create"])
+
+      var batcher = PCMStreamBatcher()
+      var audio = Data()
+      var eventCount = 0
+      receiveLoop: while true {
+        let message: URLSessionWebSocketTask.Message
+        do {
+          message = try await ws.receive()
+        } catch {
+          // The caller pressed Stop: hand the cancellation up untouched.
+          if Task.isCancelled { throw error }
+          if progress.isStalled {
+            let idle = Int(progress.state.idle)
+            DebugLogger.logWarning(
+              "\(logPrefix): session stalled after \(idle)s (events=\(eventCount), bytes=\(audio.count)) — handing the chunk to the retry policy")
+            throw TranscriptionError.networkError(
+              String(localized: "OpenAI Realtime TTS stream stalled after \(idle)s"))
+          }
+          throw TranscriptionError.networkError(
+            String(localized: "OpenAI Realtime TTS connection failed: \(error.logDescription)"))
+        }
+        guard case .string(let raw) = message,
+          let data = raw.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let type = json["type"] as? String
+        else { continue }
+        eventCount += 1
+        switch type {
+        case "response.output_audio.delta":
+          progress.touch()
+          guard let base64 = json["delta"] as? String, let pcm = Data(base64Encoded: base64) else {
+            continue
+          }
+          audio.append(pcm)
+          if let onPartial {
+            for b in pcm {
+              await batcher.feed(b, started: started, logPrefix: logPrefix, emit: onPartial)
+            }
+          }
+        case "response.done":
+          let status = (json["response"] as? [String: Any])?["status"] as? String
+          guard status == "completed" else {
+            throw TranscriptionError.networkError(
+              String(localized: "OpenAI Realtime TTS response ended with status \(status ?? "unknown")"))
+          }
+          break receiveLoop
+        case "error":
+          let err = json["error"] as? [String: Any]
+          let message = (err?["message"] as? String) ?? String(raw.prefix(300))
+          throw TranscriptionError.networkError(
+            String(localized: "OpenAI Realtime TTS error: \(message)"))
+        default:
+          // session.created, session.updated and transcripts prove the socket is alive, so they
+          // restart the stall clock. They are not audio: only output_audio.delta counts as the
+          // first chunk, which leaves the first-audio budget in force until PCM arrives.
+          progress.touch(chunk: false)
+        }
+      }
+      if let onPartial, let rest = batcher.drain() { await onPartial(rest) }
+
+      DebugLogger.logNetwork(
+        "\(logPrefix): session done after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (events=\(eventCount), bytes=\(audio.count))")
+      guard !audio.isEmpty else {
+        DebugLogger.logError("\(logPrefix): response.done without any audio (events=\(eventCount))")
+        throw TranscriptionError.networkError(String(localized: "OpenAI Realtime TTS returned no audio"))
+      }
+      return audio
+    } onCancel: {
+      ws.cancel(with: .goingAway, reason: nil)
+    }
   }
 
   /// xAI Grok TTS — `output_format:{codec:"pcm",sample_rate:24000}` returns raw s16le 24kHz mono PCM.
@@ -4255,7 +4429,7 @@ class SpeechService {
     DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
 
     // Check audio duration for chunking decision
-    let audioDuration = try await getAudioDuration(audioURL)
+    let audioDuration = try await AudioDuration.avURLAssetSeconds(audioURL)
     DebugLogger.log("GEMINI-TRANSCRIPTION: Audio duration: \(String(format: "%.1f", audioDuration))s")
 
     let result: String
@@ -4298,11 +4472,6 @@ class SpeechService {
     )
   }
 
-  // MARK: - Audio Duration Helper
-  private func getAudioDuration(_ url: URL) async throws -> TimeInterval {
-    try await AudioDuration.avURLAssetSeconds(url)
-  }
-  
   /// - Parameter suppressGlossary: set by the internal retry below. Callers leave it false.
   private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval, suppressGlossary: Bool = false) async throws -> String {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()

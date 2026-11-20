@@ -1,5 +1,4 @@
 import AuthenticationServices
-import CryptoKit
 import Foundation
 
 /// Connects an OpenRouter account without the user ever seeing an API key.
@@ -33,25 +32,6 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
     isConnected = !stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
-  // MARK: - PKCE
-
-  private func generateCodeVerifier() -> String {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    return Self.base64URLEncode(Data(bytes))
-  }
-
-  private func codeChallengeS256(verifier: String) -> String {
-    Self.base64URLEncode(Data(SHA256.hash(data: Data(verifier.utf8))))
-  }
-
-  private static func base64URLEncode(_ data: Data) -> String {
-    data.base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-
   // MARK: - Authorization
 
   /// Runs the full flow and stores the resulting key. Returns `false` when the user simply closed
@@ -62,8 +42,8 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
       throw OAuthError.authorizationInProgress
     }
 
-    let verifier = generateCodeVerifier()
-    let challenge = codeChallengeS256(verifier: verifier)
+    let verifier = OAuthCSRF.makeState()
+    let challenge = OAuthCSRF.codeChallengeS256(verifier: verifier)
     let state = OAuthCSRF.makeState()
 
     // Started before the URL is built: the listener owns the port, and the port is part of the

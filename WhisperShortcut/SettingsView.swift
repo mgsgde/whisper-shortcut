@@ -43,9 +43,6 @@ struct SettingsView: View {
       // forces that and `.id` rebuilds the sidebar list.
       modeRevision += 1
     }
-    .onReceive(NotificationCenter.default.publisher(for: .openPrivacyPermissionsTab)) { _ in
-      selectedTabRaw = SettingsTab.permissions.rawValue
-    }
     .onReceive(NotificationCenter.default.publisher(for: .openSettingsTab)) { note in
       if let raw = note.object as? String, let tab = SettingsTab(rawValue: raw) {
         selectedTabRaw = DictationOnlyMode.reachableTab(tab, enabled: DictationOnlyMode.isEnabled).rawValue

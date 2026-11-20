@@ -175,9 +175,9 @@ struct ChatToolHardeningTests {
   }
 
   @Test func gmailMessageIdsArePathEncoded() {
-    #expect(GmailAPIClient.encodedPathComponent("18c5f3a1b2") == "18c5f3a1b2")
-    #expect(GmailAPIClient.encodedPathComponent("abc/../x") == "abc%2F..%2Fx")
-    #expect(GmailAPIClient.encodedPathComponent("id?x=1#frag") == "id%3Fx%3D1%23frag")
+    #expect("18c5f3a1b2".encodedPathSegment == "18c5f3a1b2")
+    #expect("abc/../x".encodedPathSegment == "abc%2F..%2Fx")
+    #expect("id?x=1#frag".encodedPathSegment == "id%3Fx%3D1%23frag")
   }
 
   @Test func googleTasksErrorLogKeepsKeysNotTitles() throws {
@@ -314,5 +314,25 @@ struct ChatToolHardeningTests {
     #expect(text.contains("ALWAYS confirm with the user before deleting or modifying existing events and tasks"))
     #expect(!text.contains("Always confirm details before creating"))
     #expect(text.contains("Europe/Berlin"))
+  }
+
+  @Test func resultDiagnosisEndsInConfigCauseOrFeedback() {
+    for logOn in [true, false] {
+      let text = ChatViewModel.resultDiagnosisInstructions(usageLogAvailable: logOn)
+      #expect(text.contains("Cause found in your configuration"))
+      #expect(text.contains("Not explained by your configuration"))
+      #expect(text.contains("`/feedback`"))
+      #expect(text.contains("action='read'"))
+      #expect(text.contains("Do NOT say it is an app bug, do NOT say it is not an app bug"))
+      #expect(text.contains("cursor context"))
+      #expect(text.contains("fieldContextChars"))
+    }
+  }
+
+  @Test func resultDiagnosisReadsTheLogOnlyWhenUsageDataIsOn() {
+    #expect(ChatViewModel.resultDiagnosisInstructions(usageLogAvailable: true).contains("read_recent_interactions"))
+    let off = ChatViewModel.resultDiagnosisInstructions(usageLogAvailable: false)
+    #expect(!off.contains("read_recent_interactions"))
+    #expect(off.contains("Save usage data is off"))
   }
 }
