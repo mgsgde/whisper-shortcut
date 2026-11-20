@@ -8,8 +8,8 @@
 import Foundation
 
 /// The text of a "problem with this dictation" report: what was pasted plus the facts that
-/// otherwise cost a round-trip ("which version? which model?"). Plain English and not localized,
-/// because the developer reads it. App version and macOS are appended later by
+/// otherwise cost a round-trip ("which version? which model?"). The wording follows the app
+/// language, like the message the user sends. App version and macOS are appended later by
 /// `FeedbackLinks.messageBody`, so they are not repeated here.
 enum DictationReport {
 
@@ -18,36 +18,46 @@ enum DictationReport {
     glossaryTerms: [String],
     offlineMode: Bool
   ) -> String {
-    var lines = ["Pasted text:", entry.text, ""]
+    var lines = [String(localized: "Pasted text:"), entry.text, ""]
 
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
-    lines.append("Dictated: \(formatter.string(from: entry.ts))")
+    let dictated = formatter.string(from: entry.ts)
+    lines.append(String(localized: "Dictated: \(dictated)"))
 
-    if let mode = entry.mode { lines.append("Mode: \(mode)") }
+    if let mode = entry.mode { lines.append(String(localized: "Mode: \(mode)")) }
 
+    let modelDescription: String?
     switch (entry.transcriptionModelName, entry.transcriptionModel) {
-    case let (name?, raw?): lines.append("Transcription model: \(name) (\(raw))")
-    case let (name?, nil): lines.append("Transcription model: \(name)")
-    case let (nil, raw?): lines.append("Transcription model: \(raw)")
-    case (nil, nil): break
+    case let (name?, raw?): modelDescription = "\(name) (\(raw))"
+    case let (name?, nil): modelDescription = name
+    case let (nil, raw?): modelDescription = raw
+    case (nil, nil): modelDescription = nil
+    }
+    if let modelDescription {
+      lines.append(String(localized: "Transcription model: \(modelDescription)"))
     }
 
     if let removed = entry.glossaryEchoRemoved {
-      let value = removed.isEmpty ? "none" : removed.map { "\"\($0)\"" }.joined(separator: ", ")
-      lines.append("Glossary echo removed: \(value)")
+      let value = removed.isEmpty
+        ? String(localized: "none")
+        : removed.map { "\"\($0)\"" }.joined(separator: ", ")
+      lines.append(String(localized: "Glossary echo removed: \(value)"))
     }
 
-    lines.append("Glossary: \(glossarySummary(terms: glossaryTerms, text: entry.text))")
-    lines.append("Offline Mode: \(offlineMode ? "on" : "off")")
+    let summary = glossarySummary(terms: glossaryTerms, text: entry.text)
+    lines.append(String(localized: "Glossary: \(summary)"))
+    lines.append(offlineMode
+      ? String(localized: "Offline Mode: on")
+      : String(localized: "Offline Mode: off"))
     return lines.joined(separator: "\n")
   }
 
   /// Only terms that occur in the text are named: the rest of the glossary may hold private
   /// names that have nothing to do with the problem.
   private static func glossarySummary(terms: [String], text: String) -> String {
-    guard !terms.isEmpty else { return "empty" }
+    guard !terms.isEmpty else { return String(localized: "empty") }
     let textWords = words(text)
     var seen = Set<String>()
     var present: [String] = []
@@ -58,9 +68,11 @@ enum DictationReport {
       else { continue }
       present.append(term)
     }
-    let count = "\(terms.count) terms"
-    return present.isEmpty
-      ? "\(count). None in this text." : "\(count). In this text: \(present.joined(separator: ", "))"
+    if present.isEmpty {
+      return String(localized: "\(terms.count) terms. None in this text.")
+    }
+    let list = present.joined(separator: ", ")
+    return String(localized: "\(terms.count) terms. In this text: \(list)")
   }
 
   private static func words(_ s: String) -> [String] {
