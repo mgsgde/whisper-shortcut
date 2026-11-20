@@ -4207,6 +4207,13 @@ struct ChatView: View {
         VStack(alignment: .leading, spacing: 8) {
           // The approval card floats with the indicator so it is visible wherever the user
           // has scrolled; it is the only interactive part of this overlay.
+          if let warning = viewModel.currentPendingWeakModelWarning {
+            WeakModelWarningCardView(request: warning) { decision in
+              viewModel.resolveWeakModelWarning(
+                sessionId: warning.sessionId, requestId: warning.id, decision: decision)
+            }
+            .id(warning.id)
+          }
           if let approval = viewModel.currentPendingApproval {
             ToolApprovalCardView(request: approval) { decision in
               viewModel.resolveApproval(
