@@ -70,12 +70,30 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
+      # CI already ran the same tests on this commit (push to main). Re-running them here
+      # only burns macOS minutes, so skip when a successful CI run exists for the tagged sha.
+      - name: Look for a green CI run on this commit
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="$(git rev-parse HEAD)"
+          n="$(gh run list --repo "${{ github.repository }}" --workflow CI --commit "$sha" --status success --limit 1 --json databaseId -q 'length' || echo 0)"
+          if [ "${n:-0}" -gt 0 ]; then
+            echo "CI is already green on $sha, skipping the hermetic re-run."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Xcode
+        if: steps.ci.outputs.skip != 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
 
       - name: Run hermetic tests
+        if: steps.ci.outputs.skip != 'true'
         run: bash scripts/run-tests.sh --hermetic
 
   build-and-release:

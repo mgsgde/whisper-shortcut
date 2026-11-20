@@ -6,7 +6,8 @@
 # A Debug build ("WhisperShortcut Dev", com.magnusgoedde.whispershortcut.dev) is installed at
 # ~/Applications/WhisperShortcut Dev.app and used like the release (hotkeys, Fn key, MCP). The
 # launchd job com.whispershortcut.dev-daily runs `update` every 10 minutes: it fetches origin/main,
-# builds it in a detached worktree (build/dev-daily/src, via rebuild-and-restart.sh --build-only),
+# picks the newest main commit whose CI push run is green (gate; `touch build/dev-daily/no-ci-gate`
+# or no green run found = plain origin/main), builds it in a detached worktree (build/dev-daily/src, via rebuild-and-restart.sh --build-only),
 # stages the product and swaps it into place. A running Dev instance is only replaced when no
 # meeting records (meeting-guard.sh --dev-only) and the user has been idle for 90 s. A build that
 # does not survive 20 s after launch is rolled back and its SHA is remembered in bad-sha.
@@ -44,6 +45,20 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S') dev-daily: $*"; }
 notify() { osascript -e "display notification \"$1\" with title \"WhisperShortcut Dev\"" >/dev/null 2>&1 || true; }
 read_state() { [[ -r "$STATE/$1" ]] && head -n1 "$STATE/$1" || true; }
 short() { echo "${1:0:8}"; }
+# green_sha: newest main commit whose CI push run succeeded; empty when unknown (no gh, offline,
+# no push run yet) or when the kill switch $STATE/no-ci-gate exists.
+green_sha() {
+  [[ -e "$STATE/no-ci-gate" ]] && return 0
+  command -v gh >/dev/null 2>&1 || return 0
+  local repo sha
+  repo=$(cd "$MAIN_ROOT" && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) || return 0
+  [[ -n "$repo" ]] || return 0
+  sha=$(gh run list --repo "$repo" --workflow CI --branch main --event push --status success --limit 1 \
+    --json headSha -q '.[0].headSha' 2>/dev/null) || return 0
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] && echo "$sha"
+  return 0
+}
+
 origin_sha() { git -C "$MAIN_ROOT" ls-remote origin main 2>/dev/null | awk '{print $1; exit}'; }
 
 daily_dev_pids() {
@@ -161,6 +176,7 @@ cmd_status() {
   echo "installed:    $(read_state installed-sha || true)"
   echo "staged:       $(read_state staged-sha || true)"
   echo "origin/main:  $(origin_sha)"
+  if [[ -e "$STATE/no-ci-gate" ]]; then echo "green CI:     (gate off: no-ci-gate)"; else echo "green CI:     $(green_sha)"; fi
   echo "bad shas:     $(cat "$STATE/bad-sha" 2>/dev/null | tr '\n' ' ')"
   launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1
   if [[ $? -eq 0 ]]; then echo "launchd:      loaded"; else echo "launchd:      not loaded"; fi
@@ -172,9 +188,22 @@ cmd_update() {
   acquire_lock || exit 0
   git -C "$MAIN_ROOT" fetch -q origin main || { log "fetch failed"; exit 1; }
   local target installed was_running=false old_installed idle
-  target=$(git -C "$MAIN_ROOT" rev-parse origin/main 2>/dev/null) || { log "cannot resolve origin/main"; exit 1; }
+  local green
+  green=$(green_sha)
+  if [[ -n "$green" ]] && { git -C "$MAIN_ROOT" cat-file -e "$green^{commit}" 2>/dev/null \
+      || { git -C "$MAIN_ROOT" fetch -q origin "$green" 2>/dev/null && git -C "$MAIN_ROOT" cat-file -e "$green^{commit}" 2>/dev/null; }; }; then
+    target="$green"
+  else
+    [[ -e "$STATE/no-ci-gate" ]] || log "no green CI run found, falling back to origin/main"
+    target=$(git -C "$MAIN_ROOT" rev-parse origin/main 2>/dev/null) || { log "cannot resolve origin/main"; exit 1; }
+  fi
   installed=$(read_state installed-sha)
   [[ "$target" == "$installed" ]] && exit 0
+  # Forward only: never downgrade to a target that is older than what is installed.
+  if [[ -n "$installed" ]] && git -C "$MAIN_ROOT" merge-base --is-ancestor "$target" "$installed" 2>/dev/null; then
+    log "target $(short "$target") is not newer than installed $(short "$installed"), staying"
+    exit 0
+  fi
   if grep -qx "$target" "$STATE/bad-sha" 2>/dev/null; then exit 0; fi
 
   local brc=0

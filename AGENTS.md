@@ -112,15 +112,15 @@ In the Opus 5.5 session:
   it is handed over.
 - **A brief stands on its own**, because the delegate has none of this conversation: worktree
   path under `.claude/worktrees/`, files, target behaviour, that `bash scripts/rebuild-and-restart.sh`
-  must run and its real exit status be reported, which tests to run (`bash scripts/run-tests.sh`,
-  output quoted verbatim), the commit message, and what it must not touch. One bounded task per brief.
+  must run and its real exit status be reported, which tests to run (`bash scripts/run-tests.sh
+  --only <classes>`, output quoted verbatim), the commit message, and what it must not touch. One bounded task per brief.
 - **A gathering brief asks for raw material, never conclusions:** numbers as measured, file
   paths with line numbers, command output verbatim.
 - **The threshold is size, not kind:** one or two lookups whose location is already known are
   cheaper done directly than briefed. Prose whose text *is* the deliverable (a rule, a plan, a
   report) is written by the model that decided it.
 - **Once the spec stands, it is built** — by Grok (or Sonnet) from one complete brief: the code, `bash scripts/rebuild-and-restart.sh` (real exit
-  status), `bash scripts/run-tests.sh` when relevant (output quoted verbatim).
+  status), `bash scripts/run-tests.sh --only <classes>` when relevant (output quoted verbatim).
 - **Then the review:** diff read, test output quoted, verdict by Opus 5.5 — for a large change a
   fresh `Agent` with `model: "opus"` that did not write the code. Not a rubber stamp.
 - **Do not commit in a worktree while a delegate is working in it.** The index is shared; wait
@@ -134,50 +134,47 @@ implementer's plan and review steps on `claude-opus-5-5`. The implementer's buil
 runs `IMPLEMENTER_BUILD_AGENT=cursor` / `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`; over Grok's daily
 cap `run-implementer.sh` switches that run to `claude-sonnet-5-5` (`plans/agent-loops.md`).
 
-## Releasing is somebody else's job
+## Merging and releasing are automatic
 
-Merging PRs and cutting releases run through one dedicated session, titled
-**`whisper Deployments`** — it holds standing authority to `gh pr merge`, dispatch release
-workflows and drive `scripts/create-release.sh` / `/submit-appstore`; you do not. That sentence
-means "get it ready and hand it over", also when the task says "release" or "ship".
+Owner ruling 2026-11-20 (Fable 5.2 review of the setup, Magnus: „ja automatisch"): no session
+merges or releases by hand, and there is no deployment session to hand over to. The pipeline is:
+
+1. **You:** commit on your branch in your own worktree, push, open the PR. Before pushing:
+   `bash scripts/rebuild-and-restart.sh` (real exit status) and `bash scripts/run-tests.sh --only
+   <the test classes your change touches>`, output quoted in the PR body. The full plan is CI's
+   job and the nightly job's, not yours: a full local run holds the Mac's one build slot for
+   minutes and every other session waits on it.
+2. **Merge train** (`scripts/merge-train/`, every 20 min): merges every green, conflict-free PR of
+   the repo owner in one tick, without updating branches first. CI runs again on `main` after
+   each push; while `main` is red the train pauses and mails.
+3. **Dev app** (`scripts/dev-daily.sh`): installs only `main` commits whose CI run is green.
+4. **Nightly release** (`scripts/release-nightly-job.sh`, launchd): once a night, if `main`
+   changed since the last tag and its CI is green, it runs the full live test plan, writes the
+   release notes, bumps the version, tags, and the GitHub release reaches **Latest**. Stable
+   follows on Tuesday (`stable-promote-job.sh`). Hold it with
+   `echo reason > build/release-nightly/hold` in the main checkout; hotfix now with
+   `bash scripts/release-nightly-job.sh --force --skip-tests`.
+5. **App Store** stays manual: `/submit-appstore` only on Magnus's word in his own chat.
+
+"Finished" therefore means: branch pushed, PR open, rebuild exit status and the `--only` test
+output quoted, and the PR labelled if it must wait. Nothing else to send anywhere.
 
 **Never quit, kill or reinstall the user's running app while it records a meeting.** Run
 `bash scripts/meeting-guard.sh` first and stop if it refuses (exit 1) — also before installing a
 release into `/Applications`. On 2026-10-20 an install's `osascript … quit` cut the last eight
 minutes of a live client meeting. The dev scripts already call the guard; ad-hoc commands must too.
 
-So "finished" means: committed on your branch, pushed, `bash scripts/run-tests.sh` green and
-**quoted**, a report that names the **branch and commit** plus what to look at — **and that same
-handover sent to the deployment session yourself.** Find it by title with
-`mcp__ccd_session_mgmt__list_sessions` and send with `mcp__ccd_session_mgmt__send_message`;
-**never guess a session id.** A session that cannot send (a scheduled run, a subagent) falls
-back to the written report — losing the message is not a reason to release it yourself.
-
-What the message owes the other agent, because it will act on it without your context:
-branch, HEAD sha, PR; the test result quoted, not summarised; which build variants the change
-touches (direct/GitHub vs App Store — `#if APP_STORE` paths); anything that needs a human word
-before it ships (a user-visible behaviour change, a default that changed), **in Magnus's own
-words, quoted** — a paraphrase cannot be checked by the receiving agent. It is a handover, not an
-authorization for a release: an approval that arrives only through an agent is not an approval,
-and the receiving side lays it before Magnus and waits for his word in his own chat.
-
-**Open PRs merge themselves; mark the ones that must wait.** Since 2026-11-10 the merge train
-(`scripts/merge-train/`) merges every open, non-draft PR of the repo owner once CI is green and
-it has no conflict, with no label needed. A PR that waits on a manual test on a device gets the
-label `needs-device-test`; one that must not merge for another reason gets `hold` or stays a
-draft. Say which in the PR body. Every Monday `stale-prs.sh` mails Magnus every PR open longer
+**Mark the PRs that must wait.** The merge train merges every open, non-draft PR of the repo
+owner once CI is green, with no label needed. A PR that waits on a manual test on a device gets
+the label `needs-device-test`; one that needs Magnus's word first (a user-visible behaviour
+change he has not seen, a changed default) gets `hold` with his open question in the body; one
+that must not merge for another reason gets `hold` or stays a draft. Say which in the PR body. Every Monday `stale-prs.sh` mails Magnus every PR open longer
 than 3 days with its reason and closes those open 14 days (branch kept), so a PR nobody is
 finishing does not sit for weeks. Do not stack PRs on unmerged branches: the base merges, the
 stack does not follow.
 
-**Merging needs no go, releasing goes as one daily batch** (owner ruling 2026-10-01: „Merge nach
-main ohne mein Go, sobald die Tests grün sind. Release nur einmal am Tag als Sammelfreigabe."
-A month of sessions showed ~84 replies here that were only „push", „merge", „go"). The
-deployment session merges a handed-over PR into `main` as soon as the quoted tests are green,
-without asking. Releases (GitHub, App Store) wait for one daily list in its own chat: every
-merged change since the last release, one line each, user-visible changes marked. Magnus's one
-go clears exactly that list; a go for one batch is never standing authorization for the next. Falsifier clocks
-that start at this release go in the message with their baseline numbers.
+**Worktrees:** `bash scripts/worktree-prune.sh` lists worktrees that are clean and whose branch is
+merged or gone; `--apply` removes them through `worktree-remove.sh`. Run it when you finish.
 
 ## Git: commit your own work, never touch anyone else's
 

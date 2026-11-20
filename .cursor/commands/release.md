@@ -5,7 +5,7 @@ description: Cut a new App Store / GitHub release — bump version, write releas
 
 # Release
 
-Run only from the **`whisper Deployments`** session with Magnus's go (`AGENTS.md` → "Releasing is somebody else's job"); anywhere else, stop and hand over.
+Releases are cut automatically every night by `scripts/release-nightly-job.sh` (`AGENTS.md` → "Merging and releasing are automatic"). This command is the manual fallback: use it only when Magnus asks for a release now, or prefer `bash scripts/release-nightly-job.sh --force --skip-tests`, which does the same steps.
 
 Cut a new App Store / GitHub release: bump version, write App Store + GitHub release notes, rebuild, commit, push, tag.
 

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Nightly automatic GitHub release (scripts/release-nightly-job.sh). Fires every 30
+  minutes; the script's night window (21:00-09:00) and once-per-20-hours gate decide
+  whether anything happens. StartInterval rather than StartCalendarInterval because a
+  calendar slot that falls while the laptop lid is shut is simply lost.
+
+  Install:
+      cp scripts/com.whispershortcut.release-nightly.plist ~/Library/LaunchAgents/
+      launchctl load ~/Library/LaunchAgents/com.whispershortcut.release-nightly.plist
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.whispershortcut.release-nightly</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>-lc</string>
+      <!-- Run origin/main's copy, not the main checkout's: that checkout belongs to whoever is
+           at the keyboard and is often behind. The copy lives inside the checkout (build/ is
+           gitignored) so the script still resolves the repo from its own path. -->
+      <string>cd "$HOME/whisper-shortcut-private/whisper-shortcut" || exit 0
+git fetch -q origin main 2>/dev/null
+B=build/release-nightly/bin; mkdir -p "$B" build/logs
+if git show origin/main:scripts/release-nightly-job.sh >"$B/job.sh.new" 2>/dev/null &amp;&amp; [ -s "$B/job.sh.new" ]; then
+  mv "$B/job.sh.new" "$B/job.sh"
+fi
+[ -s "$B/job.sh" ] &amp;&amp; exec bash "$B/job.sh"
+exec bash scripts/release-nightly-job.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/build/logs/release-nightly.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/build/logs/release-nightly-error.log</string>
+  </dict>
+</plist>
