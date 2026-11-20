@@ -34,6 +34,16 @@ enum RecordingIndicatorPhase: Equatable {
   case speaking
 }
 
+/// Who owns keyboard focus on the recording pill. Decided once, by
+/// `RecordingIndicatorModel.keyOwner`; every focus claim and release asks it.
+enum PillKeyOwner: Equatable {
+  /// The Dictate Prompt quick-action card.
+  case card
+  /// The Read Aloud speaking pill (transport keys).
+  case speakingPill
+  case none
+}
+
 /// What ↩ does in the quick-action card right now. Decided once, by
 /// `RecordingIndicatorModel.returnAction`; the key handler performs it, the field's submit falls
 /// back to it, and the footer words it.
@@ -151,6 +161,15 @@ final class RecordingIndicatorModel: ObservableObject {
     if let selectedIndex, (0..<actionCount).contains(selectedIndex) { return .runAction(selectedIndex) }
     return .stopAndProcess
   }
+
+  /// The one place that answers "who gets keys". The card wins over the speaking pill: while it is
+  /// up, the card owns focus and the speaking pill must neither claim nor release it.
+  static func keyOwner(phase: RecordingIndicatorPhase, quickActionsVisible: Bool) -> PillKeyOwner {
+    if quickActionsVisible { return .card }
+    return phase == .speaking ? .speakingPill : .none
+  }
+
+  var keyOwner: PillKeyOwner { Self.keyOwner(phase: phase, quickActionsVisible: quickActionsVisible) }
 
   /// ↩ in the card, from the current state.
   var returnAction: QuickActionReturn {
@@ -1259,7 +1278,7 @@ final class RecordingIndicatorManager {
   // MARK: Phase transitions
 
   func showRecording(label: String = String(localized: "Listening")) {
-    if model.phase == .speaking, !model.quickActionsVisible {
+    if model.keyOwner == .speakingPill {
       releaseKeyFocus()
     }
     model.resetLevels()
@@ -1278,7 +1297,7 @@ final class RecordingIndicatorManager {
   /// processing pill up directly. Otherwise it stays a no-op so pill-less flows
   /// (e.g. file-based processing) don't suddenly grow a pill.
   func showProcessing(summonIfNeeded: Bool = false, label: String = String(localized: "Transcribing")) {
-    if model.phase == .speaking, !model.quickActionsVisible {
+    if model.keyOwner == .speakingPill {
       releaseKeyFocus()
     }
     model.statusLabel = label
@@ -1473,14 +1492,14 @@ final class RecordingIndicatorManager {
   private var keyFocusReturnApp: NSRunningApplication?
 
   private func takeKeyFocusIfListed(_ panel: RecordingIndicatorPanel) {
-    guard model.quickActionsVisible, !panel.acceptsKeyInput else { return }
+    guard model.keyOwner == .card, !panel.acceptsKeyInput else { return }
     claimKeyFocus(panel)
   }
 
   /// Read Aloud transport: the pill takes keys only while it is the speaking pill, not the
   /// Dictate Prompt card (that path owns focus through `takeKeyFocusIfListed`).
   private func takeKeyFocusForSpeaking(_ panel: RecordingIndicatorPanel) {
-    guard model.phase == .speaking, !model.quickActionsVisible else { return }
+    guard model.keyOwner == .speakingPill else { return }
     // A click into another app takes key status without clearing acceptsKeyInput; a click on
     // the pill then has to reclaim it.
     guard !(panel.acceptsKeyInput && panel.isKeyWindow) else { return }
@@ -1742,8 +1761,8 @@ final class RecordingIndicatorManager {
       }
     }
     panel.onSpeakingKey = { [weak self] event in
-      guard let self, self.model.phase == .speaking,
-        !self.model.quickActionsVisible, self.panel?.acceptsKeyInput == true
+      guard let self, self.model.keyOwner == .speakingPill,
+        self.panel?.acceptsKeyInput == true
       else { return false }
       let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
       if modifiers.contains(.command) {
