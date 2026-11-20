@@ -30692,6 +30692,56 @@
           }
         }
       }
+    },
+    "Already on this Mac" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits auf diesem Mac"
+          }
+        }
+      }
+    },
+    "%@ is already on this Mac in %@. Import it instead of downloading?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist bereits auf diesem Mac in %@. Möchten Sie es importieren, statt es herunterzuladen?"
+          }
+        }
+      }
+    },
+    "%@ is already on this Mac in %@. Importing it takes no extra space and leaves the original in place. Moving removes it from %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist bereits auf diesem Mac in %@. Der Import belegt keinen zusätzlichen Speicher und lässt das Original liegen. Verschieben entfernt es aus %@."
+          }
+        }
+      }
+    },
+    "Move Instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stattdessen verschieben"
+          }
+        }
+      }
+    },
+    "Download Anyway" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trotzdem herunterladen"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

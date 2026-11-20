@@ -330,6 +330,91 @@ struct ModelImporterTests {
     #expect(try String(contentsOf: destination.appendingPathComponent("config.json"), encoding: .utf8) == "{}")
   }
 
+  // MARK: - Move
+
+  @Test("A move leaves a complete model and removes the original folder")
+  func moveRemovesOriginal() throws {
+    let fm = FileManager.default
+    let root = try makeTempFolder()
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("source")
+    try writeMLXModel(at: source)
+    let destination = root.appendingPathComponent("destination")
+
+    let plan = ModelImportPlan(
+      family: .mlx(.qwen34BInstruct2507), displayName: "Qwen3 4B Instruct",
+      source: source, destination: destination, byteCount: ModelImporter.byteCount(at: source))
+
+    try ModelImporter.perform(plan, mode: .move) { _ in }
+
+    #expect(!fm.fileExists(atPath: source.path))
+    #expect(try String(contentsOf: destination.appendingPathComponent("config.json"), encoding: .utf8) == "{}")
+    #expect(fm.fileExists(atPath: destination.appendingPathComponent("model.safetensors").path))
+  }
+
+  @Test("A copy leaves the original folder in place")
+  func copyKeepsOriginal() throws {
+    let fm = FileManager.default
+    let root = try makeTempFolder()
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("source")
+    try writeMLXModel(at: source)
+    let destination = root.appendingPathComponent("destination")
+
+    let plan = ModelImportPlan(
+      family: .mlx(.qwen34BInstruct2507), displayName: "Qwen3 4B Instruct",
+      source: source, destination: destination, byteCount: ModelImporter.byteCount(at: source))
+
+    try ModelImporter.perform(plan, mode: .copy) { _ in }
+
+    #expect(fm.fileExists(atPath: source.appendingPathComponent("model.safetensors").path))
+    #expect(fm.fileExists(atPath: destination.appendingPathComponent("model.safetensors").path))
+  }
+
+  @Test("A plain writable folder may be moved")
+  func canMovePlainFolder() throws {
+    let fm = FileManager.default
+    let root = try makeTempFolder()
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("source")
+    try writeMLXModel(at: source)
+
+    #expect(ModelImporter.canMove(source))
+  }
+
+  @Test("A cache snapshot is never offered as a move: its files are links into shared blobs")
+  func canMoveRejectsCacheSnapshot() throws {
+    let fm = FileManager.default
+    let root = try makeTempFolder()
+    defer { try? fm.removeItem(at: root) }
+    let repo = root.appendingPathComponent("models--mlx-community--Qwen3-4B-Instruct-2507-4bit")
+    let blobs = repo.appendingPathComponent("blobs")
+    let snapshot = repo.appendingPathComponent("snapshots/abc123")
+    try fm.createDirectory(at: blobs, withIntermediateDirectories: true)
+    try fm.createDirectory(at: snapshot, withIntermediateDirectories: true)
+    try Data("weights".utf8).write(to: blobs.appendingPathComponent("weightsblob"))
+    try fm.createSymbolicLink(
+      atPath: snapshot.appendingPathComponent("model.safetensors").path,
+      withDestinationPath: "../../blobs/weightsblob")
+
+    #expect(!ModelImporter.canMove(snapshot))
+  }
+
+  @Test("A read-only folder is never offered as a move")
+  func canMoveRejectsReadOnlyFolder() throws {
+    let fm = FileManager.default
+    let root = try makeTempFolder()
+    defer {
+      try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+      try? fm.removeItem(at: root)
+    }
+    let source = root.appendingPathComponent("source")
+    try writeMLXModel(at: source)
+    try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: source.path)
+
+    #expect(!ModelImporter.canMove(source))
+  }
+
   // MARK: - Refusals and staging
 
   @Test("A model already available in a legacy folder is refused")

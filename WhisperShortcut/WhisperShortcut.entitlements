@@ -54,5 +54,14 @@
 		<array>
 			<string>com.apple.HIToolbox</string>
 		</array>
+
+		<!-- Read-only access to local model caches, so Download can import weights the user
+		     already has without a folder prompt. Direct build only: the App Store entitlements
+		     carry no home-relative exception, so that build only sees folders the user picks. -->
+		<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+		<array>
+			<string>/.cache/huggingface/</string>
+			<string>/.lmstudio/models/</string>
+		</array>
 	</dict>
 </plist>
