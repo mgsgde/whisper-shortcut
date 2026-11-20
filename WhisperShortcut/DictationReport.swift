@@ -247,6 +247,8 @@ enum ResultReport {
     if let model = result.model { lines.append("Model: \(model)") }
     if let provider = result.provider { lines.append("Provider: \(provider)") }
     lines.append("Screenshot: \(result.hadScreenshot ? "yes" : "no")")
+    lines.append("Text around cursor sent: \(result.fieldContextChars > 0 ? "\(result.fieldContextChars) chars" : "no")")
+    lines.append("Earlier turns sent: \(result.historyTurns)")
     lines.append("Offline Mode: \(offlineMode ? "on" : "off")")
     return lines.joined(separator: "\n")
   }
