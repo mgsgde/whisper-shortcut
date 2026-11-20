@@ -1193,6 +1193,9 @@ final class RecordingIndicatorManager {
   private var screenObserver: NSObjectProtocol?
   /// Logs when the Read Aloud pill gives up key status. Does not reclaim focus.
   private var keyResignObserver: NSObjectProtocol?
+  /// The display chosen when the pill came up. Kept while it is visible, so a resize (recording →
+  /// processing, the card growing) does not hop to another screen when focus moves meanwhile.
+  private var pillScreen: NSScreen?
 
   private enum Constants {
     static let bottomMargin: CGFloat = 28
@@ -1489,6 +1492,7 @@ final class RecordingIndicatorManager {
   private func orderFrontPanel() {
     let panel = self.panel ?? makePanel()
     self.panel = panel
+    pillScreen = screenForNewPill()
     position(panel)
     panel.alphaValue = 0
     // Re-applied on every show: the panel is reused, and anything that lowers its level once
@@ -1496,10 +1500,7 @@ final class RecordingIndicatorManager {
     panel.level = .statusBar
     panel.orderFrontRegardless()
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-      guard let self, let panel = self.panel, panel.isVisible else { return }
-      DebugLogger.log(
-        "PILL: ordered front — onActiveSpace=\(panel.isOnActiveSpace) visible=\(panel.isVisible) policy=\(NSApp.activationPolicy().rawValue)"
-      )
+      self?.checkPillUncovered()
     }
     isVisible = true
     takeKeyFocusIfListed(panel)
@@ -1508,6 +1509,46 @@ final class RecordingIndicatorManager {
       panel.animator().alphaValue = 1
     }
     startKeepingInFront()
+  }
+
+  /// The screen of the window the user is working in (see `IndicatorPlacement`), else the one
+  /// under the mouse, else `NSScreen.main`.
+  private func screenForNewPill() -> NSScreen? {
+    let screens = NSScreen.screens
+    let index = IndicatorPlacement.screenIndex(
+      frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+      windows: IndicatorPlacement.onScreenWindows(),
+      screenFrames: screens.map(\.frame),
+      mouse: NSEvent.mouseLocation)
+    return index.map { screens[$0] } ?? NSScreen.main
+  }
+
+  /// Logs where the pill landed and, when another app's window covers it, lifts the pill above
+  /// that window. A tester saw no pill over Citrix/Outlook; this line says why on the next report.
+  private func checkPillUncovered() {
+    guard isVisible, let panel, panel.isVisible else { return }
+    let ownPID = ProcessInfo.processInfo.processIdentifier
+    let windows = IndicatorPlacement.onScreenWindows()
+    let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+    // AppKit → window-server coordinates: the same flip in the other direction.
+    let pillFrame = IndicatorPlacement.appKitRect(fromWindowServer: panel.frame, primaryHeight: primaryHeight)
+    let covering = IndicatorPlacement.coveringWindows(
+      windows, pillFrame: pillFrame, level: panel.level.rawValue + 1, ownPID: ownPID)
+    let front = NSWorkspace.shared.frontmostApplication
+    let occluded = !panel.occlusionState.contains(.visible)
+    DebugLogger.log(
+      "PILL: ordered front — screen=\(panel.screen?.localizedName ?? "nil") front=\(front?.bundleIdentifier ?? "nil") "
+        + "onActiveSpace=\(panel.isOnActiveSpace) occluded=\(occluded) level=\(panel.level.rawValue) "
+        + "policy=\(NSApp.activationPolicy().rawValue) screens=\(NSScreen.screens.count)"
+        + (covering.isEmpty ? "" : " covered by " + covering.map { "\($0.ownerName)@\($0.layer)" }.joined(separator: ","))
+    )
+    let level = IndicatorPlacement.level(
+      coveringLayers: covering.map(\.layer), base: NSWindow.Level.statusBar.rawValue,
+      cap: NSWindow.Level.screenSaver.rawValue)
+    guard level > panel.level.rawValue else { return }
+    panel.level = NSWindow.Level(rawValue: level)
+    panel.orderFrontRegardless()
+    DebugLogger.log("PILL: raised to level \(level) above \(covering.map(\.ownerName).joined(separator: ","))")
   }
 
   /// Re-raises the pill while it is visible when another app activates or the Space changes.
@@ -1715,12 +1756,12 @@ final class RecordingIndicatorManager {
   }
 
   /// Centers the panel bottom-center at the size matching the current phase, so the
-  /// clickable window area always matches the visible pill.
+  /// clickable window area always matches the visible pill, on the screen picked at show time.
   ///
   /// `keepingCurrentScreen` (a display was attached/detached/rearranged while visible): stay on the
   /// pill's screen if it still exists, otherwise move to the screen holding the mouse, then main.
   private func position(_ panel: NSPanel, keepingCurrentScreen: Bool = false) {
-    var target: NSScreen? = NSScreen.main
+    var target: NSScreen? = pillScreen.flatMap { NSScreen.screens.contains($0) ? $0 : nil } ?? NSScreen.main
     if keepingCurrentScreen {
       let mouse = NSEvent.mouseLocation
       target = panel.screen.flatMap { current in NSScreen.screens.contains(current) ? current : nil }
@@ -1728,6 +1769,7 @@ final class RecordingIndicatorManager {
         ?? NSScreen.main
     }
     guard let screen = target else { return }
+    pillScreen = screen
     let size = currentPanelSize()
     let visible = screen.visibleFrame
     let origin = NSPoint(
