@@ -21,7 +21,8 @@ struct ResultReportTests {
     let ts = Self.date("2026-10-27T16:27:41Z")
     let result = LastResultStore.PromptResult(
       ts: ts, instruction: "make this shorter", selectedText: "A long note about the visit",
-      response: "A short note.", model: "gemini-3.5-flash", provider: "Gemini", hadScreenshot: true)
+      response: "A short note.", model: "gemini-3.5-flash", provider: "Gemini", hadScreenshot: true,
+      fieldContextChars: 412, historyTurns: 2)
     let body = ResultReport.promptBody(result, offlineMode: false)
     #expect(
       body == """
@@ -39,6 +40,8 @@ struct ResultReportTests {
         Model: gemini-3.5-flash
         Provider: Gemini
         Screenshot: yes
+        Text around cursor sent: 412 chars
+        Earlier turns sent: 2
         Offline Mode: off
         """)
   }
@@ -64,6 +67,8 @@ struct ResultReportTests {
         Answered: \(Self.localString(ts))
         Mode: Prompt
         Screenshot: no
+        Text around cursor sent: no
+        Earlier turns sent: 0
         Offline Mode: on
         """)
   }

@@ -74,6 +74,8 @@ struct ModelImportSection: View {
         "Choose the folder that holds your models — your LM Studio models folder or your Hugging Face cache."
     )
     guard panel.runModal() == .OK, let url = panel.url else { return }
+    // The sandbox can only rescan this folder later if a bookmark remembers the grant.
+    ModelImporter.saveFolderBookmark(url)
 
     isScanning = true
     Task {
@@ -92,11 +94,14 @@ struct ModelImportSection: View {
     }
   }
 
-  /// The user's Hugging Face cache, or LM Studio's models folder if that is the one that exists.
-  private static var defaultImportDirectory: URL? {
-    let fm = FileManager.default
+  /// Where the folder panel opens: the real home's Hugging Face cache root (not `hub`, so a
+  /// grant covers a huggingface_hub 1.32 shared blob store beside `hub`), else LM Studio's
+  /// models folder, else nowhere. `homeDirectoryForCurrentUser` is the app container in a
+  /// sandboxed build, so the panel would otherwise open inside the container.
+  static var defaultImportDirectory: URL? {
     let home = URL(fileURLWithPath: AppConstants.realHomeDirectory, isDirectory: true)
-    for candidate in [".cache/huggingface/hub", ".lmstudio/models"] {
+    let fm = FileManager.default
+    for candidate in [".cache/huggingface", ".lmstudio/models"] {
       let url = home.appendingPathComponent(candidate)
       if fm.fileExists(atPath: url.path) { return url }
     }
@@ -238,8 +243,9 @@ struct ModelImportSection: View {
 
   /// Puts `family`'s model in its store's `downloadingModels` set for the duration of the copy,
   /// which is what hides Download. Clearing it refreshes the row from disk.
+  /// The Download row's own import uses the same flag so both paths agree on "in progress".
   @MainActor
-  private static func setImporting(_ family: ModelImportPlan.Family, _ importing: Bool) {
+  static func setImporting(_ family: ModelImportPlan.Family, _ importing: Bool) {
     switch family {
     case .whisper(let type): ModelManager.shared.setImporting(type, importing)
     case .mlx(let type): LocalLLMModelManager.shared.setImporting(type, importing)

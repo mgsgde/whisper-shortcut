@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// One "Available Models" row — name, badge, status, size, then Download / progress + Cancel /
@@ -12,8 +13,17 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   let onError: (String) -> Void
   @ViewBuilder let badge: () -> Badge
 
+  /// Import-in-flight state, mirroring the download states above it.
+  /// `activeImport` is detached so Cancel stops the copy directly.
+  @State private var isImporting = false
+  @State private var importProgress: Double = 0
+  @State private var activeImport: Task<Void, Never>?
+  /// True while the off-main scan for weights already on this Mac is running, so a second
+  /// click cannot start another scan or a download beside it.
+  @State private var isCheckingExisting = false
+
   var body: some View {
-    let isDownloading = store.downloadingModels.contains(model)
+    let isDownloading = !isImporting && store.downloadingModels.contains(model)
     // Only check availability when not downloading (prevents a "Downloaded / 0 MB" glitch).
     let isAvailable = !isDownloading && store.isModelAvailable(model)
     // Only when it is going to be shown: `getModelSize` enumerates the whole model directory —
@@ -32,7 +42,14 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
 
           HStack(spacing: 12) {
             HStack(spacing: 4) {
-              if isDownloading {
+              if isImporting {
+                Image(systemName: "square.and.arrow.down.circle.fill")
+                  .foregroundColor(.blue)
+                  .font(.caption)
+                Text("Importing…")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              } else if isDownloading {
                 Image(systemName: "arrow.down.circle.fill")
                   .foregroundColor(.blue)
                   .font(.caption)
@@ -64,7 +81,28 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
 
         Spacer()
 
-        if isDownloading {
+        if isImporting {
+          HStack(spacing: 8) {
+            if importProgress > 0 {
+              ProgressView(value: importProgress)
+                .progressViewStyle(.linear)
+                .frame(width: 90)
+              Text("\(Int(importProgress * 100))%")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .monospacedDigit()
+            } else {
+              ProgressView()
+                .scaleEffect(0.8)
+            }
+            Button("Cancel Import") {
+              activeImport?.cancel()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .pointerCursorOnHover()
+          }
+        } else if isDownloading {
           HStack(spacing: 8) {
             if let fraction = store.downloadProgress[model], fraction > 0 {
               ProgressView(value: fraction)
@@ -98,6 +136,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
           Button("Download", action: download)
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .disabled(isCheckingExisting)
             .pointerCursorOnHover()
         }
       }
@@ -112,7 +151,32 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
   }
 
   private func download() {
+    guard !isCheckingExisting else { return }
+    isCheckingExisting = true
     Task {
+      // Before a multi-gigabyte download, look for weights the user already has. Off the main
+      // thread: the scan stats snapshot folders inside bookmarked directories and any cache
+      // this process can read. Nothing is asked when the scan finds nothing.
+      let existing = await Task.detached(priority: .userInitiated) {
+        ModelImporter.existingWeightsPlan(for: model)
+      }.value
+      isCheckingExisting = false
+
+      if let existing {
+        switch importAlert(for: existing) {
+        case .import:
+          importExisting(existing, mode: .copy)
+          return
+        case .move:
+          importExisting(existing, mode: .move)
+          return
+        case .cancel:
+          return
+        case .downloadAnyway:
+          break
+        }
+      }
+
       do {
         try await store.downloadModel(model)
         DebugLogger.logSuccess("\(store.logPrefix): UI download finished for \(model.displayName)")
@@ -129,6 +193,123 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
       } catch {
         DebugLogger.logError("\(store.logPrefix): UI download failed for \(model.displayName): \(error.logDescription)")
         onError(String(localized: "Failed to download \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))"))
+      }
+    }
+  }
+
+  /// What the user picked in the "already on this Mac" alert.
+  private enum ExistingWeightsChoice {
+    case `import`
+    case move
+    case downloadAnyway
+    case cancel
+  }
+
+  /// Asks whether to import weights that are already on this Mac instead of downloading them
+  /// again. Import is the default: it is faster, uses no network, and on APFS the clone it writes
+  /// shares the original's blocks, so it costs no extra space. "Move Instead" is only offered when
+  /// the source is a writable, self-contained folder — never for a Hugging Face snapshot, whose
+  /// files are links into a shared blob store, and never for the read-only default caches.
+  private func importAlert(for plan: ModelImportPlan) -> ExistingWeightsChoice {
+    let folder = ModelImporter.existingFolderLabel(containing: plan.source)
+    let alert = NSAlert()
+    alert.messageText = String(localized: "Already on this Mac")
+    if plan.canMove {
+      alert.informativeText = String(
+        localized:
+          "\(plan.displayName) is already on this Mac in \(folder). Importing it takes no extra space and leaves the original in place. Moving removes it from \(folder)."
+      )
+    } else {
+      alert.informativeText = String(
+        localized:
+          "\(plan.displayName) is already on this Mac in \(folder). Import it instead of downloading?"
+      )
+    }
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: String(localized: "Import"))
+    if plan.canMove {
+      alert.addButton(withTitle: String(localized: "Move Instead"))
+    }
+    alert.addButton(withTitle: String(localized: "Download Anyway"))
+    alert.addButton(withTitle: String(localized: "Cancel"))
+    switch alert.runModal() {
+    case .alertFirstButtonReturn: return .import
+    case .alertSecondButtonReturn: return plan.canMove ? .move : .downloadAnyway
+    case .alertThirdButtonReturn: return plan.canMove ? .downloadAnyway : .cancel
+    default: return .cancel
+    }
+  }
+
+  /// Copies `plan` with the same refusal rules and completion as `ModelImportSection.importOne`:
+  /// a running download or a model already on disk is refused, Whisper gets its tokenizer pass,
+  /// and the store's importing flag hides Download until the copy finishes.
+  private func importExisting(_ plan: ModelImportPlan, mode: ModelImportMode) {
+    let preconditions = ModelImportPreconditions.live(for: plan.family)
+    // Refuse before marking the model busy. The copy below passes `.unchecked` so the busy
+    // flag this import is about to set is not read back as "a download is in progress".
+    if preconditions.isDownloading || preconditions.isModelAvailable {
+      do {
+        try ModelImporter.perform(plan, mode: mode, preconditions: preconditions) { _ in }
+      } catch {
+        onError(error.localizedDescription)
+      }
+      return
+    }
+
+    ModelImportSection.setImporting(plan.family, true)
+    isImporting = true
+    importProgress = 0
+
+    activeImport = Task.detached(priority: .userInitiated) {
+      // The scan released its security scope before the alert. The copy reads the same
+      // bookmarked folders, so the scope has to be open again until the files are in the container.
+      let accessed = ModelImporter.startAccessingSearchFolders()
+      defer { ModelImporter.stopAccessingSearchFolders(accessed) }
+      do {
+        try ModelImporter.perform(plan, mode: mode, preconditions: .unchecked) { fraction in
+          Task { @MainActor in importProgress = fraction }
+        }
+
+        var needsInternet = false
+        if case .whisper(let type) = plan.family {
+          await ModelImporter.finishWhisperImport(plan)
+          needsInternet = !ModelManager.shared.isModelAvailable(type)
+        }
+
+        await MainActor.run {
+          ModelImportSection.setImporting(plan.family, false)
+          isImporting = false
+          if needsInternet {
+            PopupNotificationWindow.showInfo(
+              verbatim: String(
+                localized:
+                  "\(plan.displayName) was imported. WhisperShortcut needs internet once to finish setting up this model."
+              ),
+              title: "Model Imported",
+              customDisplayDuration: 10
+            )
+          } else {
+            PopupNotificationWindow.showInfo(
+              verbatim: String(
+                localized:
+                  "\(plan.displayName) was imported. The first use may take a moment to load the model into memory."
+              ),
+              title: "Model Imported",
+              customDisplayDuration: 10
+            )
+          }
+        }
+      } catch is CancellationError {
+        await MainActor.run {
+          ModelImportSection.setImporting(plan.family, false)
+          isImporting = false
+        }
+      } catch {
+        await MainActor.run {
+          ModelImportSection.setImporting(plan.family, false)
+          isImporting = false
+          onError(error.localizedDescription)
+        }
       }
     }
   }

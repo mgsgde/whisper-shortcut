@@ -30632,6 +30632,116 @@
           }
         }
       }
+    },
+    "Reply Not Pasted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwort nicht eingefügt"
+          }
+        }
+      }
+    },
+    "Instruction Not Understood" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anweisung nicht verstanden"
+          }
+        }
+      }
+    },
+    "⚠️ Reply Not Pasted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Antwort nicht eingefügt"
+          }
+        }
+      }
+    },
+    "🎤 Not Understood" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Nicht verstanden"
+          }
+        }
+      }
+    },
+    "⚠️ Reply Not Pasted\n\nThe model's reply looked wrong, so nothing was pasted and your text is unchanged. Your recording was kept – try Retry or another model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Antwort nicht eingefügt\n\nDie Antwort des Modells sah fehlerhaft aus, daher wurde nichts eingefügt und Ihr Text ist unverändert. Ihre Aufnahme ist gespeichert, versuchen Sie „Erneut versuchen“ oder ein anderes Modell."
+          }
+        }
+      }
+    },
+    "🎤 Instruction Not Understood\n\nYour spoken instruction was not understood, so nothing was changed. Please say it again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Anweisung nicht verstanden\n\nIhre gesprochene Anweisung wurde nicht verstanden, daher wurde nichts geändert. Bitte sagen Sie sie noch einmal."
+          }
+        }
+      }
+    },
+    "Already on this Mac" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits auf diesem Mac"
+          }
+        }
+      }
+    },
+    "%@ is already on this Mac in %@. Import it instead of downloading?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist bereits auf diesem Mac in %@. Möchten Sie es importieren, statt es herunterzuladen?"
+          }
+        }
+      }
+    },
+    "%@ is already on this Mac in %@. Importing it takes no extra space and leaves the original in place. Moving removes it from %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist bereits auf diesem Mac in %@. Der Import belegt keinen zusätzlichen Speicher und lässt das Original liegen. Verschieben entfernt es aus %@."
+          }
+        }
+      }
+    },
+    "Move Instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stattdessen verschieben"
+          }
+        }
+      }
+    },
+    "Download Anyway" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trotzdem herunterladen"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
