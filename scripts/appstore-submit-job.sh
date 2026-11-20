@@ -281,18 +281,34 @@ if [ -n "$FOLD_IN_VERSION_ID" ]; then
     notes_t="$(fetch_release_notes_cut "$t" || true)"
     [ -z "$notes_t" ] && continue
     if [ -z "$CUM" ]; then
-      CUM="### $t
+      CUM="$t:
 $notes_t"
     else
       CUM="$CUM
 
-### $t
+$t:
 $notes_t"
     fi
   done < <(git -C "$REPO" tag --list 'v*' --sort=v:refname)
   [ -n "$CUM" ] && ENGLISH_NOTES="$CUM"
   echo "Folded in cumulative What's New since $FOLD_FROM_VER."
 fi
+
+strip_markdown() {
+  # App Store What's New is plain text — GitHub release bodies are Markdown, and
+  # those characters would otherwise show up literally in the store listing.
+  python3 -c '
+import re, sys
+text = sys.stdin.read()
+text = re.sub(r"^#{1,6}\s*(.+?)\s*$", r"\1:", text, flags=re.MULTILINE)  # "## Heading" -> "Heading:"
+text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)   # **bold**
+text = re.sub(r"__(.+?)__", r"\1", text)       # __bold__
+text = text.replace("`", "")                   # keep the word, drop backticks
+text = re.sub(r"^-\s+", "• ", text, flags=re.MULTILINE)  # "- " bullets -> "• "
+text = re.sub(r"\n{3,}", "\n\n", text)         # collapse 3+ blank lines to one
+sys.stdout.write(text)
+'
+}
 
 strip_forbidden_glyphs() {
   # Apple rejects symbol glyphs in What's New ("✕" etc., see
@@ -318,7 +334,7 @@ print("".join(out), end="")
 '
 }
 
-ENGLISH_NOTES="$(printf '%s' "$ENGLISH_NOTES" | strip_forbidden_glyphs)"
+ENGLISH_NOTES="$(printf '%s' "$ENGLISH_NOTES" | strip_markdown | strip_forbidden_glyphs)"
 if [ "${#ENGLISH_NOTES}" -gt 4000 ]; then
   ENGLISH_NOTES="${ENGLISH_NOTES:0:3997}..."
 fi
@@ -532,7 +548,7 @@ echo "Locales configured: $(printf '%s' "$LOCALES" | tr '\n' ' ')"
 translate_whats_new() {
   local locale="$1" text="$2"
   claude -p --model sonnet --permission-mode dontAsk --strict-mcp-config \
-    "Translate the following Mac App Store \"What's New\" text into the language of App Store Connect locale \"$locale\". Keep the same tone and about the same length. Do not translate these product feature names, keep them in English exactly as written: Dictate Prompt, Read Aloud, Dictate Live, Live Meeting, Chat. Output ONLY the translated text — no preface, no quotes, no markdown fences.
+    "Translate the following Mac App Store \"What's New\" text into the language of App Store Connect locale \"$locale\". Keep the same tone and about the same length. Do not translate these product feature names, keep them in English exactly as written: Dictate Prompt, Read Aloud, Dictate Live, Live Meeting, Chat. The text is PLAIN TEXT, not Markdown — output plain text only: no '#' headings, no '**' or '__' emphasis, no backticks, no Markdown bullets ('-'); keep the '•' bullets and ':' headings exactly as styled in the input. Output ONLY the translated text — no preface, no quotes, no code fences.
 
 TEXT:
 $text"
@@ -546,7 +562,7 @@ while read -r loc; do
     text="$ENGLISH_NOTES"
   else
     text="$(translate_whats_new "$loc" "$ENGLISH_NOTES")"
-    text="$(printf '%s' "$text" | strip_forbidden_glyphs)"
+    text="$(printf '%s' "$text" | strip_markdown | strip_forbidden_glyphs)"
   fi
   if [ -z "$text" ]; then
     echo "WARN: empty translation for locale $loc; skipping it this run." >&2
