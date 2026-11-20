@@ -26,7 +26,7 @@ struct SupportFeedbackSection: View {
       VStack(alignment: .leading, spacing: 20) {
         VStack(spacing: 12) {
           Button(action: {
-            viewModel.openWhatsAppFeedback()
+            viewModel.openProblemReport()
           }) {
             HStack(alignment: .center, spacing: 12) {
               Image("WhatsApp")
@@ -55,7 +55,7 @@ struct SupportFeedbackSection: View {
           // Sits right under WhatsApp so the alternative is visible in the same glance — someone
           // without WhatsApp should not have to hunt for a second way to reach the developer.
           Button(action: {
-            viewModel.openEmailFeedback()
+            viewModel.openProblemReport()
           }) {
             HStack(alignment: .center, spacing: 12) {
               Image(systemName: "envelope.fill")
@@ -204,7 +204,7 @@ struct SupportFeedbackSection: View {
           .pointerCursorOnHover()
 
           Button(action: {
-            viewModel.openGitHubIssue()
+            viewModel.openProblemReport()
           }) {
             HStack(alignment: .center, spacing: 12) {
               Image(systemName: "ladybug")
@@ -280,16 +280,6 @@ struct SupportFeedbackSection: View {
         }
         .padding(.top, 12)
       }
-    }
-    .sheet(
-      isPresented: Binding(
-        get: { showFeedbackSheet },
-        set: { if !$0 { showFeedbackSheet = false; usageReport = nil } }
-      )
-    ) {
-      FeedbackReportSheet(
-        usageReport: usageReport,
-        onDismiss: { showFeedbackSheet = false; usageReport = nil })
     }
   }
 }

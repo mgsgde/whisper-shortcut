@@ -123,7 +123,7 @@ enum DictationReport {
 enum ResultReport {
 
   enum Kind: String, Equatable {
-    case dictation, prompt, readAloud
+    case dictation, prompt, readAloud, general
   }
 
   struct Candidate: Equatable {
@@ -139,7 +139,8 @@ enum ResultReport {
   }
 
   /// Newest first. One candidate per history entry (at most 10), plus the latest prompt and
-  /// Read Aloud when those exist. A template entry is a dictation candidate.
+  /// Read Aloud when those exist. A template entry is a dictation candidate. A general-feedback
+  /// candidate is always last, so the list is never empty.
   static func candidates(
     dictations: [TranscriptionHistoryStore.Entry],
     glossaryTerms: [String],
@@ -181,7 +182,23 @@ enum ResultReport {
         technical: "",
         menuLabel: nil))
     }
-    return list.sorted { $0.ts > $1.ts }
+    return list.sorted { $0.ts > $1.ts } + [generalCandidate(offlineMode: offlineMode)]
+  }
+
+  /// Environment only: there is no dictation, prompt or reading to quote. Appended after the
+  /// time sort so it stays last even though its timestamp is now.
+  private static func generalCandidate(offlineMode: Bool) -> Candidate {
+    let offline = offlineMode
+      ? String(localized: "Offline Mode: on")
+      : String(localized: "Offline Mode: off")
+    return Candidate(
+      id: "general",
+      kind: .general,
+      ts: Date(),
+      preview: "",
+      details: "\(FeedbackLinks.environmentBlock)\n\(offline)",
+      technical: "",
+      menuLabel: nil)
   }
 
   private static func candidateID(kind: Kind, ts: Date, extra: String) -> String {

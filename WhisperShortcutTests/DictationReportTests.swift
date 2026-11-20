@@ -131,14 +131,56 @@ struct DictationReportTests {
     }
     let list = ResultReport.candidates(
       dictations: entries, glossaryTerms: [], offlineMode: false, prompt: nil, readAloud: nil)
-    let kinds = list.map { candidate in candidate.kind }
-    #expect(list.count == 10)
-    #expect(kinds.allSatisfy { $0 == ResultReport.Kind.dictation })
-    #expect(Set(list.map { candidate in candidate.id }).count == 10)
-    let times = list.map { candidate in candidate.ts }
+    #expect(list.count == 11)
+    #expect(list.dropLast().allSatisfy { $0.kind == ResultReport.Kind.dictation })
+    #expect(list.last?.id == "general")
+    #expect(list.last?.kind == .general)
+    #expect(Set(list.map { candidate in candidate.id }).count == 11)
+    let times = list.dropLast().map { candidate in candidate.ts }
     #expect(times == times.sorted(by: >))
     #expect(list.first?.preview == "line 9")
     #expect(list.contains { $0.menuLabel == "SOAP" && $0.preview == "line 3" })
     #expect(list.contains { $0.menuLabel == nil })
+  }
+
+  @Test("A general feedback candidate is always last, including with no history")
+  func generalCandidateIsLast() {
+    let empty = ResultReport.candidates(
+      dictations: [], glossaryTerms: [], offlineMode: true, prompt: nil, readAloud: nil)
+    #expect(empty.count == 1)
+    #expect(empty.last?.id == "general")
+    #expect(empty.last?.kind == .general)
+    #expect(empty.last?.preview.isEmpty == true)
+    #expect(empty.last?.technical.isEmpty == true)
+    #expect(empty.last?.menuLabel == nil)
+    #expect(empty.last?.details.contains(AppConstants.appVersion) == true)
+    #expect(empty.last?.details.contains("macOS:") == true)
+    #expect(empty.last?.details.contains("Offline Mode: on") == true)
+
+    let entry = TranscriptionHistoryStore.Entry(
+      ts: Date(timeIntervalSince1970: 1_700_000_000), text: "hello")
+    let withHistory = ResultReport.candidates(
+      dictations: [entry], glossaryTerms: [], offlineMode: false, prompt: nil, readAloud: nil)
+    #expect(withHistory.count == 2)
+    #expect(withHistory.last?.id == "general")
+    #expect(withHistory.last?.kind == .general)
+    #expect(withHistory.dropLast().allSatisfy { $0.kind == .dictation })
+    #expect(withHistory.last?.details.contains("Offline Mode: off") == true)
+  }
+
+  @Test("ProblemReport startOnGeneral selects the general candidate from a stub provider")
+  func problemReportStartOnGeneral() {
+    let previous = ProblemReport.candidatesProvider
+    defer { ProblemReport.candidatesProvider = previous }
+    let newer = ResultReport.Candidate(
+      id: "newer", kind: .dictation, ts: Date(timeIntervalSince1970: 1_700_000_000),
+      preview: "line", details: "details", technical: "", menuLabel: nil)
+    let general = ResultReport.Candidate(
+      id: "general", kind: .general, ts: Date(), preview: "",
+      details: "App version: test", technical: "", menuLabel: nil)
+    ProblemReport.candidatesProvider = { [newer, general] }
+    let candidates = ProblemReport.candidatesProvider?() ?? []
+    #expect(ProblemReport.initialSelection(candidates: candidates, startOnGeneral: true) == "general")
+    #expect(ProblemReport.initialSelection(candidates: candidates, startOnGeneral: false) == "newer")
   }
 }

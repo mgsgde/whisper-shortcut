@@ -30172,6 +30172,66 @@
           }
         }
       }
+    },
+    "Report a Problem…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem melden …"
+          }
+        }
+      }
+    },
+    "I encountered this error:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Fehler ist aufgetreten:"
+          }
+        }
+      }
+    },
+    "For example: an idea, a question, or what did not work" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel: eine Idee, eine Frage oder was nicht funktioniert hat"
+          }
+        }
+      }
+    },
+    "Contains your settings. Remove names before sending." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihre Einstellungen. Entfernen Sie Namen vor dem Senden."
+          }
+        }
+      }
+    },
+    "General Feedback (no specific result)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allgemeines Feedback (kein bestimmtes Ergebnis)"
+          }
+        }
+      }
+    },
+    "Report a problem, with the end of this chat attached" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem melden, mit dem Ende dieses Chats im Anhang"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

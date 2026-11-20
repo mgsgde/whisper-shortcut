@@ -103,9 +103,6 @@ class MenuBarController: NSObject {
 
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
-  /// Live in the Send Feedback submenu, which `menu.item(withTag:)` does not search.
-  private var reportResultItem: NSMenuItem?
-  private var reportResultSeparator: NSMenuItem?
   /// Rows the unfinished-setup gate hid, so it puts back exactly those once (and no others).
   private var hiddenBySetupGate: [NSMenuItem] = []
   private var blinkTimer: Timer?
@@ -471,6 +468,10 @@ class MenuBarController: NSObject {
 
     super.init()
 
+    ProblemReport.candidatesProvider = { [weak self] in
+      self?.reportCandidates() ?? []
+    }
+
     setupMenuBar()
     setupDelegates()
     setupNotifications()
@@ -625,36 +626,10 @@ class MenuBarController: NSObject {
       createMenuItem("Check for Updates…", action: #selector(checkForUpdates)))
     #endif
 
-    // Feedback sits next to Settings, the macOS convention for it, and offers all three channels
-    // rather than WhatsApp alone — a user without WhatsApp otherwise has no obvious way to reach
-    // the developer at all. A submenu keeps this to one row: the status menu is the app's
-    // most-used surface, and three permanent contact rows in it would read as nagging.
-    let feedbackItem = createMenuItem("Send Feedback", action: nil, tag: .sendFeedback)
-    let feedbackMenu = NSMenu()
-    // First, because a report about a concrete result (the last dictation, prompt answer or
-    // reading) is the one the developer can act on without asking back. Hidden while there is
-    // nothing to report.
-    let reportItem = NSMenuItem(
-      title: String(localized: "Report a Problem with Last Result…"),
-      action: #selector(reportLastResult), keyEquivalent: "")
-    reportItem.target = self
-    reportItem.toolTip = String(
-      localized: "Send your last dictation, prompt answer or reading with its model and version, after you check it")
-    let reportSeparator = NSMenuItem.separator()
-    feedbackMenu.addItem(reportItem)
-    feedbackMenu.addItem(reportSeparator)
-    reportResultItem = reportItem
-    reportResultSeparator = reportSeparator
-    for channel in FeedbackLinks.Channel.allCases {
-      let item = NSMenuItem(
-        title: channel.menuTitle, action: #selector(sendFeedback(_:)), keyEquivalent: "")
-      item.target = self
-      item.representedObject = channel.rawValue
-      item.toolTip = channel.helpText
-      feedbackMenu.addItem(item)
-    }
-    feedbackItem.submenu = feedbackMenu
-    menu.addItem(feedbackItem)
+    // One report window for every kind of feedback. Always visible: with no recent result it
+    // opens on general feedback.
+    menu.addItem(
+      createMenuItem("Report a Problem…", action: #selector(reportLastResult), tag: .sendFeedback))
 
     #if APP_STORE
     // App Store build only: the direct build never sends people to the App Store
@@ -1570,9 +1545,7 @@ class MenuBarController: NSObject {
   /// While onboarding is unfinished, hides every row `visibleDuringSetup` does not name, then
   /// drops a separator that would sit against another separator or at an edge. When setup is
   /// done, puts back once the rows nothing else writes `isHidden` for (the gate is the only
-  /// thing that hid them), and only those the gate itself hid. Untagged rows other passes own
-  /// (the report-result separator) are left as those passes decided them, so the gate never
-  /// shows a row after setup that would be hidden without it.
+  /// thing that hid them), and only those the gate itself hid.
   private func applyUnfinishedSetupVisibility(_ menu: NSMenu) {
     let setupIncomplete = WelcomeWindowController.needsCompletion
     if setupIncomplete {
@@ -1587,11 +1560,8 @@ class MenuBarController: NSObject {
       return
     }
     guard !hiddenBySetupGate.isEmpty else { return }
-    let ownedElsewhere: Set<ObjectIdentifier> = Set(
-      [reportResultSeparator].compactMap { $0 }.map(ObjectIdentifier.init))
     for item in hiddenBySetupGate
-    where Self.restoredWhenSetupFinishes(MenuTag(rawValue: item.tag))
-      && !ownedElsewhere.contains(ObjectIdentifier(item)) {
+    where Self.restoredWhenSetupFinishes(MenuTag(rawValue: item.tag)) {
       item.isHidden = false
     }
     hiddenBySetupGate.removeAll()
@@ -1640,12 +1610,6 @@ class MenuBarController: NSObject {
     let entries = Array(
       TranscriptionHistoryStore.shared.dictationEntries.prefix(TranscriptionHistoryStore.menuEntries))
     menu.item(withTag: MenuTag.copyLastTranscription.rawValue)?.isHidden = entries.isEmpty
-    // Prompt and template rows stay out of this submenu, but they are still a result to report.
-    let hasReportableResult = !TranscriptionHistoryStore.shared.entries.isEmpty
-      || LastResultStore.shared.lastPrompt != nil
-      || LastResultStore.shared.lastReadAloud != nil
-    reportResultItem?.isHidden = !hasReportableResult
-    reportResultSeparator?.isHidden = !hasReportableResult
 
     // Drops away once the retained file is gone (recovered, or replaced by a newer cancellation).
     let hasCancelled = cancelledRecordingURL.map {
@@ -2613,28 +2577,20 @@ class MenuBarController: NSObject {
     DispatchQueue.main.async { [weak self] in self?.liveMeeting.setFastChunking(visible) }
   }
 
-  /// Opens the picked feedback channel, prefilled. No context to attach here — the user chose this
-  /// from the menu rather than from a failure, so there is nothing specific to quote.
-  @objc private func sendFeedback(_ sender: NSMenuItem) {
-    guard let raw = sender.representedObject as? String,
-          let channel = FeedbackLinks.Channel(rawValue: raw) else { return }
-    FeedbackLinks.open(channel)
-    DebugLogger.log("FEEDBACK: Opened \(channel.rawValue) from the status menu")
-  }
-
-  @objc private func reportLastResult() {
-    let candidates = ResultReport.candidates(
+  private func reportCandidates() -> [ResultReport.Candidate] {
+    ResultReport.candidates(
       dictations: TranscriptionHistoryStore.shared.entries,
       glossaryTerms: speechService.glossaryTermsForReport(),
       offlineMode: OfflineMode.isEnabled,
       prompt: LastResultStore.shared.lastPrompt,
       readAloud: LastResultStore.shared.lastReadAloud,
       currentConfigHash: ReportConfigFingerprint.current())
-    guard !candidates.isEmpty else {
-      DebugLogger.logWarning("DICTATION-REPORT: Requested but there is no result to report")
-      return
+  }
+
+  @objc private func reportLastResult() {
+    MainActor.assumeIsolated {
+      ProblemReport.open()
     }
-    DictationReportWindowController.shared.show(candidates: candidates)
   }
 
   @objc private func rateApp() {

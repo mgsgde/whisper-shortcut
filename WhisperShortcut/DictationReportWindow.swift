@@ -15,17 +15,20 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
 
   private var window: NSWindow?
 
-  /// One window at a time: a second click brings the open one forward instead of stacking a
-  /// copy whose text the user has not edited.
-  func show(candidates: [ResultReport.Candidate]) {
-    guard let newest = candidates.first else {
+  /// One window at a time. A second open closes the current window and opens a fresh one with the
+  /// new text, so a report started from an error does not keep the previous draft.
+  func show(
+    candidates: [ResultReport.Candidate], message: String? = nil, startOnGeneral: Bool = false
+  ) {
+    guard !candidates.isEmpty else {
       DebugLogger.logWarning("DICTATION-REPORT: Open requested with no candidates")
       return
     }
-    if let window {
-      window.makeKeyAndOrderFront(nil)
-      NSApp.activate(ignoringOtherApps: true)
-      return
+    if let existing = window {
+      DebugLogger.log("DICTATION-REPORT: Closing the open report window to show new content")
+      existing.delegate = nil
+      window = nil
+      existing.close()
     }
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
@@ -34,6 +37,8 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
     window.title = String(localized: "Report a Problem")
     window.contentView = NSHostingView(rootView: DictationReportView(
       candidates: candidates,
+      initialMessage: message,
+      startOnGeneral: startOnGeneral,
       onSend: { [weak self] channel, context, attachment in
         self?.send(channel, context: context, attachment: attachment) ?? false
       },
@@ -47,8 +52,11 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
     self.window = window
     window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
+    let selectedID = ProblemReport.initialSelection(
+      candidates: candidates, startOnGeneral: startOnGeneral)
+    let opened = candidates.first { $0.id == selectedID } ?? candidates[0]
     DebugLogger.log(
-      "DICTATION-REPORT: Opened report window on \(newest.kind.rawValue) (\(candidates.count) results, \(newest.details.count) chars)")
+      "DICTATION-REPORT: Opened report window on \(opened.kind.rawValue) (\(candidates.count) results, \(opened.details.count) chars)")
   }
 
   /// True when the report file was revealed in Finder for the user to drag in: the window then
@@ -56,21 +64,14 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
   private func send(_ channel: FeedbackLinks.Channel, context: String, attachment: String? = nil)
     -> Bool
   {
-    // `wa.me` and `mailto:` carry the text in the URL, and an over-long one is dropped silently
+    // `mailto:` carries the text in the URL, and an over-long one is dropped silently
     // by some clients instead of failing — clamp it so the report at least arrives.
-    let limit = channel == .whatsApp ? 3_000 : 6_000
-    let clamped = FeedbackLinks.truncated(context, limit: limit)
+    let clamped = FeedbackLinks.truncated(context, limit: 6_000)
     guard let attachment else {
       openClamped(channel, context: clamped)
       return false
     }
-    switch channel {
-    case .email:
-      return sendEmail(clampedContext: clamped, attachment: attachment)
-    case .whatsApp, .gitHub:
-      openClamped(channel, context: clamped)
-      return false
-    }
+    return sendEmail(clampedContext: clamped, attachment: attachment)
   }
 
   private func openClamped(_ channel: FeedbackLinks.Channel, context: String) {
@@ -194,12 +195,16 @@ struct DictationReportView: View {
 
   init(
     candidates: [ResultReport.Candidate],
+    initialMessage: String? = nil,
+    startOnGeneral: Bool = false,
     onSend: @escaping (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Bool,
     onShare: @escaping (_ context: String, _ attachment: String?) -> Void,
     onCancel: @escaping () -> Void
   ) {
     self.candidates = candidates
-    self._selected = State(initialValue: candidates.first?.id ?? "")
+    self._selected = State(initialValue: ProblemReport.initialSelection(
+      candidates: candidates, startOnGeneral: startOnGeneral))
+    self._problem = State(initialValue: initialMessage ?? "")
     self.onSend = onSend
     self.onShare = onShare
     self.onCancel = onCancel
@@ -226,6 +231,7 @@ struct DictationReportView: View {
     case .dictation: return "Report a Problem with Your Last Dictation"
     case .prompt: return "Report a Problem with Your Last Prompt Answer"
     case .readAloud: return "Report a Problem with the Last Read Aloud"
+    case .general: return "Send Feedback"
     }
   }
 
@@ -234,6 +240,7 @@ struct DictationReportView: View {
     case .dictation: return "For example: a word I didn't say was added at the end"
     case .prompt: return "For example: the answer ignored my instruction"
     case .readAloud: return "For example: a word was pronounced wrong"
+    case .general: return "For example: an idea, a question, or what did not work"
     }
   }
 
@@ -247,6 +254,8 @@ struct DictationReportView: View {
       return "Contains your instruction, part of the selected text and the answer. Remove names or anything else private before you send it."
     case .readAloud:
       return "Contains the text that was read aloud. Remove names or anything else private before you send it."
+    case .general:
+      return "Contains your settings. Remove names before sending."
     }
   }
 
@@ -255,6 +264,7 @@ struct DictationReportView: View {
     case .dictation: return String(localized: "Dictation")
     case .prompt: return String(localized: "Prompt Answer")
     case .readAloud: return String(localized: "Read Aloud")
+    case .general: return String(localized: "General Feedback (no specific result)")
     }
   }
 
