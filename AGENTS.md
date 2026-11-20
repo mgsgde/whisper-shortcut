@@ -154,7 +154,11 @@ merges or releases by hand, and there is no deployment session to hand over to. 
    follows on Tuesday (`stable-promote-job.sh`). Hold it with
    `echo reason > build/release-nightly/hold` in the main checkout; hotfix now with
    `bash scripts/release-nightly-job.sh --force --skip-tests`.
-5. **App Store** stays manual: `/submit-appstore` only on Magnus's word in his own chat.
+5. **App Store** follows Stable (owner ruling 2026-11-20, Magnus: „ja“): after a successful
+   Tuesday promotion, `stable-promote-job.sh` calls `scripts/appstore-submit-job.sh <tag>`, which
+   submits the same version for review with release type AFTER_APPROVAL and mails every
+   submission and failure. Hold it with `echo reason > build/appstore-weekly/hold`. A manual
+   `/submit-appstore` (hotfix outside the weekly run) still needs Magnus's word in his own chat.
 
 "Finished" therefore means: branch pushed, PR open, rebuild exit status and the `--only` test
 output quoted, and the PR labelled if it must wait. Nothing else to send anywhere.
