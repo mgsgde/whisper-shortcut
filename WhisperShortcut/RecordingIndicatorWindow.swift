@@ -257,6 +257,34 @@ private struct ProgressRingView: View {
   }
 }
 
+/// Six dim dots at the pill's leading edge: the signifier that the pill can be dragged
+/// (the whole pill moves, see `handleDrag`; the grip only says so). Open hand on hover.
+private struct DragGripView: View {
+  /// Width the grip adds to the pill: the dots plus the HStack gap before the ✕, minus the
+  /// trimmed leading inset.
+  static let extraWidth: CGFloat = 6 + 8 - 2
+
+  var body: some View {
+    VStack(spacing: 2) {
+      ForEach(0..<3, id: \.self) { _ in
+        HStack(spacing: 2) {
+          Circle().frame(width: 2, height: 2)
+          Circle().frame(width: 2, height: 2)
+        }
+      }
+    }
+    .foregroundColor(.white.opacity(0.4))
+    .frame(width: 6, height: 24)
+    .padding(.leading, -2)
+    .contentShape(Rectangle())
+    .help("Drag to move")
+    .accessibilityHidden(true)
+    .onHover { inside in
+      if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
+    }
+  }
+}
+
 private struct PillCircleButton: View {
   let symbolName: String
   let foreground: Color
@@ -920,11 +948,11 @@ struct RecordingIndicatorView: View {
     switch phase {
     case .recording:
       let deviceExtra = inputDeviceName.map { Self.inputDeviceSuffixWidth($0) } ?? 0
-      return CGSize(width: 218 + deviceExtra, height: 40)
+      return CGSize(width: 218 + DragGripView.extraWidth + deviceExtra, height: 40)
     case .processing:
       let contextExtra = contextSymbolCount == 0
         ? 0 : ContextSymbolMetrics.leadingGap + CGFloat(contextSymbolCount) * ContextSymbolMetrics.slot
-      return CGSize(width: 168 + contextExtra, height: 40)
+      return CGSize(width: 168 + DragGripView.extraWidth + contextExtra, height: 40)
     case .speaking: return CGSize(width: 420, height: 40)
     }
   }
@@ -983,6 +1011,7 @@ struct RecordingIndicatorView: View {
     HStack(spacing: 8) {
       switch model.phase {
       case .recording:
+        DragGripView()
         PillCircleButton(
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Discard recording", action: onCancel)
@@ -1004,6 +1033,7 @@ struct RecordingIndicatorView: View {
           symbolName: "checkmark", foreground: .black, background: .white,
           accessibilityLabel: "Stop and process", action: onConfirm)
       case .processing:
+        DragGripView()
         PillCircleButton(
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Cancel processing", action: onCancel)
@@ -1132,6 +1162,7 @@ private final class RecordingIndicatorPanel: NSPanel {
       if !isDragging {
         guard hypot(dx, dy) > 4, canDrag?() == true else { return false }
         isDragging = true
+        NSCursor.closedHand.push()
         if let release = NSEvent.mouseEvent(
           with: .leftMouseUp, location: NSPoint(x: -10_000, y: -10_000), modifierFlags: [],
           timestamp: event.timestamp, windowNumber: windowNumber, context: nil,
@@ -1146,6 +1177,7 @@ private final class RecordingIndicatorPanel: NSPanel {
       dragStart = nil
       guard isDragging else { return false }
       isDragging = false
+      NSCursor.pop()
       onDragEnded?()
       return true
     default:
