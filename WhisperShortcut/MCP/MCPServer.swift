@@ -77,14 +77,22 @@ final class MCPServer: ObservableObject {
   /// Accounts whose latest `saveSecret` returned false. `saveSecret` still keeps that value in
   /// its session cache, so the next lookup must not be treated as a token that was stored.
   private var unpersistedAccounts = Set<String>()
+  /// One client-config repair after this process starts serving the other build's shared token.
+  private var didScheduleAdoptedTokenRepair = false
 
   /// nil when the Keychain cannot be read or the new token could not be stored. Never cache a
   /// token that was not saved — a later request would hand clients a key that disappears on restart.
   func token() -> String? {
-    stateLock.lock(); defer { stateLock.unlock() }
-    if let cachedToken { return cachedToken }
-    guard let fresh = loadOrCreateToken(account: Self.tokenAccount, label: "read token") else { return nil }
-    cachedToken = fresh
+    stateLock.lock()
+    if let cachedToken {
+      stateLock.unlock()
+      return cachedToken
+    }
+    let (fresh, shouldRepair) = loadOrCreateToken(account: Self.tokenAccount, label: "read token")
+    if let fresh { cachedToken = fresh }
+    stateLock.unlock()
+    // After the lock: repair reads both tokens, and it must not run while this lock is held.
+    if shouldRepair { repairClientTokens() }
     return fresh
   }
 
@@ -107,10 +115,15 @@ final class MCPServer: ObservableObject {
   /// Grants read and write. Created on first use, cached like the read token. nil when the
   /// Keychain cannot be read or the new token could not be stored — see `token()`.
   func writeToken() -> String? {
-    stateLock.lock(); defer { stateLock.unlock() }
-    if let cachedWriteToken { return cachedWriteToken }
-    guard let fresh = loadOrCreateToken(account: Self.writeTokenAccount, label: "write token") else { return nil }
-    cachedWriteToken = fresh
+    stateLock.lock()
+    if let cachedWriteToken {
+      stateLock.unlock()
+      return cachedWriteToken
+    }
+    let (fresh, shouldRepair) = loadOrCreateToken(account: Self.writeTokenAccount, label: "write token")
+    if let fresh { cachedWriteToken = fresh }
+    stateLock.unlock()
+    if shouldRepair { repairClientTokens() }
     return fresh
   }
 
@@ -143,37 +156,45 @@ final class MCPServer: ObservableObject {
     }
   }
 
-  /// Caller holds `stateLock`. Returns a token only when it is already in the Keychain or was just
-  /// saved there. The caller caches that value; nil is not cached.
-  private func loadOrCreateToken(account: String, label: String) -> String? {
-    switch KeychainManager.shared.secretLookup(account: account) {
-    case .found(let existing) where !existing.isEmpty:
-      if unpersistedAccounts.contains(account) { return nil }
-      return existing
-    case .found, .notFound:
-      guard let fresh = makeAndStoreToken(account: account) else {
-        unpersistedAccounts.insert(account)
-        return nil
+  /// Caller holds `stateLock`. Returns a token only when it is already stored or was just saved.
+  /// The caller caches that value; nil is not cached. `shouldRepair` is true once per process,
+  /// when this load adopted the other build's shared token and the local copy differed.
+  private func loadOrCreateToken(account: String, label: String) -> (String?, shouldRepair: Bool) {
+    // A failed `saveSecret` still caches the value for the session. That cache must not be
+    // handed out as a token that disappears on restart. Checked before `load`, which would
+    // otherwise promote the cached value into the shared group.
+    if unpersistedAccounts.contains(account) {
+      if case .found(let existing) = KeychainManager.shared.secretLookup(account: account), !existing.isEmpty {
+        return (nil, false)
       }
-      unpersistedAccounts.remove(account)
-      return fresh
-    case .failed(let status):
-      DebugLogger.logError("MCP-SERVER: Keychain read failed for the \(label): status=\(status)")
-      return nil
     }
+
+    let store = makeTokenStore()
+    guard let fresh = store.load(account: account) else {
+      if let status = store.lastReadFailureStatus {
+        DebugLogger.logError("MCP-SERVER: Keychain read failed for the \(label): status=\(status)")
+        return (nil, false)
+      }
+      unpersistedAccounts.insert(account)
+      return (nil, false)
+    }
+    unpersistedAccounts.remove(account)
+    let shouldRepair = store.adoptedSharedToken && !didScheduleAdoptedTokenRepair
+    if shouldRepair { didScheduleAdoptedTokenRepair = true }
+    return (fresh, shouldRepair)
   }
 
-  /// nil when random bytes could not be drawn or the Keychain refused the write. The value is
-  /// not cached by the caller in that case.
+  private func makeTokenStore() -> MCPSharedTokenStore {
+    MCPSharedTokenStore(
+      keychain: SystemMCPTokenKeychain(),
+      sharedGroup: MCPSharedTokenStore.sharedAccessGroup())
+  }
+
+  /// nil when random bytes could not be drawn or neither keychain accepted the write. The value
+  /// is not cached by the caller in that case.
   private func makeAndStoreToken(account: String = MCPServer.tokenAccount) -> String? {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    let randomStatus = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    guard randomStatus == errSecSuccess else {
-      DebugLogger.logError("MCP-SERVER: Could not generate a token (SecRandomCopyBytes status=\(randomStatus))")
-      return nil
-    }
-    let token = bytes.map { String(format: "%02x", $0) }.joined()
-    guard KeychainManager.shared.saveSecret(token, account: account) else {
+    guard let token = MCPSharedTokenStore.generateToken() else { return nil }
+    guard makeTokenStore().store(token, account: account) else {
       DebugLogger.logError("MCP-SERVER: Could not store the token in the Keychain (account \(account))")
       return nil
     }
@@ -364,6 +385,7 @@ final class MCPServer: ObservableObject {
     let isWrite = constantTimeEqual(supplied, "Bearer \(writeToken)")
     let isRead = constantTimeEqual(supplied, "Bearer \(readToken)")
     guard isWrite || isRead else {
+      noteRejectedBearer(supplied)
       return HTTPResponse(
         status: 401, headers: ["WWW-Authenticate": "Bearer"],
         body: Data(#"{"error":"unauthorized"}"#.utf8))
@@ -389,6 +411,24 @@ final class MCPServer: ObservableObject {
 
   static func isLoopbackOriginHost(_ host: String) -> Bool {
     host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
+  }
+
+  private static let bearerRejectLogLock = NSLock()
+  private static var bearerRejectLoggedAt = Date.distantPast
+
+  /// A supplied bearer matched neither token. At most once a minute: the 401 itself is unchanged.
+  private static func noteRejectedBearer(_ supplied: String) {
+    let scheme = "bearer "
+    guard supplied.lowercased().hasPrefix(scheme), !supplied.dropFirst(scheme.count).isEmpty else { return }
+    bearerRejectLogLock.lock()
+    let now = Date()
+    let shouldLog = now.timeIntervalSince(bearerRejectLoggedAt) >= 60
+    if shouldLog { bearerRejectLoggedAt = now }
+    bearerRejectLogLock.unlock()
+    guard shouldLog else { return }
+    DebugLogger.logWarning(
+      "MCP-SERVER: Rejected a bearer token that matches neither the read nor the write token. If two WhisperShortcut builds are installed, the client may hold the other build's token; reconnect it in Settings > AI Apps."
+    )
   }
 
   private static func constantTimeEqual(_ a: String, _ b: String) -> Bool {
