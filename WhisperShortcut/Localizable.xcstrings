@@ -30083,12 +30083,42 @@
         }
       }
     },
-    "Sent as a file. Mail attaches it. With WhatsApp, Finder opens with the file selected: drag it into the chat. Untick anything that contains names." : {
+    "Sent as a file." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wird als Datei mitgeschickt. Mail hängt sie an. Bei WhatsApp öffnet sich der Finder mit der markierten Datei: Ziehen Sie sie in den Chat. Entfernen Sie das Häkchen bei allem, was Namen enthält."
+            "value" : "Wird als Datei mitgeschickt."
+          }
+        }
+      }
+    },
+    "Contains your dictated text and your settings. Remove names before sending." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihren diktierten Text und Ihre Einstellungen. Entfernen Sie Namen vor dem Senden."
+          }
+        }
+      }
+    },
+    "The file is selected in Finder. Drag it into the chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei ist im Finder markiert. Ziehen Sie sie in den Chat."
+          }
+        }
+      }
+    },
+    "The file is selected in Finder. Drag it into the email." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei ist im Finder markiert. Ziehen Sie sie in die E-Mail."
           }
         }
       }

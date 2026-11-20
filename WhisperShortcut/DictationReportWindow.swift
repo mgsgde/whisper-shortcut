@@ -34,7 +34,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
     window.contentView = NSHostingView(rootView: DictationReportView(
       candidates: candidates,
       onSend: { [weak self] channel, context, attachment in
-        self?.send(channel, context: context, attachment: attachment)
+        self?.send(channel, context: context, attachment: attachment) ?? false
       },
       onShare: { [weak self] context, attachment in
         self?.share(context: context, attachment: attachment)
@@ -50,22 +50,27 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       "DICTATION-REPORT: Opened report window on \(newest.kind.rawValue) (\(candidates.count) results, \(newest.details.count) chars)")
   }
 
-  private func send(_ channel: FeedbackLinks.Channel, context: String, attachment: String? = nil) {
+  /// True when the report file was revealed in Finder for the user to drag in: the window then
+  /// stays open and says so, because the message alone does not carry the settings.
+  private func send(_ channel: FeedbackLinks.Channel, context: String, attachment: String? = nil)
+    -> Bool
+  {
     // `wa.me` and `mailto:` carry the text in the URL, and an over-long one is dropped silently
     // by some clients instead of failing — clamp it so the report at least arrives.
     let limit = channel == .whatsApp ? 3_000 : 6_000
     let clamped = FeedbackLinks.truncated(context, limit: limit)
     guard let attachment else {
       openClamped(channel, context: clamped)
-      return
+      return false
     }
     switch channel {
     case .email:
-      sendEmail(clampedContext: clamped, attachment: attachment)
+      return sendEmail(clampedContext: clamped, attachment: attachment)
     case .whatsApp:
-      sendWhatsApp(clampedContext: clamped, attachment: attachment)
+      return sendWhatsApp(clampedContext: clamped, attachment: attachment)
     case .gitHub:
       openClamped(channel, context: clamped)
+      return false
     }
   }
 
@@ -78,7 +83,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
 
   /// The file holds the configuration. The message itself stays the clamped dictation text, which
   /// is what Mail can still show when the attachment cannot be added.
-  private func sendEmail(clampedContext: String, attachment: String) {
+  private func sendEmail(clampedContext: String, attachment: String) -> Bool {
     let file: URL
     do {
       file = try ReportAttachment.write(attachment)
@@ -86,7 +91,7 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       DebugLogger.logWarning(
         "DICTATION-REPORT: Could not write the report file: \(error.logDescription)")
       showSettingsFileAlert()
-      return
+      return false
     }
     let mailto = URL(string: "mailto:")!
     let handler = NSWorkspace.shared.urlForApplication(toOpen: mailto)
@@ -99,23 +104,23 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       if sent {
         DebugLogger.log("DICTATION-REPORT: Opened email with \(file.lastPathComponent) attached")
         close()
-        return
+        return false
       }
     }
     let opened = FeedbackLinks.open(.email, context: clampedContext)
     MainActor.assumeIsolated { ReportSender.revealInFinder(file) }
     if opened {
       DebugLogger.log("DICTATION-REPORT: Opened mailto and revealed \(file.lastPathComponent)")
-      close()
     } else {
       DebugLogger.logWarning(
         "DICTATION-REPORT: mailto did not open; revealed \(file.lastPathComponent)")
     }
+    return true
   }
 
   /// WhatsApp has no attachment API, so the link opens as before and Finder selects the file for
   /// the user to drag in.
-  private func sendWhatsApp(clampedContext: String, attachment: String) {
+  private func sendWhatsApp(clampedContext: String, attachment: String) -> Bool {
     let file: URL
     do {
       file = try ReportAttachment.write(attachment)
@@ -123,16 +128,16 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       DebugLogger.logWarning(
         "DICTATION-REPORT: Could not write the report file: \(error.logDescription)")
       showSettingsFileAlert()
-      return
+      return false
     }
     let opened = FeedbackLinks.open(.whatsApp, context: clampedContext)
     MainActor.assumeIsolated { ReportSender.revealInFinder(file) }
     if opened {
       DebugLogger.log("DICTATION-REPORT: Opened whatsApp and revealed \(file.lastPathComponent)")
-      close()
     } else {
       DebugLogger.log("DICTATION-REPORT: Revealed \(file.lastPathComponent)")
     }
+    return true
   }
 
   /// Writes the report file and offers it through the system share picker. The window stays open.
@@ -193,13 +198,17 @@ struct DictationReportView: View {
   @State private var includeGlossary = true
   @State private var includePrompts = true
   @State private var includeTemplates = true
-  let onSend: (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Void
+  /// Set after a send that left the file selected in Finder; the window stays open and says where
+  /// the file is, since the chat or mail does not have it yet.
+  @State private var revealedFor: FeedbackLinks.Channel?
+  /// Returns true when the report file was revealed in Finder instead of attached.
+  let onSend: (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Bool
   let onShare: (_ context: String, _ attachment: String?) -> Void
   let onCancel: () -> Void
 
   init(
     candidates: [ResultReport.Candidate],
-    onSend: @escaping (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Void,
+    onSend: @escaping (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Bool,
     onShare: @escaping (_ context: String, _ attachment: String?) -> Void,
     onCancel: @escaping () -> Void
   ) {
@@ -244,6 +253,8 @@ struct DictationReportView: View {
 
   private var privacyNote: LocalizedStringKey {
     switch kind {
+    case .dictation where sendsSettings:
+      return "Contains your dictated text and your settings. Remove names before sending."
     case .dictation:
       return "Contains your dictated text. Remove names or anything else private before you send it."
     case .prompt:
@@ -281,7 +292,17 @@ struct DictationReportView: View {
   private var sendsSettings: Bool { includeGlossary || includePrompts || includeTemplates }
 
   private var settingsOnHint: LocalizedStringKey {
-    "Sent as a file. Mail attaches it. With WhatsApp, Finder opens with the file selected: drag it into the chat. Untick anything that contains names."
+    "Sent as a file."
+  }
+
+  private func revealedHint(_ channel: FeedbackLinks.Channel) -> LocalizedStringKey {
+    channel == .whatsApp
+      ? "The file is selected in Finder. Drag it into the chat."
+      : "The file is selected in Finder. Drag it into the email."
+  }
+
+  private func sendTapped(_ channel: FeedbackLinks.Channel) {
+    if onSend(channel, context, attachmentText) { revealedFor = channel }
   }
 
   private var settingsOffHint: LocalizedStringKey {
@@ -368,7 +389,7 @@ struct DictationReportView: View {
           .foregroundColor(.secondary)
         HStack(spacing: 18) {
           Toggle("Glossary", isOn: $includeGlossary)
-          Toggle("Prompts", isOn: $includePrompts)
+          Toggle("Additional Instructions", isOn: $includePrompts)
           Toggle("Templates", isOn: $includeTemplates)
         }
         .toggleStyle(.checkbox)
@@ -387,6 +408,17 @@ struct DictationReportView: View {
           .font(.callout)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+      }
+
+      if let channel = revealedFor {
+        HStack(alignment: .top, spacing: 8) {
+          Image(systemName: "doc.badge.arrow.up")
+            .foregroundColor(.accentColor)
+          Text(revealedHint(channel))
+            .font(.callout)
+            .fontWeight(.medium)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
 
       HStack(spacing: 10) {
@@ -408,13 +440,19 @@ struct DictationReportView: View {
         Button("Share…") { onShare(context, attachmentText) }
           .pointerCursorOnHover()
 
-        Button("Send by Email") { onSend(.email, context, attachmentText) }
+        Button("Send by Email") { sendTapped(.email) }
           .pointerCursorOnHover()
 
         // No default-action shortcut: Return in the "what went wrong" field must not send.
-        Button("Send via WhatsApp") { onSend(.whatsApp, context, attachmentText) }
-          .buttonStyle(.borderedProminent)
-          .pointerCursorOnHover()
+        if revealedFor != nil {
+          Button("Done") { onCancel() }
+            .buttonStyle(.borderedProminent)
+            .pointerCursorOnHover()
+        } else {
+          Button("Send via WhatsApp") { sendTapped(.whatsApp) }
+            .buttonStyle(.borderedProminent)
+            .pointerCursorOnHover()
+        }
       }
     }
     .padding(20)
