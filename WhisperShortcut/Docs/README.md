@@ -8,9 +8,9 @@ Bring your own API key (GPT, Gemini, Grok, Claude, OpenRouter or your own server
 [![macOS 15.5+](https://img.shields.io/badge/macOS-15.5%2B-blue)](#download)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-green)](LICENSE)
 
-![Dictating an email with WhisperShortcut: press the shortcut, speak, and the text lands in Apple Mail](docs/assets/demo.gif)
+[![Press ⌃⌥1, speak, and the sentence appears at the cursor in Mail, Slack or Cursor](docs/assets/demo.gif)](https://whispershortcut.com)
 
-▶️ [Watch the full demo on YouTube](https://youtu.be/gc1s0okfHbU) · [whispershortcut.com](https://whispershortcut.com) · [User Guide](docs/guide.md) · Made by [Magnus Gödde](https://magnus-goedde.de)
+[whispershortcut.com](https://whispershortcut.com) · [User Guide](docs/guide.md) · Made by [Magnus Gödde](https://magnus-goedde.de)
 
 ## Download
 

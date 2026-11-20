@@ -49,3 +49,27 @@ struct QuickActionReturnTests {
     #expect(decide(selected: 0, actionCount: 0) == .stopAndProcess)
   }
 }
+
+@Suite("Pill key owner")
+struct PillKeyOwnerTests {
+
+  private let phases: [RecordingIndicatorPhase] = [.recording, .processing, .speaking]
+
+  @Test("The card owns keys in every phase, even while speaking")
+  func cardWinsInEveryPhase() {
+    for phase in phases {
+      #expect(RecordingIndicatorModel.keyOwner(phase: phase, quickActionsVisible: true) == .card)
+    }
+  }
+
+  @Test("Speaking without a card is the speaking pill")
+  func speakingWithoutCard() {
+    #expect(RecordingIndicatorModel.keyOwner(phase: .speaking, quickActionsVisible: false) == .speakingPill)
+  }
+
+  @Test("Recording and processing without a card own nothing")
+  func otherPhasesOwnNothing() {
+    #expect(RecordingIndicatorModel.keyOwner(phase: .recording, quickActionsVisible: false) == .none)
+    #expect(RecordingIndicatorModel.keyOwner(phase: .processing, quickActionsVisible: false) == .none)
+  }
+}

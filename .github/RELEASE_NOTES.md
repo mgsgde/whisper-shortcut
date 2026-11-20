@@ -1,20 +1,20 @@
-## Offline dictation
-- Plain Dictate with an offline model now finishes text the way Dictate Live already did: fillers are removed, a glued "…punkt" is split, "GdB" is written consistently, and quantities spoken as words become digits. Number words in ordinary prose stay as words.
+## Microphone
+- Settings › Dictate › Microphone: pick which microphone WhisperShortcut records from, for example a SpeechMike or a headset, instead of always using the macOS default. "System default" keeps following macOS.
 
-## Connected AI apps (MCP)
-- ChatGPT, Claude and other connected apps can now list and read WhisperShortcut's own documentation, including the practice playbook, so they answer "how does X work" from the docs instead of guessing.
+## Dictate Live
+- Choosing Dictate Live switches to Parakeet Ultra automatically when it is downloaded, and switching back to Dictate gives you your previous model again.
 
 ## Settings
-- In Dictation-only mode the Accounts tab stays visible while a cloud transcription model is selected, so you can still enter its key.
-- Settings, the in-app Chat and MCP now agree on whether an old custom prompt replaces the built-in one.
+- The Welcome Tour can now be opened from Settings › General.
+- New installs that finish the Welcome Tour with All features get "Save usage data" turned on, shown on the tour's last step as a switch you can turn off, with what is kept and for how long. Existing installs, Dictation only and Offline Mode are unchanged.
 
-## Fixes
-- Services → Dictate Prompt respects Dictation-only mode.
-- Model import opens your real home folder (for ~/.cache/huggingface and ~/.lmstudio/models) and skips hidden folders such as unfinished downloads.
-- Converting an old custom prompt into additions no longer copies an old built-in prompt along with it.
-- Practice playbook updated (v1.1).
+## Connected AI apps (MCP)
+- The release and Dev builds now share one access token, so Claude Code and other clients no longer get "unauthorized" when the other build is running.
+
+## Under the hood
+- Dictate Prompt and Read Aloud Prompt share one start path, and the recording pill decides in one place which part gets the keyboard.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.99...v9.00
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v9.02...v9.03

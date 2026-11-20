@@ -1,20 +1,20 @@
-## Offline-Diktat
-- Normales Diktieren mit einem Offline-Modell bereitet den Text jetzt so auf wie Dictate Live: Füllwörter fallen weg, ein angehängtes „…punkt“ wird getrennt, „GdB“ wird einheitlich geschrieben, und gesprochene Mengenangaben werden zu Ziffern. Zahlwörter im normalen Fließtext bleiben Wörter.
+## Mikrofon
+- Einstellungen › Diktieren › Mikrofon: Wählen Sie, mit welchem Mikrofon WhisperShortcut aufnimmt, zum Beispiel ein SpeechMike oder ein Headset, statt immer mit dem macOS-Standard. „Systemstandard“ folgt weiter macOS.
 
-## Verbundene KI-Apps (MCP)
-- ChatGPT, Claude und andere verbundene Apps können jetzt die Dokumentation von WhisperShortcut auflisten und lesen, einschließlich des Praxis-Playbooks. So beantworten sie Fragen zur App aus der Dokumentation statt zu raten.
+## Live diktieren
+- Wählen Sie „Live diktieren“, wird automatisch Parakeet Ultra verwendet, sofern es geladen ist. Zurück bei „Diktieren“ erhalten Sie Ihr vorheriges Modell wieder.
 
 ## Einstellungen
-- Im Modus „Nur Diktat“ bleibt der Tab „Konten“ sichtbar, solange ein Cloud-Modell zur Transkription gewählt ist, damit Sie dessen Schlüssel eintragen können.
-- Einstellungen, Chat in der App und MCP sind sich jetzt einig, ob ein alter eigener Prompt den eingebauten ersetzt.
+- Die Einführung lässt sich jetzt unter Einstellungen › Allgemein öffnen.
+- Neue Installationen, die die Einführung mit „Alle Funktionen“ abschließen, haben „Nutzungsdaten speichern“ eingeschaltet. Der letzte Schritt der Einführung zeigt das als Schalter, den Sie ausschalten können, mit Angaben, was wie lange gespeichert wird. Bestehende Installationen, „Nur Diktat“ und der Offline-Modus bleiben unverändert.
 
-## Behoben
-- Dienste → Dictate Prompt beachtet den Modus „Nur Diktat“.
-- Der Modell-Import öffnet Ihren echten Benutzerordner (für ~/.cache/huggingface und ~/.lmstudio/models) und überspringt versteckte Ordner wie unfertige Downloads.
-- Beim Umwandeln eines alten eigenen Prompts in Zusätze wird kein alter eingebauter Prompt mehr mitkopiert.
-- Praxis-Playbook aktualisiert (v1.1).
+## Verbundene KI-Apps (MCP)
+- Release- und Dev-Version teilen sich jetzt ein Zugangstoken. Claude Code und andere Programme bekommen also kein „nicht autorisiert“ mehr, wenn gerade die andere Version läuft.
+
+## Intern
+- Dictate Prompt und Read Aloud Prompt starten über denselben Weg, und die Aufnahme-Pill entscheidet an einer Stelle, welcher Teil die Tastatur bekommt.
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.99...v9.00
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v9.02...v9.03

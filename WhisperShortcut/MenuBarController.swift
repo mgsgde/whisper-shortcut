@@ -2013,33 +2013,52 @@ class MenuBarController: NSObject {
       cancelInFlightPrompt()
     case .cancelPendingStart:
       stopRecordingAfterTailDelay()
-    case .blocked(.busy):
-      DebugLogger.log("PROMPT-MODE: Shortcut ignored — a run is still in progress (\(appState))")
-      presentBlocked(.busy)
     case .blocked(let reason):
-      presentBlocked(reason)
+      presentDictatePromptBlocked(reason)
     case .start:
-      let promptModel = Self.selectedPromptModel()
-      let logPrefix = isMeeting ? "MEETING-SEGMENT" : "PROMPT-MODE"
-      let preparation = prepareDictatePromptSelection(logPrefix: logPrefix, model: promptModel)
-      guard preparation.ready else { return }
-      if isMeeting { DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting") }
-      ConnectionPrewarmer.prewarm(for: promptModel)
-      discardStreamingSession()  // prompt recordings never stream
-      if isMeeting {
-        if template != nil {
-          DebugLogger.log("DICTATION-TEMPLATE: ignored during a meeting")
-        }
-        beginAudioCapture(
-          mode: .prompt, meetingSegment: .prompt, promptSelection: preparation.selection)
-      } else {
-        beginAudioCapture(
-          mode: .prompt, promptSelection: preparation.selection,
-          template: template, templateChoices: choices)
-      }
+      startDictatePromptCapture(
+        logPrefix: isMeeting ? "MEETING-SEGMENT" : "PROMPT-MODE", isMeeting: isMeeting,
+        template: template, choices: choices)
     case .ignored:
       break
     }
+  }
+
+  /// The refusal both Dictate Prompt entry points (`togglePrompting`, `toggleReadAloudPrompting`)
+  /// give when `.start` is blocked: a busy run is logged first, every reason gets its popup.
+  private func presentDictatePromptBlocked(_ reason: BlockReason) {
+    if case .busy = reason {
+      DebugLogger.log("PROMPT-MODE: Shortcut ignored — a run is still in progress (\(appState))")
+    }
+    presentBlocked(reason)
+  }
+
+  /// The one Dictate Prompt start sequence: prepare the selection, prewarm, drop any streaming
+  /// session, begin capture. Returns false when the preparation was not ready (nothing started).
+  /// `template`/`choices` apply only outside a meeting; `speakResult` is Read Aloud Prompt's.
+  @discardableResult
+  private func startDictatePromptCapture(
+    logPrefix: String, isMeeting: Bool, template: DictationTemplate? = nil,
+    choices: [DictationTemplate] = [], speakResult: Bool = false
+  ) -> Bool {
+    let promptModel = Self.selectedPromptModel()
+    let preparation = prepareDictatePromptSelection(logPrefix: logPrefix, model: promptModel)
+    guard preparation.ready else { return false }
+    if isMeeting { DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting") }
+    ConnectionPrewarmer.prewarm(for: promptModel)
+    discardStreamingSession()  // prompt recordings never stream
+    if isMeeting {
+      if template != nil {
+        DebugLogger.log("DICTATION-TEMPLATE: ignored during a meeting")
+      }
+      beginAudioCapture(
+        mode: .prompt, meetingSegment: .prompt, promptSelection: preparation.selection)
+    } else {
+      beginAudioCapture(
+        mode: .prompt, promptSelection: preparation.selection,
+        template: template, templateChoices: choices, speakResult: speakResult)
+    }
+    return true
   }
 
   /// Starts Dictate Prompt with text a macOS Service already supplied. Skips the synthetic Cmd+C
@@ -2868,6 +2887,19 @@ class MenuBarController: NSObject {
     cleanupAudioFile(at: audioURL)
   }
 
+  /// The bookkeeping that ends a job on success. Clearing chunk progress is part of "this job is
+  /// over", not a per-mode option: whichever pipeline populated `chunkStatuses` (only long, chunked
+  /// recordings do), leaving it set would carry stale progress into whatever the user does next.
+  /// A no-op when already empty.
+  @MainActor
+  private func endAudioJobBookkeeping(job: VoiceJob?, audioURL: URL) {
+    chunkStatuses = []
+    if let job, currentJob === job {
+      currentJob = nil
+    }
+    processedAudioURLs.remove(audioURL)
+  }
+
   /// Runs one finished recording: produce the text, deliver it, and clean up — or handle
   /// cancellation, staleness and failure. `afterCopy` runs after the clipboard write and
   /// auto-paste (logging and history), so it cannot delay the paste. The `pasted` signal is logged
@@ -2906,11 +2938,7 @@ class MenuBarController: NSObject {
           self?.reviewPrompter.recordSuccessfulOperation()
         }
         PopupNotificationWindow.dismissProcessing()
-        chunkStatuses = []
-        if let job, currentJob === job {
-          currentJob = nil
-        }
-        processedAudioURLs.remove(audioURL)
+        endAudioJobBookkeeping(job: job, audioURL: audioURL)
         if clipboardManager.restorePendingSnapshot(afterForeignWriteAt: NSPasteboard.general.changeCount) {
           DebugLogger.log("READ-ALOUD-PROMPT: Restored the clipboard contents from before the selection copy")
         }
@@ -2975,14 +3003,7 @@ class MenuBarController: NSObject {
         } else {
           self.appState = self.appState.showSuccess(spec.successMessage(didAutoPaste))
         }
-        // Clearing chunk progress is part of "this job is over", not a per-mode option: whichever
-        // pipeline populated `chunkStatuses` (only long, chunked recordings do), leaving it set
-        // would carry stale progress into whatever the user does next. A no-op when already empty.
-        self.chunkStatuses = []
-        if let job, self.currentJob === job {
-          self.currentJob = nil
-        }
-        self.processedAudioURLs.remove(audioURL)
+        self.endAudioJobBookkeeping(job: job, audioURL: audioURL)
       }
 
       cleanupAudioFile(at: audioURL)
@@ -3924,6 +3945,9 @@ class MenuBarController: NSObject {
     }
     ttsPlayback.refuseFurtherChunks()
     let playbackStillDraining = ttsPlayback.isPlaying
+    // While refused-but-undrained audio still plays the request is open (a Stop is a real stop;
+    // `onPlaybackCompleted` clears it on drain); otherwise an error/cancel path just ended it.
+    if !playbackStillDraining { readAloudRequestIsOpen = false }
     currentReadAloudTask?.cancel()
     if cancelNetworkWork {
       speechService.cancelTTS()
@@ -5399,12 +5423,8 @@ extension MenuBarController: ShortcutDelegate {
     // Same gates as Dictate Prompt's `.start` (non-meeting): a missing key or a busy run must
     // not begin a recording whose result cannot be spoken.
     switch availability(.dictatePrompt) {
-    case .blocked(.busy):
-      DebugLogger.log("PROMPT-MODE: Shortcut ignored — a run is still in progress (\(appState))")
-      presentBlocked(.busy)
-      return
     case .blocked(let reason):
-      presentBlocked(reason)
+      presentDictatePromptBlocked(reason)
       return
     case .ignored:
       return
@@ -5413,13 +5433,9 @@ extension MenuBarController: ShortcutDelegate {
     default:
       return
     }
-    let promptModel = Self.selectedPromptModel()
-    let preparation = prepareDictatePromptSelection(logPrefix: "READ-ALOUD-PROMPT", model: promptModel)
-    guard preparation.ready else { return }
-    ConnectionPrewarmer.prewarm(for: promptModel)
-    discardStreamingSession()
-    beginAudioCapture(
-      mode: .prompt, promptSelection: preparation.selection, speakResult: true)
+    guard startDictatePromptCapture(
+      logPrefix: "READ-ALOUD-PROMPT", isMeeting: false, speakResult: true)
+    else { return }
     DebugLogger.log("READ-ALOUD-PROMPT: started")
   }
 

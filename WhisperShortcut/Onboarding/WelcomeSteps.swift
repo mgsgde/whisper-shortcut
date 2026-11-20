@@ -1172,6 +1172,13 @@ struct WelcomeDoneStep: View {
       }
       .frame(maxWidth: 560, alignment: .leading)
 
+      // On for a new install from here on (owner decision 2026-11-19): the card turns it on when it
+      // appears, so the user sees the switch in its on state and can turn it off right here.
+      UsageDataTourToggle()
+        .padding(14)
+        .frame(maxWidth: 560, alignment: .leading)
+        .cardChrome()
+
       // Asked last, once the user has seen what the app does: a yes here is an informed one.
       UsageStatisticsToggle()
         .padding(14)

@@ -4,11 +4,10 @@
 //
 //  CoreAudio enumeration of the Mac's input devices (microphones).
 //
-//  AVAudioRecorder — which every recorder in this app uses — has no device parameter on
-//  macOS and always captures from the system default input. Naming that device on the
-//  recording pill is step 1 of the microphone picker (plans/implementer-queue.md row 68):
-//  most "wrong headset" cases are resolved the moment the user sees which mic is live.
-//  Step 2 (choosing a device in Settings) will build on the same catalog.
+//  AVAudioRecorder has no device parameter on macOS and always captures the system
+//  default input. Naming that device on the recording pill is step 1 of the microphone
+//  picker (plans/implementer-queue.md row 68): most "wrong headset" cases are resolved
+//  the moment the user sees which mic is live. Step 2 uses this catalog for the picker.
 //
 
 import AudioToolbox
@@ -44,6 +43,31 @@ enum AudioInputDeviceCatalog {
   /// Convenience for callers that only display the name.
   static func defaultInputDeviceName() -> String? {
     defaultInputDevice()?.name
+  }
+
+  /// The picker entry with this CoreAudio UID, or nil when it is not connected.
+  /// Same list as `availableDevices()`: aggregate and virtual drivers are not microphones.
+  static func availableDevice(uid: String) -> InputDevice? {
+    availableDevices().first { $0.uid == uid }
+  }
+
+  /// The CoreAudio id of the macOS default input, or nil when none is set.
+  static func defaultInputDeviceID() -> AudioObjectID? {
+    readDefaultInputDevice()
+  }
+
+  /// Whether CoreAudio still has this device. A failed read counts as not alive:
+  /// an unplugged device's id stops answering.
+  static func isAlive(_ id: AudioObjectID) -> Bool {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyDeviceIsAlive,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain)
+    var alive: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    let status = AudioObjectGetPropertyData(id, &address, 0, nil, &size, &alive)
+    guard status == noErr else { return false }
+    return alive != 0
   }
 
   /// Every input device with at least one input channel, aggregate and virtual drivers

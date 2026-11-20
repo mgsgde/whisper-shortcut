@@ -1,6 +1,96 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Which microphone Dictate and Live Meeting record from. System default follows the input chosen in macOS." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit welchem Mikrofon Diktieren und Live-Meeting aufnehmen. Systemstandard folgt dem in macOS gewählten Eingang."
+          }
+        }
+      }
+    },
+    "System default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemstandard"
+          }
+        }
+      }
+    },
+    "System default (%@)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemstandard (%@)"
+          }
+        }
+      }
+    },
+    "%@ (not connected)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (nicht verbunden)"
+          }
+        }
+      }
+    },
+    "%@ is not connected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist nicht verbunden"
+          }
+        }
+      }
+    },
+    "Recordings use the system default until it is plugged in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen nutzen den Systemstandard, bis es wieder angeschlossen ist."
+          }
+        }
+      }
+    },
+    "Use System Default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemstandard verwenden"
+          }
+        }
+      }
+    },
+    "Selected microphone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewähltes Mikrofon"
+          }
+        }
+      }
+    },
+    "The selected microphone is not connected. Recording with the system default instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ausgewählte Mikrofon ist nicht verbunden. Die Aufnahme nutzt stattdessen den Systemstandard."
+          }
+        }
+      }
+    },
     "Work from any app. Press once to start, again to stop." : {
       "localizations" : {
         "de" : {
@@ -251,6 +341,26 @@
         }
       }
     },
+    "Dictate Live works with the offline Parakeet Ultra model (about 700 MB, downloaded once). It is selected as soon as the download finishes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra (ca. 700 MB, einmaliger Download). Es wird ausgewählt, sobald der Download fertig ist."
+          }
+        }
+      }
+    },
+    "Dictate Live works with the offline Parakeet Ultra model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra."
+          }
+        }
+      }
+    },
     "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works." : {
       "localizations" : {
         "de" : {
@@ -287,6 +397,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren ist direkt nach dem Start Ihres Macs bereit."
+          }
+        }
+      }
+    },
+    "Download Parakeet Ultra" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet Ultra laden"
           }
         }
       }
@@ -487,6 +607,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen → Berechtigungen & Datenschutz"
+          }
+        }
+      }
+    },
+    "Switching back to Dictate selects %@ again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Wechsel zurück zu Diktieren wird wieder %@ verwendet."
           }
         }
       }
@@ -2788,16 +2918,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tastenkürzel: Live diktieren"
-          }
-        }
-      }
-    },
-    "Dictate Live works with the offline Parakeet Ultra model. Select it below." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra. Wählen Sie es unten aus."
           }
         }
       }
@@ -14936,6 +15056,26 @@
         }
       }
     },
+    "Open Welcome Tour" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einführung öffnen"
+          }
+        }
+      }
+    },
+    "Open Welcome Tour…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einführung öffnen …"
+          }
+        }
+      }
+    },
     "Open a GitHub issue" : {
       "localizations" : {
         "de" : {
@@ -20815,16 +20955,6 @@
         }
       }
     },
-    "The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in your mail app." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Entwickler bekommt den Text und die Details unten, Sie müssen also weder Version noch Modell heraussuchen. Gesendet wird erst, wenn Sie in Ihrem Mailprogramm auf Senden drücken."
-          }
-        }
-      }
-    },
     "The email address is not valid." : {
       "localizations" : {
         "de" : {
@@ -22681,6 +22811,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartet auf Ihre Freigabe …"
+          }
+        }
+      }
+    },
+    "Walk through setup again: how dictation runs, permissions, and a first try. Your settings stay as they are." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einrichtung noch einmal durchgehen: wie das Diktat läuft, Berechtigungen und ein erster Versuch. Ihre Einstellungen bleiben, wie sie sind."
           }
         }
       }
@@ -29943,66 +30083,6 @@
         }
       }
     },
-    "Model output before cleanup:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modellausgabe vor der Bereinigung:"
-          }
-        }
-      }
-    },
-    "Audio length: %@ s" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Audiolänge: %@ s"
-          }
-        }
-      }
-    },
-    "Prompt sent: %lld chars, hash %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesendeter Prompt: %lld Zeichen, Hash %@"
-          }
-        }
-      }
-    },
-    "App version at dictation: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "App-Version beim Diktat: %@"
-          }
-        }
-      }
-    },
-    "Note: settings were changed after this dictation" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hinweis: Einstellungen wurden nach diesem Diktat geändert"
-          }
-        }
-      }
-    },
-    "Template: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorlage: %@"
-          }
-        }
-      }
-    },
     "none" : {
       "localizations" : {
         "de" : {
@@ -30059,6 +30139,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Feedback zu WhisperShortcut (%@)"
+          }
+        }
+      }
+    },
+    "Keeps your dictations, prompts and chats on this Mac for 90 days. Recent Transcriptions, learned quick prompts and new glossary names need it, and the Chat can look up why a dictation went wrong. Nothing leaves this Mac unless you ask the Chat about it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewahrt Ihre Diktate, Prompts und Chats 90 Tage lang auf diesem Mac auf. Letzte Transkriptionen, gelernte Quick Prompts und neue Namen im Glossar brauchen das, und der Chat kann nachsehen, warum ein Diktat danebenging. Nichts verlässt diesen Mac, außer Sie fragen den Chat danach."
+          }
+        }
+      }
+    },
+    "Dictating patient or client data? Turn it off here or later in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren Sie Patienten- oder Mandantendaten? Schalten Sie es hier aus oder später unter Einstellungen → Berechtigungen & Datenschutz."
+          }
+        }
+      }
+    },
+    "The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in your mail app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Entwickler bekommt den Text und die Details unten, Sie müssen also weder Version noch Modell heraussuchen. Gesendet wird erst, wenn Sie in Ihrem Mailprogramm auf Senden drücken."
+          }
+        }
+      }
+    },
+    "Model output before cleanup:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellausgabe vor der Bereinigung:"
+          }
+        }
+      }
+    },
+    "Audio length: %@ s" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audiolänge: %@ s"
+          }
+        }
+      }
+    },
+    "Prompt sent: %lld chars, hash %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesendeter Prompt: %lld Zeichen, Hash %@"
+          }
+        }
+      }
+    },
+    "App version at dictation: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Version beim Diktat: %@"
+          }
+        }
+      }
+    },
+    "Note: settings were changed after this dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweis: Einstellungen wurden nach diesem Diktat geändert"
+          }
+        }
+      }
+    },
+    "Template: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage: %@"
           }
         }
       }
