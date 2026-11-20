@@ -5569,13 +5569,13 @@ struct ChatInputAreaView: View {
             } else {
               Image(systemName: "arrow.up")
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(hasContent ? ChatTheme.windowBackground : ChatTheme.secondaryText.opacity(0.5))
+                .foregroundColor(hasContent ? .white : ChatTheme.secondaryText.opacity(0.5))
             }
           }
           .frame(width: 30, height: 30)
           .background(
             RoundedRectangle(cornerRadius: 8)
-              .fill(viewModel.isSending ? Color.red.opacity(0.8) : (hasContent ? ChatTheme.primaryText : ChatTheme.controlBackground))
+              .fill(viewModel.isSending ? ChatTheme.primaryText.opacity(0.14) : (hasContent ? ChatTheme.sendAccent : ChatTheme.primaryText.opacity(0.06)))
           )
         }
         .buttonStyle(.plain)
@@ -5588,8 +5588,8 @@ struct ChatInputAreaView: View {
       .padding(.vertical, 6)
     }
     .frame(maxWidth: 720)
-    // Composer fill matches the conversation pane (#0C1117); the 1px stroke keeps it delineated.
-    .background(ChatTheme.windowBackground)
+    // Composer sits one step lighter than the canvas, like Claude's input box.
+    .background(ChatTheme.controlBackground)
     .clipShape(RoundedRectangle(cornerRadius: 14))
     .overlay(
       RoundedRectangle(cornerRadius: 14)

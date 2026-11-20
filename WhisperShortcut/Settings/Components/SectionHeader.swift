@@ -18,12 +18,12 @@ struct SectionHeader: View {
       HStack(spacing: 8) {  // Add spacing between icon and text
         if let systemImage = systemImage {
           Image(systemName: systemImage)
-            .font(.title2)
-            .foregroundColor(.accentColor)
+            .font(.title3)
+            .foregroundStyle(.secondary)  // monochrome, like Claude's settings
         }
         Text(title)
-          .font(.title)  // Increased from .title2 to .title for more prominent section headers
-          .fontWeight(.semibold)
+          .font(.title2)  // Claude-style: calm medium-weight headers, not shouting
+          .fontWeight(.medium)
           .textSelection(.enabled)
       }
 

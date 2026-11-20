@@ -291,9 +291,10 @@ struct ChatSidebar: View {
         .foregroundColor(ChatTheme.secondaryText.opacity(0.7))
         .rotationEffect(.degrees(isCollapsed ? 0 : 90))
         .frame(width: 12, alignment: .center)
+      // Claude's sidebar section label ("whisper-shortcut ⌄"): small and secondary, not a bold heading.
       Text(title)
-        .font(.system(size: 15, weight: .semibold))
-        .foregroundColor(ChatTheme.primaryText)
+        .font(.system(size: 12, weight: .medium))
+        .foregroundColor(ChatTheme.secondaryText)
       Spacer()
       Button(action: perform) {
         Image(systemName: actionIcon)
@@ -477,21 +478,17 @@ struct ChatSidebar: View {
     _ label: String, isCollapsed: Bool, showDivider: Bool, toggle: @escaping () -> Void
   ) -> some View {
     VStack(spacing: 0) {
-      if showDivider {
-        Divider()
-          .padding(.horizontal, 10)
-          .padding(.top, 12)
-      }
+      // Claude separates groups with space, not rules.
       HStack(spacing: 5) {
         Image(systemName: "chevron.right")
           .font(.system(size: 8, weight: .bold))
           .foregroundColor(ChatTheme.secondaryText.opacity(0.55))
           .rotationEffect(.degrees(isCollapsed ? 0 : 90))
           .frame(width: 10, alignment: .center)
-        Text(label.uppercased())
-          .font(.system(size: 9, weight: .bold, design: .default))
-          .tracking(1.2)
-          .foregroundColor(ChatTheme.secondaryText.opacity(0.65))
+        // Claude's group label: footnote size, sentence case, secondary text (--cds-text-secondary).
+        Text(label)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundColor(ChatTheme.secondaryText)
         Spacer()
       }
       .padding(.leading, 14)
@@ -528,14 +525,13 @@ struct ChatSidebar: View {
 
     let isRenaming = renamingSessionId == session.id
 
-    // System Settings-style selection: solid accent background + white text.
-    let textColor: Color =
-      isActive ? .white : ChatTheme.primaryText
+    // Claude-style selection: a translucent white fill (--cds-fill-ghost-selected), not a solid accent block.
+    let textColor: Color = ChatTheme.primaryText
 
     let rowBg: Color =
       isActive
-      ? Color.accentColor
-      : (isHovered ? Color.primary.opacity(0.07) : Color.clear)
+      ? ChatTheme.selectedRowFill
+      : (isHovered ? ChatTheme.hoverRowFill : Color.clear)
 
     // Hover button: active → archive, archived → delete permanently. Each step
     // is one click away from removal — never an irreversible action by accident.
@@ -561,7 +557,7 @@ struct ChatSidebar: View {
       }
       if isRenaming {
         TextField("Title", text: $renameDraft, onCommit: { commitRename() })
-          .font(.system(size: 13))
+          .font(.system(size: 14))
           .textFieldStyle(.plain)
           .focused($renameFieldFocused)
           .onAppear { renameFieldFocused = true }
@@ -572,7 +568,7 @@ struct ChatSidebar: View {
           .onExitCommand { renamingSessionId = nil }
       } else {
         Text(title)
-          .font(.system(size: 13))
+          .font(.system(size: 14))  // --cds-font-size-body
           .foregroundColor(textColor)
           .lineLimit(1)
           .truncationMode(.tail)
@@ -596,8 +592,8 @@ struct ChatSidebar: View {
       }
     }
     .padding(.horizontal, 10)
-    .padding(.vertical, 6)
-    .background(RoundedRectangle(cornerRadius: 6).fill(rowBg))
+    .padding(.vertical, 7)
+    .background(RoundedRectangle(cornerRadius: 8).fill(rowBg))
     .padding(.horizontal, 6)
     .contentShape(Rectangle())
     .onTapGesture(count: 2) {
