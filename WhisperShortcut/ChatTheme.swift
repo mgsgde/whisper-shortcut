@@ -34,25 +34,28 @@ enum ChatFontDesign: String, CaseIterable {
 }
 
 /// Fixed appearance for the chat window (dark, no theme switching).
-/// Warm dark palette modeled on Claude's dark mode (Magnus, 2026-11-20: the navy /
-/// near-black + pure-white look read "zu aggressiv, zu grell"). Surfaces are warm
-/// charcoals a few steps apart, text is an off-white with a paper tint, so nothing glares.
-/// Like Claude, the system accent (blue) stays for toggles and links; the terracotta
-/// `accent` is used only for the send button.
+/// Values are copied 1:1 from the Claude desktop app's design-system tokens (`--cds-*`, dark
+/// mode, read from Claude.app's bundle on 2026-11-20 and checked against screen pixels):
+/// neutral greys, translucent white text, blue accent. Magnus, 2026-11-20: the navy +
+/// pure-white look was "zu aggressiv, zu grell"; Claude's reads calm.
 enum ChatTheme {
-  /// Main content area background (message list) — Claude's dark canvas.
-  static let windowBackground = Color(red: 38/255, green: 38/255, blue: 36/255)    // #262624
-  /// Composer, input bar, command overlay. One step lighter than the canvas.
-  static let controlBackground = Color(red: 48/255, green: 48/255, blue: 46/255)   // #30302E
-  /// Left sidebar — one step darker than the canvas, not near-black.
-  static let sidebarBackground = Color(red: 31/255, green: 30/255, blue: 29/255)   // #1F1E1D
-  /// Top navigation/status bar — matches the sidebar.
-  static let topBarBackground = sidebarBackground
-  /// User message bubble — a darker well inside the canvas, like Claude's user turn.
-  static let userBubbleBackground = Color(red: 20/255, green: 20/255, blue: 19/255) // #141413
-  /// Primary text (messages, headers). Warm off-white, never pure white.
-  static let primaryText = Color(red: 245/255, green: 244/255, blue: 237/255)      // #F5F4ED
-  /// Send button fill — Claude's terracotta. Deliberately not the app-wide accent.
+  /// Conversation pane — `--cds-surface-1`.
+  static let windowBackground = Color(red: 25/255, green: 25/255, blue: 25/255)    // #191919
+  /// Composer, input bar, command overlay — `--cds-surface-popover` (measured on the composer).
+  static let controlBackground = Color(red: 48/255, green: 48/255, blue: 48/255)   // #303030
+  /// Left sidebar — `--cds-fizzy-lake-color-sidebar`.
+  static let sidebarBackground = Color(red: 31/255, green: 31/255, blue: 31/255)   // #1F1F1F
+  /// Top bar — `--cds-gray-830`, the slightly raised strip above the conversation.
+  static let topBarBackground = Color(red: 26/255, green: 26/255, blue: 26/255)    // #1A1A1A
+  /// User message bubble — `--cds-fill-secondary-layer` (#ffffff13) over surface-1.
+  static let userBubbleBackground = Color(red: 42/255, green: 42/255, blue: 42/255) // #2A2A2A
+  /// Primary text — `--cds-text-primary` (#ffffffed).
+  static let primaryText = Color.white.opacity(0.93)
+  /// Selected sidebar row — `--cds-fill-ghost-selected` (#ffffff26).
+  static let selectedRowFill = Color.white.opacity(0.15)
+  /// Hovered row — `--cds-fill-ghost-hover` (#ffffff13).
+  static let hoverRowFill = Color.white.opacity(0.075)
+  /// Send button — Claude's `--accent-brand` terracotta (hsl 15 63.1% 59.6%).
   static let sendAccent = Color(red: 217/255, green: 119/255, blue: 87/255)        // #D97757
   /// Body prose font size — single source of truth for chat messages (prose, bullets,
   /// user bubble) and the base for relative heading sizes.
@@ -91,9 +94,9 @@ enum ChatTheme {
     return NSFont(descriptor: descriptor, size: size) ?? base
   }
   /// Secondary text (buttons, captions).
-  static var secondaryText: Color { primaryText.opacity(0.65) }
+  static var secondaryText: Color { Color.white.opacity(0.57) }  // --cds-text-secondary #ffffff91
   /// Border opacity (e.g. input stroke). Subtle.
-  static let borderOpacity: Double = 0.18
+  static let borderOpacity: Double = 0.12  // --cds-border-line #ffffff1f
 
   // MARK: - AppKit bridges
   // The chat window is a fixed dark theme, so AppKit views inside it must not use the
@@ -103,9 +106,9 @@ enum ChatTheme {
   static var secondaryNSText: NSColor { NSColor(secondaryText) }
 }
 
-/// Settings window palette, modeled on Claude's settings (Magnus, 2026-11-20). Unlike the chat,
-/// Settings follows the system appearance, so every color has a light and a dark value: dark is
-/// Claude's warm charcoal, light its paper white. Toggles and links keep the system accent.
+/// Settings window palette — Claude desktop's `--cds-*` tokens for light and dark (Magnus,
+/// 2026-11-20). Unlike the chat, Settings follows the system appearance. Toggles and links use
+/// the AccentColor asset, which carries Claude's `--cds-blue-450`.
 enum SettingsTheme {
   private static func dynamic(light: NSColor, dark: NSColor) -> Color {
     Color(nsColor: NSColor(name: nil) { appearance in
@@ -117,13 +120,13 @@ enum SettingsTheme {
   }
 
   /// Detail pane.
-  static let canvas = dynamic(light: rgb(250, 249, 245), dark: rgb(38, 38, 36))     // #FAF9F5 / #262624
+  static let canvas = dynamic(light: rgb(255, 255, 255), dark: rgb(25, 25, 25))     // surface-1 #FFFFFF / #191919
   /// Sidebar column, one step off the canvas.
-  static let sidebar = dynamic(light: rgb(240, 238, 230), dark: rgb(31, 30, 29))    // #F0EEE6 / #1F1E1D
+  static let sidebar = dynamic(light: rgb(250, 250, 250), dark: rgb(31, 31, 31))    // sidebar #FAFAFA / #1F1F1F
   /// Selected sidebar row — a quiet fill, never a solid accent block.
   static let selection = dynamic(
-    light: NSColor.black.withAlphaComponent(0.07), dark: NSColor.white.withAlphaComponent(0.09))
+    light: NSColor.black.withAlphaComponent(0.10), dark: NSColor.white.withAlphaComponent(0.15))  // ghost-selected
   /// Hovered sidebar row.
   static let hover = dynamic(
-    light: NSColor.black.withAlphaComponent(0.04), dark: NSColor.white.withAlphaComponent(0.05))
+    light: NSColor.black.withAlphaComponent(0.05), dark: NSColor.white.withAlphaComponent(0.075))  // ghost-hover
 }
