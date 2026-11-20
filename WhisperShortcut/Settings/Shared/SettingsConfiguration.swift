@@ -330,9 +330,9 @@ enum PromptModel: String, CaseIterable {
   var description: String {
     switch self {
     case .gemini4Hydrogen:
-      return String(localized: "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 tier ($1.50/$7.50 per 1M) • 1M context • Google Search grounding • Audio input")
+      return String(localized: "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 • Everyday questions and agents • Free tier • Multimodal")
     case .gemini4Neon:
-      return String(localized: "Google's Gemini 4 Neon • Frontier-level intelligence with fast task completion ($3/$15 per 1M) • 1M context • Google Search grounding • Audio input")
+      return String(localized: "Google's Gemini 4 Neon • Strongest Gemini 4 for hard research questions and configuration • Paid (no free tier) • Multimodal")
     case .gemini31Pro:
       return String(localized: "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal")
     case .gemini31FlashLite:

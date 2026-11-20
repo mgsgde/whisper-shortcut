@@ -304,9 +304,9 @@ enum TranscriptionModel: String, CaseIterable {
   var description: String {
     switch self {
     case .gemini4Hydrogen:
-      return String(localized: "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 tier • Paid (no free tier)")
+      return String(localized: "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 • Free tier")
     case .gemini4Neon:
-      return String(localized: "Google's Gemini 4 Neon • Frontier-level intelligence, fast • Paid (no free tier)")
+      return String(localized: "Google's Gemini 4 Neon • Strongest Gemini 4 • Paid (no free tier)")
     case .gemini31Pro:
       return String(localized: "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal")
     case .gemini31FlashLite:
