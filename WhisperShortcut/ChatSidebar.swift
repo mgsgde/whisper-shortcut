@@ -528,14 +528,13 @@ struct ChatSidebar: View {
 
     let isRenaming = renamingSessionId == session.id
 
-    // System Settings-style selection: solid accent background + white text.
-    let textColor: Color =
-      isActive ? .white : ChatTheme.primaryText
+    // Claude-style selection: a quiet warm-grey fill, not a solid accent block.
+    let textColor: Color = ChatTheme.primaryText
 
     let rowBg: Color =
       isActive
-      ? Color.accentColor
-      : (isHovered ? Color.primary.opacity(0.07) : Color.clear)
+      ? ChatTheme.primaryText.opacity(0.10)
+      : (isHovered ? ChatTheme.primaryText.opacity(0.05) : Color.clear)
 
     // Hover button: active → archive, archived → delete permanently. Each step
     // is one click away from removal — never an irreversible action by accident.

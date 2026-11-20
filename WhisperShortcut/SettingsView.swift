@@ -10,6 +10,7 @@ struct SettingsView: View {
   /// Bumped when "Dictation only" changes, so the sidebar list is rebuilt with the new tab set
   /// (same idea as `KeyboardShortcutsSection.modeRevision`).
   @State private var modeRevision = 0
+  @State private var hoveredTab: SettingsTab?
 
   /// A stored or requested tab that "Dictation only" hides falls back to General; the stored
   /// raw value is left as it is, so the full app returns to the tab the user had.
@@ -51,42 +52,57 @@ struct SettingsView: View {
   }
 
   // MARK: - Sidebar
-  @ViewBuilder
+  /// Claude-style sidebar: plain rows on a solid warm surface, monochrome icons, and a quiet
+  /// grey fill for the selected row instead of the system's solid accent selection.
   private var sidebar: some View {
-    List(selection: Binding<SettingsTab?>(
-      get: { selectedTab },
-      set: { if let tab = $0 { selectedTabRaw = tab.rawValue } }
-    )) {
-      ForEach(SettingsTab.sections, id: \.self) { section in
-        Section {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 2) {
+        ForEach(SettingsTab.sections, id: \.self) { section in
+          Text(section.displayName)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
           ForEach(section.tabs, id: \.self) { tab in
             sidebarRow(for: tab)
           }
-        } header: {
-          Text(section.displayName)
         }
       }
+      .padding(.horizontal, 12)
+      .padding(.bottom, 12)
     }
     .id(modeRevision)
-    .listStyle(.sidebar)
+    .background(SettingsTheme.sidebar)
     .frame(minWidth: 270, idealWidth: 270, maxWidth: 300)
   }
 
-  /// One sidebar row. The `NavigationLink` carries the tab as its value, which is what the
-  /// `List`'s selection binding above tracks.
   private func sidebarRow(for tab: SettingsTab) -> some View {
-    NavigationLink(value: tab) {
+    let isSelected = tab == selectedTab
+    return Button {
+      selectedTabRaw = tab.rawValue
+    } label: {
       HStack(spacing: 10) {
         Image(systemName: iconName(for: tab))
-          .font(.body)
-          .foregroundColor(.accentColor)
+          .font(.system(size: 14, weight: .regular))
+          .foregroundStyle(.primary.opacity(0.8))
           .frame(width: 20, height: 20)
-
         Text(tab.displayName)
-          .font(.body)
+          .font(.system(size: 13.5))
+          .foregroundStyle(.primary)
+        Spacer(minLength: 0)
       }
-      .padding(.vertical, 2)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .contentShape(Rectangle())
+      .background(
+        RoundedRectangle(cornerRadius: 8)
+          .fill(isSelected ? SettingsTheme.selection : (hoveredTab == tab ? SettingsTheme.hover : .clear))
+      )
     }
+    .buttonStyle(.plain)
+    .onHover { hoveredTab = $0 ? tab : (hoveredTab == tab ? nil : hoveredTab) }
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
     .help(Text(description(for: tab)))
     .pointerCursorOnHover()
   }
@@ -147,6 +163,7 @@ struct SettingsView: View {
 
       versionFooter
     }
+    .background(SettingsTheme.canvas)
   }
 
   /// Always-visible footer so support / feedback doesn't require opening About.
