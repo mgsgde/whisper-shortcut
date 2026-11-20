@@ -30162,6 +30162,26 @@
           }
         }
       }
+    },
+    "Keeps your dictations, prompts and chats on this Mac for 90 days. Recent Transcriptions, learned quick prompts and new glossary names need it, and the Chat can look up why a dictation went wrong. Nothing leaves this Mac unless you ask the Chat about it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewahrt Ihre Diktate, Prompts und Chats 90 Tage lang auf diesem Mac auf. Letzte Transkriptionen, gelernte Quick Prompts und neue Namen im Glossar brauchen das, und der Chat kann nachsehen, warum ein Diktat danebenging. Nichts verlässt diesen Mac, außer Sie fragen den Chat danach."
+          }
+        }
+      }
+    },
+    "Dictating patient or client data? Turn it off here or later in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren Sie Patienten- oder Mandantendaten? Schalten Sie es hier aus oder später unter Einstellungen → Berechtigungen & Datenschutz."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
