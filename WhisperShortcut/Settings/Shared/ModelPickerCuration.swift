@@ -343,7 +343,7 @@ extension TTSModel: PickerCuratedModel {
     switch self {
     case .gemini38FlashLiteTTS: return 1
     case .gemini38FlashTTS: return 2
-    case .openAIGpt4oMiniTTS, .grokVoiceTTS, .systemMacOS, .ownServerTTS: return nil
+    case .openAIRealtimeMiniTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS, .systemMacOS, .ownServerTTS: return nil
     case .qwen3VoiceDesign, .qwen3CustomVoice: return nil
     }
   }

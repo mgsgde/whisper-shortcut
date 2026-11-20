@@ -1,6 +1,5 @@
 import AppKit
 import AuthenticationServices
-import CryptoKit
 import Foundation
 
 // MARK: - Seams (injectable for tests)
@@ -310,19 +309,6 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     return (json["code"] as? String, json["error_description"] as? String ?? json["message"] as? String)
   }
 
-  // MARK: - PKCE
-
-  private static func codeChallengeS256(verifier: String) -> String {
-    base64URLEncode(Data(SHA256.hash(data: Data(verifier.utf8))))
-  }
-
-  private static func base64URLEncode(_ data: Data) -> String {
-    data.base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-
   // MARK: - Sign in
 
   /// Runs the browser flow and stores the result. Returns `false` when the user closed the sheet or
@@ -355,7 +341,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     let hostID = saved?.extAgentHostID.isEmpty == false ? saved!.extAgentHostID : ChatGPTPlanCredentials.hostID(defaults: defaults)
 
     let verifier = OAuthCSRF.makeState()
-    let challenge = Self.codeChallengeS256(verifier: verifier)
+    let challenge = OAuthCSRF.codeChallengeS256(verifier: verifier)
     let state = OAuthCSRF.makeState()
     let nonce = OAuthCSRF.makeState()
 
@@ -619,16 +605,6 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     ChatGPTPlanModelCatalog.clearCache()
     DebugLogger.log("CHATGPT-PLAN: Signed out (revocation \(confirmed ? "confirmed" : "NOT confirmed"))")
     return confirmed
-  }
-
-  /// Removes the saved registration entirely, so the next sign-in registers a new client. Use for
-  /// "sign in with a different ChatGPT account" after a sign-out.
-  func forgetAccount() {
-    store.delete()
-    needsSignIn = false
-    lastError = nil
-    refreshState()
-    ChatGPTPlanModelCatalog.clearCache()
   }
 
   private func revoke(refreshToken: String, clientID: String) async -> Bool {

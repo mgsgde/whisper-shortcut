@@ -32,7 +32,7 @@ actor GoogleTasksAPIClient {
 
   func listTasks(taskListId: String = "@default", maxResults: Int = 20, showCompleted: Bool = false) async throws -> [[String: Any]] {
     let cappedMax = min(max(maxResults, 1), maxResultsCap)
-    let encodedList = encodedPathComponent(taskListId)
+    let encodedList = taskListId.encodedPathSegment
     // Tasks completed in Google's own apps are hidden. showHidden must match showCompleted
     // or those tasks never come back.
     let show = String(showCompleted)
@@ -80,7 +80,7 @@ actor GoogleTasksAPIClient {
   // MARK: - Create Task
 
   func createTask(title: String, notes: String? = nil, due: String? = nil, taskListId: String = "@default") async throws -> [String: Any] {
-    let encodedList = encodedPathComponent(taskListId)
+    let encodedList = taskListId.encodedPathSegment
     let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks")!
 
     var body: [String: Any] = ["title": title]
@@ -114,8 +114,8 @@ actor GoogleTasksAPIClient {
   // MARK: - Complete Task
 
   func completeTask(taskId: String, taskListId: String = "@default") async throws -> [String: Any] {
-    let encodedList = encodedPathComponent(taskListId)
-    let encodedTask = encodedPathComponent(taskId)
+    let encodedList = taskListId.encodedPathSegment
+    let encodedTask = taskId.encodedPathSegment
     let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks/\(encodedTask)")!
 
     let body: [String: Any] = ["status": "completed"]
@@ -146,8 +146,8 @@ actor GoogleTasksAPIClient {
     due: String? = nil,
     status: String? = nil
   ) async throws -> [String: Any] {
-    let encodedList = encodedPathComponent(taskListId)
-    let encodedTask = encodedPathComponent(taskId)
+    let encodedList = taskListId.encodedPathSegment
+    let encodedTask = taskId.encodedPathSegment
     let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks/\(encodedTask)")!
 
     var body: [String: Any] = [:]
@@ -196,8 +196,8 @@ actor GoogleTasksAPIClient {
   // MARK: - Delete Task
 
   func deleteTask(taskId: String, taskListId: String = "@default") async throws -> [String: Any] {
-    let encodedList = encodedPathComponent(taskListId)
-    let encodedTask = encodedPathComponent(taskId)
+    let encodedList = taskListId.encodedPathSegment
+    let encodedTask = taskId.encodedPathSegment
     let url = URL(string: "\(baseURL)/lists/\(encodedList)/tasks/\(encodedTask)")!
     _ = try await authorizedRequest(url: url, httpMethod: "DELETE")
     return ["ok": true, "task_id": taskId, "deleted": true]
@@ -262,12 +262,6 @@ actor GoogleTasksAPIClient {
       (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?
         .keys.sorted().joined(separator: ",")
     } ?? "none"
-  }
-
-  private func encodedPathComponent(_ value: String) -> String {
-    var allowed = CharacterSet.urlPathAllowed
-    allowed.remove(charactersIn: "/?#[]@!$&'()*+,;=")
-    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
   }
 
   // MARK: - Validation

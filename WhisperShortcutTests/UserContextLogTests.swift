@@ -82,4 +82,37 @@ struct UserContextLogTests {
     #expect(rows.compactMap(\.interactionMode) == [.transcription, .prompt, .chat])
     #expect(rows[3].interactionMode == nil)
   }
+
+  @Test("A prompt row records field-context characters and history turns; an older row leaves both nil")
+  func promptRowRecordsFieldContextAndHistoryTurns() throws {
+    let entry = InteractionLogEntry(
+      ts: "2026-11-20T12:00:00Z",
+      mode: "prompt",
+      model: nil,
+      result: nil,
+      selectedText: nil,
+      userInstruction: nil,
+      modelResponse: nil,
+      text: nil,
+      voice: nil,
+      transcriptionModel: nil,
+      hadScreenshot: false,
+      latencyMs: nil,
+      provider: nil,
+      loadMs: nil,
+      fieldContextChars: 412,
+      historyTurns: 0)
+    let data = try JSONEncoder().encode(entry)
+    let json = try #require(String(data: data, encoding: .utf8))
+    #expect(json.contains(#""fieldContextChars":412"#))
+    #expect(json.contains(#""historyTurns":0"#))
+    let decoded = try JSONDecoder().decode(InteractionLogEntry.self, from: data)
+    #expect(decoded.fieldContextChars == 412)
+    #expect(decoded.historyTurns == 0)
+
+    let older = Data(#"{"ts":"2026-10-19T10:00:01Z","mode":"prompt"}"#.utf8)
+    let olderEntry = try JSONDecoder().decode(InteractionLogEntry.self, from: older)
+    #expect(olderEntry.fieldContextChars == nil)
+    #expect(olderEntry.historyTurns == nil)
+  }
 }

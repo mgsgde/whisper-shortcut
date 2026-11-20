@@ -20,12 +20,13 @@ struct RetiredOpenAIModelsTests {
     #expect(selectable.contains(.openAIGPTTranscribe))
   }
 
-  @Test("gpt-4o-mini-tts is not offered for Read Aloud")
+  @Test("gpt-4o-mini-tts is not offered for Read Aloud; its Realtime replacement is")
   func miniTTSHiddenFromReadAloud() {
     #expect(!TTSModel.readAloudModels.contains(.openAIGpt4oMiniTTS))
+    #expect(TTSModel.readAloudModels.contains(.openAIRealtimeMiniTTS))
   }
 
-  @Test("Retired Read Aloud moves to Gemini Flash-Lite TTS with a Gemini key, else the macOS voice")
+  @Test("Retired Read Aloud moves to the Realtime replacement with an OpenAI key, else Gemini Flash-Lite TTS, else the macOS voice")
   func retiredReadAloudReplacement() {
     func hasKey(_ keys: Set<String>) -> (TTSProvider) -> Bool {
       { provider in
@@ -39,10 +40,10 @@ struct RetiredOpenAIModelsTests {
     }
     #expect(
       ModelSelectionReconciler.retiredReadAloudReplacement(
-        for: .openAIGpt4oMiniTTS, hasKey: hasKey(["gemini"])) == .gemini38FlashLiteTTS)
+        for: .openAIGpt4oMiniTTS, hasKey: hasKey(["openai"])) == .openAIRealtimeMiniTTS)
     #expect(
       ModelSelectionReconciler.retiredReadAloudReplacement(
-        for: .openAIGpt4oMiniTTS, hasKey: hasKey(["openai"])) == .systemMacOS)
+        for: .openAIGpt4oMiniTTS, hasKey: hasKey(["gemini"])) == .gemini38FlashLiteTTS)
     #expect(
       ModelSelectionReconciler.retiredReadAloudReplacement(
         for: .openAIGpt4oMiniTTS, hasKey: hasKey([])) == .systemMacOS)
