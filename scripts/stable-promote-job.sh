@@ -13,6 +13,14 @@
 # DMGs. Rollback is a higher version number with the previous good code, then a
 # promotion. Sparkle never downgrades.
 #
+# After a SUCCESSFUL promotion (not in a dry-run), this job also calls
+# scripts/appstore-submit-job.sh for the promoted tag, so the same version that just
+# went live on Stable is submitted to the Mac App Store the same week, release type
+# AFTER_APPROVAL (owner decision, Magnus, 2026-11-20). That script mails on its own
+# success/failure and keeps its own state in build/appstore-weekly/; a failure there
+# must never turn this promotion's result into a failure — the promotion already
+# happened — so its exit status is only logged, not checked.
+#
 # State lives in build/stable-channel/ (gitignored):
 #   candidate   one line, "vX.Y YYYY-MM-DD" — the frozen date, not the day it ships
 #   hold        if this file exists, do nothing but mail once a week; its contents
@@ -389,6 +397,7 @@ fi
 if [ "$DRY" -eq 1 ]; then
   if [ -n "$WOULD_PROMOTE" ]; then
     echo "dry-run: would mail handled: Stable: $WOULD_PROMOTE promoted"
+    echo "dry-run: would call scripts/appstore-submit-job.sh $WOULD_PROMOTE"
   fi
   if [ -n "$FROZE" ] && [ -z "$WOULD_PROMOTE" ]; then
     echo "dry-run: would mail fyi: froze candidate $FROZE"
@@ -415,6 +424,15 @@ if [ -n "$PROMOTED" ]; then
   } > "$BODY"
   report_out "Stable: $PROMOTED promoted" "$BODY" \
     --verdict handled --verdict-handler "scripts/stable-promote-job.sh"
+
+  # Hand the just-promoted tag to the App Store submission job. Its failure must
+  # never turn this (already-successful) promotion into a failure — it mails on
+  # its own success/failure and keeps its own state — so only log the outcome.
+  if bash "$REPO/scripts/appstore-submit-job.sh" "$PROMOTED"; then
+    echo "App Store submission job for $PROMOTED finished."
+  else
+    echo "WARN: App Store submission job for $PROMOTED exited non-zero; it mails its own failure." >&2
+  fi
 elif [ -n "$FROZE" ]; then
   BODY="$STATE_DIR/$STAMP-candidate.md"
   {
