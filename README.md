@@ -117,7 +117,7 @@ Useful scripts: `scripts/logs.sh` (filter app logs), `scripts/run-tests.sh`, `sc
 
 ## Feedback and contributing
 
-Found a bug or missing something? [Open an issue](https://github.com/mgsgde/whisper-shortcut/issues), or use **Send Feedback** in the menu bar, which can attach your last dictation. Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md).
+Found a bug or missing something? Report a Problem… in the menu bar (and in Settings → About) opens one window that sends the report by email with your configuration attached as a file; you see everything before it is sent. Before you open a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

@@ -347,7 +347,7 @@ class ChatViewModel: ObservableObject {
     ("/unpin", "Make the window close when losing focus"),
     ("/meeting", "Start or stop live meeting recording"),
     ("/copy", "Copy the entire chat history to clipboard as Markdown"),
-    ("/feedback", "Message the developer, with the end of this chat attached"),
+    ("/feedback", "Report a problem, the end of this chat is added"),
   ]
   /// Menu text: descriptions in the app language.
   static let commandsBeforeModels: [(command: String, description: String)] =
@@ -983,34 +983,26 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Copied chat (\(target.messages.count) messages, \(markdown.count) chars) to clipboard")
   }
 
-  /// `/feedback` — opens WhatsApp with the tail of this chat already quoted.
+  /// `/feedback` — opens the report window on general feedback, with the tail of this chat in
+  /// the details. The message field stays empty so the user can say what went wrong.
   ///
-  /// This is the lowest-friction report the app can offer: the user is already typing sentences
-  /// about their problem here, so the alternative is asking them to describe it a second time
-  /// somewhere else. The transcript is *prefilled*, not sent — WhatsApp opens with the text
-  /// visible and the user presses send, so nothing from their chat leaves the machine unseen.
+  /// The user is already typing sentences about their problem here, so the alternative is asking
+  /// them to describe it a second time. The transcript is prefilled, not sent.
   func sendFeedbackFromChat() {
     let excerpt = recentTranscriptForFeedback()
-    let context = excerpt.isEmpty
-      ? nil
-      : "Here is the end of my chat for context:\n\n\(excerpt)"
-    guard FeedbackLinks.open(.whatsApp, context: context) else {
-      showNotice("Couldn't open WhatsApp — use Settings → About for the other contact options.")
-      return
-    }
-    showNotice(
-      excerpt.isEmpty
-        ? ("Opened WhatsApp. Edit the message before sending." as LocalizedStringResource)
-        : "Opened WhatsApp with the end of this chat attached. Edit before sending.")
+    ProblemReport.open(
+      message: nil,
+      details: excerpt.isEmpty ? nil : excerpt,
+      startOnGeneral: true)
   }
 
-  /// The last few turns of this chat, oldest first, clamped to what a URL can carry.
+  /// The last few turns of this chat, oldest first, clamped so the report stays readable.
   private func recentTranscriptForFeedback() -> String {
     let recent = messages.suffix(6)
     guard !recent.isEmpty else { return "" }
     let rendered = recent.map { message -> String in
       let who = message.role == .user ? "Me" : "Assistant" // sent to the developer in English
-      // One line per turn: a pasted multi-line reply makes the WhatsApp draft unreadable.
+      // One line per turn: a pasted multi-line reply makes the report hard to read.
       let body = message.content
         .replacingOccurrences(of: "\n", with: " ")
         .trimmingCharacters(in: .whitespacesAndNewlines)

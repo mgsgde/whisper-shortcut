@@ -664,6 +664,8 @@ struct MCPConfigToolsTests {
     ], access: .write)
     #expect(!r.isError)
     #expect(r.text.contains("Saved as a problem report"))
+    #expect(r.text.contains("Report a Problem"))
+    #expect(!r.text.contains("GitHub"))
     #expect(env.proposals.pending.count == 1)
     #expect(env.changeLog.changes.isEmpty)
     let proposal = env.proposals.pending[0]

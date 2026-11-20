@@ -418,7 +418,8 @@ struct FixedPromptCoreTests {
     let description = defs.first { ($0["name"] as? String) == "report_problem" }?["description"] as? String
     #expect(description?.contains("prompt configuration is attached automatically") == true)
     #expect(description?.contains("patients, clients") == true)
-    #expect(description?.contains("review window") == true)
+    #expect(description?.contains("Report a Problem") == true)
+    #expect(description?.contains("nothing is sent automatically") == true)
   }
 
   // MARK: - Helpers

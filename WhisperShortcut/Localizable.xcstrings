@@ -20765,16 +20765,6 @@
         }
       }
     },
-    "Template “%@”" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorlage „%@“"
-          }
-        }
-      }
-    },
     "Template" : {
       "localizations" : {
         "de" : {
@@ -20961,16 +20951,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Verbindung brach ab, bevor ChatGPT die Antwort fertig hatte."
-          }
-        }
-      }
-    },
-    "The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in WhatsApp or Mail." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Entwickler bekommt den Text und die Details unten, Sie müssen also weder Version noch Modell heraussuchen. Gesendet wird erst, wenn Sie in WhatsApp oder Mail auf Senden drücken."
           }
         }
       }
@@ -30179,6 +30159,416 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren Sie Patienten- oder Mandantendaten? Schalten Sie es hier aus oder später unter Einstellungen → Berechtigungen & Datenschutz."
+          }
+        }
+      }
+    },
+    "The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in your mail app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Entwickler bekommt den Text und die Details unten, Sie müssen also weder Version noch Modell heraussuchen. Gesendet wird erst, wenn Sie in Ihrem Mailprogramm auf Senden drücken."
+          }
+        }
+      }
+    },
+    "Model output before cleanup:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellausgabe vor der Bereinigung:"
+          }
+        }
+      }
+    },
+    "Audio length: %@ s" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audiolänge: %@ s"
+          }
+        }
+      }
+    },
+    "Prompt sent: %lld chars, hash %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesendeter Prompt: %lld Zeichen, Hash %@"
+          }
+        }
+      }
+    },
+    "App version at dictation: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Version beim Diktat: %@"
+          }
+        }
+      }
+    },
+    "Note: settings were changed after this dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweis: Einstellungen wurden nach diesem Diktat geändert"
+          }
+        }
+      }
+    },
+    "Template: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage: %@"
+          }
+        }
+      }
+    },
+    "Also send my settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Einstellungen mitsenden"
+          }
+        }
+      }
+    },
+    "Prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompts"
+          }
+        }
+      }
+    },
+    "Settings attached as a file: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen als Datei angehängt: %@"
+          }
+        }
+      }
+    },
+    "Your message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Nachricht"
+          }
+        }
+      }
+    },
+    "What is it about?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worum geht es?"
+          }
+        }
+      }
+    },
+    "Send my configuration (glossary, instructions, templates, settings)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konfiguration mitsenden (Glossar, Anweisungen, Vorlagen, Einstellungen)"
+          }
+        }
+      }
+    },
+    "View Report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht ansehen"
+          }
+        }
+      }
+    },
+    "Contains the text of this result and your settings. Remove names before sending." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält den Text dieses Ergebnisses und Ihre Einstellungen. Entfernen Sie Namen vor dem Senden."
+          }
+        }
+      }
+    },
+    "The file is selected in Finder and copied. Press ⌘V in the email or drag the file into it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei ist im Finder markiert und kopiert. Drücken Sie in der E-Mail ⌘V oder ziehen Sie die Datei hinein."
+          }
+        }
+      }
+    },
+    "Something not working, an idea or a question? Report it here. Your configuration goes with it, so I can reproduce the problem." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert etwas nicht, haben Sie eine Idee oder eine Frage? Melden Sie es hier. Ihre Konfiguration geht mit, damit ich das Problem nachstellen kann."
+          }
+        }
+      }
+    },
+    "Send a problem, an idea or a question to the developer, with your configuration attached. You see everything before it is sent." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schicken Sie dem Entwickler ein Problem, eine Idee oder eine Frage, mit Ihrer Konfiguration im Anhang. Sie sehen alles, bevor es gesendet wird."
+          }
+        }
+      }
+    },
+    "Or write to" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oder schreiben Sie an"
+          }
+        }
+      }
+    },
+    "Configuration as a file: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konfiguration als Datei: %@"
+          }
+        }
+      }
+    },
+    "Contains your message and your configuration, including the glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihre Nachricht und Ihre Konfiguration samt Glossar."
+          }
+        }
+      }
+    },
+    "Contains only your message, the app version and the macOS version." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält nur Ihre Nachricht, App-Version und macOS-Version."
+          }
+        }
+      }
+    },
+    "Contains your dictated text and your configuration, including the glossary. You can remove names from the text under Details." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihren diktierten Text und Ihre Konfiguration samt Glossar. Namen im Text können Sie unter „Details“ entfernen."
+          }
+        }
+      }
+    },
+    "Contains the text of this result and your configuration, including the glossary. You can remove names from the text under Details." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält den Text dieses Ergebnisses und Ihre Konfiguration samt Glossar. Namen im Text können Sie unter „Details“ entfernen."
+          }
+        }
+      }
+    },
+    "Message: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachricht: %@"
+          }
+        }
+      }
+    },
+    "View and edit details" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details ansehen und bearbeiten"
+          }
+        }
+      }
+    },
+    "Report a problem, the end of this chat is added" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem melden, das Ende dieses Chats wird eingefügt"
+          }
+        }
+      }
+    },
+    "Sent as a file." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird als Datei mitgeschickt."
+          }
+        }
+      }
+    },
+    "Contains your dictated text and your settings. Remove names before sending." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihren diktierten Text und Ihre Einstellungen. Entfernen Sie Namen vor dem Senden."
+          }
+        }
+      }
+    },
+    "Your settings are copied as a file. Press ⌘V in the email to attach them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Einstellungen sind als Datei kopiert. Drücken Sie in der E-Mail ⌘V, um sie anzuhängen."
+          }
+        }
+      }
+    },
+    "Only the details above are sent." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es werden nur die Details oben gesendet."
+          }
+        }
+      }
+    },
+    "What went wrong: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was ist schiefgelaufen: %@"
+          }
+        }
+      }
+    },
+    "The settings file could not be created." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einstellungsdatei konnte nicht erstellt werden."
+          }
+        }
+      }
+    },
+    "Use Copy instead: it puts everything on the clipboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzen Sie stattdessen „Kopieren“: Damit landet alles in der Zwischenablage."
+          }
+        }
+      }
+    },
+    "Share…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen …"
+          }
+        }
+      }
+    },
+    "Report a Problem…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem melden …"
+          }
+        }
+      }
+    },
+    "I encountered this error:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Fehler ist aufgetreten:"
+          }
+        }
+      }
+    },
+    "For example: an idea, a question, or what did not work" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel: eine Idee, eine Frage oder was nicht funktioniert hat"
+          }
+        }
+      }
+    },
+    "Contains your settings. Remove names before sending." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihre Einstellungen. Entfernen Sie Namen vor dem Senden."
+          }
+        }
+      }
+    },
+    "General Feedback (no specific result)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allgemeines Feedback (kein bestimmtes Ergebnis)"
+          }
+        }
+      }
+    },
+    "Report a problem, with the end of this chat attached" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem melden, mit dem Ende dieses Chats im Anhang"
           }
         }
       }

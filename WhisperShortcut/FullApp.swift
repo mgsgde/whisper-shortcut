@@ -112,6 +112,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Move leftover legacy-keychain items to the data protection keychain in one go (off-main: may block on prompts).
     DispatchQueue.global(qos: .utility).async { KeychainManager.shared.migrateLegacyItemsIfNeeded() }
 
+    // Drop report files older than 7 days. Off the main thread: the folder can hold a week's drafts.
+    DispatchQueue.global(qos: .utility).async { ReportAttachment.pruneOld() }
+
     // Prevent macOS from automatically terminating this menu bar app when
     // the system is under memory/storage pressure or cleaning container caches.
     ProcessInfo.processInfo.disableAutomaticTermination("WhisperShortcut is a persistent menu bar utility")

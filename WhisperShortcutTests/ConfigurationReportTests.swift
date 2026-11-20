@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import HotKey
 import Testing
 
 @testable import WhisperShortcut_AppStore
@@ -31,7 +33,9 @@ struct ConfigurationReportTests {
     ]
   }
 
-  private func render(_ options: ConfigurationReport.Options) throws -> String {
+  private func render(
+    _ options: ConfigurationReport.Options, templates: [DictationTemplate]? = nil
+  ) throws -> String {
     let dir = FileManager.default.temporaryDirectory
       .appendingPathComponent("config-report-tests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -48,7 +52,7 @@ struct ConfigurationReportTests {
 
     return ConfigurationReport.build(
       options, store: store, defaults: defaults, environment: Self.environment,
-      settings: Self.fakeSettings())
+      settings: Self.fakeSettings(), templates: templates)
   }
 
   @Test("Base report has models, shortcuts and customized flags but no user text")
@@ -81,6 +85,43 @@ struct ConfigurationReportTests {
     #expect(report.contains("## System prompt texts"))
     #expect(report.contains(Self.promptSentinel))
     #expect(!report.contains(Self.glossarySentinel))
+  }
+
+  @Test("includeTemplates lists name, shortcut and instructions, and says none when empty")
+  func templatesBlock() throws {
+    let shortcut = ShortcutDefinition(
+      key: .t, modifiers: [.command], isEnabled: true, displayCharacter: "t")
+    let withShortcut = DictationTemplate(
+      name: "SOAP", instructions: "SENTINEL-TEMPLATE-A1\nsecond line", shortcut: shortcut)
+    let withoutShortcut = DictationTemplate(
+      name: "Scratch", instructions: "SENTINEL-TEMPLATE-B2", shortcut: nil)
+
+    let shown = try render(.init(includeTemplates: true), templates: [withShortcut, withoutShortcut])
+    #expect(shown.contains("## Templates"))
+    #expect(shown.contains("### SOAP  (shortcut: \(shortcut.displayString))"))
+    #expect(shown.contains("```\nSENTINEL-TEMPLATE-A1\nsecond line\n```"))
+    #expect(shown.contains("### Scratch  (shortcut: none)"))
+    #expect(shown.contains("```\nSENTINEL-TEMPLATE-B2\n```"))
+    #expect(!shown.contains("## Glossary"))
+
+    let ordered = try render(
+      .init(includeGlossary: true, includeTemplates: true), templates: [withShortcut])
+    let glossary = ordered.range(of: "## Glossary")
+    let templatesHeading = ordered.range(of: "## Templates")
+    #expect(glossary != nil && templatesHeading != nil)
+    if let glossary, let templatesHeading {
+      #expect(glossary.lowerBound < templatesHeading.lowerBound)
+    }
+
+    let empty = try render(.init(includeTemplates: true), templates: [])
+    #expect(empty.contains("## Templates\nnone"))
+    #expect(!empty.contains("SENTINEL-TEMPLATE-A1"))
+    #expect(!empty.contains("```"))
+
+    let hidden = try render(.init(), templates: [withShortcut])
+    #expect(!hidden.contains("## Templates"))
+    #expect(!hidden.contains("SENTINEL-TEMPLATE-A1"))
+    #expect(!hidden.contains("SOAP"))
   }
 
   @Test("No variant leaks keys")

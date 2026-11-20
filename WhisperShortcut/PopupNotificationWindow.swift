@@ -132,7 +132,7 @@ class PopupNotificationWindow: NSWindow {
   private var textLabel: NSTextField!
   private var scrollView: NSScrollView!
   private var closeButton: NSButton!
-  /// Sign in, Retry, Top up, Contact Support — visual order, left to right. Empty unless `.error`.
+  /// Sign in, Retry, Top up, Report a Problem — visual order, left to right. Empty unless `.error`.
   private var actionButtons: [NSButton] = []
   private var autoHideTimer: Timer?
   private let kind: PopupKind
@@ -146,7 +146,7 @@ class PopupNotificationWindow: NSWindow {
   private var wasRetried: Bool = false
   private var customDisplayDuration: TimeInterval?
   private var topUpURL: URL?
-  /// When false, the error popup omits Contact Support. Permission popups pass false so the
+  /// When false, the error popup omits Report a Problem. Permission popups pass false so the
   /// row holds only their own button (Open System Settings / Allow…).
   private let showsSupport: Bool
 
@@ -188,7 +188,7 @@ class PopupNotificationWindow: NSWindow {
         buttons.append(makeActionButton(title: String(localized: "Top up"), action: #selector(topUpButtonClicked)))
       }
       if showsSupport {
-        buttons.append(makeActionButton(title: String(localized: "Contact Support"), action: #selector(whatsappButtonClicked)))
+        buttons.append(makeActionButton(title: String(localized: "Report a Problem…"), action: #selector(reportProblemClicked)))
       }
       actionButtons = buttons
     }
@@ -442,8 +442,12 @@ class PopupNotificationWindow: NSWindow {
     )
   }
 
-  @objc private func whatsappButtonClicked() {
-    openWhatsAppFeedback()
+  @objc private func reportProblemClicked() {
+    let error = FeedbackLinks.truncated(errorText, limit: 500)
+    let prefix = String(localized: "I encountered this error:")
+    MainActor.assumeIsolated {
+      ProblemReport.open(message: "\(prefix)\n\n\(error)", startOnGeneral: true)
+    }
   }
 
   private func setupSuccessClickHandler() {
@@ -460,16 +464,6 @@ class PopupNotificationWindow: NSWindow {
     // Success notifications no longer open history
     self.hide()
   }
-
-  /// The highest-signal report the app can collect: something just failed, the user is annoyed,
-  /// and the error text is right there to attach. `FeedbackLinks` adds the version and OS so the
-  /// report doesn't need a round-trip before it can be acted on.
-  private func openWhatsAppFeedback() {
-    FeedbackLinks.open(
-      .whatsApp,
-      context: "I encountered this error:\n\n\(FeedbackLinks.truncated(errorText, limit: 500))")
-  }
-
 
   private func setupScrollView() {
     scrollView = NSScrollView()
@@ -652,7 +646,7 @@ class PopupNotificationWindow: NSWindow {
     let titleToModelSpacing = modelInfoLabel != nil ? 4.0 : 0.0  // Small gap between title and model info
     let modelToTextSpacing = Constants.titleBottomSpacing  // Gap before text content
 
-    // Calculate button height if present (Sign in, Retry, Top up, WhatsApp buttons)
+    // Calculate button height if present (Sign in, Retry, Top up, Report a Problem)
     let hasButtons = !actionButtons.isEmpty
     let buttonHeight = hasButtons ? 28.0 + 12.0 : 0.0  // Button height + spacing
     
@@ -663,7 +657,7 @@ class PopupNotificationWindow: NSWindow {
                          modelInfoHeight +  // Model info height
                          modelToTextSpacing +  // Gap to text
                          textContentHeight +  // Text content height
-                         buttonHeight +  // Button height + spacing (for retry and/or WhatsApp buttons)
+                         buttonHeight +  // Button height + spacing (for retry and/or report buttons)
                          Constants.outerPadding  // Bottom padding
 
     // Use the larger of required height or minimum height, but cap at max height

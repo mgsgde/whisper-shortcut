@@ -14,6 +14,8 @@ import Foundation
 struct GeminiTranscriptionResult {
   /// Normalized transcript after both gates — empty when a gate discarded it.
   let text: String
+  /// Model text before normalization and both gates.
+  let rawText: String
   /// True when the length gate passed and only the glossary-echo gate emptied the text — the
   /// one case where retrying without the glossary can still produce a transcript.
   let discardedAsGlossaryEcho: Bool
@@ -97,6 +99,7 @@ extension GeminiAPIClient {
       glossaryTerms: glossaryTerms,
       mode: mode)
     return GeminiTranscriptionResult(
-      text: text, discardedAsGlossaryEcho: text.isEmpty && !afterLengthGate.isEmpty)
+      text: text, rawText: transcript,
+      discardedAsGlossaryEcho: text.isEmpty && !afterLengthGate.isEmpty)
   }
 }

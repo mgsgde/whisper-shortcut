@@ -311,7 +311,7 @@ struct MCPConfigTools {
     [
       "name": "report_problem",
       "description":
-        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Before calling, read get_configuration; if a section's warnings explain the problem, fix the configuration instead. Saves a report the user reviews in WhisperShortcut; nothing is sent unless they open it as a GitHub issue themselves. Remove names, patient, customer and other private data from the examples. The user's prompt configuration is attached automatically; point out names of patients, clients or other personal data in it so the user removes them in the review window before sending.",
+        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Before calling, read get_configuration; if a section's warnings explain the problem, fix the configuration instead. The report opens in WhisperShortcut's \"Report a Problem\" window prefilled; the user reviews it and sends it by email with their configuration attached; nothing is sent automatically. Remove names, patient, customer and other private data from the examples. The user's prompt configuration is attached automatically; point out names of patients, clients or other personal data in it so the user removes them before sending.",
       "inputSchema": [
         "type": "object",
         "properties": [
@@ -1059,7 +1059,7 @@ struct MCPConfigTools {
     return (json(payload), false)
   }
 
-  /// Always a proposal, at every access level above read: the user decides whether to open the issue.
+  /// Always a proposal, at every access level above read. The report window opens prefilled; nothing is sent automatically.
   private func reportProblem(_ args: [String: Any]) -> MCPToolResult {
     let title = boundedText(args, key: "title", limit: 120, required: true)
     if let e = title.error { return e }
@@ -1100,7 +1100,7 @@ struct MCPConfigTools {
           proposedContent: body, rationale: why.value!)
         log("report_problem", "proposed", len: body.count)
         return (
-          "Saved as a problem report in WhisperShortcut (id \(proposal.id)). The user decides whether to send it; nothing leaves the Mac unless they open it as a GitHub issue.",
+          "Saved as a problem report in WhisperShortcut (id \(proposal.id)). The report opens in WhisperShortcut's \"Report a Problem\" window prefilled; the user reviews it and sends it by email with their configuration attached; nothing is sent automatically.",
           false)
       } catch {
         return reject("report_problem", "too many pending", error.localizedDescription)

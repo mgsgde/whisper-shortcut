@@ -16,7 +16,8 @@ enum DictationReport {
   static func body(
     entry: TranscriptionHistoryStore.Entry,
     glossaryTerms: [String],
-    offlineMode: Bool
+    offlineMode: Bool,
+    currentConfigHash: String? = nil
   ) -> String {
     var lines = [String(localized: "Pasted text:"), entry.text, ""]
 
@@ -39,18 +40,44 @@ enum DictationReport {
       lines.append(String(localized: "Transcription model: \(modelDescription)"))
     }
 
+    let summary = glossarySummary(terms: glossaryTerms, text: entry.text)
+    lines.append(String(localized: "Glossary: \(summary)"))
+    lines.append(offlineMode
+      ? String(localized: "Offline Mode: on")
+      : String(localized: "Offline Mode: off"))
+
+    if let name = entry.templateName {
+      lines.append(String(localized: "Template: \(name)"))
+    }
+    if let seconds = entry.audioDurationSeconds {
+      let shown = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), seconds)
+      lines.append(String(localized: "Audio length: \(shown) s"))
+    }
+    if let version = entry.appVersion {
+      lines.append(String(localized: "App version at dictation: \(version)"))
+    }
+    if let saved = entry.configHash, let current = currentConfigHash, saved != current {
+      lines.append(String(localized: "Note: settings were changed after this dictation"))
+    }
+    if let raw = entry.rawOutput, raw != entry.text {
+      lines.append(String(localized: "Model output before cleanup:"))
+      lines.append(raw)
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  /// Glossary-echo and prompt-hash lines. They go in the settings file, not the editable details.
+  static func technicalLines(entry: TranscriptionHistoryStore.Entry) -> String {
+    var lines: [String] = []
     if let removed = entry.glossaryEchoRemoved {
       let value = removed.isEmpty
         ? String(localized: "none")
         : removed.map { "\"\($0)\"" }.joined(separator: ", ")
       lines.append(String(localized: "Glossary echo removed: \(value)"))
     }
-
-    let summary = glossarySummary(terms: glossaryTerms, text: entry.text)
-    lines.append(String(localized: "Glossary: \(summary)"))
-    lines.append(offlineMode
-      ? String(localized: "Offline Mode: on")
-      : String(localized: "Offline Mode: off"))
+    if let chars = entry.promptChars, let hash = entry.promptHash {
+      lines.append(String(localized: "Prompt sent: \(chars) chars, hash \(hash)"))
+    }
     return lines.joined(separator: "\n")
   }
 
@@ -89,54 +116,118 @@ enum DictationReport {
   }
 }
 
-/// Report bodies for the last dictation, the last Prompt answer and the last Read Aloud.
-/// Plain English and not localized, because the developer reads them. Each kind contributes at
-/// most its latest result. App version and macOS are appended later by `FeedbackLinks.messageBody`.
+/// Report bodies for recent dictations, the last Prompt answer and the last Read Aloud.
+/// Plain English and not localized, because the developer reads them. Dictation history
+/// contributes one candidate per entry (up to 10, every mode). Prompt and Read Aloud contribute
+/// their latest result. App version and macOS are appended later by `FeedbackLinks.messageBody`.
 enum ResultReport {
 
   enum Kind: String, Equatable {
-    case dictation, prompt, readAloud
+    case dictation, prompt, readAloud, general
   }
 
   struct Candidate: Equatable {
+    let id: String
     let kind: Kind
     let ts: Date
     let preview: String
     let details: String
+    /// Glossary-echo and prompt-hash lines. Empty when this result has none.
+    let technical: String
+    /// Replaces the kind name in "Report Something Else". A template's own name.
+    let menuLabel: String?
   }
 
-  /// Newest first. Each kind at most once (its latest). Nil inputs are left out.
+  /// Newest first. One candidate per history entry (at most 10), plus the latest prompt and
+  /// Read Aloud when those exist. A template entry is a dictation candidate. A general-feedback
+  /// candidate is always last, so the list is never empty.
   static func candidates(
-    dictation: TranscriptionHistoryStore.Entry?,
+    dictations: [TranscriptionHistoryStore.Entry],
     glossaryTerms: [String],
     offlineMode: Bool,
     prompt: LastResultStore.PromptResult?,
-    readAloud: LastResultStore.ReadAloudResult?
+    readAloud: LastResultStore.ReadAloudResult?,
+    currentConfigHash: String? = nil
   ) -> [Candidate] {
     var list: [Candidate] = []
-    if let dictation {
+    for (index, entry) in dictations.prefix(10).enumerated() {
       list.append(Candidate(
+        id: candidateID(kind: .dictation, ts: entry.ts, extra: "\(index)"),
         kind: .dictation,
-        ts: dictation.ts,
-        preview: preview(dictation.text),
+        ts: entry.ts,
+        preview: preview(entry.text),
         details: DictationReport.body(
-          entry: dictation, glossaryTerms: glossaryTerms, offlineMode: offlineMode)))
+          entry: entry, glossaryTerms: glossaryTerms, offlineMode: offlineMode,
+          currentConfigHash: currentConfigHash),
+        technical: DictationReport.technicalLines(entry: entry),
+        menuLabel: entry.mode == "Template" ? entry.templateName : nil))
     }
     if let prompt {
       list.append(Candidate(
+        id: candidateID(kind: .prompt, ts: prompt.ts, extra: ""),
         kind: .prompt,
         ts: prompt.ts,
         preview: preview(prompt.instruction),
-        details: promptBody(prompt, offlineMode: offlineMode)))
+        details: promptBody(prompt, offlineMode: offlineMode),
+        technical: "",
+        menuLabel: nil))
     }
     if let readAloud {
       list.append(Candidate(
+        id: candidateID(kind: .readAloud, ts: readAloud.ts, extra: ""),
         kind: .readAloud,
         ts: readAloud.ts,
         preview: preview(readAloud.text),
-        details: readAloudBody(readAloud)))
+        details: readAloudBody(readAloud),
+        technical: "",
+        menuLabel: nil))
     }
-    return list.sorted { $0.ts > $1.ts }
+    return list.sorted { $0.ts > $1.ts } + [generalCandidate(offlineMode: offlineMode)]
+  }
+
+  /// Offline Mode only. There is no dictation, prompt or reading to quote. App version, macOS and
+  /// the hang excerpt are added once by `FeedbackLinks.messageBody` when the report file is built,
+  /// so they are not repeated here. Appended after the time sort so it stays last.
+  private static func generalCandidate(offlineMode: Bool) -> Candidate {
+    let offline = offlineMode
+      ? String(localized: "Offline Mode: on")
+      : String(localized: "Offline Mode: off")
+    return Candidate(
+      id: "general",
+      kind: .general,
+      ts: Date(),
+      preview: "",
+      details: offline,
+      technical: "",
+      menuLabel: nil)
+  }
+
+  /// Puts `extra` above the general candidate's details, with a blank line between. Other
+  /// candidates stay as they are. Blank `extra` changes nothing.
+  static func applyingExtraDetails(_ extra: String?, to candidates: [Candidate]) -> [Candidate] {
+    guard let extra = extra?.trimmingCharacters(in: .whitespacesAndNewlines), !extra.isEmpty else {
+      return candidates
+    }
+    return candidates.map { candidate in
+      guard candidate.id == "general" else { return candidate }
+      let base = candidate.details.trimmingCharacters(in: .whitespacesAndNewlines)
+      let combined = base.isEmpty ? extra : "\(extra)\n\n\(base)"
+      return Candidate(
+        id: candidate.id,
+        kind: candidate.kind,
+        ts: candidate.ts,
+        preview: candidate.preview,
+        details: combined,
+        technical: candidate.technical,
+        menuLabel: candidate.menuLabel)
+    }
+  }
+
+  private static func candidateID(kind: Kind, ts: Date, extra: String) -> String {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    let stamp = formatter.string(from: ts)
+    return extra.isEmpty ? "\(stamp)|\(kind.rawValue)" : "\(stamp)|\(kind.rawValue)|\(extra)"
   }
 
   static func promptBody(_ result: LastResultStore.PromptResult, offlineMode: Bool) -> String {
