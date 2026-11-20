@@ -42,7 +42,7 @@ class SettingsWindowController: NSWindowController {
 
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height),
-      styleMask: [.titled, .closable, .resizable],
+      styleMask: [.titled, .closable, .miniaturizable, .resizable],
       backing: .buffered,
       defer: false
     )

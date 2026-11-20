@@ -68,5 +68,45 @@ struct DictationReportTests {
     let body = DictationReport.body(entry: entry, glossaryTerms: [], offlineMode: false)
     #expect(body.contains("Glossary: empty"))
     #expect(body.contains("Glossary echo removed: none"))
+    #expect(!body.contains("Template:"))
+    #expect(!body.contains("Audio length:"))
+    #expect(!body.contains("Prompt sent:"))
+    #expect(!body.contains("App version at dictation:"))
+    #expect(!body.contains("Settings changed"))
+    #expect(!body.contains("Model output before cleanup:"))
+  }
+
+  @Test("New lines appear only for the fields that are present")
+  func traceLines() {
+    let present = TranscriptionHistoryStore.Entry(
+      ts: Date(), text: "Lumbarroll", mode: "Template",
+      rawOutput: "Lumbarroll\nA firm foam roll for the lower back.",
+      audioDurationSeconds: 3.5, templateName: "SOAP",
+      promptChars: 120, promptHash: "abc123def456",
+      configHash: "111111111111", appVersion: "9.9.9")
+    let shown = DictationReport.body(
+      entry: present, glossaryTerms: [], offlineMode: false,
+      currentConfigHash: "222222222222")
+    #expect(shown.contains("Template: SOAP"))
+    #expect(shown.contains("Audio length: 3.5 s"))
+    #expect(shown.contains("Prompt sent: 120 chars, hash abc123def456"))
+    #expect(shown.contains("App version at dictation: 9.9.9"))
+    #expect(shown.contains("Settings changed since this dictation"))
+    #expect(shown.contains("Model output before cleanup:"))
+    #expect(shown.contains("Lumbarroll\nA firm foam roll for the lower back."))
+
+    let sameHash = DictationReport.body(
+      entry: present, glossaryTerms: [], offlineMode: false,
+      currentConfigHash: "111111111111")
+    #expect(!sameHash.contains("Settings changed"))
+
+    let unchanged = TranscriptionHistoryStore.Entry(
+      ts: Date(), text: "Lumbarroll", rawOutput: "Lumbarroll",
+      configHash: "111111111111")
+    let hidden = DictationReport.body(
+      entry: unchanged, glossaryTerms: [], offlineMode: false, currentConfigHash: nil)
+    #expect(!hidden.contains("Model output before cleanup:"))
+    #expect(!hidden.contains("Settings changed"))
+    #expect(!hidden.contains("Template:"))
   }
 }

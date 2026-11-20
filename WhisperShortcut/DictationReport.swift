@@ -16,7 +16,8 @@ enum DictationReport {
   static func body(
     entry: TranscriptionHistoryStore.Entry,
     glossaryTerms: [String],
-    offlineMode: Bool
+    offlineMode: Bool,
+    currentConfigHash: String? = nil
   ) -> String {
     var lines = [String(localized: "Pasted text:"), entry.text, ""]
 
@@ -51,6 +52,27 @@ enum DictationReport {
     lines.append(offlineMode
       ? String(localized: "Offline Mode: on")
       : String(localized: "Offline Mode: off"))
+
+    if let name = entry.templateName {
+      lines.append(String(localized: "Template: \(name)"))
+    }
+    if let seconds = entry.audioDurationSeconds {
+      let shown = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), seconds)
+      lines.append(String(localized: "Audio length: \(shown) s"))
+    }
+    if let chars = entry.promptChars, let hash = entry.promptHash {
+      lines.append(String(localized: "Prompt sent: \(chars) chars, hash \(hash)"))
+    }
+    if let version = entry.appVersion {
+      lines.append(String(localized: "App version at dictation: \(version)"))
+    }
+    if let saved = entry.configHash, let current = currentConfigHash, saved != current {
+      lines.append(String(localized: "Settings changed since this dictation"))
+    }
+    if let raw = entry.rawOutput, raw != entry.text {
+      lines.append(String(localized: "Model output before cleanup:"))
+      lines.append(raw)
+    }
     return lines.joined(separator: "\n")
   }
 
@@ -111,7 +133,8 @@ enum ResultReport {
     glossaryTerms: [String],
     offlineMode: Bool,
     prompt: LastResultStore.PromptResult?,
-    readAloud: LastResultStore.ReadAloudResult?
+    readAloud: LastResultStore.ReadAloudResult?,
+    currentConfigHash: String? = nil
   ) -> [Candidate] {
     var list: [Candidate] = []
     if let dictation {
@@ -120,7 +143,8 @@ enum ResultReport {
         ts: dictation.ts,
         preview: preview(dictation.text),
         details: DictationReport.body(
-          entry: dictation, glossaryTerms: glossaryTerms, offlineMode: offlineMode)))
+          entry: dictation, glossaryTerms: glossaryTerms, offlineMode: offlineMode,
+          currentConfigHash: currentConfigHash)))
     }
     if let prompt {
       list.append(Candidate(

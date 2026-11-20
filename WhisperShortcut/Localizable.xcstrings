@@ -29953,6 +29953,66 @@
         }
       }
     },
+    "Model output before cleanup:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellausgabe vor der Bereinigung:"
+          }
+        }
+      }
+    },
+    "Audio length: %@ s" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audiolänge: %@ s"
+          }
+        }
+      }
+    },
+    "Prompt sent: %lld chars, hash %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesendeter Prompt: %lld Zeichen, Hash %@"
+          }
+        }
+      }
+    },
+    "App version at dictation: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Version beim Diktat: %@"
+          }
+        }
+      }
+    },
+    "Settings changed since this dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen seit diesem Diktat geändert"
+          }
+        }
+      }
+    },
+    "Template: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage: %@"
+          }
+        }
+      }
+    },
     "none" : {
       "localizations" : {
         "de" : {

@@ -33,6 +33,8 @@ final class DictateStreamingSession {
     return _isCancelled
   }
   private let sessionStart = CFAbsoluteTimeGetCurrent()
+  /// When this recording's session was created, before the first chunk was sent.
+  let startedAt = Date()
   /// Chunk indices whose transcription task has finished (either way). Guarded by `cancelLock`.
   private var finishedChunks: Set<Int> = []
 
