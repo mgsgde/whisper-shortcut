@@ -70,15 +70,22 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     #endif
   }
 
-  /// Chat-only entries are excluded from Dictate Prompt: on the 2026-09-30 offline Dictate Prompt
-  /// benchmark Qwen3.5 9B scored 28/36, formalised casual text and translated EN→DE
-  /// (plans/model-audits/2026-09-30-offline-prompt.md); for Chat Q&A it beat the 4B
-  /// (plans/model-audits/2026-10-18-offline-chat-larger-model.md).
+  /// Every catalogue entry can power Dictate Prompt, but only the 4B is recommended for it.
+  ///
+  /// The larger entries used to be hidden from the Dictate Prompt picker. That took a choice away
+  /// from users who already have the weights on disk and would rather spend latency than download
+  /// another model. They are offered now, without the star, and their description says why:
+  /// on the 2026-09-30 offline Dictate Prompt benchmark Qwen3.5 9B scored 28/36 rule checks vs
+  /// 34/36 for the 4B, formalised casual text and translated EN→DE
+  /// (plans/model-audits/2026-09-30-offline-prompt.md). Gemma 4 26B A4B has no Dictate Prompt
+  /// measurement at all — it is offered on the strength of being a 26B MoE, not on evidence.
+  /// For Chat Q&A the larger models win (plans/model-audits/2026-10-18-offline-chat-larger-model.md).
+  ///
+  /// `byPreference` still lists only the 4B: Offline Mode's automatic choice must not silently
+  /// become the slower, weaker model.
   var supportsDictatePrompt: Bool {
     switch self {
-    case .qwen34BInstruct2507: return true
-    case .qwen359B: return false
-    case .gemma426BA4B: return false
+    case .qwen34BInstruct2507, .qwen359B, .gemma426BA4B: return true
     }
   }
 

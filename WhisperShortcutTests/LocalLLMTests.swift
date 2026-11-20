@@ -73,10 +73,16 @@ struct LocalLLMTests {
     #expect(LLMProviderFactory.provider(for: .localModel) is LocalLLMChatProvider)
   }
 
-  @Test("Qwen3.5 9B is a Chat-only catalogue entry")
-  func qwen359BIsChatOnly() {
-    #expect(PromptModel.localMLXQwen359B.supportsDictatePrompt == false)
-    #expect(PromptModel.localMLXQwen34BInstruct.supportsDictatePrompt == true)
+  @Test("Every MLX catalogue entry can power Dictate Prompt; only the 4B is recommended")
+  func everyMLXModelSupportsDictatePrompt() {
+    for type in LocalLLMModelType.allCases {
+      #expect(type.supportsDictatePrompt)
+      #expect(PromptModel.forLocalLLMModel(type).supportsDictatePrompt)
+    }
+    #expect(LocalLLMModelType.allCases.filter(\.isRecommended) == [.qwen34BInstruct2507])
+    // Offline Mode's automatic choice must stay the recommended 4B: offering the larger models in
+    // the picker must not turn the fallback into the slower, weaker one.
+    #expect(LocalLLMModelType.byPreference == [.qwen34BInstruct2507])
   }
 
   @Test("Qwen3 audio models: CustomVoice from 16 GB, the 1.7B checkpoints from 32 GB")
@@ -86,13 +92,11 @@ struct LocalLLMTests {
     #expect(Qwen3ModelType.voiceDesign.minimumPhysicalMemoryGB == 32)
   }
 
-  @Test("Gemma 4 26B A4B is a Chat-only catalogue entry that needs 32 GB")
-  func gemma426BA4BIsChatOnlyAndNeeds32GB() {
+  @Test("Gemma 4 26B A4B is a Dictate Prompt option that needs 32 GB")
+  func gemma426BA4BNeeds32GB() {
     #expect(PromptModel.forLocalLLMModel(.gemma426BA4B) == .localMLXGemma426BA4B)
     #expect(PromptModel.localMLXGemma426BA4B.localMLXModelType == .gemma426BA4B)
-    #expect(PromptModel.localMLXGemma426BA4B.supportsDictatePrompt == false)
-    #expect(PromptModel.localMLXQwen34BInstruct.supportsDictatePrompt == true)
-    #expect(!PromptModel.dictatePromptCapableModels.contains(.localMLXGemma426BA4B))
+    #expect(PromptModel.localMLXGemma426BA4B.supportsDictatePrompt)
     #expect(!LocalLLMModelType.byPreference.contains(.gemma426BA4B))
     #expect(LocalLLMModelType.gemma426BA4B.minimumPhysicalMemoryGB == 32)
     #expect(!LocalLLMModelType.gemma426BA4B.isRecommended)
