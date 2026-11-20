@@ -1,15 +1,24 @@
-## Report a Problem
-- One "Report a Problem…" window replaces the six feedback paths. It opens from the menu bar, Settings › Support & Feedback, error messages, Chat `/feedback` and connected AI apps.
-- Pick what went wrong from your last results, describe it and send it by email. Your configuration (glossary, instructions, templates, settings) is attached as a file by default, so a problem can be reproduced. You can look at the report first, copy it or share it another way.
-- WhatsApp and GitHub-issue feedback and the separate "Send my settings" sheet are gone.
+## Read Aloud
+- OpenAI retires its text-to-speech models on January 6, 2027. Read Aloud now offers GPT-Realtime 2.1 mini, OpenAI's named replacement. If you used the old OpenAI voice and have an OpenAI key, Read Aloud switches to the new model on its own.
+
+## Offline models
+- Clicking Download on an offline model whose files are already on your Mac (from Hugging Face or LM Studio) now offers to import them instead of downloading them again.
+
+## Dictate Prompt
+- A reply that is mostly the model's own reasoning or far too long is no longer pasted. Your selection stays unchanged and you can try again.
+- With local models, an instruction that was not understood is rejected before the model runs, and a short instruction that closely matches one of your saved prompts uses that prompt.
 
 ## Chat
-- On the approval card for a tool, "Always allow" is now a full button next to Deny, Allow for this chat and Allow, instead of a small link.
+- Ask the Chat why a result came out wrong and it checks your recent results and configuration, then either names the setting that caused it with a fix, or suggests sending a report with `/feedback`.
+
+## Report a Problem
+- Reports for a Dictate Prompt result now show whether text around the cursor and earlier turns were sent.
 
 ## Under the hood
-- Each dictation in the history keeps the raw model output, audio length, template and app version, so a reported problem shows what happened.
+- The usage log records, per Dictate Prompt result, how much text around the cursor and how many earlier turns were sent.
+- Unused code removed and shared helpers merged.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v9.03...v9.04
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v9.04...v9.05
