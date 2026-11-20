@@ -89,6 +89,8 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
         self?.noteHandedOff(body)
       }))
     window.isReleasedWhenClosed = false
+    // Settings and Chat sit at `.floating`; at `.normal` this window would open behind them.
+    window.level = .floating
     window.delegate = self
     window.center()
     self.window = window
@@ -104,9 +106,6 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
   /// forward without taking the keyboard.
   private func present(_ window: NSWindow, activate: Bool) {
     if activate {
-      // Activate first, then order front: the reverse leaves the window behind the frontmost app
-      // when opened from the status menu. orderFrontRegardless covers the accessory-app case where
-      // activation is granted a beat late.
       NSApp.activate(ignoringOtherApps: true)
       window.makeKeyAndOrderFront(nil)
       window.orderFrontRegardless()
