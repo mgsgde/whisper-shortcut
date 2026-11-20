@@ -1402,10 +1402,14 @@ class SpeechService {
     /// Focused-field context for a compose turn. Request-only: conversation history stores the
     /// selection, never this block.
     let fieldBlock: String?
+    /// Characters of field text in `fieldBlock`; 0 when `fieldBlock` is nil. For the usage log.
+    let fieldContextChars: Int
     /// The selection with its header, or — on a compose turn — the NO SELECTED TEXT marker. Nil only
     /// in screenshot-selection mode, where the selection is the highlighted region of the image.
     let selectionBlock: String?
     let history: [PromptHistoryTurn]
+    /// Earlier turns sent as conversation history. Two `history` entries are one turn.
+    var historyTurns: Int { history.count / 2 }
     let systemPrompt: String
 
     var hadScreenshot: Bool { screenshot != nil }
@@ -1523,14 +1527,16 @@ class SpeechService {
       PromptHistoryTurn(isUser: $0.role != "model", text: $0.parts.compactMap { $0.text }.joined())
     }
 
+    let fieldBlock = PromptScreenContextDecision.fieldBlock(
+      field, isComposeTurn: isComposeTurn, isTemplate: promptTurnKind.isTemplate,
+      fieldTextEnabled: fieldTextEnabled)
     let envelope = DictatePromptEnvelope(
       screenshot: screenshot,
       screenshotLabel: screenshotSelectionMode
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
         : "Front window of the app the user is writing in (context only, do not describe it):",
-      fieldBlock: PromptScreenContextDecision.fieldBlock(
-        field, isComposeTurn: isComposeTurn, isTemplate: promptTurnKind.isTemplate,
-        fieldTextEnabled: fieldTextEnabled),
+      fieldBlock: fieldBlock,
+      fieldContextChars: fieldBlock == nil ? 0 : (field?.totalCount ?? 0),
       selectionBlock: selectionBlock,
       history: history,
       systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
@@ -1819,7 +1825,7 @@ class SpeechService {
     mode: PromptMode,
     clipboardContext: String?,
     model: String,
-    hadScreenshot: Bool,
+    envelope: DictatePromptEnvelope,
     logPrefix: String,
     promptStarted: ContinuousClock.Instant,
     providerLabel: String,
@@ -1858,7 +1864,7 @@ class SpeechService {
     // A screenshot is the selection in screenshot mode, and the timeout placeholder is not
     // evidence the user asked for an edit.
     if DictatePromptSelectionDecision.refusesEditWithoutSelection(
-      hasSelection: clipboardContext != nil, hadScreenshot: hadScreenshot,
+      hasSelection: clipboardContext != nil, hadScreenshot: envelope.hadScreenshot,
       instruction: userInstruction, isEditQuickAction: promptIsEditQuickAction,
       isTemplateTurn: promptTurnKind.isTemplate)
     {
@@ -1890,18 +1896,20 @@ class SpeechService {
       response: normalizedText,
       model: model,
       provider: providerLabel,
-      hadScreenshot: hadScreenshot))
+      hadScreenshot: envelope.hadScreenshot))
     ContextLogger.shared.logPrompt(
       mode: mode,
       selectedText: clipboardContext,
       userInstruction: userInstruction,
       modelResponse: normalizedText,
       model: model,
-      hadScreenshot: hadScreenshot,
+      hadScreenshot: envelope.hadScreenshot,
       latencyMs: latencyMs,
       provider: providerLabel,
       loadMs: loadMs,
       template: promptTurnKind.templateLogName,
+      fieldContextChars: envelope.fieldContextChars,
+      historyTurns: envelope.historyTurns,
       durationMs: AudioDuration.milliseconds(audioURL)
     )
     DebugLogger.logSuccess("\(logPrefix): Completed successfully (\(normalizedText.count) chars)")
@@ -2068,7 +2076,7 @@ class SpeechService {
       mode: mode,
       clipboardContext: clipboardContext,
       model: model.rawValue,
-      hadScreenshot: envelope.hadScreenshot,
+      envelope: envelope,
       logPrefix: "PROMPT-MODE-GEMINI",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
@@ -2253,7 +2261,7 @@ class SpeechService {
       mode: mode,
       clipboardContext: clipboardContext,
       model: requestModel.rawValue,
-      hadScreenshot: envelope.hadScreenshot,
+      envelope: envelope,
       logPrefix: "PROMPT-MODE-OPENAI",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
@@ -2561,7 +2569,7 @@ class SpeechService {
         mode: mode,
         clipboardContext: clipboardContext,
         model: "\(providerTag):\(modelLabel)",
-        hadScreenshot: false,
+        envelope: envelope,
         logPrefix: "PROMPT-MODE-LOCAL",
         promptStarted: promptStarted,
         providerLabel: providerLabel,
@@ -2639,7 +2647,7 @@ class SpeechService {
       mode: mode,
       clipboardContext: clipboardContext,
       model: speedTag,
-      hadScreenshot: false,
+      envelope: envelope,
       logPrefix: "PROMPT-MODE-LOCAL",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
