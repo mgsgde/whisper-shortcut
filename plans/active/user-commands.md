@@ -118,7 +118,7 @@ never overwrites an existing file; `ChatMessage` decodes without `commandName`; 
 - Screenshots: `/anamnese` in autocomplete and its result in a meeting chat (local test file,
   not committed), the meeting-bar button, the Settings section incl. one broken file
 - README `## Features`: one bullet, in its own commit
-- PR open, handover to the "Whisper Deployments" session
+- PR open; the merge train merges it and the nightly job releases it (AGENTS.md → "Merging and releasing are automatic")
 
 ## Open risks (outside this code)
 
