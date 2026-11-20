@@ -107,6 +107,9 @@ enum UserDefaultsKeys {
   /// so a value the user already stored still wins over the default.
   static let fnKeyDictation = "holdFnToDictate"
   static let dictateMode = "dictateMode"
+  /// `TranscriptionModel` raw value that was selected before choosing Dictate Live switched the
+  /// model to Parakeet Ultra; restored when the mode goes back to Dictate. Empty → nothing to restore.
+  static let modelBeforeDictateLive = "modelBeforeDictateLive"
 
   // MARK: - Chat Appearance
   /// Prose typeface of the chat transcript (`ChatFontDesign` raw value). Absent → `.sans`.
