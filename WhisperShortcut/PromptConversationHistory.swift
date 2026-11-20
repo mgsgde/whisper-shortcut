@@ -35,7 +35,7 @@ final class PromptConversationHistory {
       if let selectedText = turn.selectedText, !selectedText.isEmpty {
         userText += "\(AppConstants.clipboardSelectionHeader)\n\n\(selectedText)\n\n"
       }
-      userText += "VOICE INSTRUCTION: \(turn.userInstruction)"
+      userText += "\(AppConstants.voiceInstructionLabel) \(turn.userInstruction)"
 
       let userContent = GeminiChatRequest.GeminiChatContent(
         role: "user",
