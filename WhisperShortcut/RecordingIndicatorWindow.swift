@@ -1087,11 +1087,56 @@ private final class RecordingIndicatorPanel: NSPanel {
   var onSpeakingKey: ((NSEvent) -> Bool)?
   /// A click landed on the pill. The event is still delivered afterwards.
   var onMouseDown: (() -> Void)?
+  /// Whether a drag may move the pill right now (not while a scrubber or text field needs it).
+  var canDrag: (() -> Bool)?
+  /// The user let go after moving the pill.
+  var onDragEnded: (() -> Void)?
+  private var dragStart: (event: NSEvent, mouse: NSPoint, origin: NSPoint)?
+  private var isDragging = false
   override var canBecomeKey: Bool { acceptsKeyInput }
   override var canBecomeMain: Bool { false }
 
+  /// Moves the pill by hand. The first few points of travel still belong to the click, so a
+  /// button press is unaffected; past that, the button gets a release far outside it (so it does
+  /// not fire) and the rest of the gesture moves the window.
+  private func handleDrag(_ event: NSEvent) -> Bool {
+    switch event.type {
+    case .leftMouseDown:
+      dragStart = (event, NSEvent.mouseLocation, frame.origin)
+      isDragging = false
+      return false
+    case .leftMouseDragged:
+      guard let start = dragStart else { return false }
+      let mouse = NSEvent.mouseLocation
+      let dx = mouse.x - start.mouse.x
+      let dy = mouse.y - start.mouse.y
+      if !isDragging {
+        guard hypot(dx, dy) > 4, canDrag?() == true else { return false }
+        isDragging = true
+        if let release = NSEvent.mouseEvent(
+          with: .leftMouseUp, location: NSPoint(x: -10_000, y: -10_000), modifierFlags: [],
+          timestamp: event.timestamp, windowNumber: windowNumber, context: nil,
+          eventNumber: start.event.eventNumber, clickCount: 1, pressure: 0)
+        {
+          super.sendEvent(release)
+        }
+      }
+      setFrameOrigin(NSPoint(x: start.origin.x + dx, y: start.origin.y + dy))
+      return true
+    case .leftMouseUp:
+      dragStart = nil
+      guard isDragging else { return false }
+      isDragging = false
+      onDragEnded?()
+      return true
+    default:
+      return false
+    }
+  }
+
   /// Caught here rather than in SwiftUI: the text field would otherwise take ⌃digit as input.
   override func sendEvent(_ event: NSEvent) {
+    if handleDrag(event) { return }
     // Read Aloud notices the click (to reclaim keys) but does not swallow it.
     if event.type == .leftMouseDown {
       onMouseDown?()
@@ -1199,6 +1244,10 @@ final class RecordingIndicatorManager {
 
   private enum Constants {
     static let bottomMargin: CGFloat = 28
+    /// Minimum gap to the screen edge for a pill the user moved.
+    static let edgeInset: CGFloat = 8
+    /// How close a drop must be to the center line or the default spot to snap onto it.
+    static let snapDistance: CGFloat = 24
     static let fadeDuration: TimeInterval = 0.18
     /// averagePower(dB) range mapped onto bar height 0…1.
     static let silenceFloorDB: Float = -48
@@ -1675,6 +1724,15 @@ final class RecordingIndicatorManager {
       self.toggleTemplate()
       return true
     }
+    panel.canDrag = { [weak self] in
+      guard let self else { return false }
+      return self.model.phase != .speaking && !self.model.quickActionsVisible
+    }
+    panel.onDragEnded = { [weak self] in
+      guard let self, let panel = self.panel else { return }
+      self.saveAnchor(of: panel)
+      self.position(panel)
+    }
     panel.onMouseDown = { [weak self] in
       guard let self, let panel = self.panel else { return }
       self.takeKeyFocusForSpeaking(panel)
@@ -1772,11 +1830,55 @@ final class RecordingIndicatorManager {
     pillScreen = screen
     let size = currentPanelSize()
     let visible = screen.visibleFrame
-    let origin = NSPoint(
+    var origin = NSPoint(
       x: visible.midX - size.width / 2,
       y: visible.minY + Constants.bottomMargin
     )
+    if let anchor = Self.savedAnchor() {
+      // The pill grows into a card for quick actions, so the anchor is the bottom-center point;
+      // clamping keeps the larger card on screen when the pill was parked near an edge.
+      let inset = Constants.edgeInset
+      origin.x = visible.minX + anchor.x * visible.width - size.width / 2
+      origin.y = visible.minY + anchor.y * visible.height
+      origin.x = min(max(origin.x, visible.minX + inset), visible.maxX - size.width - inset)
+      origin.y = min(max(origin.y, visible.minY + inset), visible.maxY - size.height - inset)
+    }
     panel.setFrame(NSRect(origin: origin, size: size), display: true)
+  }
+
+  // MARK: - Remembered position
+
+  /// Bottom-center of the pill as a fraction of the screen's visible frame, so it lands in the
+  /// same place on a screen of another size. Absent = the default spot, bottom center.
+  private static let anchorKey = "RecordingIndicatorAnchor"
+
+  private static func savedAnchor() -> NSPoint? {
+    guard let values = UserDefaults.standard.array(forKey: anchorKey) as? [Double], values.count == 2
+    else { return nil }
+    return NSPoint(x: values[0], y: values[1])
+  }
+
+  /// Saves where the user dropped the pill. Dropped near the default spot, it snaps back there
+  /// and the saved position is cleared; near the vertical center line it snaps onto it.
+  private func saveAnchor(of panel: NSPanel) {
+    guard let screen = panel.screen ?? pillScreen else { return }
+    pillScreen = screen
+    let visible = screen.visibleFrame
+    let snap = Constants.snapDistance
+    var midX = panel.frame.midX
+    let minY = panel.frame.minY
+    if abs(midX - visible.midX) < snap { midX = visible.midX }
+    if midX == visible.midX, abs(minY - (visible.minY + Constants.bottomMargin)) < snap {
+      UserDefaults.standard.removeObject(forKey: Self.anchorKey)
+      DebugLogger.log("PILL: dropped at default spot, saved position cleared")
+      return
+    }
+    let anchor = [
+      Double((midX - visible.minX) / visible.width),
+      Double((minY - visible.minY) / visible.height),
+    ]
+    UserDefaults.standard.set(anchor, forKey: Self.anchorKey)
+    DebugLogger.log("PILL: moved by user, anchor=\(anchor)")
   }
 }
 
