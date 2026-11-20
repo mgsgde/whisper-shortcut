@@ -315,4 +315,24 @@ struct ChatToolHardeningTests {
     #expect(!text.contains("Always confirm details before creating"))
     #expect(text.contains("Europe/Berlin"))
   }
+
+  @Test func resultDiagnosisEndsInConfigCauseOrFeedback() {
+    for logOn in [true, false] {
+      let text = ChatViewModel.resultDiagnosisInstructions(usageLogAvailable: logOn)
+      #expect(text.contains("Cause found in your configuration"))
+      #expect(text.contains("Not explained by your configuration"))
+      #expect(text.contains("`/feedback`"))
+      #expect(text.contains("action='read'"))
+      #expect(text.contains("Do NOT say it is an app bug, do NOT say it is not an app bug"))
+      #expect(text.contains("cursor context"))
+      #expect(text.contains("fieldContextChars"))
+    }
+  }
+
+  @Test func resultDiagnosisReadsTheLogOnlyWhenUsageDataIsOn() {
+    #expect(ChatViewModel.resultDiagnosisInstructions(usageLogAvailable: true).contains("read_recent_interactions"))
+    let off = ChatViewModel.resultDiagnosisInstructions(usageLogAvailable: false)
+    #expect(!off.contains("read_recent_interactions"))
+    #expect(off.contains("Save usage data is off"))
+  }
 }
