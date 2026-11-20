@@ -128,7 +128,7 @@ enum TranscriptionProvider: String, CaseIterable {
 extension TranscriptionModel {
   var provider: TranscriptionProvider {
     switch self {
-    case .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
+    case .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash:
       return .google
     case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:

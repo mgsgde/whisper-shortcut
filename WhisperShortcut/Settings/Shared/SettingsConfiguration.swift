@@ -79,10 +79,10 @@ enum ChatModelProvider: String, CaseIterable {
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.8-flash (shipped 2026-09-02),
-// gemini-4-argon (stable flagship reasoning; paid tier only;
-// https://ai.google.dev/gemini-api/docs/models/gemini-4-argon).
+// gemini-4-hydrogen and gemini-4-neon (paid tier only; https://ai.google.dev/gemini-api/docs/models).
 // Preview: gemini-3.1-pro-preview.
-// Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
+// Removed and forwarded via migrateLegacyPromptRawValue: gemini-4-argon (removed 2026-11-20,
+// dominated by gemini-4-neon) → gemini-4-neon; gemini-3-pro-preview (shut down
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
 // -pro, shutdown 2026-10-16) → gemini-3.8-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
 // gemini-3-flash-preview (deprecated-pending) → gemini-3.8-flash; offline local-mlx-qwen3-8b
@@ -101,7 +101,6 @@ enum ChatModelProvider: String, CaseIterable {
 // OpenAI model IDs: https://platform.openai.com/docs/models.
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
-  case gemini4Argon = "gemini-4-argon"
   /// Added 2026-11-20. Prices from https://ai.google.dev/gemini-api/docs/pricing (verified 2026-11-20):
   /// $1.50/$7.50 per 1M tokens, 1M context. Not the default: chat benchmark 2026-11-20
   /// (scripts/benchmark-chat-latency.py, 36 calls, grounding on, thinking low) measured
@@ -109,7 +108,7 @@ enum PromptModel: String, CaseIterable {
   /// Revisit before 2027-01-01, when gemini-3.8-flash rises to $1.50/$7.50 (same as Hydrogen).
   case gemini4Hydrogen = "gemini-4-hydrogen"
   /// Added 2026-11-20. Prices from https://ai.google.dev/gemini-api/docs/pricing (verified 2026-11-20):
-  /// $3/$15 per 1M tokens, 1M context. Note: gemini-4-argon rises to $4/$20 on 2026-12-01, Neon stays $3/$15.
+  /// $3/$15 per 1M tokens, 1M context. Replaces gemini-4-argon (retired 2026-11-20; it rises to $4/$20 on 2026-12-01).
   case gemini4Neon = "gemini-4-neon"
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
@@ -235,8 +234,6 @@ enum PromptModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .gemini4Argon:
-      return "Gemini 4 Argon"
     case .gemini4Hydrogen:
       return "Gemini 4 Hydrogen"
     case .gemini4Neon:
@@ -302,7 +299,6 @@ enum PromptModel: String, CaseIterable {
   /// May extend a provider-default alias (gemini / grok / gpt) as a prefix — that's intended.
   var shortAlias: String {
     switch self {
-    case .gemini4Argon:      return "gemini4argon"
     case .gemini4Hydrogen:   return "gemini4hydrogen"
     case .gemini4Neon:       return "gemini4neon"
     case .gemini31Pro:       return "gemini31pro"
@@ -333,8 +329,6 @@ enum PromptModel: String, CaseIterable {
 
   var description: String {
     switch self {
-    case .gemini4Argon:
-      return String(localized: "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier) • Multimodal")
     case .gemini4Hydrogen:
       return String(localized: "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 tier ($1.50/$7.50 per 1M) • 1M context • Google Search grounding • Audio input")
     case .gemini4Neon:
@@ -403,7 +397,7 @@ enum PromptModel: String, CaseIterable {
       return .medium
     case .openaiGPT5Mini, .openaiGPT6Luna:
       return .low
-    case .gemini4Argon, .gemini4Neon, .claudeOpus55:
+    case .gemini4Neon, .claudeOpus55:
       return .high
     }
   }
@@ -413,7 +407,7 @@ enum PromptModel: String, CaseIterable {
     // newly added non-Gemini case silently claimed the Gemini credential and endpoint. Let the
     // compiler force the decision instead.
     switch self {
-    case .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
+    case .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .geminiImage, .geminiImagePro:
       return .gemini
     case .grok43, .grok47:
@@ -611,9 +605,6 @@ enum PromptModel: String, CaseIterable {
   var geminiThinkingConfig: [String: Any]? {
     switch self {
     // Gemini 3.x / 4 — thinkingLevel
-    case .gemini4Argon:
-      // Argon documents thinkingLevel low/medium/high only (no minimal).
-      return ["thinkingLevel": "high"]
     case .gemini4Hydrogen:
       // Documented levels: low/medium/high/xhigh (no minimal).
       return ["thinkingLevel": "low"]
@@ -672,8 +663,6 @@ enum PromptModel: String, CaseIterable {
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {
-    case .gemini4Argon:
-      return .gemini4Argon
     case .gemini4Hydrogen:
       return .gemini4Hydrogen
     case .gemini4Neon:
@@ -779,6 +768,9 @@ enum PromptModel: String, CaseIterable {
     switch raw {
     case "gemini-2.0-flash", "gemini-2.0-flash-lite":
       return Self.gemini31FlashLite.rawValue
+    case "gemini-4-argon":
+      // Argon removed 2026-11-20: from 2026-12-01 Argon costs $4/$20 vs Neon $3/$15 per 1M, and Neon scores higher (Artificial Analysis Index 61 vs 50; Agents' Last Exam 75.8% vs 39.5%, Google model cards Nov 2026). Pareto-dominated.
+      return Self.gemini4Neon.rawValue
     case "gemini-3.1-flash-lite-preview":
       // Same model — Google promoted -preview to GA.
       return Self.gemini31FlashLite.rawValue
@@ -872,10 +864,10 @@ enum PromptModel: String, CaseIterable {
   /// True when the live Gemini API rejects `thinkingLevel: minimal` with HTTP 400.
   /// Verified for 3.1 Pro (2026-07) and 3.8 Flash (2026-09-06), both with
   /// "Thinking level MINIMAL is not supported for this model". 3.7 Flash did too (2026-08-23)
-  /// before it was removed. Argon documents low/medium/high only.
+  /// before it was removed. Hydrogen and Neon document low/medium/high/xhigh only.
   var geminiRejectsMinimalThinking: Bool {
     switch self {
-    case .gemini4Argon, .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini38Flash: return true
+    case .gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .gemini38Flash: return true
     default: return false
     }
   }

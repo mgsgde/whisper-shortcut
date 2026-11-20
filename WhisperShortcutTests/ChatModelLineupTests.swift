@@ -22,6 +22,7 @@ struct ChatModelLineupTests {
       // Legacy slugs forward through migrateLegacyPromptRawValue, which is what the loader persists.
       Forward(note: "gemini-3.5-flash", raw: "gemini-3.5-flash", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash),
       Forward(note: "gemini-3.6-flash", raw: "gemini-3.6-flash", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash),
+      Forward(note: "gemini-4-argon forwards to Neon (dictation default for transcription)", raw: "gemini-4-argon", prompt: .gemini4Neon, transcription: .gemini31FlashLite, slot: .gemini4Neon, removed: true),
       Forward(note: "gemini-3.7-flash", raw: "gemini-3.7-flash", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash),
       Forward(note: "gemini-2.5-flash stays visible", raw: "gemini-2.5-flash", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash, visible: true),
       Forward(note: "gemini-3-flash-preview stays visible", raw: "gemini-3-flash-preview", prompt: .gemini38Flash, transcription: .gemini38Flash, slot: .gemini38Flash, visible: true),
@@ -79,10 +80,10 @@ struct ChatModelLineupTests {
     ("gemini-3.8-flash", PromptModel.gemini38Flash),
     ("gemini 3", PromptModel.gemini38Flash),
     ("3.1 flash lite", PromptModel.gemini31FlashLite),
-    ("/gemini argon", PromptModel.gemini4Argon),
+    ("/gemini argon", PromptModel.gemini4Neon),
     ("/gemini hydrogen", PromptModel.gemini4Hydrogen),
     ("/gemini neon", PromptModel.gemini4Neon),
-    ("gemini 4", PromptModel.gemini4Argon),
+    ("gemini 4", PromptModel.gemini4Neon),
     ("3.7", PromptModel.gemini38Flash),
   ])
   func resolver(argument: String, model: PromptModel) {

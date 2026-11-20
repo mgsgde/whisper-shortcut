@@ -136,7 +136,8 @@ enum ChatModelCommandResolver {
     } else if normalized.contains("neon") {
       candidates = [.gemini4Neon]
     } else if normalized.contains("argon") || padded.contains(" 4 ") {
-      candidates = [.gemini4Argon]
+      // Argon was retired 2026-11-20 and forwards to Neon; bare "gemini 4" is Neon too.
+      candidates = [.gemini4Neon]
     } else if normalized.contains("3.8") {
       candidates = [.gemini38Flash]
     } else if normalized.contains("3.7") || normalized.contains("3.6") {
@@ -238,7 +239,7 @@ enum ChatModelCommandResolver {
 
   private static func isPro(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini4Argon, .gemini31Pro, .geminiImagePro: return true
+    case .gemini31Pro, .geminiImagePro: return true
     default: return false
     }
   }

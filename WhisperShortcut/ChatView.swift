@@ -1706,7 +1706,7 @@ class ChatViewModel: ObservableObject {
   static let improvePreferred: [PromptModel] = [.gemini31Pro, .claudeSonnet55, .openaiGPT6Sol]
   /// Already good enough: when the chat model is one of these, /improve keeps it.
   static let improveCapable: Set<PromptModel> = [
-    .gemini4Argon, .gemini4Neon, .gemini4Hydrogen, .gemini31Pro, .claudeSonnet55, .claudeOpus55, .openaiGPT6Sol, .openaiGPT61Terra, .grok47,
+    .gemini4Neon, .gemini4Hydrogen, .gemini31Pro, .claudeSonnet55, .claudeOpus55, .openaiGPT6Sol, .openaiGPT61Terra, .grok47,
   ]
   enum ImproveModelChoice: Equatable { case keep; case use(PromptModel); case noneAvailable }
 
