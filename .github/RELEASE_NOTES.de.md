@@ -1,20 +1,19 @@
-## Offline-Diktat
-- Normales Diktieren mit einem Offline-Modell bereitet den Text jetzt so auf wie Dictate Live: Füllwörter fallen weg, ein angehängtes „…punkt“ wird getrennt, „GdB“ wird einheitlich geschrieben, und gesprochene Mengenangaben werden zu Ziffern. Zahlwörter im normalen Fließtext bleiben Wörter.
+## Dictate Prompt
+- Der Schreibstil erkennt jetzt Web-Apps im Browser: Gmail, Outlook und andere Webmailer nutzen Ihren Stil „E-Mail“, WhatsApp, Telegram und Signal im Web nutzen „Messenger“, Teams und Slack nutzen „Arbeits-Chat“. Andere Tabs bleiben bei „Standard“. Ist „Arbeits-Chat“ noch nicht gelernt, wird „Messenger“ verwendet. (GitHub-Version)
+- Während Dictate Prompt nachdenkt, zeigen kleine Symbole in der Pill, welcher Bildschirm-Kontext gesendet wurde: der Text um den Cursor, ein Bild des vorderen Fensters oder beides.
+- Antworten, die mit einer Überschrift wie „Task:“ beginnen, werden nicht mehr an Abkürzungen wie „U.S.“ oder „Dr.“ abgeschnitten.
 
-## Verbundene KI-Apps (MCP)
-- ChatGPT, Claude und andere verbundene Apps können jetzt die Dokumentation von WhisperShortcut auflisten und lesen, einschließlich des Praxis-Playbooks. So beantworten sie Fragen zur App aus der Dokumentation statt zu raten.
+## Aufnahme-Pill
+- Die Pill, die Dictate-Prompt-Karte und die Vorlagenauswahl erscheinen jetzt auf dem Bildschirm, auf dem Sie arbeiten (dort, wo das Fenster der vorderen App liegt), statt auf dem Bildschirm, den macOS als Hauptbildschirm führt. Außerdem bleiben sie über den Fenstern anderer Apps.
 
-## Einstellungen
-- Im Modus „Nur Diktat“ bleibt der Tab „Konten“ sichtbar, solange ein Cloud-Modell zur Transkription gewählt ist, damit Sie dessen Schlüssel eintragen können.
-- Einstellungen, Chat in der App und MCP sind sich jetzt einig, ob ein alter eigener Prompt den eingebauten ersetzt.
+## Chat
+- Bitten Sie den Chat, etwas über Sie zu vergessen, erscheint jetzt eine Freigabe-Karte, genau wie beim Merken.
+- Im Offline-Modus bietet der Chat keine Google- oder Trello-Werkzeuge mehr an.
 
-## Behoben
-- Dienste → Dictate Prompt beachtet den Modus „Nur Diktat“.
-- Der Modell-Import öffnet Ihren echten Benutzerordner (für ~/.cache/huggingface und ~/.lmstudio/models) und überspringt versteckte Ordner wie unfertige Downloads.
-- Beim Umwandeln eines alten eigenen Prompts in Zusätze wird kein alter eingebauter Prompt mehr mitkopiert.
-- Praxis-Playbook aktualisiert (v1.1).
+## Vorlagen
+- Eine Vorlage kann mehrere verwandte Formate enthalten. Sie wählen eines, indem Sie zuerst seinen Namen sagen. Das Praxis-Playbook ist aktualisiert (v1.2).
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.99...v9.00
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v9.00...v9.01
