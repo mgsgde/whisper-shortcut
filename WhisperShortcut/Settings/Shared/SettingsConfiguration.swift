@@ -363,9 +363,9 @@ enum PromptModel: String, CaseIterable {
     case .localMLXQwen34BInstruct:
       return String(localized: "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline")
     case .localMLXQwen359B:
-      return String(localized: "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM")
+      return String(localized: "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Not recommended for Dictate Prompt: slower and weaker at rule checks than Qwen3 4B Instruct • Needs 16 GB RAM")
     case .localMLXGemma426BA4B:
-      return String(localized: "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Chat only, needs 32 GB RAM")
+      return String(localized: "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Not recommended for Dictate Prompt: no benchmark yet, and it is the slowest of the three • Needs 32 GB RAM")
     }
   }
   
