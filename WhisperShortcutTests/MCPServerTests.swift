@@ -253,4 +253,12 @@ struct MCPServerTests {
     gate.signal()
     await MainActor.run {}
   }
+
+  @Test("A wrong bearer still yields 401 with the unauthorized body")
+  func wrongBearerBody() {
+    let response = handle(req(auth: "Bearer nope"), tools())
+    #expect(response.status == 401)
+    #expect(response.headers["WWW-Authenticate"] == "Bearer")
+    #expect(String(data: response.body, encoding: .utf8) == "{\"error\":\"unauthorized\"}")
+  }
 }
