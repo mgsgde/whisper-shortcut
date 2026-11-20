@@ -471,9 +471,8 @@ def fake_term(case):
             return gold["fake_bad"]
         rx = (gold.get("forbid") or ["x"])[0]
         return re.sub(r"\\b|\\|\?|\.\?|[\^$]", "", rx)
-    note = re.sub(r"^added:\s*", "", gold["note"])
-    note = re.sub(r"\s*\(the same row added \d+ other entries\)$", "", note)
-    for e in note.split("; "):
+    note = re.sub(r"^(?:Accepted change )?added:\s*", "", gold["note"])
+    for e in split_terms(note):
         if re.search(gold["accept"][0], e, re.I):
             return e
     return gold["accept"][0].replace(".?", "").replace(" ?", " ")
@@ -583,7 +582,7 @@ def describe_proposal(prop):
 def judge(case, prop, key):
     system = "You grade changes to a speech-to-text configuration. Answer only with JSON."
     msg = (f"Accepted change (gold): {case['gold']['note']}\n\nProposal: {describe_proposal(prop)}\n\n"
-           'Does this proposal implement the same fix as the accepted change? Answer JSON {"same": bool, "why": str}')
+           'The accepted change fixed several dictation mistakes at once; each entry is one fix. Does the proposal fix at least one of the same mistakes (the same term or spelling, as a glossary entry or as a rule)? Proposing only one of them is fine. Answer JSON {"same": bool, "why": str}')
     parts, tin, tout, _ = gemini_call(JUDGE_MODEL, system, [{"role": "user", "parts": [{"text": msg}]}], key, decls=False, json_mode=True)
     text = "".join(p.get("text", "") for p in parts)
     try:
