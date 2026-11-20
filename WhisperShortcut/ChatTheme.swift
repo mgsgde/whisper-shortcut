@@ -59,12 +59,12 @@ enum ChatTheme {
   static let sendAccent = Color(red: 217/255, green: 119/255, blue: 87/255)        // #D97757
   /// Body prose font size — single source of truth for chat messages (prose, bullets,
   /// user bubble) and the base for relative heading sizes.
-  static let bodyFontSize: CGFloat = 16
+  static let bodyFontSize: CGFloat = 14  // Claude desktop --cds-font-size-body (.875rem), measured 14 pt on screen
   /// Line spacing paired with `bodyFontSize` to hold a ~1.5× line height.
-  static let bodyLineSpacing: CGFloat = 7
+  static let bodyLineSpacing: CGFloat = 4  // ~1.5× line height, as measured in Claude (21 pt lines at 14 pt)
   /// A touch of letter spacing on body prose. On dark backgrounds light text tends to
   /// bloom/blur ("halation"); a hair of tracking keeps glyphs crisp. Keep it tiny.
-  static let bodyTracking: CGFloat = 0.2
+  static let bodyTracking: CGFloat = 0  // Claude sets no letter spacing
   /// Regular body weight for plain prose. Kept at `.regular` (the lighter look preferred
   /// over a heavier nudge); bold/headings set their own weights.
   static let bodyRegularNSWeight = NSFont.Weight.regular
