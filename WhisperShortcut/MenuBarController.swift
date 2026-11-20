@@ -2588,8 +2588,12 @@ class MenuBarController: NSObject {
   }
 
   @objc private func reportLastResult() {
-    MainActor.assumeIsolated {
-      ProblemReport.open()
+    // Open after the status menu has finished closing, or the window lands behind the app the
+    // user came from.
+    DispatchQueue.main.async {
+      MainActor.assumeIsolated {
+        ProblemReport.open()
+      }
     }
   }
 

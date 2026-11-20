@@ -104,8 +104,12 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
   /// forward without taking the keyboard.
   private func present(_ window: NSWindow, activate: Bool) {
     if activate {
-      window.makeKeyAndOrderFront(nil)
+      // Activate first, then order front: the reverse leaves the window behind the frontmost app
+      // when opened from the status menu. orderFrontRegardless covers the accessory-app case where
+      // activation is granted a beat late.
       NSApp.activate(ignoringOtherApps: true)
+      window.makeKeyAndOrderFront(nil)
+      window.orderFrontRegardless()
     } else {
       window.orderFront(nil)
     }
