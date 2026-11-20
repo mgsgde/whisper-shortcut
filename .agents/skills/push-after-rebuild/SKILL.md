@@ -18,6 +18,6 @@ description: When the user wants to push, commit, or "save to git", first rebuil
    ```
 3. **Push** (`git push`).
 
-**Scope caveat (parent workspace):** Pushing follows `AGENTS.md` → Git: push your own branch and open the PR; tags and releases go to the `whisper Deployments` session.
+**Scope caveat (parent workspace):** Pushing follows `AGENTS.md` → Git: push your own branch and open the PR; the merge train merges green PRs and `scripts/release-nightly-job.sh` releases; never tag by hand.
 
 Commit-only requests (no push) and push-only requests (nothing new to commit) still rebuild first.
