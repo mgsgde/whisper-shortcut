@@ -42,6 +42,12 @@ enum FeedbackLinks {
   /// one users may have seen elsewhere.
   static let supportEmail = "mgsgde@gmail.com"
 
+  /// Subject line for a report email. Shared by the `mailto:` URL and Mail's compose service so
+  /// both drafts are titled the same way.
+  static var emailSubject: String {
+    String(localized: "WhisperShortcut feedback (\(AppConstants.appVersion))")
+  }
+
   // MARK: - Opening
 
   /// Opens `channel` with a message pre-composed from the app's environment plus `context`.
@@ -74,7 +80,7 @@ enum FeedbackLinks {
       guard let url, url.scheme == "https", url.host == "wa.me" else { return nil }
       return url
     case .email:
-      guard let subject = encode(String(localized: "WhisperShortcut feedback (\(AppConstants.appVersion))")),
+      guard let subject = encode(emailSubject),
             let encoded = encode(body) else { return nil }
       return URL(string: "mailto:\(supportEmail)?subject=\(subject)&body=\(encoded)")
     case .gitHub:

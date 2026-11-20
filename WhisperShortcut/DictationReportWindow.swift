@@ -33,7 +33,9 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
     window.title = String(localized: "Report a Problem")
     window.contentView = NSHostingView(rootView: DictationReportView(
       candidates: candidates,
-      onSend: { [weak self] channel, context in self?.send(channel, context: context) },
+      onSend: { [weak self] channel, context, attachment in
+        self?.send(channel, context: context, attachment: attachment)
+      },
       onCancel: { [weak self] in self?.close() }))
     window.isReleasedWhenClosed = false
     window.delegate = self
@@ -45,14 +47,81 @@ final class DictationReportWindowController: NSObject, NSWindowDelegate {
       "DICTATION-REPORT: Opened report window on \(newest.kind.rawValue) (\(candidates.count) results, \(newest.details.count) chars)")
   }
 
-  private func send(_ channel: FeedbackLinks.Channel, context: String) {
+  private func send(_ channel: FeedbackLinks.Channel, context: String, attachment: String? = nil) {
     // `wa.me` and `mailto:` carry the text in the URL, and an over-long one is dropped silently
     // by some clients instead of failing — clamp it so the report at least arrives.
     let limit = channel == .whatsApp ? 3_000 : 6_000
-    if FeedbackLinks.open(channel, context: FeedbackLinks.truncated(context, limit: limit)) {
+    let clamped = FeedbackLinks.truncated(context, limit: limit)
+    guard let attachment else {
+      openClamped(channel, context: clamped)
+      return
+    }
+    switch channel {
+    case .email:
+      sendEmail(clampedContext: clamped, attachment: attachment)
+    case .whatsApp:
+      sendWhatsApp(clampedContext: clamped, attachment: attachment)
+    case .gitHub:
+      openClamped(channel, context: clamped)
+    }
+  }
+
+  private func openClamped(_ channel: FeedbackLinks.Channel, context: String) {
+    if FeedbackLinks.open(channel, context: context) {
       DebugLogger.log("DICTATION-REPORT: Opened \(channel.rawValue) with the report")
       close()
     }
+  }
+
+  /// The file holds the configuration. The message itself stays the clamped dictation text, which
+  /// is what Mail can still show when the attachment cannot be added.
+  private func sendEmail(clampedContext: String, attachment: String) {
+    let file: URL
+    do {
+      file = try ReportAttachment.write(attachment)
+    } catch {
+      DebugLogger.logWarning(
+        "DICTATION-REPORT: Could not write the report file: \(error.logDescription)")
+      openClamped(.email, context: clampedContext)
+      return
+    }
+    let sent = MainActor.assumeIsolated {
+      ReportSender.composeEmail(
+        body: FeedbackLinks.messageBody(context: clampedContext), attachment: file)
+    }
+    if sent {
+      DebugLogger.log("DICTATION-REPORT: Opened email with \(file.lastPathComponent) attached")
+      close()
+      return
+    }
+    let opened = FeedbackLinks.open(.email, context: clampedContext)
+    MainActor.assumeIsolated { ReportSender.revealInFinder(file) }
+    if opened {
+      DebugLogger.log("DICTATION-REPORT: Opened mailto and revealed \(file.lastPathComponent)")
+      close()
+    } else {
+      DebugLogger.logWarning(
+        "DICTATION-REPORT: mailto did not open; revealed \(file.lastPathComponent)")
+    }
+  }
+
+  /// WhatsApp has no attachment API, so the link opens as before and Finder selects the file for
+  /// the user to drag in.
+  private func sendWhatsApp(clampedContext: String, attachment: String) {
+    let opened = FeedbackLinks.open(.whatsApp, context: clampedContext)
+    do {
+      let file = try ReportAttachment.write(attachment)
+      MainActor.assumeIsolated { ReportSender.revealInFinder(file) }
+      if opened {
+        DebugLogger.log("DICTATION-REPORT: Opened whatsApp and revealed \(file.lastPathComponent)")
+      } else {
+        DebugLogger.log("DICTATION-REPORT: Revealed \(file.lastPathComponent)")
+      }
+    } catch {
+      DebugLogger.logWarning(
+        "DICTATION-REPORT: Could not write the report file: \(error.logDescription)")
+    }
+    if opened { close() }
   }
 
   private func close() {
@@ -77,12 +146,17 @@ struct DictationReportView: View {
   /// Edits per result, so switching away and back does not throw away what the user removed.
   @State private var editedDetails: [ResultReport.Kind: String] = [:]
   @State private var copied = false
-  let onSend: (_ channel: FeedbackLinks.Channel, _ context: String) -> Void
+  /// Bound by the window's controls once those exist. All three start on, so the file carries
+  /// the configuration as soon as a button passes `attachmentText`.
+  @State private var includeGlossary = true
+  @State private var includePrompts = true
+  @State private var includeTemplates = true
+  let onSend: (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Void
   let onCancel: () -> Void
 
   init(
     candidates: [ResultReport.Candidate],
-    onSend: @escaping (_ channel: FeedbackLinks.Channel, _ context: String) -> Void,
+    onSend: @escaping (_ channel: FeedbackLinks.Channel, _ context: String, _ attachment: String?) -> Void,
     onCancel: @escaping () -> Void
   ) {
     self.candidates = candidates
@@ -154,6 +228,18 @@ struct DictationReportView: View {
     let body = details.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !note.isEmpty else { return body }
     return "What went wrong: \(note)\n\n\(body)"
+  }
+
+  /// Nil when every section is off. Otherwise the same text as `context`, then the configuration.
+  private var attachmentText: String? {
+    guard includeGlossary || includePrompts || includeTemplates else { return nil }
+    return [
+      context,
+      ConfigurationReport.build(.init(
+        includeGlossary: includeGlossary,
+        includePrompts: includePrompts,
+        includeTemplates: includeTemplates)),
+    ].joined(separator: "\n\n")
   }
 
   var body: some View {
@@ -235,11 +321,11 @@ struct DictationReportView: View {
         }
         .pointerCursorOnHover()
 
-        Button("Send by Email") { onSend(.email, context) }
+        Button("Send by Email") { onSend(.email, context, nil) }
           .pointerCursorOnHover()
 
         // No default-action shortcut: Return in the "what went wrong" field must not send.
-        Button("Send via WhatsApp") { onSend(.whatsApp, context) }
+        Button("Send via WhatsApp") { onSend(.whatsApp, context, nil) }
           .buttonStyle(.borderedProminent)
           .pointerCursorOnHover()
       }
