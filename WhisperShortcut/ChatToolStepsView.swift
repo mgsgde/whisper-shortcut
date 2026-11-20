@@ -255,22 +255,34 @@ struct ToolApprovalCardView: View {
       if let preview = request.preview {
         diffBlock(preview)
       }
-      HStack(spacing: 8) {
-        // Same eligibility as "for this chat": never deletes, file writes, links or memory.
-        // Set apart on the left and plain, so it is not hit by mistake for the default button.
-        if request.offersAllowForChat {
-          Button("Always allow") { onDecision(.alwaysAllow) }
-            .buttonStyle(.link)
-            .help("Never ask again for this kind of action. You can undo this in Settings → Accounts.")
+      // All answers are bordered buttons of equal weight: a plain "Always allow" link went unseen,
+      // so users answered the same card again in every chat. Only "Allow" is the default (Return).
+      // Narrow chat column: two rows (deny + chat / always + allow), then one per line, so a
+      // label is never truncated.
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 8) {
+          Spacer(minLength: 0)
+          denyButton
+          chatButtons
+          allowButton
         }
-        Spacer()
-        Button("Deny") { onDecision(.deny) }
-          .keyboardShortcut(.cancelAction)
-        if request.offersAllowForChat {
-          Button("Allow for this chat") { onDecision(.allowForChat) }
+        VStack(alignment: .trailing, spacing: 6) {
+          HStack(spacing: 8) {
+            denyButton
+            if request.offersAllowForChat { allowForChatButton }
+          }
+          HStack(spacing: 8) {
+            if request.offersAllowForChat { alwaysAllowButton }
+            allowButton
+          }
         }
-        Button("Allow") { onDecision(.allow) }
-          .keyboardShortcut(.defaultAction)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        VStack(alignment: .trailing, spacing: 6) {
+          denyButton
+          chatButtons
+          allowButton
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
       }
       .controlSize(.small)
     }
@@ -286,6 +298,36 @@ struct ToolApprovalCardView: View {
     )
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Approval needed: \(request.summary)")
+  }
+
+  // Order: deny, then the allow scopes from this chat to always, with the one-time "Allow" last
+  // as the default (Return). "Always allow" and "for this chat" share one eligibility: never
+  // deletes, file writes, links or memory.
+  private var denyButton: some View {
+    Button("Deny") { onDecision(.deny) }
+      .keyboardShortcut(.cancelAction)
+  }
+
+  private var allowForChatButton: some View {
+    Button("Allow for this chat") { onDecision(.allowForChat) }
+  }
+
+  private var alwaysAllowButton: some View {
+    Button("Always allow") { onDecision(.alwaysAllow) }
+      .help("Never ask again for this kind of action. You can undo this in Settings → Accounts.")
+  }
+
+  @ViewBuilder
+  private var chatButtons: some View {
+    if request.offersAllowForChat {
+      allowForChatButton
+      alwaysAllowButton
+    }
+  }
+
+  private var allowButton: some View {
+    Button("Allow") { onDecision(.allow) }
+      .keyboardShortcut(.defaultAction)
   }
 
   /// With a diff below, the summary's own copy of the new text would say the same thing twice,
