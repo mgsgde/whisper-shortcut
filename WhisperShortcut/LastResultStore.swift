@@ -24,6 +24,10 @@ final class LastResultStore {
     let model: String?
     let provider: String?
     let hadScreenshot: Bool
+    /// Characters of text around the cursor sent with the request; 0 when none.
+    var fieldContextChars: Int = 0
+    /// Earlier turns sent as history.
+    var historyTurns: Int = 0
   }
 
   struct ReadAloudResult: Equatable {
@@ -63,7 +67,9 @@ final class LastResultStore {
       response: Self.cap(result.response, limit: Self.bodyCap),
       model: result.model,
       provider: result.provider,
-      hadScreenshot: result.hadScreenshot)
+      hadScreenshot: result.hadScreenshot,
+      fieldContextChars: result.fieldContextChars,
+      historyTurns: result.historyTurns)
     queue.sync { promptStorage = stored }
   }
 

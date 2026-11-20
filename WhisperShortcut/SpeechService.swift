@@ -2036,7 +2036,8 @@ class SpeechService {
       response: normalizedText,
       model: model,
       provider: providerLabel,
-      hadScreenshot: envelope.hadScreenshot))
+      hadScreenshot: envelope.hadScreenshot,
+      fieldContextChars: envelope.fieldContextChars, historyTurns: envelope.historyTurns))
     ContextLogger.shared.logPrompt(
       mode: mode,
       selectedText: clipboardContext,
