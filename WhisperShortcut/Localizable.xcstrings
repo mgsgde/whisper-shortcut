@@ -20625,16 +20625,6 @@
         }
       }
     },
-    "Template “%@”" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorlage „%@“"
-          }
-        }
-      }
-    },
     "Template" : {
       "localizations" : {
         "de" : {
@@ -30069,6 +30059,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Feedback zu WhisperShortcut (%@)"
+          }
+        }
+      }
+    },
+    "Also send my settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Einstellungen mitsenden"
+          }
+        }
+      }
+    },
+    "Prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompts"
+          }
+        }
+      }
+    },
+    "Sent as a file. Mail attaches it. With WhatsApp, Finder opens with the file selected: drag it into the chat. Untick anything that contains names." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird als Datei mitgeschickt. Mail hängt sie an. Bei WhatsApp öffnet sich der Finder mit der markierten Datei: Ziehen Sie sie in den Chat. Entfernen Sie das Häkchen bei allem, was Namen enthält."
+          }
+        }
+      }
+    },
+    "Only the details above are sent." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es werden nur die Details oben gesendet."
+          }
+        }
+      }
+    },
+    "What went wrong: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was ist schiefgelaufen: %@"
           }
         }
       }

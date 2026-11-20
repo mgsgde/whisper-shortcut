@@ -146,8 +146,7 @@ struct DictationReportView: View {
   /// Edits per result, so switching away and back does not throw away what the user removed.
   @State private var editedDetails: [ResultReport.Kind: String] = [:]
   @State private var copied = false
-  /// Bound by the window's controls once those exist. All three start on, so the file carries
-  /// the configuration as soon as a button passes `attachmentText`.
+  /// "Also send my settings". All three start on; see the comment at the checkboxes.
   @State private var includeGlossary = true
   @State private var includePrompts = true
   @State private var includeTemplates = true
@@ -227,7 +226,17 @@ struct DictationReportView: View {
     let note = problem.trimmingCharacters(in: .whitespacesAndNewlines)
     let body = details.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !note.isEmpty else { return body }
-    return "What went wrong: \(note)\n\n\(body)"
+    return String(localized: "What went wrong: \(note)") + "\n\n\(body)"
+  }
+
+  private var sendsSettings: Bool { includeGlossary || includePrompts || includeTemplates }
+
+  private var settingsOnHint: LocalizedStringKey {
+    "Sent as a file. Mail attaches it. With WhatsApp, Finder opens with the file selected: drag it into the chat. Untick anything that contains names."
+  }
+
+  private var settingsOffHint: LocalizedStringKey {
+    "Only the details above are sent."
   }
 
   /// Nil when every section is off. Otherwise the same text as `context`, then the configuration.
@@ -296,6 +305,27 @@ struct DictationReportView: View {
           .frame(minHeight: 220)
       }
 
+      // On by default: without the glossary, prompts and templates a report about a wrong word
+      // cannot be reproduced, and asking for them through the person who set the app up costs a
+      // round trip per question. They are configuration, not patient data; the dictated text
+      // above is the sensitive part and is already in the details.
+      VStack(alignment: .leading, spacing: 6) {
+        Text("Also send my settings")
+          .font(.subheadline)
+          .fontWeight(.medium)
+          .foregroundColor(.secondary)
+        HStack(spacing: 18) {
+          Toggle("Glossary", isOn: $includeGlossary)
+          Toggle("Prompts", isOn: $includePrompts)
+          Toggle("Templates", isOn: $includeTemplates)
+        }
+        .toggleStyle(.checkbox)
+        Text(sendsSettings ? settingsOnHint : settingsOffHint)
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       // The details hold what was dictated, selected or read; in a practice that can be a
       // patient's name.
       HStack(alignment: .top, spacing: 8) {
@@ -314,18 +344,20 @@ struct DictationReportView: View {
 
         Spacer()
 
+        // Copy takes everything, settings included: the clipboard has no length limit.
         Button(copied ? String(localized: "Copied") : String(localized: "Copy")) {
           NSPasteboard.general.clearContents()
-          NSPasteboard.general.setString(FeedbackLinks.messageBody(context: context), forType: .string)
+          NSPasteboard.general.setString(
+            FeedbackLinks.messageBody(context: attachmentText ?? context), forType: .string)
           copied = true
         }
         .pointerCursorOnHover()
 
-        Button("Send by Email") { onSend(.email, context, nil) }
+        Button("Send by Email") { onSend(.email, context, attachmentText) }
           .pointerCursorOnHover()
 
         // No default-action shortcut: Return in the "what went wrong" field must not send.
-        Button("Send via WhatsApp") { onSend(.whatsApp, context, nil) }
+        Button("Send via WhatsApp") { onSend(.whatsApp, context, attachmentText) }
           .buttonStyle(.borderedProminent)
           .pointerCursorOnHover()
       }
