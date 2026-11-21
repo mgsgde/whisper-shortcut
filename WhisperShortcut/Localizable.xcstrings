@@ -10910,22 +10910,42 @@
         }
       }
     },
-    "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier)" : {
+    "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 • Everyday questions and agents • Free tier • Multimodal" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gemini 4 Argon von Google • Spitzenmodell zum Denken bei schwierigen Rechercheaufgaben • Kostenpflichtig (keine Gratisstufe)"
+            "value" : "Gemini 4 Hydrogen von Google • Günstigstes Gemini 4 • Alltagsfragen und Agenten • Gratisstufe • Multimodal"
           }
         }
       }
     },
-    "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier) • Multimodal" : {
+    "Google's Gemini 4 Hydrogen • Cheapest Gemini 4 • Free tier" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gemini 4 Argon von Google • Spitzenmodell zum Denken bei schwierigen Rechercheaufgaben • Kostenpflichtig (keine Gratisstufe) • Multimodal"
+            "value" : "Gemini 4 Hydrogen von Google • Günstigstes Gemini 4 • Gratisstufe"
+          }
+        }
+      }
+    },
+    "Google's Gemini 4 Neon • Strongest Gemini 4 • Paid (no free tier)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini 4 Neon von Google • Stärkstes Gemini 4 • Kostenpflichtig (keine Gratisstufe)"
+          }
+        }
+      }
+    },
+    "Google's Gemini 4 Neon • Strongest Gemini 4 for hard research questions and configuration • Paid (no free tier) • Multimodal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini 4 Neon von Google • Stärkstes Gemini 4 für schwierige Rechercheaufgaben und Konfiguration • Kostenpflichtig (keine Gratisstufe) • Multimodal"
           }
         }
       }

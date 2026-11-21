@@ -23,14 +23,14 @@ struct TranscriptionTuningTests {
     }
   }
 
-  @Test("Pro, Argon and 3.8 Flash are clamped off minimal — the API rejects that level for them")
+  @Test("Pro, Neon and 3.8 Flash are clamped off minimal — the API rejects that level for them")
   func clampsMinimal() {
     // Pro: unreachable in the shipped app since 2026-08-03 (no longer selectable for dictation),
     // but kept so re-offering it cannot regress into sending a level the API rejects.
-    // Argon is the same shape: flagship reasoning, not a dictation model, and it documents
-    // low/medium/high only.
+    // Neon is the same shape: not a dictation model, and it documents low/medium/high/xhigh
+    // only.
     // 3.8 Flash: live-verified 2026-09-06, gemini-3.8-flash returns HTTP 400 for thinkingLevel MINIMAL.
-    for model in [TranscriptionModel.gemini31Pro, .gemini4Argon, .gemini38Flash] {
+    for model in [TranscriptionModel.gemini31Pro, .gemini4Neon, .gemini38Flash] {
       let clamped = model.geminiTranscriptionGenerationConfig(
         temperature: 0.0, effort: .minimal)
       #expect(clamped.thinkingConfig?.thinkingLevel == "low", "\(model.rawValue)")

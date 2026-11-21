@@ -25,7 +25,7 @@ struct TranscriptionProviderTests {
       TranscriptionModel.allCases.filter { !$0.isSelectableForDictation })
     #expect(
       hidden.subtracting([.whisperMedium, .whisperLarge, .qwen3ASR])
-        == [.gemini4Argon, .gemini31Pro, .openAIGPT4oTranscribe])
+        == [.gemini4Hydrogen, .gemini4Neon, .gemini31Pro, .openAIGPT4oTranscribe])
     #expect(TranscriptionModel.qwen3ASR.isSelectableForDictation == Qwen3ModelType.asr.isOfferable)
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperMedium))
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperLarge))
@@ -43,9 +43,12 @@ struct TranscriptionProviderTests {
     // through it for Dictate Prompt and the Writing Style profile.
     #expect(PromptModel.gemini31Pro.asTranscriptionModel == .gemini31Pro)
     #expect(TranscriptionModel.gemini31Pro.apiEndpoint.contains("gemini-3.1-pro-preview"))
-    #expect(!TranscriptionModel.gemini4Argon.isSelectableForDictation)
-    #expect(PromptModel.gemini4Argon.asTranscriptionModel == .gemini4Argon)
-    #expect(TranscriptionModel.gemini4Argon.apiEndpoint.contains("gemini-4-argon"))
+    #expect(!TranscriptionModel.gemini4Hydrogen.isSelectableForDictation)
+    #expect(PromptModel.gemini4Hydrogen.asTranscriptionModel == .gemini4Hydrogen)
+    #expect(TranscriptionModel.gemini4Hydrogen.apiEndpoint.contains("gemini-4-hydrogen"))
+    #expect(!TranscriptionModel.gemini4Neon.isSelectableForDictation)
+    #expect(PromptModel.gemini4Neon.asTranscriptionModel == .gemini4Neon)
+    #expect(TranscriptionModel.gemini4Neon.apiEndpoint.contains("gemini-4-neon"))
   }
 
   @Test("Routed contains exactly the entries that are not themselves models")
