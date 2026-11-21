@@ -11,7 +11,7 @@ enum AppSettingsChatTool {
   static let rationale = "Changed from the in-app Chat (Improve)"
 
   static let description =
-    "Reviews WhisperShortcut's settings and changes them with the user's approval. Call action='review' first when the user asks to improve or check their setup."
+    "Reviews WhisperShortcut's settings and changes them with the user's approval. Call action='review' first when the user asks to improve or check their setup; its dictation_candidates list words the app probably gets wrong in dictation, found by scanning the whole usage log."
 
   static let parameters: [String: Any] = [
     "type": "object",
@@ -20,7 +20,7 @@ enum AppSettingsChatTool {
         "type": "string",
         "enum": ["review", "set", "dismiss"],
         "description":
-          "'review' returns the findings worth raising. 'set' changes settings (the user approves on a card). 'dismiss' records that the user does not want a finding raised again.",
+          "'review' returns the findings worth raising and, when usage data is on, dictation_candidates (heard, suggested, source, count, row_ids). 'set' changes settings (the user approves on a card). 'dismiss' records that the user does not want a finding raised again.",
       ],
       "category": [
         "type": "string",
@@ -101,11 +101,13 @@ enum AppSettingsChatTool {
     args: [String: Any], catalog: [MCPSetting] = liveCatalog,
     deps: MCPSettingsCatalog.Dependencies = .live,
     suppressions: ImproveSuppressions = ImproveSuppressions(),
-    applier: MCPConfigApplier = MCPConfigApplier(targets: .live, changeLog: .shared)
+    applier: MCPConfigApplier = MCPConfigApplier(targets: .live, changeLog: .shared),
+    candidates: () -> [[String: Any]] = { [] }
   ) -> [String: Any] {
     switch args["action"] as? String {
     case "review":
-      return review(args: args, catalog: catalog, deps: deps, suppressions: suppressions)
+      return review(
+        args: args, catalog: catalog, deps: deps, suppressions: suppressions, candidates: candidates)
     case "set":
       return set(args: args, catalog: catalog, applier: applier)
     case "dismiss":
@@ -115,17 +117,18 @@ enum AppSettingsChatTool {
     }
   }
 
+  /// "offline", "on" or "off": whether the review may read the usage log (candidates only when "on").
+  static func usageState(deps: MCPSettingsCatalog.Dependencies) -> String {
+    if deps.defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) { return "offline" }
+    return deps.defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled) ? "on" : "off"
+  }
+
   private static func review(
     args: [String: Any], catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies,
-    suppressions: ImproveSuppressions
+    suppressions: ImproveSuppressions, candidates: () -> [[String: Any]]
   ) -> [String: Any] {
     let result = SettingsAdvisor.review(catalog: catalog, deps: deps, suppressions: suppressions)
-    let usage: String
-    if deps.defaults.bool(forKey: UserDefaultsKeys.offlineModeEnabled) {
-      usage = "offline"
-    } else {
-      usage = deps.defaults.bool(forKey: UserDefaultsKeys.contextLoggingEnabled) ? "on" : "off"
-    }
+    let usage = usageState(deps: deps)
     let language = catalog.first { $0.id == "dictation.language" }.map { $0.read() } ?? ""
     var out: [String: Any] = [
       "usage_data": usage,
@@ -133,6 +136,7 @@ enum AppSettingsChatTool {
       "findings": result.findings.map(SettingsAdvisor.json),
       "suppressed_count": result.suppressedCount,
     ]
+    if usage == "on" { out["dictation_candidates"] = candidates() }
     if let category = (args["category"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) {
       out["settings"] = catalog
         .filter { !$0.chatOnly && $0.unavailableReason() == nil && $0.category == category }
