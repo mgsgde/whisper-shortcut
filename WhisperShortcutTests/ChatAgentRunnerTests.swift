@@ -289,12 +289,12 @@ struct ChatAgentRunnerTests {
       provider,
       extraTools: [name],
       handlers: [name: { _ in ran = true; return ChatToolOutcome(response: ["ok": true]) }],
-      configGuard: { _ in .switchModel(.gemini4Argon) })
+      configGuard: { _ in .switchModel(.gemini4Neon) })
     do {
       _ = try await runner.run(contents: [["role": "user", "parts": [["text": "change it"]]]])
       Issue.record("expected ChatTurnSwitchModelRequested")
     } catch let error as ChatTurnSwitchModelRequested {
-      #expect(error.model == .gemini4Argon)
+      #expect(error.model == .gemini4Neon)
     }
     #expect(!ran)
     #expect(runner.records.isEmpty)

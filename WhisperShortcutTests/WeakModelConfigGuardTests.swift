@@ -9,7 +9,8 @@ struct WeakModelConfigGuardTests {
   @Test("Weak, strong and unknown models are classified")
   func weakClassification() {
     #expect(PromptModel.gemini38Flash.isWeakForConfiguration)
-    #expect(!PromptModel.gemini4Argon.isWeakForConfiguration)
+    #expect(PromptModel.gemini4Hydrogen.isWeakForConfiguration)
+    #expect(!PromptModel.gemini4Neon.isWeakForConfiguration)
     #expect(!PromptModel.customOpenAIEndpoint.isWeakForConfiguration)
   }
 
@@ -17,14 +18,14 @@ struct WeakModelConfigGuardTests {
   func sameProvider() {
     #expect(
       PromptModel.strongConfigurationModel(for: .gemini38Flash, hasCredential: { $0 == .gemini })
-        == .gemini4Argon)
+        == .gemini4Neon)
   }
 
   @Test("Suggestion falls back to a provider with a credential")
   func fallbackProvider() {
     #expect(
       PromptModel.strongConfigurationModel(for: .claudeHaiku55, hasCredential: { $0 == .gemini })
-        == .gemini4Argon)
+        == .gemini4Neon)
   }
 
   @Test("No credentials means no suggestion")

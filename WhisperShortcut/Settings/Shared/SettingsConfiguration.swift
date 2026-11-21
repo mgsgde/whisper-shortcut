@@ -434,11 +434,11 @@ enum PromptModel: String, CaseIterable {
   /// flagged: nothing is known about them, so no warning. Exhaustive, no `default:`.
   var isWeakForConfiguration: Bool {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini38Flash,
+    case .gemini4Hydrogen, .gemini31FlashLite, .gemini35FlashLite, .gemini38Flash,
          .openaiGPT5Mini, .openaiGPT6Luna, .claudeHaiku55, .grok43,
          .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return true
-    case .gemini4Argon, .gemini31Pro, .geminiImage, .geminiImagePro, .grok47,
+    case .gemini4Neon, .gemini31Pro, .geminiImage, .geminiImagePro, .grok47,
          .openaiGPT6Sol, .openaiGPT61Terra, .openaiGPT4oAudio,
          .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat,
          .claudeSonnet55, .claudeOpus55:
@@ -454,14 +454,14 @@ enum PromptModel: String, CaseIterable {
   ) -> PromptModel? {
     let sameProvider: PromptModel?
     switch current.provider {
-    case .gemini: sameProvider = .gemini4Argon
+    case .gemini: sameProvider = .gemini4Neon
     case .openai: sameProvider = .openaiGPT6Sol
     case .anthropic: sameProvider = .claudeSonnet55
     case .grok: sameProvider = .grok47
     case .customOpenAI, .openRouter, .chatGPTPlan, .local, .localMLX: sameProvider = nil
     }
     if let m = sameProvider, hasCredential(m.provider) { return m }
-    let fallbacks: [PromptModel] = [.gemini4Argon, .claudeSonnet55, .openaiGPT6Sol, .grok47]
+    let fallbacks: [PromptModel] = [.gemini4Neon, .claudeSonnet55, .openaiGPT6Sol, .grok47]
     return fallbacks.first { hasCredential($0.provider) }
   }
 
