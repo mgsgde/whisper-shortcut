@@ -76,6 +76,26 @@ if [[ -n "$ADD_PR" ]]; then
 fi
 
 mkdir -p "$STATE"
+
+# launchd runs a /tmp copy of origin/main's train.sh, so runner_outage.py is not next to the script
+# and the main checkout ($REPO_ROOT) may lag origin/main. Take the helper from origin/main first.
+OUTAGE_HELPER=""
+if [[ -f "$SCRIPT_DIR/runner_outage.py" ]]; then
+    OUTAGE_HELPER="$SCRIPT_DIR/runner_outage.py"
+else
+    mkdir -p "$STATE/lib"
+    _tmp="$(mktemp "$STATE/lib/runner_outage.XXXXXX")"
+    if git -C "$REPO_ROOT" show origin/main:scripts/merge-train/runner_outage.py >"$_tmp" 2>/dev/null && [[ -s "$_tmp" ]]; then
+        mv "$_tmp" "$STATE/lib/runner_outage.py"
+        OUTAGE_HELPER="$STATE/lib/runner_outage.py"
+    else
+        rm -f "$_tmp"
+        [[ -f "$REPO_ROOT/scripts/merge-train/runner_outage.py" ]] && OUTAGE_HELPER="$REPO_ROOT/scripts/merge-train/runner_outage.py"
+    fi
+fi
+OUTAGE_DIR=""
+[[ -n "$OUTAGE_HELPER" ]] && OUTAGE_DIR="$(dirname "$OUTAGE_HELPER")"
+
 [[ -e "$STATE/PAUSED" ]] && exit 0
 
 # --- Only one run at a time ------------------------------------------------------------------
@@ -107,11 +127,9 @@ record() {  # action pr detail
 }
 
 runner_outage_rerun() {  # run_id; 0 = the run lost its runner (re-run triggered), 1 = really red
-    local id="$1" helper="" verdict attempt
-    if [[ -f "$SCRIPT_DIR/runner_outage.py" ]]; then helper="$SCRIPT_DIR/runner_outage.py"
-    elif [[ -f "$REPO_ROOT/scripts/merge-train/runner_outage.py" ]]; then helper="$REPO_ROOT/scripts/merge-train/runner_outage.py"
-    else return 1; fi
-    verdict="$(python3 "$helper" check "$REPO" "$id" 2>/dev/null)" || return 1
+    local id="$1" verdict attempt
+    [[ -n "$OUTAGE_HELPER" ]] || return 1
+    verdict="$(python3 "$OUTAGE_HELPER" check "$REPO" "$id" 2>/dev/null)" || return 1
     attempt="${verdict#* }"
     [[ "${verdict%% *}" == "rerun" ]] || return 1
     if [[ "$DRY" == "1" ]]; then
@@ -219,10 +237,6 @@ fi
 # implementer/ branch or an author other than the repo owner or Dependabot, unless the PR
 # carries merge-train. CI rule: any red entry is red; no entries or any unfinished entry is
 # pending; otherwise green.
-OUTAGE_DIR=""
-for d in "$SCRIPT_DIR" "$REPO_ROOT/scripts/merge-train"; do
-    [[ -f "$d/runner_outage.py" ]] && { OUTAGE_DIR="$d"; break; }
-done
 JSON="$(gh pr list --repo "$REPO" --state open --base main --limit 100 \
     --json number,title,isDraft,headRefOid,headRefName,author,labels,mergeable,mergeStateStatus,statusCheckRollup,baseRefOid 2>/dev/null)" \
     || { warn "gh pr list failed — skipping."; exit 0; }
