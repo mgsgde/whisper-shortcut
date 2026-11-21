@@ -96,7 +96,7 @@ def trusted(author):
 
 
 def ci_of(pr):
-    reds, pending = [], False
+    reds, pending, cancelled_flags = [], False, []
     entries = pr.get("statusCheckRollup") or []
     for e in entries:
         if e.get("__typename") == "StatusContext":
@@ -106,9 +106,14 @@ def ci_of(pr):
             val = (e.get("conclusion") or "") if e.get("status") == "COMPLETED" else ""
         if val in RED:
             reds.append(name)
+            cancelled_flags.append(e.get("__typename") != "StatusContext" and val == "CANCELLED")
         elif val not in OK:
             pending = True
     if reds:
+        # Only cancelled checks: the train re-runs those (runner outage); a real failure stays red.
+        only_cancelled = all(c for c in cancelled_flags)
+        if only_cancelled:
+            return "pending", []
         return "red", reds
     if pending or not entries:
         return "pending", []

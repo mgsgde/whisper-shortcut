@@ -89,3 +89,12 @@ touch ~/.local/state/whispershortcut-merge-train/PAUSED   # pause the train; the
 State dir (`$MERGE_TRAIN_STATE`, default `~/.local/state/whispershortcut-merge-train`):
 `launchd.log`, `runs.tsv` (time, action, PR, detail; one row per train run), `stale-launchd.log`,
 `stale-runs.tsv` (time, listed, closed; listed includes the closed ones) and the run lock.
+
+## Runner outages
+
+When GitHub has no hosted runners, jobs get cancelled with the annotation "The job was not
+acquired by Runner of type hosted even after multiple attempts" and the run turns `failure`.
+`runner_outage.py` recognises that (every cancelled job carries a `was not acquired by Runner`
+annotation, no job really failed). The train then re-runs the failed jobs instead of braking main
+or failing the PR, at most twice per run (`MERGE_TRAIN_MAX_RERUNS`); after that it counts red as
+before. A PR whose only red checks are cancelled shows as pending in `stale-prs.sh`.
