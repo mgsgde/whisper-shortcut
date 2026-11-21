@@ -16,7 +16,11 @@ What it measures
   card), FAIL (card matching a gold.forbid regex, or any card when gold.forbid_any_card), CARD_OTHER
   (any other card; counts as wrong, adjudicate by hand). correct = CARD_OK on positives + ASK on
   positives whose gold.outcome == "card_or_ask". wrong = CARD_WRONG + FAIL + CARD_OTHER.
-  score = correct - 2*wrong. Card precision = CARD_OK / all cards.
+  score = correct - 2*wrong. A CARD_WRONG/CARD_OTHER whose term or misheard form equals a
+  gold.later_accepted head (glossary entries the user added after the cutoff and kept; alphanumerics
+  only, case-insensitive) is also flagged LATER_OK (strict label unchanged; FAIL never is). The
+  "incl. later-accepted" columns: correct + later_ok on positives (the column's denominator is the
+  positives), and the score (correct + later_ok) - 2*(wrong - later_ok) with later_ok over all cards. Card precision = CARD_OK / all cards.
 
   This is a simulation of the app's /improve turn with a subset of the chat tools and mocked tool
   results, not the app itself. The system prompt blocks are read from `WhisperShortcut/ChatView.swift`
@@ -33,7 +37,7 @@ Run
   --log window    : read_recent_interactions reads case["window"] (fallback case["interactions"]).
   --runs N        : repeat every (model, case) N times; records carry `run`.
   Offline self-test models (no API): fake-gold proposes the gold change, fake-wrong proposes "Xyzzy",
-  fake-ask asks "Ist <gold form> richtig geschrieben?" without writing. Expected: fake-gold = all
+  fake-later proposes a later-accepted head that is not gold (expected: CARD_WRONG/FAIL flagged later-accepted); fake-ask asks "Ist <gold form> richtig geschrieben?" without writing. Expected: fake-gold = all
   positives CARD_OK, negatives FAIL or CARD_OTHER; fake-wrong = positives CARD_WRONG, negatives
   CARD_OTHER (FAIL when forbid_any_card); fake-ask = ASK on positives, PASS on negatives.
 
@@ -525,7 +529,10 @@ def run_fake(model, case, system, key):
         rec["answer"] = (f"Ist {fake_form(case)} richtig geschrieben?" if case["kind"] == "positive"
                          else "Dein Setup sieht gut aus, ich schlage nichts vor.")
         return rec
-    term = fake_term(case) if model == "fake-gold" else "Xyzzy"
+    if model == "fake-later":  # a wrong-but-later-accepted card (needs gold.later_accepted); else nonsense
+        term = next((h for h in case["gold"].get("later_accepted", []) if not any(re.search(rx, h, re.I) for rx in case["gold"].get("accept", []))), "Xyzzy")
+    else:
+        term = fake_term(case) if model == "fake-gold" else "Xyzzy"
     script = [
         [("app_settings", {"action": "review"}), ("read_recent_interactions", {})],
         [("read_config_history", {}), ("update_app_instructions", {"section": "whisper_glossary", "action": "read"})],
@@ -614,6 +621,25 @@ def proposal_entries(case, prop):
     return [e for e in new if e not in old] if act == "replace" else new
 
 
+def _alnum(s):
+    return re.sub(r"[\W_]+", "", (s or "").casefold())
+
+
+def later_ok(case, prop):
+    """True if the card's term or misheard form equals a gold.later_accepted head (alphanumerics only, case-insensitive)."""
+    later = {_alnum(h) for h in case["gold"].get("later_accepted", [])} - {""}
+    if not prop or not later:
+        return False
+    a, forms = prop["args"], []
+    if prop["tool"] == "remember_dictation_term":
+        forms = [a.get("term"), a.get("misheard_as")]
+    else:
+        for e in proposal_entries(case, prop):
+            forms.append(e.split(" (not ", 1)[0])
+            forms += re.findall(r'"([^"]*)"', e)
+    return any(_alnum(f) in later for f in forms)
+
+
 def describe_proposal(prop):
     if not prop:
         return ""
@@ -691,6 +717,7 @@ def run_case(model, case, blocks, gkey, akey, run=1):
     rec["history_checked"] = ("read_config_history" in (raw["proposal"]["tools_before"] if raw["proposal"] else raw["tools"]))
     label, jc, note = score(case, raw, None if model.startswith("fake-") else gkey)
     rec.update(label=label, judge_cost=jc, judge_note=note, proposal_text=describe_proposal(raw["proposal"]))
+    rec["later_ok"] = label in ("CARD_WRONG", "CARD_OTHER") and later_ok(case, raw["proposal"])
     return rec
 
 
@@ -703,6 +730,8 @@ def summary_row(label, rs, gold_outcome):
     ask = n("ASK", pos)
     correct = card_ok + sum(r["label"] == "ASK" and gold_outcome.get(r["case"]) == "card_or_ask" for r in pos)
     wrong = n("CARD_WRONG", pos) + n("FAIL", neg) + n("CARD_OTHER", neg)
+    later = sum(bool(r.get("later_ok")) for r in rs if r["label"] in ("CARD_WRONG", "CARD_OTHER"))
+    later_pos = sum(bool(r.get("later_ok")) for r in pos if r["label"] == "CARD_WRONG")
     cards = card_ok + wrong
     prec = f"{round(100 * card_ok / cards)}% ({card_ok}/{cards})" if cards else "-"
     hc = f"{round(100 * sum(r.get('history_checked', False) for r in ok) / len(ok))}%" if ok else "-"
@@ -712,14 +741,14 @@ def summary_row(label, rs, gold_outcome):
     lat = f"{statistics.median(r['wall_s'] for r in rs):.1f}s"
     errs = sum(r["label"] == "ERR" for r in rs)
     return (f"| {label} | {correct}/{len(pos)} | {ask} | {wrong} | {n('SILENT', pos)} | {n('PASS', neg)}/{len(neg)} | "
-            f"{correct - 2 * wrong} | {prec} | {hc} | {calls} | ${cost:.3f} | ${jc:.3f} | {lat} |" + (f" ({errs} ERR)" if errs else ""))
+            f"{correct - 2 * wrong} | {correct + later_pos}/{len(pos)} | {correct + later - 2 * (wrong - later)} | {prec} | {hc} | {calls} | ${cost:.3f} | ${jc:.3f} | {lat} |" + (f" ({errs} ERR)" if errs else ""))
 
 
 def build_report(models, cases, records, runs=1, flags=""):
     gold_outcome = {c["id"]: c["gold"].get("outcome") for c in cases}
     L = [flags, "", "## Summary", ""]
-    L += ["| Model / run | Correct/positives | ASK | Wrong cards | SILENT | Negatives passed | Score | Card precision | config_history checked | Mean calls | Cost | Judge cost | Median latency |",
-          "|" + "---|" * 13]
+    L += ["| Model / run | Correct/positives | ASK | Wrong cards | SILENT | Negatives passed | Score | Correct incl. later-accepted | Score incl. later-accepted | Card precision | config_history checked | Mean calls | Cost | Judge cost | Median latency |",
+          "|" + "---|" * 15]
     for m in models:
         mine = [r for r in records if r["model"] == m and r["label"] != "SKIP"]
         if not mine:
@@ -745,7 +774,7 @@ def build_report(models, cases, records, runs=1, flags=""):
                     parts.append(r["label"] + (": " + r.get("error", "")[:60] if r.get("error") else ""))
                 else:
                     p = (r.get("proposal_text") or "").replace("|", "/")[:80]
-                    parts.append(r["label"] + (f" `{p}`" if p else ""))
+                    parts.append(r["label"] + (" (later-accepted)" if r.get("later_ok") else "") + (f" `{p}`" if p else ""))
                     if r["label"] == "CARD_OTHER":
                         other.append(f"{c['id']} ({m}, run {r.get('run', 1)}): {(r.get('proposal_text') or '')[:100]}")
             cells.append(" / ".join(parts))
@@ -769,6 +798,10 @@ def main():
     ap.add_argument("--runs", type=int, default=1)
     a = ap.parse_args()
     OPTS["candidates"] = a.candidates == "on"
+    if not OPTS["candidates"]:  # the app's current strings (ChatAppSettingsTool.swift)
+        _t = TOOLS["app_settings"]
+        _t["description"] = "Reviews WhisperShortcut's settings and changes them with the user's approval. Call action='review' first when the user asks to improve or check their setup."
+        _t["parameters"]["properties"]["action"]["description"] = "'review' returns the findings worth raising. 'set' changes settings (the user approves on a card). 'dismiss' records that the user does not want a finding raised again."
     OPTS["log"] = a.log
     runs = max(a.runs, 1)
     flags = f"Flags: --candidates {a.candidates} --log {a.log} --runs {runs}"
