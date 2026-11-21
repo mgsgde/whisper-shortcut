@@ -11,6 +11,8 @@
 #   test plan in a detached worktree -> bump Info.plist + bundled docs -> release notes (EN/DE)
 #   via headless `claude -p --model sonnet` -> commit "Update to version X.YZ" -> push to main
 #   -> scripts/create-release.sh (the tag push triggers .github/workflows/release.yml).
+#   If main moved during the tests, the version bump is cherry-picked onto the new tip for main
+#   and the tag still points at the tested commit.
 #
 # Cadence: launchd fires every 30 minutes (StartInterval; a laptop misses calendar slots). The
 # gates here decide: night window (local hour >= 21 or < 9), at most one release per 20 hours.
@@ -144,7 +146,9 @@ retry_tag() {
   local sha="$2" tag="v$1"
   if git -C "$MAIN_ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
     log "tag $tag exists already, clearing pushed-untagged."
-    rm -f "$STATE/pushed-untagged"; return 0
+    rm -f "$STATE/pushed-untagged"
+    git -C "$MAIN_ROOT" update-ref -d "refs/release-nightly/$tag" 2>/dev/null || true
+    return 0
   fi
   log "release commit ${sha:0:8} for $tag is on main without a tag, retrying create-release.sh only."
   if [[ "$DRY" == 1 ]]; then log "[dry-run] would run create-release.sh --tag $tag from ${sha:0:8}"; return 0; fi
@@ -153,6 +157,7 @@ retry_tag() {
   if ( cd "$SRC" && bash scripts/create-release.sh --tag "$tag" --yes --skip-tests --allow-dirty ); then
     date +%s > "$STATE/last-release"
     rm -f "$STATE/held-sha" "$STATE/failed-sha" "$STATE/pushed-untagged"
+    git -C "$MAIN_ROOT" update-ref -d "refs/release-nightly/$tag" || true
     log "released $tag (tag retry)."
     { cat "$SRC/.github/RELEASE_NOTES.md"; echo; echo "Build: $REPO_URL/actions"; } > "$STATE/mail-release.md"
     report_out "Released $tag" "$STATE/mail-release.md" --verdict fyi
@@ -356,7 +361,7 @@ if [[ "$DRY" == 1 ]]; then
   echo "-------- PROMPT BEGIN --------"
   build_prompt
   echo "-------- PROMPT END --------"
-  log "[dry-run] would then commit 5 release files, push HEAD:main, run create-release.sh --tag $NEW_TAG, mail Released $NEW_TAG."
+  log "[dry-run] would then commit 5 release files, push HEAD:main (if main moved: cherry-pick the version bump onto the new tip and tag the tested commit), run create-release.sh --tag $NEW_TAG, mail Released $NEW_TAG."
   exit 0
 fi
 
@@ -447,15 +452,62 @@ if ! git -C "$SRC" commit -q -m "Update to version $NEW_VER"; then
   exit 0
 fi
 RELEASE_SHA="$(git -C "$SRC" rev-parse HEAD)"
+# The tag points at this commit. If main moved it is not on origin/main, so keep it reachable
+# until create-release.sh tags it (a later worktree prune/gc must not drop it first).
+git -C "$MAIN_ROOT" update-ref "refs/release-nightly/$NEW_TAG" "$RELEASE_SHA"
 
-if ! git -C "$SRC" push -q origin HEAD:main 2>"$STATE/push-error.txt"; then
-  log "push rejected (main moved?), dropping the local release commit, retry next tick: $(head -n2 "$STATE/push-error.txt" | tr '\n' ' ')"
+# Give up on this release: worktree back at the tested target, drop the keep-alive ref.
+restore_to_target() {
   git -C "$SRC" checkout -q --detach -f "$TARGET" 2>/dev/null || true
   git -C "$SRC" reset -q --hard "$TARGET" 2>/dev/null || true
   git -C "$SRC" clean -fdq
-  exit 0
+  git -C "$MAIN_ROOT" update-ref -d "refs/release-nightly/$NEW_TAG" 2>/dev/null || true
+}
+
+if git -C "$SRC" push -q origin HEAD:main 2>"$STATE/push-error.txt"; then
+  MAIN_SHA="$RELEASE_SHA"
+  log "pushed release commit ${RELEASE_SHA:0:8} to main."
+else
+  log "push rejected (main moved?), cherry-picking the version bump onto the new tip: $(head -n2 "$STATE/push-error.txt" | tr '\n' ' ')"
+  MAIN_SHA=""
+  for attempt in 1 2 3; do
+    if ! git -C "$SRC" fetch -q origin main; then
+      log "fetch origin main failed (attempt $attempt/3)."
+      continue
+    fi
+    NEW_TIP="$(git -C "$SRC" rev-parse FETCH_HEAD 2>/dev/null)" || NEW_TIP=""
+    if [[ -z "$NEW_TIP" ]]; then
+      log "FETCH_HEAD missing after fetch (attempt $attempt/3)."
+      continue
+    fi
+    if ! git -C "$SRC" checkout -q --detach -f FETCH_HEAD; then
+      log "checkout of new main tip ${NEW_TIP:0:8} failed (attempt $attempt/3)."
+      continue
+    fi
+    if ! git -C "$SRC" cherry-pick "$RELEASE_SHA"; then
+      git -C "$SRC" cherry-pick --abort || true
+      log "cherry-pick of ${RELEASE_SHA:0:8} onto ${NEW_TIP:0:8} failed, dropping the local release commit, retry next tick."
+      restore_to_target
+      exit 0
+    fi
+    if git -C "$SRC" push -q origin HEAD:main 2>"$STATE/push-error.txt"; then
+      MAIN_SHA="$(git -C "$SRC" rev-parse HEAD)"
+      log "main moved during the release (tip ${NEW_TIP:0:8}); pushed the version bump as ${MAIN_SHA:0:8}, tagging the tested commit ${RELEASE_SHA:0:8}"
+      if ! git -C "$SRC" checkout -q --detach -f "$RELEASE_SHA"; then
+        log "version bump is on main as ${MAIN_SHA:0:8}, but checkout of tested commit ${RELEASE_SHA:0:8} failed; tag retries next tick."
+        echo "$NEW_VER $RELEASE_SHA" > "$STATE/pushed-untagged"
+        exit 0
+      fi
+      break
+    fi
+    log "push of cherry-picked bump rejected (attempt $attempt/3): $(head -n2 "$STATE/push-error.txt" | tr '\n' ' ')"
+  done
+  if [[ -z "$MAIN_SHA" ]]; then
+    log "push rejected after 3 attempts to cherry-pick the version bump onto main, retry next tick: $(head -n2 "$STATE/push-error.txt" | tr '\n' ' ')"
+    restore_to_target
+    exit 0
+  fi
 fi
-log "pushed release commit ${RELEASE_SHA:0:8} to main."
 echo "$NEW_VER $RELEASE_SHA" > "$STATE/pushed-untagged"
 
 if ! ( cd "$SRC" && bash scripts/create-release.sh --tag "$NEW_TAG" --yes --skip-tests --allow-dirty ); then
@@ -468,6 +520,7 @@ fi
 
 date +%s > "$STATE/last-release"
 rm -f "$STATE/held-sha" "$STATE/failed-sha" "$STATE/pushed-untagged"
+git -C "$MAIN_ROOT" update-ref -d "refs/release-nightly/$NEW_TAG" || true
 log "released $NEW_TAG."
 {
   cat "$SRC/.github/RELEASE_NOTES.md"
