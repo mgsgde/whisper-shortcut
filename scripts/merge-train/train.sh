@@ -18,6 +18,8 @@
 # installs green main commits (scripts/dev-daily.sh). The safety net is therefore a main-CI
 # brake: before merging anything, the newest completed CI push run on main is looked up; if it
 # is red, nothing is merged this tick, a notification fires and ONE mail per red sha goes out.
+# A run whose jobs were only cancelled by a GitHub hosted-runner outage is not red: the train
+# re-runs its failed jobs (at most MERGE_TRAIN_MAX_RERUNS times, runner_outage.py) and waits.
 #
 # What it never does: tag, release, touch the parent repo's submodule pointer, or touch any
 # local checkout. Merging happens GitHub-side through gh, so no local git state matters.
@@ -74,6 +76,26 @@ if [[ -n "$ADD_PR" ]]; then
 fi
 
 mkdir -p "$STATE"
+
+# launchd runs a /tmp copy of origin/main's train.sh, so runner_outage.py is not next to the script
+# and the main checkout ($REPO_ROOT) may lag origin/main. Take the helper from origin/main first.
+OUTAGE_HELPER=""
+if [[ -f "$SCRIPT_DIR/runner_outage.py" ]]; then
+    OUTAGE_HELPER="$SCRIPT_DIR/runner_outage.py"
+else
+    mkdir -p "$STATE/lib"
+    _tmp="$(mktemp "$STATE/lib/runner_outage.XXXXXX")"
+    if git -C "$REPO_ROOT" show origin/main:scripts/merge-train/runner_outage.py >"$_tmp" 2>/dev/null && [[ -s "$_tmp" ]]; then
+        mv "$_tmp" "$STATE/lib/runner_outage.py"
+        OUTAGE_HELPER="$STATE/lib/runner_outage.py"
+    else
+        rm -f "$_tmp"
+        [[ -f "$REPO_ROOT/scripts/merge-train/runner_outage.py" ]] && OUTAGE_HELPER="$REPO_ROOT/scripts/merge-train/runner_outage.py"
+    fi
+fi
+OUTAGE_DIR=""
+[[ -n "$OUTAGE_HELPER" ]] && OUTAGE_DIR="$(dirname "$OUTAGE_HELPER")"
+
 [[ -e "$STATE/PAUSED" ]] && exit 0
 
 # --- Only one run at a time ------------------------------------------------------------------
@@ -104,6 +126,25 @@ record() {  # action pr detail
     printf '%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$1" "$2" "$3" >>"$RUNS"
 }
 
+runner_outage_rerun() {  # run_id; 0 = the run lost its runner (re-run triggered), 1 = really red
+    local id="$1" verdict attempt
+    [[ -n "$OUTAGE_HELPER" ]] || return 1
+    verdict="$(python3 "$OUTAGE_HELPER" check "$REPO" "$id" 2>/dev/null)" || return 1
+    attempt="${verdict#* }"
+    [[ "${verdict%% *}" == "rerun" ]] || return 1
+    if [[ "$DRY" == "1" ]]; then
+        log "[dry-run] run ${id} lost its runner (attempt ${attempt}) — would re-run failed jobs"
+        return 0
+    fi
+    if gh run rerun "$id" --repo "$REPO" --failed >/dev/null 2>&1; then
+        log "run ${id}: jobs cancelled by a hosted-runner outage (attempt ${attempt}) — re-running failed jobs"
+        record rerun - "run ${id} attempt ${attempt}"
+    else
+        warn "run ${id}: re-run request failed (attempt ${attempt}) — trying again next tick."
+    fi
+    return 0
+}
+
 if [[ "$DRY" == "0" ]]; then
     gh label create "$LABEL" --repo "$REPO" --color 0E8A16 \
         --description "Merged to main by the merge train once CI is green" 2>/dev/null || true
@@ -131,9 +172,9 @@ Fix it, then remove the \`${FAILED_LABEL}\` label. The train picks the PR up aga
 # The newest COMPLETED CI push run on main decides. Red (failure/timed_out; cancelled and skipped runs are ignored): merge
 # nothing, tell Magnus once per red sha. No push run yet, or gh fails: do not block.
 main_ci_red() {  # prints "<sha>\t<url>" when main is red
-    local json line
+    local json line id
     json="$(gh run list --repo "$REPO" --workflow CI --branch main --event push --limit 10 \
-        --json headSha,status,conclusion,url 2>/dev/null)" || return 1
+        --json headSha,status,conclusion,url,databaseId 2>/dev/null)" || return 1
     line="$(python3 -c '
 import json, sys
 try: runs = json.load(sys.stdin)
@@ -141,11 +182,16 @@ except Exception: sys.exit(0)
 for r in runs:
     if r.get("status") == "completed" and r.get("conclusion") in ("success", "failure", "timed_out"):
         if r.get("conclusion") != "success":
-            print(r["headSha"] + "\t" + (r.get("url") or ""))
+            print(r["headSha"] + "\t" + (r.get("url") or "") + "\t" + str(r.get("databaseId") or ""))
         break
 ' <<<"$json")"
     [[ -n "$line" ]] || return 1
-    printf '%s\n' "$line"
+    id="${line##*$'\t'}"
+    if [[ -n "$id" ]] && runner_outage_rerun "$id" >&2; then
+        log "main CI at ${line:0:8} failed only on a runner outage — not braking" >&2
+        return 1
+    fi
+    printf '%s\n' "${line%$'\t'*}"
 }
 
 if RED="$(main_ci_red)"; then
@@ -195,7 +241,7 @@ JSON="$(gh pr list --repo "$REPO" --state open --base main --limit 100 \
     --json number,title,isDraft,headRefOid,headRefName,author,labels,mergeable,mergeStateStatus,statusCheckRollup,baseRefOid 2>/dev/null)" \
     || { warn "gh pr list failed — skipping."; exit 0; }
 
-ROWS="$(FAILED_LABEL="$FAILED_LABEL" LABEL="$LABEL" REPO_OWNER="${REPO%%/*}" python3 -c '
+ROWS="$(OUTAGE_DIR="$OUTAGE_DIR" FAILED_LABEL="$FAILED_LABEL" LABEL="$LABEL" REPO_OWNER="${REPO%%/*}" python3 -c '
 import json, os, sys
 RED = {"FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "ERROR", "STARTUP_FAILURE"}
 OK = {"SUCCESS", "NEUTRAL", "SKIPPED"}
@@ -218,7 +264,7 @@ for pr in sorted(json.load(sys.stdin), key=lambda p: p["number"]):
         continue
     if not trusted(pr.get("author")) and not opted_in:
         continue
-    reds, pending = [], False
+    reds, pending, red_entries = [], False, []
     entries = pr.get("statusCheckRollup") or []
     for e in entries:
         if e.get("__typename") == "StatusContext":
@@ -226,13 +272,21 @@ for pr in sorted(json.load(sys.stdin), key=lambda p: p["number"]):
         else:
             name = e.get("name", "?")
             val = (e.get("conclusion") or "") if e.get("status") == "COMPLETED" else ""
-        if val in RED: reds.append(name)
+        if val in RED: reds.append(name); red_entries.append(e)
         elif val not in OK: pending = True
     ci = "red" if reds else ("pending" if (pending or not entries) else "green")
     # mergeable is null until GitHub has computed it. Treat that as UNKNOWN so one such PR
     # cannot abort the whole tick (the candidate set is every open PR now).
     mergeable = pr.get("mergeable") or "UNKNOWN"
-    print("\t".join([str(pr["number"]), pr.get("headRefOid") or "", mergeable, ci, ", ".join(reds)]))
+    detail = ", ".join(reds)
+    if ci == "red" and all(e.get("__typename") != "StatusContext" and e.get("conclusion") == "CANCELLED" for e in red_entries):
+        try:
+            sys.path.insert(0, os.environ.get("OUTAGE_DIR") or ".")
+            from runner_outage import run_ids_from_rollup
+            ci, detail = "cancelled", " ".join(str(i) for i in run_ids_from_rollup(red_entries))
+        except Exception:
+            pass
+    print("\t".join([str(pr["number"]), pr.get("headRefOid") or "", mergeable, ci, detail]))
 ' <<<"$JSON")" || { warn "could not parse the PR list — skipping."; exit 0; }
 
 if [[ -z "$ROWS" ]]; then
@@ -255,6 +309,16 @@ while IFS=$'\t' read -r PR HEAD MERGEABLE CI DETAIL; do
             log "#${PR}: conflicts after this tick's merges — retry next tick."; SKIPPED=1; continue
         fi
         fail "$PR" "merge conflict with main — rebase or resolve by hand, then remove ${FAILED_LABEL}"; continue
+    fi
+    if [[ "$CI" == "cancelled" ]]; then
+        OUTAGE_OK=0
+        for RID in $DETAIL; do
+            runner_outage_rerun "$RID" && OUTAGE_OK=$((OUTAGE_OK + 1)) || { OUTAGE_OK=-1; break; }
+        done
+        if (( OUTAGE_OK > 0 )); then
+            log "#${PR}: CI jobs lost their runner — re-run triggered, skipping."; SKIPPED=1; continue
+        fi
+        CI="red"; DETAIL="cancelled"
     fi
     if [[ "$CI" == "red" ]]; then
         fail "$PR" "CI failed (${DETAIL}) — https://github.com/${REPO}/pull/${PR}/checks"; continue
