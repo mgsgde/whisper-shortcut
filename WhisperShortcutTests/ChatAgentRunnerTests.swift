@@ -52,7 +52,8 @@ struct ChatAgentRunnerTests {
     maxToolRounds: Int = 16,
     extraTools: [String] = [],
     handlers: [String: ChatToolContext.Handler] = [:],
-    approve: @escaping (String, String, ToolApprovalPreview?, UUID) async -> Bool = { _, _, _, _ in true }
+    approve: @escaping (String, String, ToolApprovalPreview?, UUID) async -> Bool = { _, _, _, _ in true },
+    configGuard: @escaping (String) async -> WeakModelGuardDecision = { _ in .proceed }
   ) -> ChatAgentRunner {
     ChatAgentRunner(
       provider: provider, model: "test-model",
@@ -65,6 +66,7 @@ struct ChatAgentRunnerTests {
       options: { isFinal in ChatRequestOptions(disableBuiltInTools: isFinal) },
       toolContext: { ChatToolContext(sessionHandlers: handlers) },
       approve: approve,
+      configGuard: configGuard,
       onDisplayText: { _, _ in })
   }
 
@@ -273,5 +275,51 @@ struct ChatAgentRunnerTests {
     let result = try await runner.run(contents: [["role": "user", "parts": [["text": "both"]]]])
     #expect(result.records.map(\.name) == ["fake_lookup", "fake_create"])
     #expect(result.records == runner.records)
+  }
+
+  @Test("A weak-model switch request throws and the configuration tool never runs")
+  func configGuardSwitchModelThrows() async throws {
+    let name = ChatToolRegistry.updateInstructionsToolName
+    let provider = ScriptedProvider([
+      [.functionCall(name: name, args: ["text": "x"], thoughtSignature: nil)],
+      [.textDelta("never")],
+    ])
+    var ran = false
+    let runner = makeRunner(
+      provider,
+      extraTools: [name],
+      handlers: [name: { _ in ran = true; return ChatToolOutcome(response: ["ok": true]) }],
+      configGuard: { _ in .switchModel(.gemini4Neon) })
+    do {
+      _ = try await runner.run(contents: [["role": "user", "parts": [["text": "change it"]]]])
+      Issue.record("expected ChatTurnSwitchModelRequested")
+    } catch let error as ChatTurnSwitchModelRequested {
+      #expect(error.model == .gemini4Neon)
+    }
+    #expect(!ran)
+    #expect(runner.records.isEmpty)
+  }
+
+  @Test("The config guard is asked once per turn when it answers proceed")
+  func configGuardAskedOncePerTurn() async throws {
+    let name = ChatToolRegistry.updateInstructionsToolName
+    let provider = ScriptedProvider([
+      [
+        .functionCall(name: name, args: ["text": "a"], thoughtSignature: nil),
+        .functionCall(name: name, args: ["text": "b"], thoughtSignature: nil),
+      ],
+      [.textDelta("Done.")],
+    ])
+    var asked = 0
+    var ranCount = 0
+    let runner = makeRunner(
+      provider,
+      extraTools: [name],
+      handlers: [name: { _ in ranCount += 1; return ChatToolOutcome(response: ["ok": true]) }],
+      configGuard: { _ in asked += 1; return .proceed })
+    let result = try await runner.run(contents: [["role": "user", "parts": [["text": "go"]]]])
+    #expect(asked == 1)
+    #expect(ranCount == 2)
+    #expect(result.text == "Done.")
   }
 }

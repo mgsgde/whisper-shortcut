@@ -80,6 +80,18 @@ struct ChatToolContext {
 
 enum ChatToolRegistry {
 
+  /// Tools that read or change the app's own configuration. A weak chat model is asked to
+  /// confirm before its first call to one in a turn (see `WeakModelGuardDecision`).
+  static func isConfigurationTool(_ name: String) -> Bool {
+    switch name {
+    case updateInstructionsToolName, AppSettingsChatTool.name, readConfigHistoryToolName,
+         "remember_dictation_term":
+      return true
+    default:
+      return false
+    }
+  }
+
   /// Tools that mutate the user's data, open a URL, or write text that shapes future behavior.
   /// Each call is confirmed in Chat before it runs; the choice is per-turn and is not remembered.
   ///

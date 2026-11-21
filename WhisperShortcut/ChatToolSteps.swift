@@ -102,6 +102,28 @@ struct ToolApprovalRequest: Identifiable {
   let continuation: CheckedContinuation<ToolApprovalDecision, Never>
 }
 
+// MARK: - Weak-model warning
+
+enum WeakModelGuardDecision: Equatable {
+  case proceed
+  case switchModel(PromptModel)
+}
+
+/// Thrown by the agent loop when the user chose to switch models at the weak-model warning.
+struct ChatTurnSwitchModelRequested: Error {
+  let model: PromptModel
+}
+
+/// A configuration tool call paused because the chat runs on a weak model. At most one per
+/// session at a time; the turn awaits the answer.
+struct WeakModelWarningRequest: Identifiable {
+  let id: UUID
+  let sessionId: UUID
+  let currentModel: PromptModel
+  let suggestedModel: PromptModel?
+  let continuation: CheckedContinuation<WeakModelGuardDecision, Never>
+}
+
 // MARK: - Labels
 
 extension ChatToolRegistry {

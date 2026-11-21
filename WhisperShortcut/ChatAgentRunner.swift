@@ -44,6 +44,10 @@ final class ChatAgentRunner {
   private let toolContext: () -> ChatToolContext
   /// Asks the user about a side-effectful call; `stepId` identifies the step awaiting approval.
   private let approve: (_ name: String, _ summary: String, _ preview: ToolApprovalPreview?, _ stepId: UUID) async -> Bool
+  /// Asked before the first configuration tool call of a turn (weak-model warning). Once it
+  /// answers `.proceed` it is not asked again this turn.
+  private let configGuard: (_ toolName: String) async -> WeakModelGuardDecision
+  private var configGuardProceeded = false
   /// The reply so far. `immediate` marks one-shot swaps (image fold, loop-guard notice) that must
   /// not wait for the caller's throttle.
   private let onDisplayText: (_ text: String, _ immediate: Bool) -> Void
@@ -89,6 +93,7 @@ final class ChatAgentRunner {
     options: @escaping (_ isFinalRound: Bool) -> ChatRequestOptions,
     toolContext: @escaping () -> ChatToolContext,
     approve: @escaping (_ name: String, _ summary: String, _ preview: ToolApprovalPreview?, _ stepId: UUID) async -> Bool,
+    configGuard: @escaping (_ toolName: String) async -> WeakModelGuardDecision = { _ in .proceed },
     onDisplayText: @escaping (_ text: String, _ immediate: Bool) -> Void
   ) {
     self.provider = provider
@@ -100,6 +105,7 @@ final class ChatAgentRunner {
     self.options = options
     self.toolContext = toolContext
     self.approve = approve
+    self.configGuard = configGuard
     self.onDisplayText = onDisplayText
   }
 
@@ -346,6 +352,15 @@ final class ChatAgentRunner {
         ])
         record(call, response: response, stepId: stepId)
         continue
+      }
+      if ChatToolRegistry.isConfigurationTool(call.name), !configGuardProceeded {
+        switch await configGuard(call.name) {
+        case .proceed:
+          configGuardProceeded = true
+        case .switchModel(let target):
+          DebugLogger.log("CHAT-WEAK-MODEL: switch to \(target.rawValue) requested at \(call.name)")
+          throw ChatTurnSwitchModelRequested(model: target)
+        }
       }
       let needsApproval = ChatToolRegistry.requiresUserApproval(call.name, args: call.args)
       let stepId = steps.begin(

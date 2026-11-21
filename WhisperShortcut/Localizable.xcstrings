@@ -1,6 +1,46 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Use a stronger model for this change?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Änderung ein stärkeres Modell nehmen?"
+          }
+        }
+      }
+    },
+    "Continue with %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter mit %@"
+          }
+        }
+      }
+    },
+    "**%@** is a light model and often gets changes to your setup wrong. Pick a stronger one with `/model`, then send your message again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**%@** ist ein leichtes Modell und macht bei Änderungen an deiner Konfiguration oft Fehler. Wähle mit `/model` ein stärkeres und schick deine Nachricht noch mal."
+          }
+        }
+      }
+    },
+    "**%@** is a light model and often gets changes to your setup wrong: it may edit the wrong rule or miss one that is already there. Switch to **%@** and your message is sent again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**%1$@** ist ein leichtes Modell und macht bei Änderungen an deiner Konfiguration oft Fehler: Es ändert die falsche Regel oder übersieht eine, die schon da ist. Wechsle zu **%2$@**, dann wird deine Nachricht noch mal gesendet."
+          }
+        }
+      }
+    },
     "Drag to move" : {
       "localizations" : {
         "de" : {

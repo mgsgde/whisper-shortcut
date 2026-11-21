@@ -111,7 +111,14 @@ class ChatViewModel: ObservableObject {
   var currentPendingApproval: ToolApprovalRequest? { pendingApprovals[session.id] }
   func needsApproval(_ sessionId: UUID) -> Bool {
     pendingApprovals[sessionId] != nil || pendingMailCredentials[sessionId] != nil
+      || pendingWeakModelWarnings[sessionId] != nil
   }
+  /// Configuration tool calls paused because the chat runs on a weak model, per session. Same
+  /// lifecycle as `pendingApprovals`.
+  @Published private(set) var pendingWeakModelWarnings: [UUID: WeakModelWarningRequest] = [:]
+  var currentPendingWeakModelWarning: WeakModelWarningRequest? { pendingWeakModelWarnings[session.id] }
+  /// Chats where the user chose "Continue anyway" at the weak-model warning. In memory only.
+  private var weakModelAcknowledged: Set<UUID> = []
   /// `connect_mail_account` calls waiting on the inline password card, per session. Same lifecycle
   /// as `pendingApprovals`; the password itself lives only in the card's view state.
   @Published private(set) var pendingMailCredentials: [UUID: MailCredentialRequest] = [:]
@@ -1154,6 +1161,10 @@ class ChatViewModel: ObservableObject {
             await self.confirmToolCall(
               name: name, summary: summary, preview: preview, sessionId: sessionId, requestId: stepId)
           },
+          configGuard: { name in
+            await self.confirmWeakModelForConfig(
+              toolName: name, sessionId: sessionId, model: selectedModel)
+          },
           onDisplayText: { text, immediate in
             if immediate {
               streamingBuffer.setContentImmediate(text)
@@ -1246,6 +1257,22 @@ class ChatViewModel: ObservableObject {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
           partial: runner?.partialText ?? "", toolCalls: runner?.records ?? [])
+      } catch let switchRequest as ChatTurnSwitchModelRequested {
+        self.commitPartialOrRemove(
+          placeholderId: placeholderId, sessionId: sessionId,
+          partial: runner?.partialText ?? "", toolCalls: runner?.records ?? [])
+        let userMessageId = userMsg.id
+        // Runs after this send's `defer` has removed the session from `sendingSessionIds`, so the
+        // re-send is not refused as "still sending".
+        Task { @MainActor in
+          if self.session.id == sessionId {
+            self.switchToModel(switchRequest.model)
+            self.retryMessage(id: userMessageId)
+          } else {
+            DebugLogger.log(
+              "CHAT-WEAK-MODEL: switch to \(switchRequest.model.rawValue) skipped, chat \(sessionId) is not on screen")
+          }
+        }
       } catch {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
@@ -1359,6 +1386,55 @@ class ChatViewModel: ObservableObject {
   func resolveApproval(sessionId: UUID, requestId: UUID, decision: ToolApprovalDecision) {
     guard let request = pendingApprovals[sessionId], request.id == requestId else { return }
     pendingApprovals.removeValue(forKey: sessionId)
+    request.continuation.resume(returning: decision)
+  }
+
+  /// Pauses the turn before a weak model's first configuration tool call and asks on the inline
+  /// warning card whether to switch to a stronger model or continue. "Continue anyway" holds for
+  /// the rest of the chat. Stop and deleting the chat answer `.proceed` only to free the
+  /// continuation; the task is cancelled anyway.
+  private func confirmWeakModelForConfig(
+    toolName: String, sessionId: UUID, model: PromptModel
+  ) async -> WeakModelGuardDecision {
+    guard model.isWeakForConfiguration, !weakModelAcknowledged.contains(sessionId) else {
+      return .proceed
+    }
+    let stored = store.session(by: sessionId)
+    if stored == nil || stored?.archived == true {
+      DebugLogger.log("CHAT-WEAK-MODEL: \(toolName) proceeds, chat \(sessionId) is gone or archived")
+      return .proceed
+    }
+    let suggestion = PromptModel.strongConfigurationModel(
+      for: model, hasCredential: { $0.hasCredential }
+    ).flatMap { Self.chatUnavailableReason(for: $0) == nil ? $0 : nil }
+    let requestId = UUID()
+    let decision = await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<WeakModelGuardDecision, Never>) in
+        if Task.isCancelled {
+          continuation.resume(returning: .proceed)
+          return
+        }
+        pendingWeakModelWarnings[sessionId] = WeakModelWarningRequest(
+          id: requestId, sessionId: sessionId, currentModel: model,
+          suggestedModel: suggestion, continuation: continuation)
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in
+        self?.resolveWeakModelWarning(sessionId: sessionId, requestId: requestId, decision: .proceed)
+      }
+    }
+    DebugLogger.log(
+      "CHAT-WEAK-MODEL: \(model.rawValue) at \(toolName) → \(decision) (suggested \(suggestion?.rawValue ?? "none"))")
+    if decision == .proceed, !Task.isCancelled { weakModelAcknowledged.insert(sessionId) }
+    return decision
+  }
+
+  /// Answers the pending weak-model warning of `sessionId`. Idempotent like `resolveApproval`.
+  func resolveWeakModelWarning(
+    sessionId: UUID, requestId: UUID, decision: WeakModelGuardDecision
+  ) {
+    guard let request = pendingWeakModelWarnings[sessionId], request.id == requestId else { return }
+    pendingWeakModelWarnings.removeValue(forKey: sessionId)
     request.continuation.resume(returning: decision)
   }
 
@@ -2764,10 +2840,12 @@ class ChatViewModel: ObservableObject {
   /// `refreshRecentSessions`, so this one check covers close, archive, bulk archive and delete:
   /// such a turn is stopped as if the user had pressed Stop, which answers the card with deny.
   private func stopTurnsWaitingInHiddenChats() {
-    guard !pendingApprovals.isEmpty || !pendingMailCredentials.isEmpty else { return }
+    guard !pendingApprovals.isEmpty || !pendingMailCredentials.isEmpty
+      || !pendingWeakModelWarnings.isEmpty else { return }
     // Not `recentSessions`: that is capped at 20 tabs, and a chat past the cap is still open.
     let visible = Set(allSessionsList.filter { !$0.archived }.map(\.id))
     let waiting = Set(pendingApprovals.keys).union(pendingMailCredentials.keys)
+      .union(pendingWeakModelWarnings.keys)
     for sessionId in waiting where !visible.contains(sessionId) {
       DebugLogger.log("CHAT-TOOL-APPROVAL: chat \(sessionId) hidden while waiting — stopping its turn")
       userCancelledSessions[sessionId] = 0
@@ -4129,6 +4207,13 @@ struct ChatView: View {
         VStack(alignment: .leading, spacing: 8) {
           // The approval card floats with the indicator so it is visible wherever the user
           // has scrolled; it is the only interactive part of this overlay.
+          if let warning = viewModel.currentPendingWeakModelWarning {
+            WeakModelWarningCardView(request: warning) { decision in
+              viewModel.resolveWeakModelWarning(
+                sessionId: warning.sessionId, requestId: warning.id, decision: decision)
+            }
+            .id(warning.id)
+          }
           if let approval = viewModel.currentPendingApproval {
             ToolApprovalCardView(request: approval) { decision in
               viewModel.resolveApproval(
