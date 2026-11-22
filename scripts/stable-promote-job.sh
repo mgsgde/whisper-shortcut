@@ -33,7 +33,7 @@
 # Remove hold to let the next Tuesday proceed. Replacing candidate (a fix release)
 # restarts the week, because the date on that line is the freeze date.
 #
-# Cadence: launchd fires daily (StartInterval — a calendar slot that falls while the
+# Cadence: launchd fires hourly (StartInterval — a calendar slot that falls while the
 # lid is shut is simply lost on a laptop). The Tuesday gate below is what makes it
 # weekly. Installed via ~/Library/LaunchAgents/com.whispershortcut.stable-promote.plist
 # (template: scripts/com.whispershortcut.stable-promote.plist).
@@ -56,7 +56,9 @@ done
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO" || exit 1
-STATE_DIR="$REPO/build/stable-channel"
+# The launchd job runs this file from a worktree kept at origin/main
+# (build/stable-promote/src) and points the state back at the main checkout.
+STATE_DIR="${STABLE_PROMOTE_STATE_DIR:-$REPO/build/stable-channel}"
 mkdir -p "$STATE_DIR" "$REPO/build/logs"
 STAMP="$(date +%F)"
 

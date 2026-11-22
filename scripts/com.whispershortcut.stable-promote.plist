@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Weekly Stable-channel promotion (scripts/stable-promote-job.sh). Fires daily; the
-  script's Tuesday gate makes it weekly, and it promotes only a candidate frozen
-  about a week earlier. StartInterval rather than StartCalendarInterval because a
-  calendar slot that falls while the laptop lid is shut is simply lost.
+  Weekly Stable-channel promotion (scripts/stable-promote-job.sh). Fires hourly; the
+  Tuesday gate plus the script's once-a-day gate make it weekly, and it promotes only
+  a candidate frozen about a week earlier. StartInterval rather than
+  StartCalendarInterval because a calendar slot that falls while the lid is shut is
+  simply lost; hourly rather than daily because StartInterval counts awake time only,
+  so a 24 h interval on a laptop that sleeps a lot can skip a whole Tuesday (it did:
+  runs = 0 for five days after 2026-11-17). The job runs from a worktree kept at
+  origin/main (build/stable-promote/src), like merge-train and release-nightly, so a
+  stale main checkout cannot run an old script; state stays in build/stable-channel/.
 
   Install:
       cp scripts/com.whispershortcut.stable-promote.plist ~/Library/LaunchAgents/
+      launchctl bootout gui/$(id -u)/com.whispershortcut.stable-promote
       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.whispershortcut.stable-promote.plist
 -->
 <plist version="1.0">
@@ -16,10 +22,20 @@
     <string>com.whispershortcut.stable-promote</string>
     <key>ProgramArguments</key>
     <array>
-      <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/scripts/stable-promote-job.sh</string>
+      <string>/bin/bash</string>
+      <string>-lc</string>
+      <string>M="$HOME/whisper-shortcut-private/whisper-shortcut"; S="$M/build/stable-promote/src"
+cd "$M" || exit 0
+[ "$(date +%u)" = "2" ] || exit 0
+git fetch -q origin main 2&gt;/dev/null
+if [ -e "$S/.git" ]; then git -C "$S" checkout -q --detach origin/main; else git worktree add -q --detach "$S" origin/main; fi
+if [ -s "$S/scripts/stable-promote-job.sh" ]; then
+  STABLE_PROMOTE_STATE_DIR="$M/build/stable-channel" exec bash "$S/scripts/stable-promote-job.sh"
+fi
+exec bash scripts/stable-promote-job.sh</string>
     </array>
     <key>StartInterval</key>
-    <integer>86400</integer>
+    <integer>3600</integer>
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>
