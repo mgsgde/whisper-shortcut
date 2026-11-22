@@ -32,8 +32,9 @@
 #   echo "v8.72 $(date +%F)" > build/stable-channel/candidate   # replace the candidate
 # Remove hold to let the next Tuesday proceed. Replacing candidate (a fix release)
 # restarts the week, because the date on that line is the freeze date.
+# The job itself never replaces a candidate that is still waiting; only you do.
 #
-# Cadence: launchd fires daily (StartInterval — a calendar slot that falls while the
+# Cadence: launchd fires hourly (StartInterval — a calendar slot that falls while the
 # lid is shut is simply lost on a laptop). The Tuesday gate below is what makes it
 # weekly. Installed via ~/Library/LaunchAgents/com.whispershortcut.stable-promote.plist
 # (template: scripts/com.whispershortcut.stable-promote.plist).
@@ -56,7 +57,9 @@ done
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO" || exit 1
-STATE_DIR="$REPO/build/stable-channel"
+# The launchd job runs this file from a worktree kept at origin/main
+# (build/stable-promote/src) and points the state back at the main checkout.
+STATE_DIR="${STABLE_PROMOTE_STATE_DIR:-$REPO/build/stable-channel}"
 mkdir -p "$STATE_DIR" "$REPO/build/logs"
 STAMP="$(date +%F)"
 
@@ -255,8 +258,10 @@ if [ -n "$CAND_TAG" ] && [ "$CAND_AGE" -ge 6 ]; then
   state="$(item_state "$CAND_VER")"
   if [ "$state" = "untagged" ]; then
     echo "$CAND_TAG is already on Stable. Skipping tests."
+    # Dry-run clears CAND_TAG too (not the file) so step 4 sees what a real run sees.
     if [ "$DRY" -eq 1 ]; then
       echo "dry-run: would drop candidate $CAND_TAG (already untagged)."
+      CAND_TAG=""
     else
       rm -f "$STATE_DIR/candidate"
       CAND_TAG=""
@@ -266,6 +271,7 @@ if [ -n "$CAND_TAG" ] && [ "$CAND_AGE" -ge 6 ]; then
     echo "$CAND_TAG is not newer than Stable (${CURRENT_STABLE:-none}). Not promoting."
     if [ "$DRY" -eq 1 ]; then
       echo "dry-run: would drop candidate $CAND_TAG."
+      CAND_TAG=""
     else
       rm -f "$STATE_DIR/candidate"
       CAND_TAG=""
@@ -383,6 +389,10 @@ elif ! version_is_newer "$NEW_VER" "$CURRENT_STABLE"; then
   echo "$NEW_TAG is not newer than Stable (${CURRENT_STABLE:-none}); not freezing it."
 elif [ -n "$CAND_TAG" ] && [ "$NEW_TAG" = "$CAND_TAG" ]; then
   echo "Candidate stays $CAND_TAG (frozen $CAND_DATE)."
+elif [ -n "$CAND_TAG" ] && [ -z "$WOULD_PROMOTE" ]; then
+  # A candidate that is still waiting keeps its week. Promotion and the drop
+  # branches clear CAND_TAG; in a dry-run WOULD_PROMOTE stands in for that.
+  echo "Candidate stays $CAND_TAG (frozen $CAND_DATE); not freezing $NEW_TAG over it."
 else
   if [ "$DRY" -eq 1 ]; then
     echo "dry-run: would freeze $NEW_TAG dated $STAMP (newer than Stable ${CURRENT_STABLE:-none})."
