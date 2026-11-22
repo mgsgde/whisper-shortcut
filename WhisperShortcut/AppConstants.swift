@@ -287,7 +287,8 @@ Output rules (CRITICAL):
   /// True when launched with `--sidecar` (the dev scripts do), and also for any Dev build started
   /// while the installed release (`com.magnusgoedde.whispershortcut`) or the daily Dev instance
   /// runs: Xcode's Run button, the driver and in-app relaunches then cannot grab their hotkeys,
-  /// Fn key or MCP port. The daily Dev instance itself is never a sidecar for another Dev build.
+  /// Fn key or MCP port. The daily Dev instance itself is never a sidecar for another Dev build,
+  /// nor for a release it takes over (`--takeover`).
   /// Evaluated once at launch.
   static let isSidecarInstance = sidecarReason != nil
   /// Why this process is a sidecar ("argv" / "release running" / "daily dev running"), nil when
@@ -297,7 +298,9 @@ Output rules (CRITICAL):
     // Fn key, the MCP port or update checks.
     if TestProfile.isActive { return "test profile" }
     if ProcessInfo.processInfo.arguments.contains("--sidecar") { return "argv" }
+    // A --takeover launch of the daily Dev instance replaces the release, which quits on the takeover notification.
     if isDevBuild,
+      !(isDailyDevInstance && ProcessInfo.processInfo.arguments.contains(takeoverArgument)),
       !NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut").isEmpty
     {
       return "release running"
