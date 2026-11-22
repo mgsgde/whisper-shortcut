@@ -258,8 +258,10 @@ if [ -n "$CAND_TAG" ] && [ "$CAND_AGE" -ge 6 ]; then
   state="$(item_state "$CAND_VER")"
   if [ "$state" = "untagged" ]; then
     echo "$CAND_TAG is already on Stable. Skipping tests."
+    # Dry-run clears CAND_TAG too (not the file) so step 4 sees what a real run sees.
     if [ "$DRY" -eq 1 ]; then
       echo "dry-run: would drop candidate $CAND_TAG (already untagged)."
+      CAND_TAG=""
     else
       rm -f "$STATE_DIR/candidate"
       CAND_TAG=""
@@ -269,6 +271,7 @@ if [ -n "$CAND_TAG" ] && [ "$CAND_AGE" -ge 6 ]; then
     echo "$CAND_TAG is not newer than Stable (${CURRENT_STABLE:-none}). Not promoting."
     if [ "$DRY" -eq 1 ]; then
       echo "dry-run: would drop candidate $CAND_TAG."
+      CAND_TAG=""
     else
       rm -f "$STATE_DIR/candidate"
       CAND_TAG=""
