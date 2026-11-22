@@ -27,6 +27,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 **Dictation**
 - **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right. Settings → Dictate offers one-click starter lists of German specialist terms (orthopedics, psychiatry/psychotherapy, expert reports).
 - **Dictate Live**: text appears at the cursor after every short pause while you keep talking (on-device, Apple silicon).
+- **Microphone choice**: with a headset or dictation microphone (such as a SpeechMike) plugged in, pick it in Settings → Dictate → Microphone and Dictate and Live Meeting record from it, whatever macOS has as its input. If it is unplugged, the app records from the system default and says so.
 - **Dictation only**: a mode for people who only want to dictate. It hides Chat, meetings, Dictate Prompt, Read Aloud and the other features; nothing is deleted, and switching it off in Settings → General brings them back. Picked on the first screen of the welcome tour, it also sets up offline dictation with spoken punctuation and walks through a test dictation.
 - **Offline dictation**: [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) transcribes 25 European languages on your Mac in a fraction of a second; Whisper covers the rest.
 
@@ -79,7 +80,7 @@ All of them can be changed in Settings → General; F1–F20 can be bound withou
 | Provider | Used for |
 |---|---|
 | None (on-device) | Parakeet Ultra and Whisper dictation; Dictate Prompt and Chat on MLX models (Qwen3, Gemma); macOS and Qwen3 voices |
-| OpenAI | GPT Transcribe (the default dictation model), GPT chat, Dictate Prompt |
+| OpenAI | GPT Transcribe (the default dictation model), GPT chat, Dictate Prompt, Read Aloud (GPT-Realtime voices) |
 | Google Gemini | Dictation, Dictate Prompt, Chat, Read Aloud, meetings, YouTube videos |
 | xAI | Grok Speech-to-Text, Grok chat with X search, Grok voices |
 | Anthropic | Claude chat |

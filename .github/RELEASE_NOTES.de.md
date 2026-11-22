@@ -1,24 +1,14 @@
-## Vorlesen
-- OpenAI stellt seine Sprachausgabe-Modelle am 6. Januar 2027 ein. Vorlesen bietet jetzt GPT-Realtime 2.1 mini an, den von OpenAI genannten Nachfolger. Haben Sie bisher die alte OpenAI-Stimme genutzt und einen OpenAI-Schlüssel hinterlegt, wechselt Vorlesen automatisch auf das neue Modell.
-
-## Offline-Modelle
-- Liegen die Dateien eines Offline-Modells schon auf Ihrem Mac (von Hugging Face oder LM Studio), bietet „Laden“ jetzt an, sie zu importieren, statt sie erneut herunterzuladen.
+## Chat
+- Gemini 4 Neon und Gemini 4 Hydrogen ergänzen die Modellauswahl im Chat. Gemini 4 Argon wird eingestellt; hatten Sie es ausgewählt, wechselt Ihre gespeicherte Auswahl automatisch zu Neon.
+- Ist ein leichtes Modell (etwa 3.8 Flash, Flash Lite, GPT mini/Luna, Haiku, Grok 4.3 oder ein lokales Modell) dabei, die Einstellungen der App zu ändern, zeigt der Chat jetzt eine Warnkarte über der Freigabekarte. Ein Klick wechselt zu Ihrem stärksten Modell mit hinterlegtem Schlüssel und sendet die Nachricht erneut.
 
 ## Dictate Prompt
-- Eine Antwort, die fast nur aus den Überlegungen des Modells besteht oder viel zu lang ist, wird nicht mehr eingefügt. Ihre Auswahl bleibt unverändert, und Sie können es erneut versuchen.
-- Bei lokalen Modellen wird eine nicht verstandene Anweisung abgelehnt, bevor das Modell läuft, und eine kurze Anweisung, die fast wie einer Ihrer gespeicherten Prompts klingt, verwendet diesen Prompt.
+- Die beiden größeren On-Device-Modelle Qwen3.5 9B und Gemma 4 26B A4B stehen jetzt auch in der Dictate-Prompt-Modellauswahl zur Verfügung, statt nur im Chat. Ihre Beschreibungen erklären, warum sie gegenüber dem Standardmodell nicht empfohlen werden.
 
-## Chat
-- Fragen Sie den Chat, warum ein Ergebnis falsch war, prüft er Ihre letzten Ergebnisse und Ihre Konfiguration. Dann nennt er entweder die Einstellung, die es verursacht hat, mit einer Korrektur, oder schlägt vor, mit `/feedback` einen Bericht zu senden.
-
-## Problem melden
-- Berichte zu einem Dictate-Prompt-Ergebnis zeigen jetzt, ob Text um den Cursor und frühere Gesprächsschritte mitgeschickt wurden.
-
-## Intern
-- Das Nutzungsprotokoll hält pro Dictate-Prompt-Ergebnis fest, wie viel Text um den Cursor und wie viele frühere Gesprächsschritte mitgeschickt wurden.
-- Ungenutzter Code entfernt und gemeinsame Hilfsfunktionen zusammengelegt.
+## Pille
+- Die Aufnahme-Pille zeigt jetzt einen Ziehgriff – sechs kleine Punkte am vorderen Rand, mit einer offenen Hand als Cursor beim Darüberfahren und dem Tooltip „Zum Verschieben ziehen“ –, damit klar ist, dass sich die Pille verschieben lässt.
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v9.04...v9.05
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v9.05...v9.06
