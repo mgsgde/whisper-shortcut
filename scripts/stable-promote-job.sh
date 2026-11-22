@@ -32,6 +32,7 @@
 #   echo "v8.72 $(date +%F)" > build/stable-channel/candidate   # replace the candidate
 # Remove hold to let the next Tuesday proceed. Replacing candidate (a fix release)
 # restarts the week, because the date on that line is the freeze date.
+# The job itself never replaces a candidate that is still waiting; only you do.
 #
 # Cadence: launchd fires hourly (StartInterval — a calendar slot that falls while the
 # lid is shut is simply lost on a laptop). The Tuesday gate below is what makes it
@@ -385,6 +386,10 @@ elif ! version_is_newer "$NEW_VER" "$CURRENT_STABLE"; then
   echo "$NEW_TAG is not newer than Stable (${CURRENT_STABLE:-none}); not freezing it."
 elif [ -n "$CAND_TAG" ] && [ "$NEW_TAG" = "$CAND_TAG" ]; then
   echo "Candidate stays $CAND_TAG (frozen $CAND_DATE)."
+elif [ -n "$CAND_TAG" ] && [ -z "$WOULD_PROMOTE" ]; then
+  # A candidate that is still waiting keeps its week. Promotion and the drop
+  # branches clear CAND_TAG; in a dry-run WOULD_PROMOTE stands in for that.
+  echo "Candidate stays $CAND_TAG (frozen $CAND_DATE); not freezing $NEW_TAG over it."
 else
   if [ "$DRY" -eq 1 ]; then
     echo "dry-run: would freeze $NEW_TAG dated $STAMP (newer than Stable ${CURRENT_STABLE:-none})."
