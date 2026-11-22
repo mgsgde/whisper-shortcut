@@ -288,7 +288,7 @@ Output rules (CRITICAL):
   /// while the installed release (`com.magnusgoedde.whispershortcut`) or the daily Dev instance
   /// runs: Xcode's Run button, the driver and in-app relaunches then cannot grab their hotkeys,
   /// Fn key or MCP port. The daily Dev instance itself is never a sidecar for another Dev build,
-  /// nor for a release it takes over (`--takeover`).
+  /// nor for a release that quits within 3 s of its launch ("Switch to Dev Build").
   /// Evaluated once at launch.
   static let isSidecarInstance = sidecarReason != nil
   /// Why this process is a sidecar ("argv" / "release running" / "daily dev running"), nil when
@@ -298,11 +298,10 @@ Output rules (CRITICAL):
     // Fn key, the MCP port or update checks.
     if TestProfile.isActive { return "test profile" }
     if ProcessInfo.processInfo.arguments.contains("--sidecar") { return "argv" }
-    // A --takeover launch of the daily Dev instance replaces the release, which quits on the takeover notification.
-    if isDevBuild,
-      !(isDailyDevInstance && ProcessInfo.processInfo.arguments.contains(takeoverArgument)),
-      !NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut").isEmpty
-    {
+    // The daily Dev instance gives a running release a few seconds to quit: "Switch to Dev Build"
+    // launches it while the release is still terminating, and a sandboxed launcher cannot pass
+    // `--takeover`, so this wait is the only sign of a switch.
+    if isDevBuild, isReleaseRunning(grace: isDailyDevInstance ? 3 : 0) {
       return "release running"
     }
     if isDevBuild, !isDailyDevInstance,
@@ -315,6 +314,27 @@ Output rules (CRITICAL):
     }
     return nil
   }()
+
+  /// Whether the installed release (`com.magnusgoedde.whispershortcut`) runs, after waiting up to
+  /// `grace` seconds for it to quit.
+  private static func isReleaseRunning(grace: TimeInterval) -> Bool {
+    func running() -> Bool {
+      NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut")
+        .contains { !$0.isTerminated }
+    }
+    guard running() else { return false }
+    guard grace > 0 else { return true }
+    let deadline = Date().addingTimeInterval(grace)
+    while Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.1)
+      if !running() {
+        DebugLogger.log("APP-LIFECYCLE: release quit during launch (switch to Dev), not a sidecar")
+        return false
+      }
+    }
+    return true
+  }
+
   /// Single multi-item Sparkle appcast for the direct build (an asset of the newest GitHub
   /// release). Channels are per item: Stable reads the untagged items, Latest also reads
   /// items tagged `latest`.
