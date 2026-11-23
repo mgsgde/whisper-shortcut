@@ -9,6 +9,8 @@ Dragon does — not after Stop. Magnus had the same intuition. This changes the 
 `live-dictate-preview.md` (PR #318, a read-only panel; text still pasted after Stop): park that PR
 until this mode has been tried by the pilot, then decide whether the panel still earns a place.
 
+2026-11-23: Dictate Live also runs with every cloud transcription model (branch `feat/live-dictate-cloud`); cloud pieces are decoded concurrently and inserted in order; the drift measurement is skipped for cloud.
+
 ## What Dragon does, and what we copy
 
 Dragon Medical inserts text at the cursor **after each short pause** (an utterance), not word by
