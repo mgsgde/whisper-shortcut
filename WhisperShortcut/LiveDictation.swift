@@ -2,30 +2,38 @@ import Foundation
 
 /// Dictate Live — text at the cursor while speaking, Dragon-style (plans/active/live-dictate-insert.md).
 ///
-/// The recording is cut at speech pauses (`ChunkedDictateRecorder.RotationPolicy.live`), each piece
-/// is decoded once with offline Parakeet and the Glossary, and pasted at the cursor. Append-only:
-/// a piece that has been inserted is never touched again — rewriting text in another app (undo
-/// stacks, moved cursors, apps that reject synthetic edits) is the fragile part this design avoids.
+/// The recording is cut at speech pauses (`ChunkedDictateRecorder.RotationPolicy.live`). Each piece
+/// is decoded once — offline Parakeet, or any cloud transcription model — and pasted at the cursor.
+/// A cloud model adds a network round trip per piece; pieces are decoded concurrently to hide it.
+/// Append-only: a piece that has been inserted is never touched again — rewriting text in another
+/// app (undo stacks, moved cursors, apps that reject synthetic edits) is the fragile part this
+/// design avoids.
 ///
 /// This file is the pure half: who may use it, how pieces are joined, how the result is compared
 /// with a whole-file decode. `LiveDictationSession` runs a recording; `MenuBarController` wires it.
 enum LiveDictation {
-  /// Why Dictate Live cannot start, in the order the user would fix it.
+  /// Why Dictate Live cannot start, in the order the user would fix it. Offline Parakeet or any
+  /// cloud model can start. A cloud model adds a network round trip per piece; pieces are decoded
+  /// concurrently to hide it.
   enum Unavailable: Equatable {
     case duringMeeting
+    case noAPIKey
     case intelMac
-    case notParakeet
+    case unsupportedOfflineModel
     case notDownloaded
 
     var message: String {
       switch self {
       case .duringMeeting:
         return String(localized: "Dictate Live is not available during a meeting.")
+      case .noAPIKey:
+        return String(
+          localized: "Dictate Live needs an API key for the selected model. Add it in Settings → Dictate.")
       case .intelMac:
         return String(localized: "Dictate Live requires a Mac with Apple silicon.")
-      case .notParakeet:
+      case .unsupportedOfflineModel:
         return String(
-          localized: "Dictate Live works with the offline Parakeet Ultra model. Select it in Settings → Dictate.")
+          localized: "Dictate Live works with Parakeet Ultra or a cloud model. Select one in Settings → Dictate.")
       case .notDownloaded:
         return String(localized: "Download Parakeet Ultra in Settings → Dictate to use Dictate Live.")
       }
@@ -104,16 +112,21 @@ enum LiveDictation {
       text, mode: mode, timedMarks: timedMarks, keepsEdgeBreaks: true)
   }
 
-  /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
-  /// piece appears right after the pause; a cloud model would add a network round trip per piece.
-  /// The model must already be on disk — a recording start must never trigger a 700 MB download.
+  /// Nil when Dictate Live can start: offline Parakeet (downloaded, Apple silicon) or any cloud
+  /// transcription model that has an API key. A cloud model adds a network round trip per piece;
+  /// pieces are decoded concurrently to hide it. The offline model must already be on disk — a
+  /// recording start must never trigger a 700 MB download.
   /// The Accessibility permission is checked separately, at the start, with its own dialog.
   static func unavailableReason(
-    model: TranscriptionModel, downloaded: Bool, appleSilicon: Bool, duringMeeting: Bool
+    model: TranscriptionModel, downloaded: Bool, hasCredential: Bool, appleSilicon: Bool,
+    duringMeeting: Bool
   ) -> Unavailable? {
     if duringMeeting { return .duringMeeting }
+    if !model.isOffline {
+      return hasCredential ? nil : .noAPIKey
+    }
     if !appleSilicon { return .intelMac }
-    guard model.isOffline, model.offlineModelType?.engine == .parakeet else { return .notParakeet }
+    guard model.offlineModelType?.engine == .parakeet else { return .unsupportedOfflineModel }
     return downloaded ? nil : .notDownloaded
   }
 

@@ -26,7 +26,7 @@ The welcome tour on first launch walks you through permissions, picking a provid
 
 **Dictation**
 - **Dictate**: speak, and the transcription is pasted at the cursor and copied to the clipboard. Names and jargon go in a Glossary so they come out right. Settings → Dictate offers one-click starter lists of German specialist terms (orthopedics, psychiatry/psychotherapy, expert reports).
-- **Dictate Live**: text appears at the cursor after every short pause while you keep talking (on-device, Apple silicon).
+- **Dictate Live**: text appears at the cursor after every short pause while you keep talking (on-device with Parakeet Ultra on Apple silicon, or with any cloud model).
 - **Microphone choice**: with a headset or dictation microphone (such as a SpeechMike) plugged in, pick it in Settings → Dictate → Microphone and Dictate and Live Meeting record from it, whatever macOS has as its input. If it is unplugged, the app records from the system default and says so.
 - **Dictation only**: a mode for people who only want to dictate. It hides Chat, meetings, Dictate Prompt, Read Aloud and the other features; nothing is deleted, and switching it off in Settings → General brings them back. Picked on the first screen of the welcome tour, it also sets up offline dictation with spoken punctuation and walks through a test dictation.
 - **Offline dictation**: [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) transcribes 25 European languages on your Mac in a fraction of a second; Whisper covers the rest.

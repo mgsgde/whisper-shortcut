@@ -311,12 +311,14 @@ struct DictationOnlyOnboardingTests {
   @Test("Dictate Live with the model not downloaded is refused with a notice, never started as cloud Dictate")
   func liveRefusedWhileDownloading() {
     let reason = LiveDictation.unavailableReason(
-      model: .parakeetUltra, downloaded: false, appleSilicon: true, duringMeeting: false)
+      model: .parakeetUltra, downloaded: false, hasCredential: true, appleSilicon: true,
+      duringMeeting: false)
     #expect(reason == .notDownloaded)
     #expect(
       LiveDictation.startDecision(mode: .live, unavailable: reason) == .refuse(.notDownloaded))
     #expect(
       LiveDictation.unavailableReason(
-        model: .parakeetUltra, downloaded: true, appleSilicon: true, duringMeeting: false) == nil)
+        model: .parakeetUltra, downloaded: true, hasCredential: true, appleSilicon: true,
+        duringMeeting: false) == nil)
   }
 }

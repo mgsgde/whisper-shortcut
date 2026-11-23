@@ -391,26 +391,6 @@
         }
       }
     },
-    "Dictate Live works with the offline Parakeet Ultra model (about 700 MB, downloaded once). It is selected as soon as the download finishes." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra (ca. 700 MB, einmaliger Download). Es wird ausgewählt, sobald der Download fertig ist."
-          }
-        }
-      }
-    },
-    "Dictate Live works with the offline Parakeet Ultra model." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra."
-          }
-        }
-      }
-    },
     "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works." : {
       "localizations" : {
         "de" : {
@@ -2950,6 +2930,17 @@
         }
       }
     },
+    "Dictate Live needs an API key for the selected model. Add it in Settings → Dictate." : {
+      "comment" : "Dictate Live cannot start without an API key",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren braucht einen API-Schlüssel für das gewählte Modell. Tragen Sie ihn unter Einstellungen → Diktieren ein."
+          }
+        }
+      }
+    },
     "Dictate Live requires a Mac with Apple silicon." : {
       "comment" : "Dictate Live cannot start on an Intel Mac",
       "localizations" : {
@@ -2972,13 +2963,23 @@
         }
       }
     },
-    "Dictate Live works with the offline Parakeet Ultra model. Select it in Settings → Dictate." : {
-      "comment" : "Dictate Live cannot start with another model",
+    "Dictate Live works with Parakeet Ultra or a cloud model. Select one below." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra. Wählen Sie es unter Einstellungen → Diktieren."
+            "value" : "Live diktieren funktioniert mit Parakeet Ultra oder einem Cloud-Modell. Wählen Sie eines unten aus."
+          }
+        }
+      }
+    },
+    "Dictate Live works with Parakeet Ultra or a cloud model. Select one in Settings → Dictate." : {
+      "comment" : "Dictate Live cannot start with this model",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren funktioniert mit Parakeet Ultra oder einem Cloud-Modell. Wählen Sie eines unter Einstellungen → Diktieren."
           }
         }
       }
@@ -3325,6 +3326,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorlagen"
+          }
+        }
+      }
+    },
+    "Text appears at the cursor after each pause, transcribed by the selected cloud model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text erscheint nach jeder Pause am Cursor, transkribiert vom gewählten Cloud-Modell."
           }
         }
       }

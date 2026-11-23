@@ -398,6 +398,7 @@ struct SpeechToTextSettingsTab: View {
     let model = viewModel.data.selectedTranscriptionModel
     return LiveDictation.unavailableReason(
       model: model, downloaded: model.isOfflineModelAvailable(),
+      hasCredential: model.hasRequiredCredential,
       appleSilicon: LiveDictation.isAppleSilicon, duringMeeting: false)
   }
 
@@ -436,11 +437,13 @@ struct SpeechToTextSettingsTab: View {
           liveUnavailableWarning(liveUnavailable)
         } else if dictationOnly {
           modeCaption("Text appears at the cursor after each pause. Everything stays on this Mac.")
-        } else {
+        } else if viewModel.data.selectedTranscriptionModel.isOffline {
           modeCaption("Text appears at the cursor after each pause, transcribed offline by Parakeet Ultra.")
           if let previous = TranscriptionModel(rawValue: modelBeforeLive), previous != .parakeetUltra {
             modeCaption("Switching back to Dictate selects \(previous.displayName) again.")
           }
+        } else {
+          modeCaption("Text appears at the cursor after each pause, transcribed by the selected cloud model.")
         }
       }
     }
@@ -451,8 +454,9 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 
-  /// Dictate Live runs on Parakeet Ultra only, so choosing it switches the model (when it is on
-  /// disk) and remembers the one it replaced; choosing Dictate again restores that model. Until
+  /// Choosing Dictate Live switches an offline model Live cannot use (Whisper, Qwen) to Parakeet Ultra
+  /// when it is on disk and remembers the model it replaced; a cloud model stays, Live runs on it.
+  /// Choosing Dictate again restores the replaced model. Until
   /// 2026-11 Live only showed a warning and left the switch to the user, which left both keys
   /// dead in between. Returns true when the model changed; the caller saves.
   @discardableResult
@@ -460,7 +464,9 @@ struct SpeechToTextSettingsTab: View {
     let current = viewModel.data.selectedTranscriptionModel
     switch mode {
     case .live:
-      guard current != .parakeetUltra, TranscriptionModel.parakeetUltra.isOfflineModelAvailable() else {
+      guard current.isOffline, current != .parakeetUltra,
+        TranscriptionModel.parakeetUltra.isOfflineModelAvailable()
+      else {
         return false
       }
       modelBeforeLive = current.rawValue
@@ -493,10 +499,8 @@ struct SpeechToTextSettingsTab: View {
       VStack(alignment: .leading, spacing: 2) {
         // `message` points to Settings → Dictate, which is this tab.
         Group {
-          if reason == .notParakeet && !TranscriptionModel.parakeetUltra.isOfflineModelAvailable() {
-            Text("Dictate Live works with the offline Parakeet Ultra model (about 700 MB, downloaded once). It is selected as soon as the download finishes.")
-          } else if reason == .notParakeet {
-            Text("Dictate Live works with the offline Parakeet Ultra model.")
+          if reason == .unsupportedOfflineModel {
+            Text("Dictate Live works with Parakeet Ultra or a cloud model. Select one below.")
           } else {
             Text(verbatim: reason.message)
           }
@@ -508,7 +512,7 @@ struct SpeechToTextSettingsTab: View {
           .foregroundColor(.secondary)
       }
       Spacer(minLength: 8)
-      if reason == .notParakeet || reason == .notDownloaded {
+      if reason == .unsupportedOfflineModel || reason == .notDownloaded {
         if TranscriptionModel.parakeetUltra.isOfflineModelAvailable() {
           // Reached when the user picked another model by hand while Live was on.
           Button("Use Parakeet Ultra") {
