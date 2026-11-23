@@ -454,8 +454,9 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 
-  /// Choosing Dictate Live switches to Parakeet Ultra when it is on disk and remembers the model it
-  /// replaced; choosing Dictate again restores that model. A cloud model picked afterwards stays. Until
+  /// Choosing Dictate Live switches an offline model Live cannot use (Whisper, Qwen) to Parakeet Ultra
+  /// when it is on disk and remembers the model it replaced; a cloud model stays, Live runs on it.
+  /// Choosing Dictate again restores the replaced model. Until
   /// 2026-11 Live only showed a warning and left the switch to the user, which left both keys
   /// dead in between. Returns true when the model changed; the caller saves.
   @discardableResult
@@ -463,7 +464,9 @@ struct SpeechToTextSettingsTab: View {
     let current = viewModel.data.selectedTranscriptionModel
     switch mode {
     case .live:
-      guard current != .parakeetUltra, TranscriptionModel.parakeetUltra.isOfflineModelAvailable() else {
+      guard current.isOffline, current != .parakeetUltra,
+        TranscriptionModel.parakeetUltra.isOfflineModelAvailable()
+      else {
         return false
       }
       modelBeforeLive = current.rawValue
