@@ -235,6 +235,9 @@ class MenuBarController: NSObject {
   private var livePiecesUsedPasteboard = false
   /// The punctuation mode of the current Dictate Live recording, fixed at its start like Dictate.
   private var livePunctuationMode: PunctuationMode = .automatic
+  /// Token timings exist only for Parakeet. Fixed at session start with `livePunctuationMode`.
+  /// False for a cloud model, which is also why the drift measurement is skipped.
+  private var liveTimedMarks = true
   /// The Dictate or Dictate Prompt job currently being processed, outside a live
   /// meeting. Cancelling cancels its task and clears this, which is how a late-arriving result (or
   /// a late cancellation tail) is recognised as belonging to a superseded job and dropped instead of
@@ -3077,8 +3080,8 @@ class MenuBarController: NSObject {
 
   /// Dictate Live's shortcut and menu item (plans/active/live-dictate-insert.md): text at the
   /// cursor after every short pause, Dragon-style. Starting needs offline Parakeet (downloaded, Apple
-  /// Silicon) and the Accessibility permission; stopping, cancelling and "busy" behave exactly like
-  /// the Dictate shortcut, so either key ends either recording.
+  /// silicon) or a cloud model with its API key, and the Accessibility permission; stopping,
+  /// cancelling and "busy" behave exactly like the Dictate shortcut, so either key ends either recording.
   @objc func toggleLiveDictation() {
     #if APP_STORE
     return
@@ -3100,6 +3103,7 @@ class MenuBarController: NSObject {
     let model = TranscriptionModel.loadSelected()
     return LiveDictation.unavailableReason(
       model: model, downloaded: model.isOfflineModelAvailable(),
+      hasCredential: model.hasRequiredCredential,
       appleSilicon: LiveDictation.isAppleSilicon, duringMeeting: isLiveMeetingActive)
   }
 
@@ -3151,18 +3155,23 @@ class MenuBarController: NSObject {
     let speechService = self.speechService
     liveClipboardSnapshot = Self.restoreClipboardEnabled ? clipboardManager.snapshot() : nil
     livePiecesUsedPasteboard = false
-    let punctuationMode = PunctuationMode.effective(stored: .current, isOffline: true, duringMeeting: false)
+    let punctuationMode = PunctuationMode.effective(
+      stored: .current, isOffline: model.isOffline, duringMeeting: false)
     livePunctuationMode = punctuationMode
+    let timedMarks = model.isOffline
+    liveTimedMarks = timedMarks
     liveDictationSession = LiveDictationSession(
       decode: { url in
-        try await Self.decodeLivePiece(url, speechService: speechService, punctuationMode: punctuationMode)
+        try await Self.decodeLivePiece(
+          url, speechService: speechService, punctuationMode: punctuationMode, timedMarks: timedMarks)
       },
       insert: { [weak self] text in
         guard let self else { return false }
         return await self.insertLivePiece(text, target: target, ownWindowAtStart: ownWindowAtStart)
       },
       holdsPeriods: punctuationMode != .spokenOnly,
-      caret: caret)
+      caret: caret,
+      decodesConcurrently: !model.isOffline)
     DebugLogger.log("LIVE-DICTATE: Starting (target \(target?.bundleId ?? "none"))")
     beginAudioCapture(mode: .transcription, rotation: .currentLive())
     recording?.isLiveDictation = true
@@ -3217,19 +3226,20 @@ class MenuBarController: NSObject {
     lastLiveInsertion = nil
   }
 
-  /// One piece through the normal offline path — Parakeet with the Glossary, the glossary-echo
-  /// check, then the spoken layout commands. "" when the piece held no speech.
+  /// One piece through the normal transcription path — Parakeet or the selected cloud model —
+  /// the glossary-echo check, then the spoken layout commands. "" when the piece held no speech.
+  /// `timedMarks` is true for Parakeet, which has token timings; a cloud model has none.
   /// Internal so the test-profile WAV harness runs this function unchanged. `transcribe` is given
   /// the URL as-is; the caller passes a copy when the file must survive.
   static func decodeLivePiece(
-    _ url: URL, speechService: SpeechService, punctuationMode: PunctuationMode
+    _ url: URL, speechService: SpeechService, punctuationMode: PunctuationMode, timedMarks: Bool = true
   ) async throws -> String {
     do {
       let text = try await NoSpeechContext.run(.streamingChunk, audioURL: url) {
         try await speechService.transcribe(
           audioURL: url, cancellable: false, reportsProgress: false, punctuationMode: punctuationMode)
       }
-      return LiveDictation.finishPiece(text, mode: punctuationMode, timedMarks: true)
+      return LiveDictation.finishPiece(text, mode: punctuationMode, timedMarks: timedMarks)
     } catch TranscriptionError.noSpeechDetected {
       return ""
     }
@@ -3409,7 +3419,7 @@ class MenuBarController: NSObject {
       liveClipboardSnapshot = nil
       let whole = try? await SpeechService.$suppressRequestTrace.withValue(true) {
         try await Self.decodeLivePiece(
-          audioURL, speechService: service, punctuationMode: livePunctuationMode)
+          audioURL, speechService: service, punctuationMode: livePunctuationMode, timedMarks: liveTimedMarks)
       }
       if isSuperseded(job) {
         processedAudioURLs.remove(audioURL)
@@ -3488,11 +3498,19 @@ class MenuBarController: NSObject {
   /// How much did cutting at pauses cost against decoding the whole file? Logged as counts only,
   /// then the recording is deleted. Waits until the app has been idle for a while and skips the
   /// measurement otherwise: the decode shares the Parakeet engine (~0.5 s per minute of audio), and
-  /// a dictation the user starts must never queue behind it.
+  /// a dictation the user starts must never queue behind it. Cloud models skip it entirely: a second
+  /// upload of the whole recording would cost money. That decision uses the model captured at
+  /// session start (`liveTimedMarks`), not a model loaded again here.
   private func measureLiveDrift(inserted: String, failedPieces: Int, audioURL: URL) {
     let service = self.speechService
+    let punctuationMode = livePunctuationMode
+    let timedMarks = liveTimedMarks
     Task { @MainActor [weak self] in
       defer { self?.cleanupAudioFile(at: audioURL) }
+      guard timedMarks else {
+        DebugLogger.log("LIVE-DICTATE: drift measurement skipped — cloud model")
+        return
+      }
       guard failedPieces == 0, !inserted.isEmpty else { return }
       try? await Task.sleep(for: .seconds(10))
       guard let self, !self.appState.isRecording, !self.appState.isProcessing else {
@@ -3501,7 +3519,7 @@ class MenuBarController: NSObject {
       }
       let decoded = try? await SpeechService.$suppressRequestTrace.withValue(true) {
         try await Self.decodeLivePiece(
-          audioURL, speechService: service, punctuationMode: livePunctuationMode)
+          audioURL, speechService: service, punctuationMode: punctuationMode, timedMarks: timedMarks)
       }
       guard let whole = decoded else { return }
       let drift = LiveDictation.drift(inserted: inserted, wholeFile: whole)

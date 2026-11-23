@@ -16,24 +16,41 @@ struct LiveDictationTests {
   func available() {
     #expect(
       LiveDictation.unavailableReason(
-        model: .parakeetUltra, downloaded: true, appleSilicon: true, duringMeeting: false) == nil)
+        model: .parakeetUltra, downloaded: true, hasCredential: true, appleSilicon: true,
+        duringMeeting: false) == nil)
   }
 
   @Test("Each missing condition names its own reason")
   func reasons() {
     #expect(
       LiveDictation.unavailableReason(
-        model: .parakeetUltra, downloaded: true, appleSilicon: true, duringMeeting: true) == .duringMeeting)
+        model: .parakeetUltra, downloaded: true, hasCredential: true, appleSilicon: true,
+        duringMeeting: true) == .duringMeeting)
     #expect(
       LiveDictation.unavailableReason(
-        model: .parakeetUltra, downloaded: true, appleSilicon: false, duringMeeting: false) == .intelMac)
+        model: .parakeetUltra, downloaded: true, hasCredential: true, appleSilicon: false,
+        duringMeeting: false) == .intelMac)
     #expect(
       LiveDictation.unavailableReason(
-        model: .parakeetUltra, downloaded: false, appleSilicon: true, duringMeeting: false) == .notDownloaded)
-    for model in TranscriptionModel.allCases where model.offlineModelType?.engine != .parakeet {
+        model: .parakeetUltra, downloaded: false, hasCredential: true, appleSilicon: true,
+        duringMeeting: false) == .notDownloaded)
+    for model in TranscriptionModel.allCases where !model.isOffline {
       #expect(
         LiveDictation.unavailableReason(
-          model: model, downloaded: true, appleSilicon: true, duringMeeting: false) == .notParakeet,
+          model: model, downloaded: false, hasCredential: true, appleSilicon: false,
+          duringMeeting: false) == nil,
+        "\(model.rawValue) cloud with a key, including on Intel")
+      #expect(
+        LiveDictation.unavailableReason(
+          model: model, downloaded: true, hasCredential: false, appleSilicon: true,
+          duringMeeting: false) == .noAPIKey,
+        "\(model.rawValue) cloud without a key")
+    }
+    for model in TranscriptionModel.allCases where model.isOffline && model.offlineModelType?.engine != .parakeet {
+      #expect(
+        LiveDictation.unavailableReason(
+          model: model, downloaded: true, hasCredential: true, appleSilicon: true,
+          duringMeeting: false) == .unsupportedOfflineModel,
         "\(model.rawValue) must not offer Dictate Live")
     }
   }
@@ -404,7 +421,8 @@ struct LiveDictationTests {
 
   @MainActor
   private static func session(
-    _ cursor: Cursor, texts: [String: String], delaysMs: [String: UInt64] = [:], failing: Set<String> = []
+    _ cursor: Cursor, texts: [String: String], delaysMs: [String: UInt64] = [:], failing: Set<String> = [],
+    decodesConcurrently: Bool = false
   ) -> LiveDictationSession {
     LiveDictationSession(
       decode: { url in
@@ -417,7 +435,8 @@ struct LiveDictationTests {
         guard cursor.appInFront else { return false }
         cursor.texts.append(text)
         return true
-      })
+      },
+      decodesConcurrently: decodesConcurrently)
   }
 
   @Test("Pieces reach the cursor in speaking order even when an earlier decode is slower")
@@ -510,17 +529,64 @@ struct LiveDictationTests {
     #expect(cursor.texts.isEmpty)
   }
 
+  @Test("Concurrent decodes that finish in reverse order are inserted in add order")
+  @MainActor
+  func concurrentOrder() async throws {
+    let cursor = Cursor()
+    let s = Self.session(
+      cursor, texts: ["a": "Erstens", "b": "zweitens", "c": "drittens"],
+      delaysMs: ["a": 300, "b": 150, "c": 0], decodesConcurrently: true)
+    s.add(Self.url("a"), isSilent: false)
+    s.add(Self.url("b"), isSilent: false)
+    s.add(Self.url("c"), isSilent: false)
+    let outcome = try await s.finish(deliveredAudio: Self.url("merged"))
+    #expect(cursor.document == "Erstens zweitens drittens")
+    #expect(outcome == .init(text: "Erstens zweitens drittens", heldText: "", pieces: 3, failedPieces: 0))
+  }
+
+  @Test("Cancel during a concurrent decode stops further inserts and finish throws")
+  @MainActor
+  func concurrentCancel() async throws {
+    let cursor = Cursor()
+    let s = Self.session(
+      cursor, texts: ["a": "eins", "b": "zwei", "c": "drei"],
+      delaysMs: ["a": 300, "b": 300, "c": 300], decodesConcurrently: true)
+    s.add(Self.url("a"), isSilent: false)
+    s.add(Self.url("b"), isSilent: false)
+    s.add(Self.url("c"), isSilent: false)
+    try await Task.sleep(nanoseconds: 30_000_000)
+    s.cancel()
+    await #expect(throws: CancellationError.self) {
+      _ = try await s.finish(deliveredAudio: Self.url("merged"))
+    }
+    #expect(cursor.texts.isEmpty)
+  }
+
+  @Test("A failing concurrent decode is counted in failedPieces")
+  @MainActor
+  func concurrentFailedPiece() async throws {
+    let cursor = Cursor()
+    let s = Self.session(
+      cursor, texts: ["a": "eins", "c": "drei"], delaysMs: ["a": 50, "b": 0, "c": 20],
+      failing: ["b"], decodesConcurrently: true)
+    for name in ["a", "b", "c"] { s.add(Self.url(name), isSilent: false) }
+    let outcome = try await s.finish(deliveredAudio: Self.url("merged"))
+    #expect(cursor.document == "eins drei")
+    #expect(outcome.failedPieces == 1)
+    #expect(outcome.pieces == 3)
+  }
+
   // MARK: - Dictate mode
 
   private static let startDecisions: [(DictateMode, LiveDictation.Unavailable?, LiveDictation.StartDecision, String)] = [
     (.dictate, nil, .startDictate, "dictate never depends on availability"),
     (.dictate, .duringMeeting, .startDictate, "dictate during a meeting"),
     (.dictate, .intelMac, .startDictate, "dictate on Intel"),
-    (.dictate, .notParakeet, .startDictate, "dictate without Parakeet"),
+    (.dictate, .unsupportedOfflineModel, .startDictate, "dictate without Parakeet"),
     (.dictate, .notDownloaded, .startDictate, "dictate when Parakeet is not downloaded"),
     (.live, nil, .startLive, "live starts when available"),
     (.live, .intelMac, .refuse(.intelMac), "live refuses on Intel"),
-    (.live, .notParakeet, .refuse(.notParakeet), "live refuses without Parakeet"),
+    (.live, .unsupportedOfflineModel, .refuse(.unsupportedOfflineModel), "live refuses without Parakeet"),
     (.live, .notDownloaded, .refuse(.notDownloaded), "live refuses when Parakeet is not downloaded"),
     (.live, .duringMeeting, .startDictate, "live during a meeting starts a Dictate segment"),
   ]
