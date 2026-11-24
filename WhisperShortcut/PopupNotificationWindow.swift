@@ -882,12 +882,11 @@ class PopupNotificationWindow: NSWindow {
       // Hide window instead of closing to prevent app termination
       self.orderOut(nil)  // Make window invisible
 
-      // Call dismiss action only if:
-      // 1. Retry was NOT clicked (wasRetried == false)
-      // 2. dismissAction exists (for cleanup when no retry option)
-      // 3. retryAction is nil (no retry button was shown, so cleanup is safe)
-      // If retryAction exists but retry wasn't clicked, we keep the file for menu retry
-      if !self.wasRetried, let dismissAction = self.dismissAction, self.retryAction == nil {
+      // Retry sets wasRetried before hide(), so closing via Retry does not also clean up.
+      // Every other close runs dismissAction, including when a Retry button was shown and
+      // not clicked. A caller that must keep the file for a later retry passes no
+      // dismissAction (the non-meeting error popup does; a meeting-segment failure does not).
+      if !self.wasRetried, let dismissAction = self.dismissAction {
         dismissAction()
       }
       

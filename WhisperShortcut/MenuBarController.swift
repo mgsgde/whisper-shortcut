@@ -2371,7 +2371,7 @@ class MenuBarController: NSObject {
     clipboardOnlyForNextResult = true
     appState = .processing(.prompting)
     startVoiceJob(mode: .prompt, audioURL: copy) { job in
-      await self.performPrompting(audioURL: copy, job: job, selection: nil)
+      await self.performPrompting(audioURL: copy, job: job)
     }
   }
 
@@ -2803,18 +2803,10 @@ class MenuBarController: NSObject {
         markMeetingSegmentProcessing()
         await performTranscription(audioURL: audioURL, job: nil)
       case .prompt:
-        let inputs = finishedPromptInputs[audioURL]
+        let inputs = finishedPromptInputs[audioURL] ?? FinishedPromptInputs()
         beginMeetingSegment(.prompt)
         markMeetingSegmentProcessing()
-        await performPrompting(
-          audioURL: audioURL, job: nil, instruction: inputs?.quickActionInstruction,
-          isEditQuickAction: inputs?.isEditQuickAction ?? false,
-          templateInstruction: inputs?.templateInstruction,
-          templateName: inputs?.templateName,
-          templateID: inputs?.templateID,
-          recordingWasSilent: inputs?.recordingWasSilent ?? false,
-          selection: inputs?.selection,
-          speakResult: inputs?.speakResult ?? false)
+        await performPrompting(audioURL: audioURL, job: nil, inputs: inputs)
       case .liveMeeting:
         break
       }
@@ -2849,17 +2841,9 @@ class MenuBarController: NSObject {
       self.appState = .processing(.prompting)
       // Same selection as the first attempt; none on record means compose, never a fresh
       // pasteboard read.
-      let inputs = self.finishedPromptInputs[audioURL]
+      let inputs = self.finishedPromptInputs[audioURL] ?? FinishedPromptInputs()
       self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
-        await self.performPrompting(
-          audioURL: audioURL, job: job, instruction: inputs?.quickActionInstruction,
-          isEditQuickAction: inputs?.isEditQuickAction ?? false,
-          templateInstruction: inputs?.templateInstruction,
-          templateName: inputs?.templateName,
-          templateID: inputs?.templateID,
-          recordingWasSilent: inputs?.recordingWasSilent ?? false,
-          selection: inputs?.selection,
-          speakResult: inputs?.speakResult ?? false)
+        await self.performPrompting(audioURL: audioURL, job: job, inputs: inputs)
       }
     case .liveMeeting:
       // Live meeting chunks are handled separately, no retry needed here
@@ -3120,6 +3104,8 @@ class MenuBarController: NSObject {
                 }
               },
               dismissAction: { [weak self] in
+                // Runs when the popup closes without Retry, so the kept audio and the
+                // prompt inputs stored for it do not outlive the popup.
                 self?.cleanupAudioFile(at: audioURL)
               })
           } else {
@@ -3722,23 +3708,24 @@ class MenuBarController: NSObject {
       })
   }
 
-  /// `job` is nil for a live-meeting segment.
+  /// `job` is nil for a live-meeting segment. `inputs.selection` is the capture taken for this
+  /// recording; nil means nothing was selected (or the selection is read from a screenshot), and
+  /// the turn runs as compose.
   @MainActor
-  /// `selection` is the capture taken for this recording; nil means nothing was selected (or the
-  /// selection is read from a screenshot), and the turn runs as compose.
   private func performPrompting(
     audioURL: URL,
     job: VoiceJob?,
-    instruction: String? = nil,
-    isEditQuickAction: Bool = false,
-    templateInstruction: String? = nil,
-    templateName: String? = nil,
-    templateID: UUID? = nil,
-    recordingWasSilent: Bool = false,
-    selection: DictatePromptSelectionCapture?,
-    speakResult: Bool = false,
+    inputs: FinishedPromptInputs = FinishedPromptInputs(),
     traceJobID: UUID? = nil
   ) async {
+    let instruction = inputs.quickActionInstruction
+    let isEditQuickAction = inputs.isEditQuickAction
+    let templateInstruction = inputs.templateInstruction
+    let templateName = inputs.templateName
+    let templateID = inputs.templateID
+    let recordingWasSilent = inputs.recordingWasSilent
+    let selection = inputs.selection
+    let speakResult = inputs.speakResult
     let traceJob = traceJobID ?? UUID()
     // Words of the on-device reply the dictation does not contain (Offline Mode only). They
     // replace the result popup with a warning; the pasted text is never touched.
@@ -4874,13 +4861,7 @@ extension MenuBarController: AudioRecorderDelegate {
             inputs.speakResult = intent?.speakResult ?? false
             self.finishedPromptInputs[audioURL] = inputs
             await self.performPrompting(
-              audioURL: audioURL, job: nil,
-              instruction: inputs.quickActionInstruction,
-              isEditQuickAction: inputs.isEditQuickAction,
-              recordingWasSilent: inputs.recordingWasSilent,
-              selection: inputs.selection,
-              speakResult: inputs.speakResult,
-              traceJobID: traceJobID)
+              audioURL: audioURL, job: nil, inputs: inputs, traceJobID: traceJobID)
           }
         }
         return
@@ -5135,15 +5116,10 @@ extension MenuBarController: AudioRecorderDelegate {
       }
     case .prompt:
       self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
+        var inputs = promptInputs
+        inputs.quickActionInstruction = quickActionInstruction
         await self.performPrompting(
-          audioURL: audioURL, job: job, instruction: quickActionInstruction,
-          isEditQuickAction: promptInputs.isEditQuickAction,
-          templateInstruction: promptInputs.templateInstruction,
-          templateName: promptInputs.templateName,
-          templateID: promptInputs.templateID,
-          recordingWasSilent: promptInputs.recordingWasSilent, selection: promptInputs.selection,
-          speakResult: promptInputs.speakResult,
-          traceJobID: traceJobID)
+          audioURL: audioURL, job: job, inputs: inputs, traceJobID: traceJobID)
       }
     case .liveMeeting:
       DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
