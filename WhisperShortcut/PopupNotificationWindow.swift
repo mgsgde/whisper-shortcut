@@ -213,7 +213,8 @@ class PopupNotificationWindow: NSWindow {
     isMovable = false
     isMovableByWindowBackground = false
     // CRITICAL: Prevent window from causing app termination
-    collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+    // .fullScreenAuxiliary: also show over apps in native full screen (as RecordingIndicatorWindow does).
+    collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
     hidesOnDeactivate = false  // Don't hide when app loses focus
 
     // CRITICAL: Prevent this window from becoming main window or causing termination
