@@ -358,8 +358,8 @@ struct LiveMeetingChunkPipelineTests {
 
       session.end(preferredName: "Board", discard: false)
       deliver(session, index: 1, start: 30, silent: true, final: true)
-      #expect(box.finished == 1)
-      #expect(FileManager.default.fileExists(atPath: renamed.path))
+      #expect(await waitUntil { box.finished == 1 })
+      #expect(await waitUntil { FileManager.default.fileExists(atPath: renamed.path) })
 
       #expect(await waitUntil { box.summaryCount == 1 })
       #expect(box.lastSummaryInput.contains("agenda for the board"))
