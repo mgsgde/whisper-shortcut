@@ -257,25 +257,64 @@ struct MCPConfigToolsTests {
     #expect(bad.isError)
   }
 
-  @Test("Writing style: applied at apply, proposal at propose, apply stamps the profile")
+  @Test("Writing style always waits for review; accepting stamps the profile")
   func writingStyle() {
     let env = MCPTestEnv(level: .apply)
     env.testDefaults.set(4, forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile)
     env.testDefaults.set(Date(timeIntervalSince1970: 50), forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
     let t = env.tools()
     let r = t.call(name: "update_writing_style_profile", arguments: ["content": "Short and direct.", "rationale": "r"], access: .write)
-    #expect(obj(r)["status"] as? String == "applied")
+    #expect(obj(r)["status"] as? String == "pending_review")
+    #expect(env.writingStyle.loadProfile() != "Short and direct.")
+    guard case .success = env.proposals.accept(obj(r)["id"] as? String ?? "") else {
+      Issue.record("accept failed")
+      return
+    }
     #expect(env.writingStyle.loadProfile() == "Short and direct.")
     #expect(env.testDefaults.object(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt) != nil)
     #expect(env.testDefaults.integer(forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile) == 0)
     #expect(env.testDefaults.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) == nil)
-    env.level = .propose
     let p = t.call(name: "update_writing_style_profile", arguments: ["content": "Other.", "rationale": "r"], access: .write)
     #expect(obj(p)["status"] as? String == "pending_review")
     #expect(env.writingStyle.loadProfile() == "Short and direct.")
   }
 
   // MARK: glossary
+
+  @Test("Templates and the writing style profile always wait; glossary terms still apply")
+  func instructionChangesAlwaysWait() {
+    #expect(MCPConfigTools.alwaysProposal(kind: .systemPrompt))
+    #expect(MCPConfigTools.alwaysProposal(kind: .writingStyle))
+    #expect(MCPConfigTools.alwaysProposal(kind: .saveTemplate))
+    #expect(!MCPConfigTools.alwaysProposal(kind: .deleteTemplate))
+    #expect(!MCPConfigTools.alwaysProposal(kind: .saveCommand))
+
+    let env = MCPTestEnv(level: .apply)
+    let t = env.tools()
+    let created = t.call(name: "create_template",
+      arguments: ["name": "Note", "text": "One line.", "rationale": "r"], access: .write)
+    #expect(obj(created)["status"] as? String == "pending_review")
+    #expect(env.box.templates.isEmpty)
+    let updatedStyle = t.call(name: "update_writing_style_profile",
+      arguments: ["content": "Short.", "rationale": "r"], access: .write)
+    #expect(obj(updatedStyle)["status"] as? String == "pending_review")
+    #expect(!FileManager.default.fileExists(atPath: env.writingStyle.profileURL.path))
+    let glossary = t.call(name: "add_glossary_terms",
+      arguments: ["terms": ["Wianco"], "rationale": "r"], access: .write)
+    #expect(obj(glossary)["status"] as? String == "applied")
+
+    let defs = t.toolDefinitions(access: .write)
+    func description(_ name: String) -> String {
+      defs.first { ($0["name"] as? String) == name }?["description"] as? String ?? ""
+    }
+    #expect(description("create_template").contains("Always waits for the user to accept it"))
+    #expect(!description("create_template").contains("Applied at once"))
+    #expect(description("update_template").contains("Always waits for the user to accept it"))
+    #expect(description("update_writing_style_profile").contains("Always waits for the user to accept it"))
+    #expect(description("add_glossary_terms").contains("Applied at once"))
+    #expect(MCPTuneRecipe.base.contains("creating or updating a template always wait"))
+    #expect(MCPTuneRecipe.base.contains("it applies at once unless the user set AI app access"))
+  }
 
   @Test("add_glossary_terms is additive, keeps (not ...) lines, dedupes case-insensitively")
   func glossaryAdditive() {
@@ -422,7 +461,12 @@ struct MCPConfigToolsTests {
     let t = env.tools()
     let created = t.call(name: "create_template",
       arguments: ["name": "Befund", "text": String(repeating: "a", count: 2_599), "rationale": "r"], access: .write)
-    #expect(obj(created)["status"] as? String == "applied")
+    #expect(obj(created)["status"] as? String == "pending_review")
+    #expect(env.box.templates.isEmpty)
+    guard case .success = env.proposals.accept(obj(created)["id"] as? String ?? "") else {
+      Issue.record("create accept failed")
+      return
+    }
     #expect(env.box.templates.count == 1)
     #expect(env.box.templates[0].instructions.count == 2_599)
     let id = env.box.templates[0].id.uuidString
@@ -436,12 +480,16 @@ struct MCPConfigToolsTests {
     // Update keeps the shortcut
     env.box.templates[0].shortcut = ShortcutDefinition(key: .six, modifiers: [.command])
     let updated = t.call(name: "update_template", arguments: ["id": id, "name": "Neu", "rationale": "r"], access: .write)
-    #expect(obj(updated)["status"] as? String == "applied")
+    #expect(obj(updated)["status"] as? String == "pending_review")
+    #expect(env.box.templates[0].name == "Befund")
+    guard case .success(let changeID) = env.proposals.accept(obj(updated)["id"] as? String ?? "") else {
+      Issue.record("update accept failed")
+      return
+    }
     #expect(env.box.templates[0].name == "Neu")
     #expect(env.box.templates[0].shortcut != nil)
 
     // Undo of the update restores the name
-    let changeID = obj(updated)["change_id"] as? String ?? ""
     #expect(env.changeLog.undo(changeID) == .undone)
     #expect(env.box.templates[0].name == "Befund")
 

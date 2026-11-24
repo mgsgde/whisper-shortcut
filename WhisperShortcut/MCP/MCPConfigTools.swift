@@ -117,10 +117,14 @@ struct MCPConfigTools {
     ("dictate_prompt", .promptModeAdditions), ("chat", .chat), ("read_aloud_rewrite", .readAloudRewrite),
   ]
   /// Always a proposal, at every access level. A meeting or an email an AI app reads could contain
-  /// text meant to change these instructions, or to remove glossary lines.
-  static let alwaysProposalSections: Set<String> = [
-    "dictation", "chat", "whisper_glossary", "dictate_prompt", "read_aloud_rewrite",
-  ]
+  /// text meant to change these instructions. Glossary terms are not instructions, so
+  /// `add_glossary_terms` does not go through here and still applies immediately.
+  static func alwaysProposal(kind: MCPProposal.Kind) -> Bool {
+    switch kind {
+    case .systemPrompt, .writingStyle, .saveTemplate: return true
+    case .saveCommand, .deleteCommand, .deleteTemplate, .problemReport, .settings: return false
+    }
+  }
 
   /// The only settings `get_configuration` reads: model names, nothing else.
   static let settingsKeys: [String: String] = [
@@ -269,7 +273,7 @@ struct MCPConfigTools {
       annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
       "update_writing_style_profile", "Update Writing Style Profile",
-      "Replaces the writing style profile with the full new text (max \(WritingStyleStore.maxChars) characters). Read it first.",
+      "Replaces the writing style profile with the full new text (max \(WritingStyleStore.maxChars) characters). Read it first. Always waits for the user to accept it in WhisperShortcut, at every access level.",
       ["content": ["type": "string", "description": "The complete new profile."]], required: ["content"],
       annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
@@ -289,7 +293,7 @@ struct MCPConfigTools {
       annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
       "create_template", "Create Template",
-      "Creates a dictation template: a fixed output format (a note layout, a report) with its own global shortcut that the user sets in Settings → Templates. A template does not run through Dictate Prompt; the user presses the template's own shortcut (or the generic Template shortcut), speaks, and the result comes back in this format. Put the whole format description in text (at most \(maxTemplateInstructionsCharacters) characters). Does not set a shortcut. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\", in which case it creates a proposal.",
+      "Creates a dictation template: a fixed output format (a note layout, a report) with its own global shortcut that the user sets in Settings → Templates. A template does not run through Dictate Prompt; the user presses the template's own shortcut (or the generic Template shortcut), speaks, and the result comes back in this format. Put the whole format description in text (at most \(maxTemplateInstructionsCharacters) characters). Does not set a shortcut. Always waits for the user to accept it in WhisperShortcut, at every access level.",
       [
         "name": ["type": "string", "description": "Short name, max \(maxTemplateNameCharacters) characters."],
         "text": ["type": "string", "description": "The format instructions, max \(maxTemplateInstructionsCharacters) characters."],
@@ -297,7 +301,7 @@ struct MCPConfigTools {
       annotations: ["readOnlyHint": false, "destructiveHint": false, "openWorldHint": false]),
     write(
       "update_template", "Update Template",
-      "Changes the name and/or the full text of an existing template (id from get_configuration). Read it first with get_configuration include [\"templates\"]; text replaces the whole format. The template's shortcut is not changed.",
+      "Changes the name and/or the full text of an existing template (id from get_configuration). Read it first with get_configuration include [\"templates\"]; text replaces the whole format. The template's shortcut is not changed. Always waits for the user to accept it in WhisperShortcut, at every access level.",
       [
         "id": ["type": "string", "description": "Template id from get_configuration."],
         "name": ["type": "string", "description": "New name, max \(maxTemplateNameCharacters) characters. Optional."],
@@ -707,7 +711,7 @@ struct MCPConfigTools {
     guard content.count <= sectionLimit else {
       return reject(tool, "too long", "content is \(content.count) characters; the limit is \(sectionLimit). Shorten it.")
     }
-    let proposalOnly = Self.alwaysProposalSections.contains(name) || env.accessLevel() == .propose
+    let proposalOnly = Self.alwaysProposal(kind: .systemPrompt) || env.accessLevel() == .propose
     return MCPMain.run {
       let previous = env.targets.systemPrompts.loadSection(section)
       if MCPConfigTargets.normalized(previous) == MCPConfigTargets.normalized(content) {
@@ -756,7 +760,7 @@ struct MCPConfigTools {
       if previous == content {
         return (json(["status": "no_change", "message": "The profile already has this text."]), false)
       }
-      if env.accessLevel() == .propose {
+      if Self.alwaysProposal(kind: .writingStyle) || env.accessLevel() == .propose {
         do {
           let p = try env.proposals.create(
             kind: .writingStyle, previousContent: previous, proposedContent: content, rationale: r.value!)
@@ -910,7 +914,7 @@ struct MCPConfigTools {
         log(tool, "applied", "no-op", len: text.count)
         return (json(["status": "no_change", "message": "The template already has this name and text."]), false)
       }
-      if env.accessLevel() == .propose {
+      if Self.alwaysProposal(kind: .saveTemplate) || env.accessLevel() == .propose {
         do {
           let previous = existing.map { MCPTemplateSnapshot.encode($0, includeShortcut: false) }
           let p = try env.proposals.create(

@@ -130,8 +130,14 @@ struct MCPProposalAndChangeLogTests {
     #expect(!FileManager.default.fileExists(atPath: env.writingStyle.profileURL.path))
     let r = env.tools().call(name: "update_writing_style_profile",
       arguments: ["content": "Short and direct.", "rationale": "r"], access: .write)
+    #expect(obj(r)["status"] as? String == "pending_review")
+    #expect(!FileManager.default.fileExists(atPath: env.writingStyle.profileURL.path))
+    guard case .success(let changeID) = env.proposals.accept(obj(r)["id"] as? String ?? "") else {
+      Issue.record("accept failed")
+      return
+    }
     #expect(FileManager.default.fileExists(atPath: env.writingStyle.profileURL.path))
-    #expect(env.changeLog.undo(obj(r)["change_id"] as? String ?? "") == .undone)
+    #expect(env.changeLog.undo(changeID) == .undone)
     #expect(!FileManager.default.fileExists(atPath: env.writingStyle.profileURL.path))
   }
 
