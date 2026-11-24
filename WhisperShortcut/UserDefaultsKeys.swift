@@ -64,6 +64,9 @@ enum UserDefaultsKeys {
   // MARK: - Notification Settings
   static let showPopupNotifications = "showPopupNotifications"
   static let notificationPosition = "notificationPosition"
+  /// Bottom-center of the recording pill, as fractions of the screen's visible frame.
+  /// Absent means the default spot. The pill has always stored this under the same name.
+  static let recordingIndicatorAnchor = "RecordingIndicatorAnchor"
   static let notificationDuration = "notificationDuration"
   static let errorNotificationDuration = "errorNotificationDuration"
   /// One-shot migration flag: default notification position moved left-top → center-bottom.
