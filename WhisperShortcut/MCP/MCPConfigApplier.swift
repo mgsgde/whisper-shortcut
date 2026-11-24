@@ -197,9 +197,11 @@ struct MCPConfigApplier {
   }
 
   /// Creates the template with this id, or replaces its name and instructions. A template's own
-  /// shortcut is never touched.
+  /// shortcut is never touched. `allowCreate` is true only for `create_template`: an update of a
+  /// missing id (Undo, or accepting a proposal after the template was deleted) must not bring it
+  /// back.
   func applySaveTemplate(
-    id: UUID, name: String, text: String, rationale: String, viaProposal: Bool
+    id: UUID, name: String, text: String, rationale: String, viaProposal: Bool, allowCreate: Bool
   ) -> Result<String, Error> {
     MCPMain.run {
       var templates = targets.loadTemplates()
@@ -208,8 +210,10 @@ struct MCPConfigApplier {
       if let existing {
         templates[existing].name = name
         templates[existing].instructions = text
-      } else {
+      } else if allowCreate {
         templates.append(DictationTemplate(id: id, name: name, instructions: text))
+      } else {
+        return .failure(MCPConfigError(message: "No template with that id."))
       }
       targets.saveTemplates(templates)
       guard let written = templates.first(where: { $0.id == id }) else {
@@ -259,5 +263,22 @@ struct MCPTemplateSnapshot: Codable {
 
   static func decode(_ json: String?) -> MCPTemplateSnapshot? {
     json.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONDecoder().decode(MCPTemplateSnapshot.self, from: $0) }
+  }
+
+  /// What the proposal review shows: a name line, then the instructions. The stored snapshot
+  /// stays JSON; this is display only.
+  static func reviewText(name: String, instructions: String) -> String {
+    let line = String(localized: "Name: \(name)")
+    if instructions.isEmpty { return line }
+    return line + "\n" + instructions
+  }
+
+  /// Drops the name line `reviewText` added, so an accepted edit is instructions only.
+  static func instructions(fromReview text: String, name: String) -> String {
+    let line = String(localized: "Name: \(name)")
+    if text == line { return "" }
+    let prefix = line + "\n"
+    guard text.hasPrefix(prefix) else { return text }
+    return String(text.dropFirst(prefix.count))
   }
 }

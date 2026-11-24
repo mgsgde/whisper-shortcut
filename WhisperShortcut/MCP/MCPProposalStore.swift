@@ -27,8 +27,10 @@ struct MCPProposal: Codable, Identifiable {
   var commandScope: String?
   var commandLabel: String?
   var commandDescription: String?
-  /// Template id (UUID string) and the template's name for `.saveTemplate` / `.deleteTemplate`.
-  /// The template's instructions travel in `previousContent` / `proposedContent`.
+  /// Template id (UUID string) and the proposed name for `.saveTemplate` / `.deleteTemplate`.
+  /// `previousContent` is a `MCPTemplateSnapshot` of the name and instructions. Older pending
+  /// proposals stored plain instructions; those still load and compare as instructions only.
+  /// `proposedContent` is the new instructions (nil for a delete).
   var templateID: String? = nil
   var templateName: String? = nil
   /// What is there when the proposal was made (for the diff). nil = did not exist.
@@ -164,9 +166,14 @@ final class MCPProposalStore: ObservableObject {
       applier.targets.commands.reload()
       return applier.targets.commands.commands.first { $0.name == proposal.commandName }?.body
     case .saveTemplate, .deleteTemplate:
-      return proposal.templateID.flatMap(UUID.init(uuidString:)).flatMap { id in
-        applier.targets.loadTemplates().first { $0.id == id }?.instructions
+      guard let id = proposal.templateID.flatMap(UUID.init(uuidString:)),
+        let template = applier.targets.loadTemplates().first(where: { $0.id == id })
+      else { return nil }
+      // A pending proposal from before the snapshot stored the instructions alone.
+      if let previous = proposal.previousContent, MCPTemplateSnapshot.decode(previous) == nil {
+        return template.instructions
       }
+      return MCPTemplateSnapshot.encode(template, includeShortcut: false)
     case .problemReport, .settings:
       // `.settings` is compared per-item in `accept()`, not here.
       return nil
@@ -256,7 +263,7 @@ final class MCPProposalStore: ObservableObject {
         }
         result = applier.applySaveTemplate(
           id: id, name: proposal.templateName ?? "", text: content, rationale: proposal.rationale,
-          viaProposal: true)
+          viaProposal: true, allowCreate: proposal.previousContent == nil)
       case .deleteTemplate:
         guard let id = proposal.templateID.flatMap(UUID.init(uuidString:)) else {
           return .failure(MCPConfigError(message: String(localized: "Unknown template.")))

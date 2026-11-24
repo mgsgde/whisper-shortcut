@@ -1185,6 +1185,14 @@ private final class RecordingIndicatorPanel: NSPanel {
     }
   }
 
+  /// Drops a drag that never got a mouse-up, and pops the closed-hand cursor if this drag pushed it.
+  func endDrag() {
+    let pushedClosedHand = isDragging
+    dragStart = nil
+    isDragging = false
+    if pushedClosedHand { NSCursor.pop() }
+  }
+
   /// Caught here rather than in SwiftUI: the text field would otherwise take ⌃digit as input.
   override func sendEvent(_ event: NSEvent) {
     if handleDrag(event) { return }
@@ -1400,6 +1408,7 @@ final class RecordingIndicatorManager {
   func hide() {
     releaseKeyFocus()
     stopKeepingInFront()
+    panel?.endDrag()
     guard isVisible, let panel else {
       isVisible = false
       model.promptContext = []
@@ -1901,10 +1910,9 @@ final class RecordingIndicatorManager {
 
   /// Bottom-center of the pill as a fraction of the screen's visible frame, so it lands in the
   /// same place on a screen of another size. Absent = the default spot, bottom center.
-  private static let anchorKey = "RecordingIndicatorAnchor"
-
   private static func savedAnchor() -> NSPoint? {
-    guard let values = UserDefaults.standard.array(forKey: anchorKey) as? [Double], values.count == 2
+    guard let values = UserDefaults.standard.array(forKey: UserDefaultsKeys.recordingIndicatorAnchor) as? [Double],
+      values.count == 2
     else { return nil }
     return NSPoint(x: values[0], y: values[1])
   }
@@ -1920,7 +1928,7 @@ final class RecordingIndicatorManager {
     let minY = panel.frame.minY
     if abs(midX - visible.midX) < snap { midX = visible.midX }
     if midX == visible.midX, abs(minY - (visible.minY + Constants.bottomMargin)) < snap {
-      UserDefaults.standard.removeObject(forKey: Self.anchorKey)
+      UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.recordingIndicatorAnchor)
       DebugLogger.log("PILL: dropped at default spot, saved position cleared")
       return
     }
@@ -1928,7 +1936,7 @@ final class RecordingIndicatorManager {
       Double((midX - visible.minX) / visible.width),
       Double((minY - visible.minY) / visible.height),
     ]
-    UserDefaults.standard.set(anchor, forKey: Self.anchorKey)
+    UserDefaults.standard.set(anchor, forKey: UserDefaultsKeys.recordingIndicatorAnchor)
     DebugLogger.log("PILL: moved by user, anchor=\(anchor)")
   }
 }

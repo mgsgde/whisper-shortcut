@@ -90,7 +90,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     return ProposalReviewView(
       focusDisplayName: Self.title(for: proposal),
       originalText: Self.baseline(for: proposal),
-      suggestedText: proposal.proposedContent ?? "",
+      suggestedText: Self.suggestedText(for: proposal),
       rationale: Self.rationale(for: proposal),
       titlePrefix: proposal.isFromWritingStyle ? "Suggested change" : "Suggested by an AI app",
       cancelTitle: "Decline",
@@ -98,7 +98,10 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       textNoun: Self.noun(for: proposal),
       allowsEditing: proposal.kind != .deleteCommand && proposal.kind != .deleteTemplate,
       acceptOnReturn: false,
-      onAccept: { [weak self] edited in self?.accept(id, edited: edited) },
+      onAccept: { [weak self] edited in
+        let text = Self.instructions(fromReviewed: edited, proposal: proposal)
+        self?.accept(id, edited: text)
+      },
       onCancel: { [weak self] in self?.decline(id) })
   }
 
@@ -204,11 +207,38 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   /// default: empty additional instructions for Dictation and Dictate Prompt, the full prompt for
   /// the other sections.
   static func baseline(for proposal: MCPProposal) -> String {
+    if proposal.kind == .saveTemplate || proposal.kind == .deleteTemplate {
+      if let snapshot = MCPTemplateSnapshot.decode(proposal.previousContent) {
+        return MCPTemplateSnapshot.reviewText(name: snapshot.name, instructions: snapshot.instructions)
+      }
+      // Older pending proposals stored the instructions with no name.
+      return proposal.previousContent ?? ""
+    }
     if let previous = proposal.previousContent, !previous.isEmpty { return previous }
     guard proposal.kind == .systemPrompt,
       let section = proposal.section.flatMap(SystemPromptSection.init(rawValue:))
     else { return "" }
     return defaultText(for: section)
+  }
+
+  /// Suggested side of the review. A template proposal prefixes the name line so a rename is
+  /// visible; the stored `proposedContent` stays the instructions.
+  static func suggestedText(for proposal: MCPProposal) -> String {
+    let instructions = proposal.proposedContent ?? ""
+    guard proposal.kind == .saveTemplate, showsTemplateNameLine(proposal) else { return instructions }
+    return MCPTemplateSnapshot.reviewText(name: proposal.templateName ?? "", instructions: instructions)
+  }
+
+  /// True when this proposal was stored with a snapshot (or is a create, which has no previous
+  /// text). An older instructions-only proposal is left as plain text.
+  private static func showsTemplateNameLine(_ proposal: MCPProposal) -> Bool {
+    proposal.previousContent == nil || MCPTemplateSnapshot.decode(proposal.previousContent) != nil
+  }
+
+  /// The editor shows the name line; Accept applies the instructions under it.
+  private static func instructions(fromReviewed text: String, proposal: MCPProposal) -> String {
+    guard proposal.kind == .saveTemplate, showsTemplateNameLine(proposal) else { return text }
+    return MCPTemplateSnapshot.instructions(fromReview: text, name: proposal.templateName ?? "")
   }
 
   /// The text a section holds until the user customizes it. Dictation and Dictate Prompt hold only
