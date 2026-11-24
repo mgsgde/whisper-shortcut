@@ -30,6 +30,7 @@
 #               no build, no writes to App Store Connect, no state-file
 #               writes, no mail.
 #   --force     ignore a stored failed-tag for this tag and retry it anyway.
+#   APPSTORE_ASC_DIR  dir holding export-options-app-store.plist (default: $REPO/.asc)
 #
 # Mails on success ("App Store: <tag> submitted for review") and on any
 # failure (step + last log lines), via scripts/send-report-mail.py. Logs to
@@ -398,10 +399,13 @@ cleanup_all() {
 cleanup_worktree() { cleanup_all; }
 trap cleanup_all EXIT
 
-[ -f "$REPO/.asc/export-options-app-store.plist" ] || \
-  fail_job "export-options" "Missing $REPO/.asc/export-options-app-store.plist (see .cursor/commands/submit-appstore.md Preconditions)."
+# .asc/ is gitignored, so it only exists in the main checkout. The stable-promote job runs
+# this script from a worktree copy (build/stable-promote/src) and passes the real dir here.
+ASC_DIR="${APPSTORE_ASC_DIR:-$REPO/.asc}"
+[ -f "$ASC_DIR/export-options-app-store.plist" ] || \
+  fail_job "export-options" "Missing $ASC_DIR/export-options-app-store.plist (see .cursor/commands/submit-appstore.md Preconditions)."
 mkdir -p "$WT/.asc"
-cp "$REPO/.asc/export-options-app-store.plist" "$WT/.asc/export-options-app-store.plist"
+cp "$ASC_DIR/export-options-app-store.plist" "$WT/.asc/export-options-app-store.plist"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$WT/WhisperShortcut/Info.plist" 2>/dev/null)" \
   || fail_job "version" "Could not read CFBundleShortVersionString from $WT/WhisperShortcut/Info.plist."

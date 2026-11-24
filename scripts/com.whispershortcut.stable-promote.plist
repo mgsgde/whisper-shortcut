@@ -30,7 +30,7 @@ cd "$M" || exit 0
 git fetch -q origin main 2&gt;/dev/null
 if [ -e "$S/.git" ]; then git -C "$S" checkout -q --detach origin/main; else git worktree add -q --detach "$S" origin/main; fi
 if [ -s "$S/scripts/stable-promote-job.sh" ]; then
-  STABLE_PROMOTE_STATE_DIR="$M/build/stable-channel" exec bash "$S/scripts/stable-promote-job.sh"
+  STABLE_PROMOTE_STATE_DIR="$M/build/stable-channel" APPSTORE_ASC_DIR="$M/.asc" exec bash "$S/scripts/stable-promote-job.sh"
 fi
 exec bash scripts/stable-promote-job.sh</string>
     </array>
