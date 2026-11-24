@@ -546,45 +546,131 @@ enum WritingStyleImporter {
   }
 
   /// Applies evidence-checked line edits. An operation is dropped unless every quote occurs in a
-  /// sample of its context and the quotes together hit at least two different samples, the line
-  /// it replaces or removes is actually in that section, and a line it adds is not already there.
-  /// Sections with no applied operation keep their text. The result uses the same headers as
-  /// `mergedProfile`.
+  /// sample of its context and the quotes together hit at least two different samples, each quote
+  /// is at least three words, the line it replaces or removes is actually in that section, and a
+  /// line it adds is not already there. Only those lines change. A preamble, a hand-written header
+  /// and every other byte stay as they were.
   static func applyRevision(
     current: String, operations: [ProfileOperation], samples: [WritingSample]
   ) -> (profile: String, applied: [ProfileOperation]) {
-    var sections: [WritingContext: [String]] = [:]
-    for context in WritingContext.allCases {
-      sections[context] = sectionLines(WritingStyleStore.profileSection(in: current, for: context))
-    }
+    var profile = current
     var applied: [ProfileOperation] = []
     for operation in operations {
-      var lines = sections[operation.context] ?? []
-      guard revisionIsSupported(operation, lines: lines, samples: samples) else { continue }
-      let newLine = operation.newLine.trimmingCharacters(in: .whitespacesAndNewlines)
-      switch operation.op {
-      case .add:
-        lines.append(newLine)
-      case .replace:
-        guard let index = lines.firstIndex(where: { linesMatch($0, operation.oldLine) }) else { continue }
-        lines[index] = newLine
-      case .remove:
-        guard let index = lines.firstIndex(where: { linesMatch($0, operation.oldLine) }) else { continue }
-        lines.remove(at: index)
-      }
-      sections[operation.context] = lines
+      guard let updated = splice(operation, into: profile, samples: samples) else { continue }
+      profile = updated
       applied.append(operation)
     }
-    let profile = WritingContext.allCases.map { context in
-      let body = (sections[context] ?? []).joined(separator: "\n")
-      return "\(context.profileHeader)\n\(body)\n"
-    }.joined(separator: "\n")
     return (profile, applied)
   }
 
-  private static func sectionLines(_ section: String) -> [String] {
-    guard !section.isEmpty else { return [] }
-    return section.components(separatedBy: .newlines)
+  /// One line of a profile, including the newline that followed it. `newline` is empty on the
+  /// last line when the text does not end with one.
+  private struct ProfileLine {
+    var text: String
+    var newline: String
+  }
+
+  private static func profileLines(_ text: String) -> [ProfileLine] {
+    guard !text.isEmpty else { return [] }
+    var lines: [ProfileLine] = []
+    var index = text.startIndex
+    while index < text.endIndex {
+      var end = index
+      while end < text.endIndex, text[end] != "\n", text[end] != "\r" {
+        end = text.index(after: end)
+      }
+      let content = String(text[index..<end])
+      if end >= text.endIndex {
+        lines.append(ProfileLine(text: content, newline: ""))
+        break
+      }
+      let newline: String
+      if text[end] == "\r" {
+        let next = text.index(after: end)
+        if next < text.endIndex, text[next] == "\n" {
+          newline = "\r\n"
+          end = text.index(after: next)
+        } else {
+          newline = "\r"
+          end = next
+        }
+      } else {
+        newline = "\n"
+        end = text.index(after: end)
+      }
+      lines.append(ProfileLine(text: content, newline: newline))
+      index = end
+    }
+    return lines
+  }
+
+  private static func joined(_ lines: [ProfileLine]) -> String {
+    lines.map { $0.text + $0.newline }.joined()
+  }
+
+  /// The text under `header`, from the character after that line up to the next `=== ` line.
+  private static func sectionBody(
+    in profile: String, header: String
+  ) -> (range: Range<String.Index>, lines: [ProfileLine])? {
+    let lines = profileLines(profile)
+    guard let headerIndex = lines.firstIndex(where: {
+      $0.text.trimmingCharacters(in: .whitespaces) == header
+    }) else { return nil }
+    let nextHeader = lines[(headerIndex + 1)...].firstIndex {
+      $0.text.trimmingCharacters(in: .whitespaces).hasPrefix("=== ")
+    }
+    let bodyLines = Array(nextHeader.map { lines[(headerIndex + 1)..<$0] } ?? lines[(headerIndex + 1)...])
+    var cursor = profile.startIndex
+    var bodyStart = profile.endIndex
+    for (index, line) in lines.enumerated() {
+      if index == headerIndex {
+        bodyStart = profile.index(cursor, offsetBy: line.text.count + line.newline.count)
+      }
+      if index == nextHeader {
+        return (bodyStart..<cursor, bodyLines)
+      }
+      cursor = profile.index(cursor, offsetBy: line.text.count + line.newline.count)
+    }
+    return (bodyStart..<profile.endIndex, bodyLines)
+  }
+
+  /// Inserts `newLine` after the last non-empty line of the section, so the blank line that
+  /// separates sections stays where it was.
+  private static func inserting(_ newLine: String, into lines: [ProfileLine]) -> [ProfileLine] {
+    let style = lines.first(where: { !$0.newline.isEmpty })?.newline ?? "\n"
+    guard let index = lines.lastIndex(where: { !comparableLine($0.text).isEmpty }) else {
+      return [ProfileLine(text: newLine, newline: style)] + lines
+    }
+    var copy = lines
+    if copy[index].newline.isEmpty {
+      copy[index].newline = style
+      copy.insert(ProfileLine(text: newLine, newline: ""), at: index + 1)
+    } else {
+      copy.insert(ProfileLine(text: newLine, newline: copy[index].newline), at: index + 1)
+    }
+    return copy
+  }
+
+  private static func splice(
+    _ operation: ProfileOperation, into profile: String, samples: [WritingSample]
+  ) -> String? {
+    guard let body = sectionBody(in: profile, header: operation.context.profileHeader) else { return nil }
+    var lines = body.lines
+    guard revisionIsSupported(operation, lines: lines.map(\.text), samples: samples) else { return nil }
+    let newLine = operation.newLine.trimmingCharacters(in: .whitespacesAndNewlines)
+    switch operation.op {
+    case .add:
+      lines = inserting(newLine, into: lines)
+    case .replace:
+      guard let index = lines.firstIndex(where: { linesMatch($0.text, operation.oldLine) }) else { return nil }
+      lines[index].text = newLine
+    case .remove:
+      guard let index = lines.firstIndex(where: { linesMatch($0.text, operation.oldLine) }) else { return nil }
+      lines.remove(at: index)
+    }
+    var updated = profile
+    updated.replaceSubrange(body.range, with: joined(lines))
+    return updated
   }
 
   /// Trimmed, and a single leading "- " does not count, so a bullet and the same words match.
@@ -617,7 +703,7 @@ enum WritingStyleImporter {
 
   private static func evidenceMatches(_ operation: ProfileOperation, samples: [WritingSample]) -> Bool {
     let quotes = operation.evidence.map(normalizedEvidence)
-    guard !quotes.isEmpty, quotes.allSatisfy({ $0.count >= 2 }) else { return false }
+    guard !quotes.isEmpty, quotes.allSatisfy({ $0.split(separator: " ").count >= 3 }) else { return false }
     let texts = samples.filter { $0.context == operation.context }.map { normalizedEvidence($0.text) }
     var hit = Set<Int>()
     for quote in quotes {

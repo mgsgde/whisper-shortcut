@@ -320,7 +320,7 @@ struct WritingStyleTests {
       sample("Hi Anna, Thursday works for me.", context: .email, id: "1"),
       sample("Hi Ben, Friday works for me.", context: .email, id: "2"),
     ]
-    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["THURSDAY   works", "friday works"])
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works for", "Friday works for"])
     let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
     #expect(result.applied == [op])
     #expect(WritingStyleStore.profileSection(in: result.profile, for: .email) == "Length: short\nGreeting: \"Hi\"")
@@ -336,7 +336,7 @@ struct WritingStyleTests {
       sample("Hi Anna, Thursday works for me.", context: .email, id: "1"),
       sample("Hi Ben, Thursday works for me too.", context: .email, id: "2"),
     ]
-    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works", "absolutely nowhere"])
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works for", "absolutely nowhere else"])
     let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
     #expect(result.applied.isEmpty)
     #expect(WritingStyleStore.profileSection(in: result.profile, for: .email) == "Length: short")
@@ -349,7 +349,7 @@ struct WritingStyleTests {
       sample("Hi Anna, Thursday works and Friday works.", context: .email, id: "1"),
       sample("See you at the office tomorrow morning.", context: .email, id: "2"),
     ]
-    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works", "Friday works"])
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works and", "works and Friday"])
     let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
     #expect(result.applied.isEmpty)
   }
@@ -363,7 +363,7 @@ struct WritingStyleTests {
     ]
     let op = operation(
       .replace, oldLine: "Closing: bye", newLine: "Closing: \"Bis dann\"",
-      evidence: ["Thursday works", "Friday works"])
+      evidence: ["Thursday works for", "Friday works for"])
     let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
     #expect(result.applied.isEmpty)
     #expect(WritingStyleStore.profileSection(in: result.profile, for: .email) == "Greeting: \"Hi\"")
@@ -381,9 +381,9 @@ struct WritingStyleTests {
     ]
     let replace = operation(
       .replace, oldLine: "Length: short", newLine: "Length: about ten words",
-      evidence: ["Thursday works", "Friday works"])
+      evidence: ["I write about", "about ten words"])
     let remove = operation(
-      .remove, oldLine: "- Emoji: none", evidence: ["about ten words", "Hi Anna"])
+      .remove, oldLine: "- Emoji: none", evidence: ["about ten words", "Hi Anna, Thursday"])
     let result = WritingStyleImporter.applyRevision(
       current: current, operations: [replace, remove], samples: samples)
     #expect(result.applied == [replace, remove])
@@ -438,11 +438,40 @@ struct WritingStyleTests {
       sample("Hi Anna, Thursday works for me.", context: .messenger, id: "m1"),
       sample("Hi Ben, Friday works for me.", context: .messenger, id: "m2"),
     ]
-    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works", "Friday works"])
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works for", "Friday works for"])
     let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
     #expect(result.applied.isEmpty)
     #expect(WritingStyleStore.profileSection(in: result.profile, for: .email) == "Length: short")
     #expect(result.profile.contains("=== Messenger ===\nlowercase, no greeting\n"))
+  }
+
+  @Test("applyRevision drops a quote shorter than three words and leaves the profile untouched")
+  func revisionDropsShortQuote() {
+    let current = profileText([.email: "Length: short", .defaultContext: "hand-written default"])
+    let samples = [
+      sample("Hi Anna, Thursday works for me.", context: .email, id: "1"),
+      sample("Hi Ben, Friday works for me.", context: .email, id: "2"),
+    ]
+    let op = operation(.add, newLine: "Greeting: \"Hi\"", evidence: ["Thursday works", "Friday works"])
+    let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
+    #expect(result.applied.isEmpty)
+    #expect(result.profile == current)
+  }
+
+  @Test("applyRevision splices one line and keeps a preamble and a custom header")
+  func revisionKeepsPreambleAndCustomHeader() {
+    let current = "Notes before the sections.\n\n=== Email ===\nLength: short\n\n=== Clinic note ===\nHand written, keep.\n\n=== Default ===\nhand-written default\n"
+    let samples = [
+      sample("Hi Anna, Thursday works for me.", context: .email, id: "1"),
+      sample("Hi Ben, Friday works for me.", context: .email, id: "2"),
+    ]
+    let op = operation(
+      .replace, oldLine: "Length: short", newLine: "Length: one line",
+      evidence: ["Thursday works for", "Friday works for"])
+    let result = WritingStyleImporter.applyRevision(current: current, operations: [op], samples: samples)
+    let expected = "Notes before the sections.\n\n=== Email ===\nLength: one line\n\n=== Clinic note ===\nHand written, keep.\n\n=== Default ===\nhand-written default\n"
+    #expect(result.applied == [op])
+    #expect(result.profile == expected)
   }
 
   @Test("Duplicates by id and by text are skipped")
