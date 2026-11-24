@@ -196,6 +196,16 @@ struct DictationOnlyDefaultsTests {
     #expect(notes.count == 1)
   }
 
+  @Test("Ready checks follow the selected offline model and fall back to the default")
+  func offlineModelFollowsSelection() {
+    let defaults = makeDefaults()
+    #expect(DictationOnlyDefaults.offlineModel(defaults: defaults) == DictationOnlyDefaults.model.offlineModelType)
+    defaults.set(TranscriptionModel.openAIGPTTranscribe.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    #expect(DictationOnlyDefaults.offlineModel(defaults: defaults) == DictationOnlyDefaults.model.offlineModelType)
+    defaults.set(TranscriptionModel.whisperTiny.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    #expect(DictationOnlyDefaults.offlineModel(defaults: defaults) == .whisperTiny)
+  }
+
   @Test("Applies Offline Mode, Parakeet, Mac language, Dictate Live and spoken punctuation")
   func appliesAll() {
     let defaults = makeDefaults()

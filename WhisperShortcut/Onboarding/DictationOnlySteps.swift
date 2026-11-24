@@ -268,15 +268,17 @@ struct DictationOnlyLanguageStep: View {
   @AppStorage(UserDefaultsKeys.whisperLanguage) private var language: WhisperLanguage =
     SettingsDefaults.whisperLanguage
 
-  static let model = OfflineModelType.parakeetUltra
+  private var model: OfflineModelType { DictationOnlyDefaults.offlineModel() }
 
   /// A language the offline model can recognise. Continue waits for it.
-  static func isUsable(_ language: WhisperLanguage) -> Bool {
+  static func isUsable(
+    _ language: WhisperLanguage, model: OfflineModelType = DictationOnlyDefaults.offlineModel()
+  ) -> Bool {
     language != .auto && model.supports(language)
   }
 
   private var options: [WhisperLanguage] {
-    WhisperLanguage.allCases.filter { $0 != .auto && Self.model.supports($0) }
+    WhisperLanguage.allCases.filter { $0 != .auto && model.supports($0) }
   }
 
   /// Nil while nothing usable is chosen, so the menu shows "Choose…".
@@ -473,8 +475,8 @@ struct DictationOnlyPermissionsStep: View {
 /// The one-time download. It started when "Dictation only" was chosen; this screen shows how far
 /// it is. Only the test step waits for it, so Continue stays open.
 struct DictationOnlyDownloadStep: View {
-  static let model = OfflineModelType.parakeetUltra
   @ObservedObject private var modelManager = ModelManager.shared
+  private var model: OfflineModelType { DictationOnlyDefaults.offlineModel() }
   /// Set by the free-space check: (needed MB, free MB).
   @State private var shortOfSpace: (needed: Int, available: Int)?
 
@@ -484,7 +486,7 @@ struct DictationOnlyDownloadStep: View {
       WelcomeStepHeader(
         systemImage: "arrow.down.circle",
         title: "One-time download",
-        subtitle: "WhisperShortcut needs its speech recognition on this Mac (about \(Self.model.estimatedSizeMB) MB). After that no internet is needed.")
+        subtitle: "WhisperShortcut needs its speech recognition on this Mac (about \(model.estimatedSizeMB) MB). After that no internet is needed.")
 
       if let shortOfSpace {
         VStack(alignment: .leading, spacing: 10) {
@@ -502,11 +504,11 @@ struct DictationOnlyDownloadStep: View {
         }
       } else {
         OfflineModelDownloadCard(
-          modelType: Self.model,
+          modelType: model,
           onReady: { DictationOnlyFlow.warmModel(reason: "download step: model ready") },
           startsDownloadOnAppear: true, plainCopy: true)
         // Only while something downloads: under a failed or not-started download it was untrue.
-        if modelManager.downloadingModels.contains(Self.model) {
+        if modelManager.downloadingModels.contains(model) {
           Text("You can continue while it downloads.")
             .font(DictationOnlyFont.note)
             .foregroundStyle(.secondary)
@@ -522,14 +524,14 @@ struct DictationOnlyDownloadStep: View {
   /// Checked before the card can start a download. Skipped while one runs: the free space then
   /// shrinks because of the download itself.
   private func checkSpace() {
-    guard !modelManager.isModelAvailable(Self.model),
-      !modelManager.downloadingModels.contains(Self.model)
+    guard !modelManager.isModelAvailable(model),
+      !modelManager.downloadingModels.contains(model)
     else {
       shortOfSpace = nil
       return
     }
     do {
-      try DiskSpace.require(estimatedSizeMB: Self.model.estimatedSizeMB, at: modelManager.rootDirectory)
+      try DiskSpace.require(estimatedSizeMB: model.estimatedSizeMB, at: modelManager.rootDirectory)
       shortOfSpace = nil
     } catch DiskSpaceError.insufficient(let needed, let available) {
       shortOfSpace = (needed, available)
@@ -556,7 +558,7 @@ struct DictationOnlyTestStep: View {
   @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
   @ObservedObject private var globeKey = GlobeKeyStatus.shared
 
-  private var modelReady: Bool { modelManager.isModelAvailable(DictationOnlyDownloadStep.model) }
+  private var modelReady: Bool { modelManager.isModelAvailable(DictationOnlyDefaults.offlineModel()) }
 
   private var startKey: DictationOnlyStartKey {
     RealKeyTryItCopy.currentStartKey(
@@ -611,7 +613,7 @@ struct DictationOnlyTestStep: View {
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
         OfflineModelDownloadCard(
-          modelType: DictationOnlyDownloadStep.model,
+          modelType: DictationOnlyDefaults.offlineModel(),
           onReady: { DictationOnlyFlow.warmModel(reason: "test step download finished") },
           startsDownloadOnAppear: true, plainCopy: true)
       }
@@ -662,7 +664,7 @@ struct DictationOnlyDoneStep: View {
       autoPaste: AutoPasteDefault.currentValue)
   }
 
-  private var modelReady: Bool { modelManager.isModelAvailable(DictationOnlyDownloadStep.model) }
+  private var modelReady: Bool { modelManager.isModelAvailable(DictationOnlyDefaults.offlineModel()) }
   private var ready: Bool { modelReady && micStatus == .granted && startKey != .none }
 
   var body: some View {
@@ -701,7 +703,7 @@ struct DictationOnlyDoneStep: View {
             .font(DictationOnlyFont.note)
             .foregroundStyle(.secondary)
           OfflineModelDownloadCard(
-            modelType: DictationOnlyDownloadStep.model,
+            modelType: DictationOnlyDefaults.offlineModel(),
             onReady: { DictationOnlyFlow.warmModel(reason: "done step download finished") },
             startsDownloadOnAppear: true, plainCopy: true)
         }

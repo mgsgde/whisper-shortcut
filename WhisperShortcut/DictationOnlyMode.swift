@@ -230,6 +230,22 @@ enum DictationOnlySettingsSwitch {
 /// change is saved first, so turning the mode off (`restore`) puts the user's own values back.
 enum DictationOnlyDefaults {
 
+  /// The offline dictation model this mode selects. Download, ready and test checks use
+  /// `offlineModel()` so they follow whatever is selected now, and fall back to this model when
+  /// that selection is not an offline one.
+  static let model = TranscriptionModel.parakeetUltra
+
+  /// The on-device model the selected transcription model runs, or `model` when the selection
+  /// is a cloud model (or unset).
+  static func offlineModel(defaults: UserDefaults = .standard) -> OfflineModelType {
+    let raw = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    let selected = raw.flatMap {
+      TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue($0))
+    }
+    if let type = selected?.offlineModelType { return type }
+    return model.offlineModelType ?? .parakeetUltra
+  }
+
   /// Every key `apply` or the 🌐 step can change. Offline Mode is part of it: `apply` switches it
   /// on. Fn dictation is not written here; the 🌐 step turns it on later and records that through
   /// `recordApplied`, which only works because `apply` (and its snapshot) already ran.
@@ -289,12 +305,12 @@ enum DictationOnlyDefaults {
     saveSnapshot(defaults: defaults)
     switchOfflineOn()
 
-    let model = TranscriptionModel.parakeetUltra
+    let model = Self.model
     defaults.set(model.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
 
     let language = applyLanguage(
       defaults: defaults, preferredLanguages: preferredLanguages,
-      model: model.offlineModelType ?? .parakeetUltra)
+      model: model.offlineModelType ?? Self.offlineModel(defaults: defaults))
 
     // Live needs Parakeet on Apple Silicon and pastes at the cursor (Accessibility), so it is
     // offered in the direct build only; everywhere else the plain mode.
