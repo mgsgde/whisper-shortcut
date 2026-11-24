@@ -42,7 +42,8 @@
 # while DRY=1. Only list/status/info/--help calls are read-only enough to
 # run unconditionally.
 set -uo pipefail
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+# /usr/sbin holds pkgutil (the pkg-signature check); without it that check always failed.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 APP_ID=6749648401
 PLATFORM=MAC_OS
@@ -559,7 +560,7 @@ $text"
 }
 
 EXPECTED_FILE="$(mktemp)"
-declare -A LOCALE_FAILED=()
+LOCALE_FAILED=""  # space-separated; /bin/bash 3.2 has no associative arrays
 while read -r loc; do
   [ -z "$loc" ] && continue
   if [ "$loc" = "en-US" ] || [ "$loc" = "en" ]; then
@@ -570,7 +571,7 @@ while read -r loc; do
   fi
   if [ -z "$text" ]; then
     echo "WARN: empty translation for locale $loc; skipping it this run." >&2
-    LOCALE_FAILED["$loc"]=1
+    LOCALE_FAILED="$LOCALE_FAILED $loc"
     continue
   fi
   printf '%s\t%s\n' "$loc" "${text:0:40}" >> "$EXPECTED_FILE"
@@ -602,8 +603,8 @@ print(",".join(bad))
 if [ -n "$READBACK_FAIL" ]; then
   fail_job "whats-new-readback" "What's New did not stick for locale(s): $READBACK_FAIL."
 fi
-if [ "${#LOCALE_FAILED[@]}" -gt 0 ]; then
-  echo "WARN: locales with no translation this run: ${!LOCALE_FAILED[*]}"
+if [ -n "$LOCALE_FAILED" ]; then
+  echo "WARN: locales with no translation this run: ${LOCALE_FAILED# }"
 fi
 echo "What's New written and verified for all locales."
 

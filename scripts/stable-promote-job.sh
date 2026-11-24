@@ -43,7 +43,7 @@
 #   --force    ignore the Tuesday gate and the once-a-day gate
 #   --dry-run  print what would happen; no worktree, no tests, no promotion, no mail
 set -uo pipefail
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 FORCE=0
 DRY=0
