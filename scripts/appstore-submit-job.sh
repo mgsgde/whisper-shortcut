@@ -42,7 +42,8 @@
 # while DRY=1. Only list/status/info/--help calls are read-only enough to
 # run unconditionally.
 set -uo pipefail
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+# /usr/sbin holds pkgutil (the pkg-signature check); without it that check always failed.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 APP_ID=6749648401
 PLATFORM=MAC_OS
