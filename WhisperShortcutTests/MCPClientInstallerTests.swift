@@ -100,6 +100,25 @@ struct MCPClientInstallerTests {
     #expect(MCPClientInstallerError.runningFromTemporaryLocation.errorDescription?.hasPrefix("Move WhisperShortcut to your Applications folder first") == true)
   }
 
+  @Test("Stale-token repair skips a launch with no stable executable path")
+  @MainActor
+  func repairSkipsWithoutStableExecutable() {
+    let home = "/Users/anna"
+    let unstable = [
+      "",
+      "/private/var/folders/ab/T/AppTranslocation/UUID/d/WhisperShortcut.app/Contents/MacOS/WhisperShortcut",
+      "/Volumes/WhisperShortcut/WhisperShortcut.app/Contents/MacOS/WhisperShortcut",
+    ]
+    for path in unstable {
+      #expect(throws: MCPClientInstallerError.self) {
+        try MCPClientInstaller.stableExecutablePath(path, homeDirectory: home)
+      }
+      // No folder bookmarks are required: the path check returns before any config is read.
+      MCPClientInstaller.repairStaleTokens(
+        url: url, readToken: "read", writeToken: "write", serverName: name, executablePath: path)
+    }
+  }
+
   @Test("Codex: append to nil and empty")
   func codexEmpty() {
     #expect(MCPClientInstaller.mergeCodex(existing: nil, serverName: name, url: url, token: token) == codexBlock)
