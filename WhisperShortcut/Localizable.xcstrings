@@ -521,12 +521,22 @@
         }
       }
     },
-    "Improve works best with Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol. Add an API key for one of them in Settings to get a more reliable review." : {
+    "Improve works best with %@. Add an API key for one of them in Settings to get a more reliable review." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verbessern funktioniert am besten mit Gemini 3.1 Pro, Claude Sonnet 5.5 oder GPT-6 Sol. Hinterlegen Sie in den Einstellungen einen API-Schlüssel für eines davon, um eine zuverlässigere Prüfung zu erhalten."
+            "value" : "Verbessern funktioniert am besten mit %@. Hinterlegen Sie in den Einstellungen einen API-Schlüssel für eines davon, um eine zuverlässigere Prüfung zu erhalten."
+          }
+        }
+      }
+    },
+    "%1$@ or %2$@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ oder %2$@"
           }
         }
       }

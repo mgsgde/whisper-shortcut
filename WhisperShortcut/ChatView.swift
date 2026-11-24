@@ -1129,7 +1129,7 @@ class ChatViewModel: ObservableObject {
           NotificationCenter.default.post(name: .liveMeetingNotesRefreshRequested, object: nil)
         }
 
-        let tools = buildToolDeclarations(for: sendingSession)
+        let tools = buildToolDeclarations(for: sendingSession, model: selectedModel)
         let useGrounding = selectedModel.supportsGrounding
         // 8 was too tight for batch work: "move every dateless task to today" spends two rounds
         // discovering the list and then one per task, because the model emits its edits one call at
@@ -1144,7 +1144,7 @@ class ChatViewModel: ObservableObject {
           systemInstruction: {
             self.buildSystemInstruction(
               for: sendingSession, offline: selectedModel.provider == .localMLX,
-              webSearch: selectedModel.supportsGrounding)
+              webSearch: useGrounding)
           },
           options: { isFinalRound in
             ChatRequestOptions(
@@ -1300,7 +1300,7 @@ class ChatViewModel: ObservableObject {
 
   /// Tool declarations for a specific chat session. A send can target a background tab, so
   /// meeting/workspace gates must follow that session — not whichever one is on screen.
-  private func buildToolDeclarations(for target: ChatSession? = nil) -> [LLMToolDeclaration] {
+  private func buildToolDeclarations(for target: ChatSession? = nil, model: PromptModel) -> [LLMToolDeclaration] {
     let s = target ?? session
     // Offline Mode blocks Google and Trello at the network layer; same gating as DictatePromptAgent.availableTools().
     let calendarConnected = !OfflineMode.isEnabled && GoogleAccountOAuthService.shared.isConnected
@@ -1317,7 +1317,8 @@ class ChatViewModel: ObservableObject {
       workspaceWritable: WorkspaceWriteAccess.isEnabled,
       mailAvailable: !OfflineMode.isEnabled,
       mailAccountsConnected: MailAccountStore.hasAccounts,
-      usageDataAvailable: ContextLoggingPreference.isEnabled
+      usageDataAvailable: ContextLoggingPreference.isEnabled,
+      chatProvider: model.provider
     ).compactMap { decl in
       guard let name = decl["name"] as? String,
             let desc = decl["description"] as? String,
@@ -1780,28 +1781,41 @@ class ChatViewModel: ObservableObject {
   /// the log or propose a change.
   /// Models that run the /improve review reliably (tool use and judgment). Preference order for picking one.
   static let improvePreferred: [PromptModel] = [.gemini31Pro, .claudeSonnet55, .openaiGPT6Sol]
+
+  /// "Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol", from `improvePreferred` rather than a
+  /// handwritten list. The "or" before the last name is translated.
+  static func improvePreferredNames() -> String {
+    let names = improvePreferred.map(\.displayName)
+    guard let last = names.last else { return "" }
+    if names.count == 1 { return last }
+    let head = names.dropLast().joined(separator: ", ")
+    return String(localized: "\(head) or \(last)")
+  }
+
+  /// Shown when no model that can run `/improve` has a key.
+  static func improveNoneAvailableMessage() -> String {
+    let names = improvePreferredNames()
+    return String(localized: "Improve works best with \(names). Add an API key for one of them in Settings to get a more reliable review.")
+  }
   /// Already good enough: when the chat model is one of these, /improve keeps it.
   static let improveCapable: Set<PromptModel> = [
     .gemini4Neon, .gemini4Hydrogen, .gemini31Pro, .claudeSonnet55, .claudeOpus55, .openaiGPT6Sol, .openaiGPT61Terra, .grok47,
   ]
   enum ImproveModelChoice: Equatable { case keep; case use(PromptModel); case noneAvailable }
 
-  /// UserDefaults key for the model the user last picked during an `/improve` review.
-  private static let improveReviewModelKey = "improveReviewModel"
-
   /// Last explicit `/improve` model, including "continue with my chat model" (stored as that
   /// model). Nil when the key is absent or holds an unknown raw value; setting nil removes it.
   static var rememberedImproveModel: PromptModel? {
     get {
-      guard let raw = UserDefaults.standard.string(forKey: improveReviewModelKey),
+      guard let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.improveReviewModel),
             let model = PromptModel(rawValue: raw) else { return nil }
       return model
     }
     set {
       if let newValue {
-        UserDefaults.standard.set(newValue.rawValue, forKey: improveReviewModelKey)
+        UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.improveReviewModel)
       } else {
-        UserDefaults.standard.removeObject(forKey: improveReviewModelKey)
+        UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.improveReviewModel)
       }
     }
   }
@@ -1908,7 +1922,7 @@ class ChatViewModel: ObservableObject {
           ? String(localized: "Improve is running with \(m.displayName): the review needs a strong model and costs a few cents. Your chat model (\(Self.openChatModel.displayName)) stays as it is. Switch or end the review with the chip next to the model picker.")
           : String(localized: "Improve is running with \(m.displayName)."))
       case .noneAvailable:
-        appendModelMessage(verbatim: String(localized: "Improve works best with Gemini 3.1 Pro, Claude Sonnet 5.5 or GPT-6 Sol. Add an API key for one of them in Settings to get a more reliable review."))
+        appendModelMessage(verbatim: Self.improveNoneAvailableMessage())
       }
       // `sendMessage` only dispatches slash commands; plain text goes out through `sendComposed`.
       guard validateCredential(for: currentChatModel) else { return }

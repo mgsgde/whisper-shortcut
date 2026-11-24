@@ -117,6 +117,10 @@ enum UserDefaultsKeys {
   /// model to Parakeet Ultra; restored when the mode goes back to Dictate. Empty → nothing to restore.
   static let modelBeforeDictateLive = "modelBeforeDictateLive"
 
+  // MARK: - Chat
+  /// `PromptModel` raw value last picked for an `/improve` review. Absent → no remembered choice.
+  static let improveReviewModel = "improveReviewModel"
+
   // MARK: - Chat Appearance
   /// Prose typeface of the chat transcript (`ChatFontDesign` raw value). Absent → `.sans`.
   static let chatFontDesign = "chatFontDesign"
