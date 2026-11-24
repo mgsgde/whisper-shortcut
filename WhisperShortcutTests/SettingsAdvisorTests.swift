@@ -341,8 +341,8 @@ struct SettingsAdvisorTests {
   }
 
   /// Every id `SettingsAdvisor.candidates` can append. There is no static list on the type:
-  /// blockers (`privacy.save_usage_data`, the two permissions), recommended feature states
-  /// (`mcpFeatureOrder`'s five settings), the three `modelIDs`, and `writing_style.enabled`.
+  /// blockers (`privacy.save_usage_data`, the two permissions), the five feature rows
+  /// (`mcpFeatureOrder`), the three `modelIDs`, and `writing_style.enabled`.
   /// `recent_interactions` is MCP `not_yet_enabled` only and names two controls, so it stays nil.
   @Test("Every finding the advisor can emit points at the tab that shows that setting")
   func findingSettingsTabs() {
