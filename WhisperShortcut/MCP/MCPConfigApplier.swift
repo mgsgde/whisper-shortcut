@@ -197,9 +197,11 @@ struct MCPConfigApplier {
   }
 
   /// Creates the template with this id, or replaces its name and instructions. A template's own
-  /// shortcut is never touched.
+  /// shortcut is never touched. `allowCreate` is true only for `create_template`: an update of a
+  /// missing id (Undo, or accepting a proposal after the template was deleted) must not bring it
+  /// back.
   func applySaveTemplate(
-    id: UUID, name: String, text: String, rationale: String, viaProposal: Bool
+    id: UUID, name: String, text: String, rationale: String, viaProposal: Bool, allowCreate: Bool
   ) -> Result<String, Error> {
     MCPMain.run {
       var templates = targets.loadTemplates()
@@ -208,8 +210,10 @@ struct MCPConfigApplier {
       if let existing {
         templates[existing].name = name
         templates[existing].instructions = text
-      } else {
+      } else if allowCreate {
         templates.append(DictationTemplate(id: id, name: name, instructions: text))
+      } else {
+        return .failure(MCPConfigError(message: "No template with that id."))
       }
       targets.saveTemplates(templates)
       guard let written = templates.first(where: { $0.id == id }) else {

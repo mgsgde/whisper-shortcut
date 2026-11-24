@@ -527,6 +527,30 @@ struct MCPConfigToolsTests {
     #expect(env.box.templates[0].name == "Befund")
   }
 
+  @Test("Updating a missing template does not recreate it; create still does")
+  func saveTemplateDoesNotResurrect() {
+    let env = MCPTestEnv(level: .apply)
+    let id = UUID()
+    #expect(env.box.templates.isEmpty)
+    let updated = env.proposals.applier!.applySaveTemplate(
+      id: id, name: "Befund", text: "body", rationale: "r", viaProposal: false, allowCreate: false)
+    if case .success = updated { Issue.record("update of a missing id should fail") }
+    #expect(env.box.templates.isEmpty)
+
+    let created = env.proposals.applier!.applySaveTemplate(
+      id: id, name: "Befund", text: "body", rationale: "r", viaProposal: false, allowCreate: true)
+    guard case .success = created else {
+      Issue.record("create failed")
+      return
+    }
+    #expect(env.box.templates.count == 1)
+    env.box.templates = []
+    let again = env.proposals.applier!.applySaveTemplate(
+      id: id, name: "Befund", text: "other", rationale: "r", viaProposal: true, allowCreate: false)
+    if case .success = again { Issue.record("update after delete should fail") }
+    #expect(env.box.templates.isEmpty)
+  }
+
   @Test("update_settings refuses a shortcut a template already holds")
   func settingsShortcutConflictsWithTemplate() {
     let env = MCPTestEnv(level: .apply)

@@ -922,7 +922,9 @@ struct MCPConfigTools {
           return reject(tool, "too many pending", error.localizedDescription)
         }
       }
-      switch env.applier.applySaveTemplate(id: id, name: name, text: text, rationale: r.value!, viaProposal: false) {
+      switch env.applier.applySaveTemplate(
+        id: id, name: name, text: text, rationale: r.value!, viaProposal: false, allowCreate: creating)
+      {
       case .success(let changeID):
         log(tool, "applied", len: text.count)
         return (json(["status": "applied", "change_id": changeID, "id": id.uuidString]), false)

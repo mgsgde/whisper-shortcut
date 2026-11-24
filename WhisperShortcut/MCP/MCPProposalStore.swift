@@ -263,7 +263,7 @@ final class MCPProposalStore: ObservableObject {
         }
         result = applier.applySaveTemplate(
           id: id, name: proposal.templateName ?? "", text: content, rationale: proposal.rationale,
-          viaProposal: true)
+          viaProposal: true, allowCreate: proposal.previousContent == nil)
       case .deleteTemplate:
         guard let id = proposal.templateID.flatMap(UUID.init(uuidString:)) else {
           return .failure(MCPConfigError(message: String(localized: "Unknown template.")))
