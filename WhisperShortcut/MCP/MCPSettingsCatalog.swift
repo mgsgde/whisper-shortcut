@@ -525,7 +525,7 @@ enum MCPSettingsCatalog {
     ) -> MCPSetting {
       MCPSetting(
         id: id, title: title, category: category, kind: .bool, proposalOnly: proposalOnly,
-        unavailableReason: unavailableReason, consentText: consentText,
+        unavailableReason: unavailableReason,
         // Re-read the default on every read. The catalog is built once and kept, and auto-paste's
         // unset value follows the Accessibility permission, which can change after that.
         // `readValue` is the shared accessor when one exists (still against `defaults`).
@@ -543,7 +543,8 @@ enum MCPSettingsCatalog {
           if b, let reason = enablingRefused() { throw MCPConfigError(message: reason) }
           defaults.set(b, forKey: key)
           afterApply(b)
-        })
+        },
+        consentText: consentText)
     }
 
     /// Picker whose stored value is a `Double` raw value (seconds). The catalog speaks the
@@ -1305,13 +1306,13 @@ enum MCPSettingsCatalog {
       id: "dictate_prompt.screenshot_context", title: "Send picture of front window", category: "dictate_prompt",
       key: UserDefaultsKeys.screenshotInPromptMode, defaultValue: SettingsDefaults.screenshotInPromptMode,
       proposalOnly: true,
-      consentText: consentText(for: "dictate_prompt.screenshot_context"),
       enablingRefused: {
         deps.hasScreenRecordingPermission()
           ? nil
           : "Grant Screen Recording in Settings → Permissions first."
       },
-      readValue: { DictationPreferences.screenshotInPromptModeEnabled(in: defaults) }))
+      readValue: { DictationPreferences.screenshotInPromptModeEnabled(in: defaults) },
+      consentText: consentText(for: "dictate_prompt.screenshot_context")))
 
     // MARK: dictate_prompt.quick_prompts — read live on every ⌘2 by QuickActionStore.current().
     let quickPromptsTitle = "Quick prompts"
