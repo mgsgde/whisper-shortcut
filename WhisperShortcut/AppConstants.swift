@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 // MARK: - App Constants
@@ -316,23 +317,40 @@ Output rules (CRITICAL):
   }()
 
   /// Whether the installed release (`com.magnusgoedde.whispershortcut`) runs, after waiting up to
-  /// `grace` seconds for it to quit.
+  /// `grace` seconds (never more than 3) for it to quit.
+  ///
+  /// The pids are captured once. `NSRunningApplication.isTerminated` only updates when the run
+  /// loop runs, and this wait sleeps the main thread, so the poll uses `kill(pid, 0)`: the
+  /// process is gone when that fails with `ESRCH`.
   private static func isReleaseRunning(grace: TimeInterval) -> Bool {
-    func running() -> Bool {
-      NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut")
-        .contains { !$0.isTerminated }
+    let pids = NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut")
+      .map(\.processIdentifier)
+    guard pids.contains(where: processExists) else {
+      DebugLogger.log("APP-LIFECYCLE: release not running")
+      return false
     }
-    guard running() else { return false }
-    guard grace > 0 else { return true }
-    let deadline = Date().addingTimeInterval(grace)
+    let wait = min(grace, 3)
+    guard wait > 0 else {
+      DebugLogger.log("APP-LIFECYCLE: release running")
+      return true
+    }
+    let deadline = Date().addingTimeInterval(wait)
     while Date() < deadline {
       Thread.sleep(forTimeInterval: 0.1)
-      if !running() {
+      if !pids.contains(where: processExists) {
         DebugLogger.log("APP-LIFECYCLE: release quit during launch (switch to Dev), not a sidecar")
         return false
       }
     }
+    DebugLogger.log("APP-LIFECYCLE: release still running after \(wait)s")
     return true
+  }
+
+  /// True while `pid` is still a process. `EPERM` counts as alive; `ESRCH` means it is gone.
+  private static func processExists(_ pid: pid_t) -> Bool {
+    guard pid > 0 else { return false }
+    if kill(pid, 0) == 0 { return true }
+    return errno != ESRCH
   }
 
   /// Single multi-item Sparkle appcast for the direct build (an asset of the newest GitHub
