@@ -871,8 +871,18 @@ enum ModelImporter {
 
   /// Recursive copy that follows symlinks, so a Hugging Face snapshot arrives as real files.
   /// Checked for cancellation per file/directory, so a multi-gigabyte copy stops promptly.
+  /// A directory symlink whose resolved path was already copied is skipped, so a cycle
+  /// (a folder linked back to an ancestor) cannot recurse forever. File symlinks are copied
+  /// under every name: a snapshot's many names for one blob are not a cycle.
   private static func copyDereferencing(
     _ from: URL, to: URL, onBytes: (Int64) -> Void
+  ) throws {
+    var visited: Set<String> = []
+    try copyDereferencing(from, to: to, onBytes: onBytes, visited: &visited)
+  }
+
+  private static func copyDereferencing(
+    _ from: URL, to: URL, onBytes: (Int64) -> Void, visited: inout Set<String>
   ) throws {
     if Task.isCancelled { throw CancellationError() }
     let fm = FileManager.default
@@ -883,7 +893,8 @@ enum ModelImporter {
       let resolved = from.resolvingSymlinksInPath()
       let resolvedValues = try resolved.resourceValues(forKeys: [.isDirectoryKey])
       if resolvedValues.isDirectory == true {
-        try copyDereferencing(resolved, to: to, onBytes: onBytes)
+        guard markDirectoryVisited(resolved, visited: &visited) else { return }
+        try copyDirectory(resolved, to: to, onBytes: onBytes, visited: &visited)
       } else {
         try cloneOrCopy(resolved, to: to)
         onBytes(Int64((try? resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0))
@@ -892,17 +903,30 @@ enum ModelImporter {
     }
 
     if values.isDirectory == true {
-      try fm.createDirectory(at: to, withIntermediateDirectories: true)
-      for child in try fm.contentsOfDirectory(
-        at: from, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
-        try copyDereferencing(
-          child, to: to.appendingPathComponent(child.lastPathComponent), onBytes: onBytes)
-      }
+      guard markDirectoryVisited(from, visited: &visited) else { return }
+      try copyDirectory(from, to: to, onBytes: onBytes, visited: &visited)
       return
     }
 
     try cloneOrCopy(from, to: to)
     onBytes(Int64((try? from.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0))
+  }
+
+  /// Resolved path of a directory about to be copied. False when that path was already entered.
+  private static func markDirectoryVisited(_ url: URL, visited: inout Set<String>) -> Bool {
+    visited.insert(url.resolvingSymlinksInPath().standardizedFileURL.path).inserted
+  }
+
+  private static func copyDirectory(
+    _ from: URL, to: URL, onBytes: (Int64) -> Void, visited: inout Set<String>
+  ) throws {
+    try FileManager.default.createDirectory(at: to, withIntermediateDirectories: true)
+    for child in try FileManager.default.contentsOfDirectory(
+      at: from, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+      try copyDereferencing(
+        child, to: to.appendingPathComponent(child.lastPathComponent), onBytes: onBytes,
+        visited: &visited)
+    }
   }
 
   /// Copies one file, preferring an APFS clone so the two names share their blocks instead of
