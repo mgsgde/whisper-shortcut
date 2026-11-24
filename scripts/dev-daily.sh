@@ -14,8 +14,8 @@
 # `use-dev` / `use-release` swap which instance is live (guarded against live meetings); the app
 # menu does the same through DailyInstanceSwitcher.swift. The dev scripts never kill the daily Dev
 # app (is_protected_cmd in lib/daily-app.sh); only this script does, on purpose.
-# State (gitignored via build/): build/dev-daily/{installed-sha,staged-sha,bad-sha,staged.app,
-# previous.app,src,lock}. Log: build/logs/dev-daily.log.
+# State (gitignored via build/): build/dev-daily/{installed-sha,staged-sha,bad-sha,gate-held,
+# staged.app,previous.app,src,lock}. Log: build/logs/dev-daily.log.
 set -uo pipefail
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
@@ -177,6 +177,14 @@ cmd_status() {
   echo "staged:       $(read_state staged-sha || true)"
   echo "origin/main:  $(origin_sha)"
   if [[ -e "$STATE/no-ci-gate" ]]; then echo "green CI:     (gate off: no-ci-gate)"; else echo "green CI:     $(green_sha)"; fi
+  if [[ ! -e "$STATE/no-ci-gate" ]]; then
+    local st_green st_head st_behind
+    st_green=$(green_sha); st_head=$(origin_sha)
+    if [[ -n "$st_green" && -n "$st_head" && "$st_green" != "$st_head" ]]; then
+      st_behind=$(git -C "$MAIN_ROOT" rev-list --count "$st_green..$st_head" 2>/dev/null || true)
+      [[ -n "$st_behind" ]] && echo "held back:    $st_behind commit(s) (origin/main not green yet)"
+    fi
+  fi
   echo "bad shas:     $(cat "$STATE/bad-sha" 2>/dev/null | tr '\n' ' ')"
   launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1
   if [[ $? -eq 0 ]]; then echo "launchd:      loaded"; else echo "launchd:      not loaded"; fi
@@ -196,6 +204,18 @@ cmd_update() {
   else
     [[ -e "$STATE/no-ci-gate" ]] || log "no green CI run found, falling back to origin/main"
     target=$(git -C "$MAIN_ROOT" rev-parse origin/main 2>/dev/null) || { log "cannot resolve origin/main"; exit 1; }
+  fi
+  local head behind held
+  head=$(git -C "$MAIN_ROOT" rev-parse origin/main 2>/dev/null || true)
+  if [[ "$target" == "$green" && -n "$head" && "$head" != "$target" ]]; then
+    behind=$(git -C "$MAIN_ROOT" rev-list --count "$target..$head" 2>/dev/null || true)
+    held=$(read_state gate-held)
+    if [[ "$held" != "$target $head" ]]; then
+      log "CI gate holds at $(short "$target"): origin/main $(short "$head") is ${behind:-?} commit(s) ahead and not green yet"
+      echo "$target $head" > "$STATE/gate-held"
+    fi
+  else
+    rm -f "$STATE/gate-held"
   fi
   installed=$(read_state installed-sha)
   [[ "$target" == "$installed" ]] && exit 0
