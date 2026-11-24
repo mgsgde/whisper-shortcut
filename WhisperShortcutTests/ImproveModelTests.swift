@@ -68,6 +68,13 @@ struct ImproveModelTests {
     #expect(options == [.gemini31Pro, .openaiGPT6Sol, .grok47, .claudeOpus55])
   }
 
+  @Test func noneAvailableMessageNamesThePreferredModels() {
+    let message = ChatViewModel.improveNoneAvailableMessage()
+    for model in ChatViewModel.improvePreferred {
+      #expect(message.contains(model.displayName))
+    }
+  }
+
   @Test func effectiveModelNilIsGlobal() {
     let m = ChatViewModel.effectiveModel(override: nil, global: .grok47, hasCredential: { _ in true })
     #expect(m == .grok47)

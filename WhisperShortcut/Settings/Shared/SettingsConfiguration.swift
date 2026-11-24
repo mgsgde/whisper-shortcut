@@ -1886,6 +1886,18 @@ enum DictationPreferences {
       forKey: UserDefaultsKeys.promptSendsFocusedFieldText,
       default: SettingsDefaults.promptSendsFocusedFieldText)
   }
+
+  /// Whether Dictate Prompt sends a picture of the front window. Off until the user turns it on.
+  static var screenshotInPromptModeEnabled: Bool {
+    screenshotInPromptModeEnabled(in: .standard)
+  }
+
+  /// Same read against an injected defaults suite (the MCP catalog's tests).
+  static func screenshotInPromptModeEnabled(in defaults: UserDefaults) -> Bool {
+    defaults.bool(
+      forKey: UserDefaultsKeys.screenshotInPromptMode,
+      default: SettingsDefaults.screenshotInPromptMode)
+  }
 }
 
 // MARK: - Read Aloud Preferences (UserDefaults Accessors)

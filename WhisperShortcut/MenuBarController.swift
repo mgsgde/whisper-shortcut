@@ -48,6 +48,9 @@ class MenuBarController: NSObject {
     case aiAppProposalsSeparator = 137
     case chatSeparator = 135
     case quit = 136
+    /// "Check for Updates…". Absent from the App Store build; the row is still named so
+    /// dictation-only can show it with Settings and Quit.
+    case updates = 138
   }
 
   /// Rows that stay in the status menu until onboarding is finished. Everything else would only
@@ -626,7 +629,7 @@ class MenuBarController: NSObject {
     // The macOS convention is an app-menu "Check for Updates…"; a menu bar app's status menu is
     // its app menu. The switch and channel picker stay in Settings → General → Updates.
     menu.addItem(
-      createMenuItem("Check for Updates…", action: #selector(checkForUpdates)))
+      createMenuItem("Check for Updates…", action: #selector(checkForUpdates), tag: .updates))
     #endif
 
     // One report window for every kind of feedback. Always visible: with no recent result it
@@ -1535,14 +1538,9 @@ class MenuBarController: NSObject {
         }
       }
     }
-    apply(.dictatePrompt, tags: [.dictatePrompt])
-    apply(.readAloud, tags: [.readAloud])
-    apply(.readAloudPrompt, tags: [.readAloudPrompt])
-    apply(.screenshot, tags: [.screenshot])
-    apply(.liveMeeting, tags: [.liveMeeting])
-    apply(.chat, tags: [.chat, .chatSeparator])
-    apply(.meetingBacklog, ownsVisibility: true, tags: [.retryMeetingTranscription, .showMeetingAudio])
-    apply(.aiAppProposals, ownsVisibility: true, tags: [.aiAppProposals, .aiAppProposalsSeparator])
+    for row in StatusMenuRow.allCases {
+      apply(row, ownsVisibility: row.ownsVisibility, tags: row.tags)
+    }
   }
 
   /// While onboarding is unfinished, hides every row `visibleDuringSetup` does not name, then
@@ -1575,7 +1573,7 @@ class MenuBarController: NSObject {
   /// between groups, Check for Updates, and the daily-build switcher.
   private static func restoredWhenSetupFinishes(_ tag: MenuTag?) -> Bool {
     switch tag {
-    case .status, .dictate, .addToGlossary, .liveDictate, .settings, .sendFeedback, .rate, .quit, nil:
+    case .status, .dictate, .addToGlossary, .liveDictate, .settings, .updates, .sendFeedback, .rate, .quit, nil:
       return true
     default:
       return false
@@ -2019,8 +2017,12 @@ class MenuBarController: NSObject {
     case .blocked(let reason):
       presentDictatePromptBlocked(reason)
     case .start:
-      startDictatePromptCapture(
-        logPrefix: isMeeting ? "MEETING-SEGMENT" : "PROMPT-MODE", isMeeting: isMeeting,
+      let promptModel = Self.selectedPromptModel()
+      let preparation = prepareDictatePromptSelection(
+        logPrefix: isMeeting ? "MEETING-SEGMENT" : "PROMPT-MODE", model: promptModel)
+      guard preparation.ready else { return }
+      startDictatePrompt(
+        feature: "Dictate Prompt", selection: preparation.selection,
         template: template, choices: choices)
     case .ignored:
       break
@@ -2036,17 +2038,20 @@ class MenuBarController: NSObject {
     presentBlocked(reason)
   }
 
-  /// The one Dictate Prompt start sequence: prepare the selection, prewarm, drop any streaming
-  /// session, begin capture. Returns false when the preparation was not ready (nothing started).
-  /// `template`/`choices` apply only outside a meeting; `speakResult` is Read Aloud Prompt's.
+  /// The one Dictate Prompt start: the dictation-only block, the meeting branch, prewarm, and
+  /// dropping any streaming session. Callers differ in the selection they already captured,
+  /// whether the result is spoken, and the template. Returns false when dictation-only blocks it.
   @discardableResult
-  private func startDictatePromptCapture(
-    logPrefix: String, isMeeting: Bool, template: DictationTemplate? = nil,
-    choices: [DictationTemplate] = [], speakResult: Bool = false
+  private func startDictatePrompt(
+    feature: String,
+    selection: DictatePromptSelectionCapture?,
+    speak: Bool = false,
+    template: DictationTemplate? = nil,
+    choices: [DictationTemplate] = []
   ) -> Bool {
+    if DictationOnlyMode.blocks(feature) { return false }
+    let isMeeting = isLiveMeetingActive
     let promptModel = Self.selectedPromptModel()
-    let preparation = prepareDictatePromptSelection(logPrefix: logPrefix, model: promptModel)
-    guard preparation.ready else { return false }
     if isMeeting { DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting") }
     ConnectionPrewarmer.prewarm(for: promptModel)
     discardStreamingSession()  // prompt recordings never stream
@@ -2055,11 +2060,11 @@ class MenuBarController: NSObject {
         DebugLogger.log("DICTATION-TEMPLATE: ignored during a meeting")
       }
       beginAudioCapture(
-        mode: .prompt, meetingSegment: .prompt, promptSelection: preparation.selection)
+        mode: .prompt, meetingSegment: .prompt, promptSelection: selection)
     } else {
       beginAudioCapture(
-        mode: .prompt, promptSelection: preparation.selection,
-        template: template, templateChoices: choices, speakResult: speakResult)
+        mode: .prompt, promptSelection: selection,
+        template: template, templateChoices: choices, speakResult: speak)
     }
     return true
   }
@@ -2071,19 +2076,10 @@ class MenuBarController: NSObject {
     if DictationOnlyMode.blocks("Dictate Prompt (service)") { return }
     switch availability(.dictatePrompt) {
     case .start:
-      let isMeeting = isLiveMeetingActive
-      let promptModel = Self.selectedPromptModel()
       DebugLogger.log("PROMPT-MODE: Selection from Services (\(text.count) chars)")
-      let selection = DictatePromptSelectionCapture.fromService(text)
-      if isMeeting { DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting") }
-      ConnectionPrewarmer.prewarm(for: promptModel)
-      discardStreamingSession()
-      if isMeeting {
-        beginAudioCapture(
-          mode: .prompt, meetingSegment: .prompt, promptSelection: selection)
-      } else {
-        beginAudioCapture(mode: .prompt, promptSelection: selection)
-      }
+      startDictatePrompt(
+        feature: "Dictate Prompt (service)",
+        selection: DictatePromptSelectionCapture.fromService(text))
     default:
       togglePrompting()
     }
@@ -4247,9 +4243,7 @@ class MenuBarController: NSObject {
     // bundle id only — the text itself is never logged.
     // Opt-in: field text and the window picture are both off by default. Read on the main actor.
     let sendsField = DictationPreferences.promptSendsFocusedFieldTextEnabled
-    let sendsWindow = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-      : SettingsDefaults.screenshotInPromptMode
+    let sendsWindow = DictationPreferences.screenshotInPromptModeEnabled
     if !sendsField && !sendsWindow {
       DebugLogger.log("PROMPT-CONTEXT: field text and front window both off, field not read")
       selection.resolveField(nil)
@@ -5527,8 +5521,11 @@ extension MenuBarController: ShortcutDelegate {
     default:
       return
     }
-    guard startDictatePromptCapture(
-      logPrefix: "READ-ALOUD-PROMPT", isMeeting: false, speakResult: true)
+    let promptModel = Self.selectedPromptModel()
+    let preparation = prepareDictatePromptSelection(logPrefix: "READ-ALOUD-PROMPT", model: promptModel)
+    guard preparation.ready else { return }
+    guard startDictatePrompt(
+      feature: "Read Aloud Prompt", selection: preparation.selection, speak: true)
     else { return }
     DebugLogger.log("READ-ALOUD-PROMPT: started")
   }

@@ -1567,7 +1567,7 @@ class SpeechService {
     // Every other turn sends a front window only when the field is missing or short — and
     // never for a password field.
     let frontmostExcluded = FocusedFieldSnapshot.frontmostIsExcluded
-    let settingEnabled = screenshotInPromptModeEnabled()
+    let settingEnabled = DictationPreferences.screenshotInPromptModeEnabled
     // Field text is opt-in: with it off, the payload never sees the field, and the window
     // decision treats the field as missing.
     let fieldTextEnabled = promptSendsFocusedFieldTextEnabled()
@@ -1898,7 +1898,7 @@ class SpeechService {
       rawOutput: partTexts.joined(),
       audioDurationSeconds: audioDurationSeconds,
       prompt: systemPrompt)
-    let textContent = LeakedThoughtStrip.strip(LeakedPlanningStrip.strip(parts: partTexts))
+    let textContent = Self.cleanedDictatePromptText(parts: partTexts)
 
     let normalizedText = PromptReplyCleanup.normalize(textContent)
     try PromptReplyCleanup.validate(normalizedText, mode: logPrefix)
@@ -1916,8 +1916,14 @@ class SpeechService {
     return parts
   }
 
+  /// Pasted Dictate Prompt text. One function for the classic response parts and for an agent
+  /// reply (`DictatePromptAgent.run`): drop a leaked planning block, then a leaked thought block.
+  nonisolated static func cleanedDictatePromptText(parts: [String]) -> String {
+    LeakedThoughtStrip.strip(LeakedPlanningStrip.strip(parts: parts))
+  }
+
   nonisolated static func dictatePromptText(from response: GeminiChatResponse) -> String {
-    LeakedThoughtStrip.strip(LeakedPlanningStrip.strip(parts: dictatePromptPartTexts(from: response)))
+    cleanedDictatePromptText(parts: dictatePromptPartTexts(from: response))
   }
 
   // MARK: - Dictate Prompt: shared tail
@@ -2193,7 +2199,7 @@ class SpeechService {
         audioDurationSeconds: getAudioDuration(url: audioURL),
         prompt: systemPrompt)
       normalizedText = applyingDashBackstop(
-        PromptReplyCleanup.normalize(LeakedPlanningStrip.strip(parts: [raw])), selection: clipboardContext)
+        PromptReplyCleanup.normalize(Self.cleanedDictatePromptText(parts: [raw])), selection: clipboardContext)
       try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-GEMINI")
     } else {
       normalizedText = try await performGeminiPromptRequest(
@@ -2396,7 +2402,8 @@ class SpeechService {
     let unwrappedText = PromptReplyCleanup.unwrappingJSONEditResponse(
       rawText, selectedText: clipboardContext)
     let normalizedText = applyingDashBackstop(
-      PromptReplyCleanup.normalize(unwrappedText), selection: clipboardContext)
+      PromptReplyCleanup.normalize(Self.cleanedDictatePromptText(parts: [unwrappedText])),
+      selection: clipboardContext)
     try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
     let instructionSource: PromptInstructionSource
@@ -2733,7 +2740,8 @@ class SpeechService {
         "SPEED: [\(providerTag):\(modelLabel)] transcription \(String(format: "%.2f", transcriptionTime))s + agent \(String(format: "%.2f", now - agentStart))s = \(String(format: "%.2f", now - startTime))s total (\(raw.count) chars)")
       let agentReply = LocalLLMChatProvider.strippingReasoningBlocks(raw)
       let agentText = Self.applyingSpokenLayout(
-        PromptReplyCleanup.normalize(agentReply), when: spokenOffline)
+        PromptReplyCleanup.normalize(Self.cleanedDictatePromptText(parts: [agentReply])),
+        when: spokenOffline)
       try PromptReplyCleanup.validate(agentText, mode: "PROMPT-MODE-LOCAL")
       if offlineMode {
         flagUnsupportedWords(in: agentText, instruction: instruction, selection: clipboardContext)
@@ -4563,15 +4571,6 @@ class SpeechService {
   /// Reads the "Text around cursor" opt-in (off by default).
   private func promptSendsFocusedFieldTextEnabled() -> Bool {
     DictationPreferences.promptSendsFocusedFieldTextEnabled
-  }
-
-  /// Reads the "include screenshot in Dictate Prompt" toggle, falling back to the
-  /// default when the user hasn't explicitly set it.
-  private func screenshotInPromptModeEnabled() -> Bool {
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil {
-      return UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-    }
-    return SettingsDefaults.screenshotInPromptMode
   }
 
   // MARK: - Shared Infrastructure Helpers

@@ -501,14 +501,19 @@ enum MCPSettingsCatalog {
       defaultValue: @autoclosure @escaping () -> Bool,
       proposalOnly: Bool = false, unavailableReason: @escaping () -> String? = { nil },
       enablingRefused: @escaping () -> String? = { nil },
-      afterApply: @escaping (Bool) -> Void = { _ in }
+      afterApply: @escaping (Bool) -> Void = { _ in },
+      readValue: (() -> Bool)? = nil
     ) -> MCPSetting {
       MCPSetting(
         id: id, title: title, category: category, kind: .bool, proposalOnly: proposalOnly,
         unavailableReason: unavailableReason,
         // Re-read the default on every read. The catalog is built once and kept, and auto-paste's
         // unset value follows the Accessibility permission, which can change after that.
-        read: { defaults.object(forKey: key) != nil ? defaults.bool(forKey: key) : defaultValue() },
+        // `readValue` is the shared accessor when one exists (still against `defaults`).
+        read: {
+          if let readValue { return readValue() }
+          return defaults.object(forKey: key) != nil ? defaults.bool(forKey: key) : defaultValue()
+        },
         validate: { value in
           guard let b = value as? Bool else { return "\(title) needs true or false." }
           if b, let reason = enablingRefused() { return reason }
@@ -1284,7 +1289,8 @@ enum MCPSettingsCatalog {
         deps.hasScreenRecordingPermission()
           ? nil
           : "Grant Screen Recording in Settings → Permissions first."
-      }))
+      },
+      readValue: { DictationPreferences.screenshotInPromptModeEnabled(in: defaults) }))
 
     // MARK: dictate_prompt.quick_prompts — read live on every ⌘2 by QuickActionStore.current().
     let quickPromptsTitle = "Quick prompts"

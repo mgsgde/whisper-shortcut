@@ -115,6 +115,28 @@ struct DictationOnlyModeTests {
     #expect(SettingsTab.SettingsSection.more.tabs(enabled: true, selectedModelIsCloud: false) == [.about])
   }
 
+  @Test("Every status-menu row names the tags dictation-only shows and hides")
+  func menuRowTags() {
+    #expect(StatusMenuRow.dictate.tags == [.dictate])
+    #expect(StatusMenuRow.dictateLive.tags == [.liveDictate])
+    #expect(StatusMenuRow.addToGlossary.tags == [.addToGlossary])
+    #expect(StatusMenuRow.dictatePrompt.tags == [.dictatePrompt])
+    #expect(StatusMenuRow.readAloud.tags == [.readAloud])
+    #expect(StatusMenuRow.readAloudPrompt.tags == [.readAloudPrompt])
+    #expect(StatusMenuRow.screenshot.tags == [.screenshot])
+    #expect(StatusMenuRow.liveMeeting.tags == [.liveMeeting])
+    #expect(StatusMenuRow.meetingBacklog.tags == [.retryMeetingTranscription, .showMeetingAudio])
+    #expect(StatusMenuRow.meetingBacklog.ownsVisibility)
+    #expect(StatusMenuRow.chat.tags == [.chat, .chatSeparator])
+    #expect(StatusMenuRow.aiAppProposals.tags == [.aiAppProposals, .aiAppProposalsSeparator])
+    #expect(StatusMenuRow.aiAppProposals.ownsVisibility)
+    #expect(StatusMenuRow.settings.tags == [.settings])
+    #expect(StatusMenuRow.updates.tags == [.updates])
+    #expect(StatusMenuRow.quit.tags == [.quit])
+    #expect(!StatusMenuRow.dictate.ownsVisibility)
+    #expect(StatusMenuRow.allCases.allSatisfy { !$0.tags.isEmpty })
+  }
+
   @Test("Status menu rows: all with the mode off, dictation rows, Settings, updates and Quit with it on")
   func menuRows() {
     #expect(DictationOnlyMode.menuRows(enabled: false) == StatusMenuRow.allCases)

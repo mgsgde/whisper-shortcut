@@ -254,6 +254,36 @@ struct ModelImporterTests {
     #expect(try String(contentsOf: imported, encoding: .utf8) == "weights")
   }
 
+  @Test("A directory symlink that points at a folder already being copied is skipped")
+  func directorySymlinkCycleDoesNotRecurse() throws {
+    let fm = FileManager.default
+    let root = try makeTempFolder()
+    defer { try? fm.removeItem(at: root) }
+
+    let source = root.appendingPathComponent("source")
+    let nested = source.appendingPathComponent("nested")
+    try fm.createDirectory(at: nested, withIntermediateDirectories: true)
+    try Data("weights".utf8).write(to: source.appendingPathComponent("model.safetensors"))
+    try Data("inner".utf8).write(to: nested.appendingPathComponent("note.txt"))
+    // `up` points at the folder being copied; `again` points at its own parent.
+    try fm.createSymbolicLink(at: source.appendingPathComponent("up"), withDestinationURL: source)
+    try fm.createSymbolicLink(at: nested.appendingPathComponent("again"), withDestinationURL: nested)
+
+    let destination = root.appendingPathComponent("imported")
+    let plan = ModelImportPlan(
+      family: .mlx(.qwen34BInstruct2507),
+      displayName: "Qwen3 4B Instruct",
+      source: source,
+      destination: destination,
+      byteCount: ModelImporter.byteCount(at: source))
+    try ModelImporter.perform(plan) { _ in }
+
+    #expect(try String(contentsOf: destination.appendingPathComponent("model.safetensors"), encoding: .utf8) == "weights")
+    #expect(try String(contentsOf: destination.appendingPathComponent("nested/note.txt"), encoding: .utf8) == "inner")
+    #expect(!fm.fileExists(atPath: destination.appendingPathComponent("up").path))
+    #expect(!fm.fileExists(atPath: destination.appendingPathComponent("nested/again").path))
+  }
+
   @Test("byteCount and import skip hidden cache and git folders")
   func skipsHiddenFolders() throws {
     let fm = FileManager.default

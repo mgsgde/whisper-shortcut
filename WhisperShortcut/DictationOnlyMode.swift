@@ -35,6 +35,36 @@ enum StatusMenuRow: CaseIterable {
   case settings
   case updates
   case quit
+
+  /// Status-menu tags this row hides and shows. `ownsVisibility` rows are only forced hidden:
+  /// something else decides when they appear (proposals, the meeting backlog).
+  var tags: [MenuBarController.MenuTag] {
+    switch self {
+    case .dictate: return [.dictate]
+    case .dictateLive: return [.liveDictate]
+    case .addToGlossary: return [.addToGlossary]
+    case .dictatePrompt: return [.dictatePrompt]
+    case .readAloud: return [.readAloud]
+    case .readAloudPrompt: return [.readAloudPrompt]
+    case .screenshot: return [.screenshot]
+    case .liveMeeting: return [.liveMeeting]
+    case .meetingBacklog: return [.retryMeetingTranscription, .showMeetingAudio]
+    case .chat: return [.chat, .chatSeparator]
+    case .aiAppProposals: return [.aiAppProposals, .aiAppProposalsSeparator]
+    case .settings: return [.settings]
+    case .updates: return [.updates]
+    case .quit: return [.quit]
+    }
+  }
+
+  var ownsVisibility: Bool {
+    switch self {
+    case .meetingBacklog, .aiAppProposals: return true
+    case .dictate, .dictateLive, .addToGlossary, .dictatePrompt, .readAloud, .readAloudPrompt,
+      .screenshot, .liveMeeting, .chat, .settings, .updates, .quit:
+      return false
+    }
+  }
 }
 
 /// A global shortcut slot the mode decides about.
