@@ -186,6 +186,9 @@ struct NonWordMisheardTests {
   @Test("Strict checker: Laseg is no word, Daten is (real NSSpellChecker)")
   @MainActor
   func strictChecker() throws {
+    // The real NSSpellChecker's dictionary is machine state: GitHub's runners sometimes accept
+    // "Laseg" (runs 44346858270, 45430224889). The hermetic plan (CI) skips it; full local runs check it.
+    guard !TestRun.isHermetic else { return }
     guard GlossaryFastLearner.dictationDictionariesAvailable() else { return }  // skip, not fail
     #expect(!GlossaryFastLearner.isKnownWordInDictationLanguages("Laseg"))
   }
