@@ -5,10 +5,9 @@ import Foundation
 /// from this table. Adding a tool means adding a row. Nothing else defaults a new tool into
 /// "allow for this chat" or "always allow".
 ///
-/// Tools that write outside the app (calendar, tasks, Trello, mail send, workspace files,
-/// anything that sends or changes third-party data) are `.perCall`. Chat-wide and persistent
-/// approval are only for a tool whose effects stay on this Mac and can be undone. No current
-/// tool qualifies: the ones that used to be always-allowable all write to Google or Trello.
+/// Chat-wide and persistent approval are only for a tool whose effects stay in the user's own
+/// account and can be undone. Writes that other people can see (Trello boards, shared files,
+/// mail) are `.perCall`.
 struct ChatToolSpec {
   /// `none` runs immediately. `perCall` asks every time. `chatWide` may be allowed for the rest
   /// of this chat. `persistent` may also be remembered across chats (`ChatToolAlwaysAllow`).
@@ -105,23 +104,23 @@ struct ChatToolSpec {
 
     ChatToolSpec(name: "google_calendar_list_events", group: .calendar, approval: .none, cacheable: true, dictateEligible: true),
     ChatToolSpec(
-      name: "google_calendar_create_event", group: .calendar, approval: .perCall,
+      name: "google_calendar_create_event", group: .calendar, approval: .persistent,
       cacheable: false, dictateEligible: false, displayName: String(localized: "Create calendar events")),
     ChatToolSpec(
-      name: "google_calendar_update_event", group: .calendar, approval: .perCall,
+      name: "google_calendar_update_event", group: .calendar, approval: .persistent,
       cacheable: false, dictateEligible: false, displayName: String(localized: "Change calendar events")),
     ChatToolSpec(name: "google_calendar_delete_event", group: .calendar, approval: .perCall, cacheable: false, dictateEligible: false),
 
     ChatToolSpec(name: "google_tasks_list_tasklists", group: .tasks, approval: .none, cacheable: true, dictateEligible: true),
     ChatToolSpec(name: "google_tasks_list", group: .tasks, approval: .none, cacheable: true, dictateEligible: true),
     ChatToolSpec(
-      name: "google_tasks_create", group: .tasks, approval: .perCall,
+      name: "google_tasks_create", group: .tasks, approval: .persistent,
       cacheable: false, dictateEligible: false, displayName: String(localized: "Create tasks")),
     ChatToolSpec(
-      name: "google_tasks_update", group: .tasks, approval: .perCall,
+      name: "google_tasks_update", group: .tasks, approval: .persistent,
       cacheable: false, dictateEligible: false, displayName: String(localized: "Change tasks")),
     ChatToolSpec(
-      name: "google_tasks_complete", group: .tasks, approval: .perCall,
+      name: "google_tasks_complete", group: .tasks, approval: .persistent,
       cacheable: false, dictateEligible: false, displayName: String(localized: "Complete tasks")),
     ChatToolSpec(name: "google_tasks_delete", group: .tasks, approval: .perCall, cacheable: false, dictateEligible: false),
 
@@ -138,6 +137,7 @@ struct ChatToolSpec {
     ChatToolSpec(name: "trello_list_boards", group: .trello, approval: .none, cacheable: true, dictateEligible: true),
     ChatToolSpec(name: "trello_list_lists", group: .trello, approval: .none, cacheable: true, dictateEligible: true),
     ChatToolSpec(name: "trello_list_cards", group: .trello, approval: .none, cacheable: true, dictateEligible: true),
+    // Boards are often shared, so a write other people can see stays per-call.
     ChatToolSpec(
       name: "trello_create_card", group: .trello, approval: .perCall,
       cacheable: false, dictateEligible: false, displayName: String(localized: "Create Trello cards")),

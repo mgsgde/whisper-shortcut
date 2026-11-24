@@ -14,10 +14,8 @@ struct ChatToolAlwaysAllowTests {
     return (suite, defaults)
   }
 
-  /// External writes used to be persistable. They are per-call now, so "Always allow" stores nothing.
-  private static let externalWrites = [
-    "google_calendar_create_event", "google_calendar_update_event",
-    "google_tasks_create", "google_tasks_update", "google_tasks_complete",
+  /// Shared boards, deletes and local side effects stay per-call, so "Always allow" stores nothing.
+  private static let perCallWrites = [
     "trello_create_card", "trello_move_card", "trello_update_card",
     "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card",
     "write_text_file", "open_url",
@@ -27,12 +25,11 @@ struct ChatToolAlwaysAllowTests {
     let (suite, defaults) = isolatedDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     let store = ChatToolAlwaysAllow(defaults: defaults)
-    for name in Self.externalWrites {
+    for name in Self.perCallWrites {
       store.allow(name)
       #expect(!store.contains(name), "\(name) must not be stored")
     }
     #expect(store.toolNames.isEmpty)
-    #expect(!ChatToolSpec.all.contains { $0.approval == .persistent || $0.approval == .chatWide })
 
     let reloaded = ChatToolAlwaysAllow(defaults: defaults)
     #expect(reloaded.toolNames.isEmpty)
@@ -42,9 +39,9 @@ struct ChatToolAlwaysAllowTests {
   @Test func staleExternalWriteInDefaultsIsIgnored() {
     let (suite, defaults) = isolatedDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
-    defaults.set(Self.externalWrites, forKey: UserDefaultsKeys.chatAlwaysAllowedTools)
+    defaults.set(Self.perCallWrites, forKey: UserDefaultsKeys.chatAlwaysAllowedTools)
     let store = ChatToolAlwaysAllow(defaults: defaults)
-    for name in Self.externalWrites {
+    for name in Self.perCallWrites {
       #expect(!store.contains(name), "\(name)")
     }
     #expect(store.toolNames.isEmpty)

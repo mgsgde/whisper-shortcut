@@ -5,22 +5,26 @@ import Foundation
 /// The policy table against the predicates it replaced.
 ///
 /// `legacy…` is the old hand-written code, copied here before it was deleted. A tool may
-/// differ only when it is named in `lostBlanketApproval`: those eight write to Google or
-/// Trello, so a yes no longer covers the rest of the chat or later chats.
+/// differ only when it is named in `lostBlanketApproval`: those three write to Trello boards
+/// other people can see, so a yes no longer covers the rest of the chat or later chats.
 @MainActor
 @Suite("Chat tool spec")
 struct ChatToolSpecTests {
 
-  /// Was chat-wide and persistent. Now per-call. The only intended policy change.
+  /// Was chat-wide and persistent. Now per-call: a shared board must not take a blanket yes.
   private static let lostBlanketApproval: Set<String> = [
+    "trello_create_card",
+    "trello_move_card",
+    "trello_update_card",
+  ]
+
+  /// Own calendar and task list. Reversible, and nobody else sees the write.
+  private static let ownAccountWrites = [
     "google_calendar_create_event",
     "google_calendar_update_event",
     "google_tasks_create",
     "google_tasks_update",
     "google_tasks_complete",
-    "trello_create_card",
-    "trello_move_card",
-    "trello_update_card",
   ]
 
   private static let argProbes: [[String: Any]] = [
@@ -100,6 +104,30 @@ struct ChatToolSpecTests {
       }
     }
     #expect(Set(differed) == Self.lostBlanketApproval, "differed: \(differed)")
+  }
+
+  @Test func ownAccountWritesAllowChatWideAndPersistentApproval() {
+    for name in Self.ownAccountWrites {
+      #expect(ChatToolRegistry.allowsChatWideApproval(name), "\(name)")
+      #expect(ChatToolRegistry.allowsPersistentApproval(name), "\(name)")
+      #expect(ChatToolSpec.named(name)?.approval == .persistent, "\(name)")
+    }
+    for name in Self.lostBlanketApproval {
+      #expect(!ChatToolRegistry.allowsChatWideApproval(name), "\(name)")
+      #expect(!ChatToolRegistry.allowsPersistentApproval(name), "\(name)")
+      #expect(ChatToolSpec.named(name)?.approval == .perCall, "\(name)")
+    }
+  }
+
+  @Test func storedAlwaysAllowForTrelloCreateCardIsIgnoredOnLoad() {
+    let suite = "ChatToolSpecTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defaults.removePersistentDomain(forName: suite)
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(["trello_create_card"], forKey: UserDefaultsKeys.chatAlwaysAllowedTools)
+    let store = ChatToolAlwaysAllow(defaults: defaults)
+    #expect(!store.contains("trello_create_card"))
+    #expect(store.toolNames.isEmpty)
   }
 
   @Test func cacheDictateAndLabelsMatchTheOldTables() {

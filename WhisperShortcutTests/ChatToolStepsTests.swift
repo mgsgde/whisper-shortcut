@@ -171,9 +171,10 @@ struct ChatToolStepsTests {
     ChatToolRegistry.forgetAboutUserToolName: false, "forget_file_location": false,
     // Destructive: always ask.
     "google_calendar_delete_event": false, "google_tasks_delete": false, "trello_archive_card": false,
-    // Writes outside the app: each call asks. Not allowable for the chat or across chats.
-    "google_calendar_create_event": false, "google_calendar_update_event": false,
-    "google_tasks_create": false, "google_tasks_update": false, "google_tasks_complete": false,
+    // Own calendar and task list: reversible, so a yes may cover this chat.
+    "google_calendar_create_event": true, "google_calendar_update_event": true,
+    "google_tasks_create": true, "google_tasks_update": true, "google_tasks_complete": true,
+    // Shared boards: other people can see the write, so each call asks.
     "trello_create_card": false, "trello_move_card": false, "trello_update_card": false,
   ]
 
