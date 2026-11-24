@@ -1283,6 +1283,10 @@ final class RecordingIndicatorManager {
 
   private let model = RecordingIndicatorModel()
   private var panel: RecordingIndicatorPanel?
+  /// True when the latest show built a new panel instead of reusing the one on screen.
+  private var lastShowWasFresh = false
+  /// Space-membership recovery runs at most once per show. Reset in `orderFrontPanel`.
+  private var didAttemptSpaceRecovery = false
   /// Observers that re-raise the pill when another app or Space comes forward.
   private var frontObservers: [NSObjectProtocol] = []
   /// Watches display attach/detach/arrangement changes while the pill is visible.
@@ -1303,6 +1307,10 @@ final class RecordingIndicatorManager {
     /// averagePower(dB) range mapped onto bar height 0…1.
     static let silenceFloorDB: Float = -48
     static let loudCeilingDB: Float = -14
+    /// Joins every Space, including a native full-screen Space, without entering the window cycle.
+    static let panelCollectionBehavior: NSWindow.CollectionBehavior = [
+      .canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary,
+    ]
   }
 
   private init() {}
@@ -1589,8 +1597,30 @@ final class RecordingIndicatorManager {
 
   // MARK: Panel
 
+  /// A panel already on screen is reused, so a phase change mid-recording does not flicker.
+  /// Otherwise the previous instance is closed and a new one is built: a reused NSPanel keeps a
+  /// stale Space membership and can miss the active Space when the front app is in native full
+  /// screen (pilot report 2026-11-24).
   private func orderFrontPanel() {
-    let panel = self.panel ?? makePanel()
+    didAttemptSpaceRecovery = false
+    let panel: RecordingIndicatorPanel
+    if let existing = self.panel, isVisible {
+      panel = existing
+      lastShowWasFresh = false
+    } else {
+      if let existing = self.panel {
+        // The resign observer is tied to this instance. Remove it before close so the
+        // replacement panel does not inherit a leftover token.
+        if let keyResignObserver {
+          NotificationCenter.default.removeObserver(keyResignObserver)
+          self.keyResignObserver = nil
+        }
+        existing.orderOut(nil)
+        existing.close()
+      }
+      panel = makePanel()
+      lastShowWasFresh = true
+    }
     self.panel = panel
     pillScreen = screenForNewPill()
     position(panel)
@@ -1639,9 +1669,24 @@ final class RecordingIndicatorManager {
     DebugLogger.log(
       "PILL: ordered front — screen=\(panel.screen?.localizedName ?? "nil") front=\(front?.bundleIdentifier ?? "nil") "
         + "onActiveSpace=\(panel.isOnActiveSpace) occluded=\(occluded) level=\(panel.level.rawValue) "
-        + "policy=\(NSApp.activationPolicy().rawValue) screens=\(NSScreen.screens.count)"
+        + "policy=\(NSApp.activationPolicy().rawValue) screens=\(NSScreen.screens.count) "
+        + "fresh=\(lastShowWasFresh) key=\(panel.isKeyWindow) acceptsKey=\(panel.acceptsKeyInput) "
+        + "behavior=\(panel.collectionBehavior.rawValue) win=\(panel.windowNumber)"
         + (covering.isEmpty ? "" : " covered by " + covering.map { "\($0.ownerName)@\($0.layer)" }.joined(separator: ","))
     )
+    if !panel.isOnActiveSpace, !didAttemptSpaceRecovery {
+      didAttemptSpaceRecovery = true
+      DebugLogger.log("PILL: not on active Space — recovering")
+      panel.orderOut(nil)
+      panel.collectionBehavior = Constants.panelCollectionBehavior
+      panel.orderFrontRegardless()
+      if panel.acceptsKeyInput { panel.makeKey() }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak panel] in
+        guard let panel else { return }
+        let occluded = !panel.occlusionState.contains(.visible)
+        DebugLogger.log("PILL: recovery onActiveSpace=\(panel.isOnActiveSpace) occluded=\(occluded)")
+      }
+    }
     let level = IndicatorPlacement.level(
       coveringLayers: covering.map(\.layer), base: NSWindow.Level.statusBar.rawValue,
       cap: NSWindow.Level.screenSaver.rawValue)
@@ -1698,7 +1743,9 @@ final class RecordingIndicatorManager {
     panel.backgroundColor = .clear
     panel.hasShadow = true
     panel.level = .statusBar
-    panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+    // close() in orderFrontPanel must not free the panel out from under an in-flight fade.
+    panel.isReleasedWhenClosed = false
+    panel.collectionBehavior = Constants.panelCollectionBehavior
     panel.hidesOnDeactivate = false
     panel.isMovable = false
     panel.ignoresMouseEvents = false
