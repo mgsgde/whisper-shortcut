@@ -174,6 +174,18 @@ struct LeakedThoughtStripTests {
     #expect(LeakedPlanningStrip.strip(parts: ["Task: note.Übung"]) == "Übung")
   }
 
+  @Test("The Dictate Prompt agent reply drops a Plan / The user block")
+  func agentReplyDropsPlanningBlock() {
+    let raw = """
+    Plan: write a short greeting.
+    The user asked for a hello.
+
+    Hallo Mark
+    """
+    #expect(SpeechService.cleanedDictatePromptText(parts: [raw]) == "Hallo Mark")
+    #expect(SpeechService.cleanedDictatePromptText(parts: ["The user wants a greeting.\n\nHallo Mark"]) == "Hallo Mark")
+  }
+
   @Test("Dictate Prompt drops a separate planning part before pasting")
   func dictatePromptDropsSeparatePlanningPart() throws {
     let response = try Self.decodeResponse(

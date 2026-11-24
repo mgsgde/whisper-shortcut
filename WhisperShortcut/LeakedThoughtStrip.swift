@@ -77,10 +77,33 @@ nonisolated enum LeakedPlanningStrip {
       logIfDropped(from: joined, to: kept, parts: parts)
       return kept
     }
-    guard looksLikePlanning(joined), let cut = gluedAnswerStart(in: joined) else { return joined }
-    let kept = String(joined[cut...])
-    logIfDropped(from: joined, to: kept, parts: parts)
-    return kept
+    guard looksLikePlanning(joined) else { return joined }
+    if let cut = gluedAnswerStart(in: joined) {
+      let kept = String(joined[cut...])
+      logIfDropped(from: joined, to: kept, parts: parts)
+      return kept
+    }
+    // One agent reply is a single string: planning paragraphs, a blank line, then the answer.
+    // Separate response parts take the branch above this function. One paragraph with no glue
+    // stays whole (`Formatting: keep this whole note.`).
+    if let kept = answerAfterBlankLine(in: joined) {
+      logIfDropped(from: joined, to: kept, parts: parts)
+      return kept
+    }
+    return joined
+  }
+
+  /// Drops leading paragraphs whose first line is a planning header, once a later paragraph
+  /// is not. Nil when there is no such later paragraph.
+  private static func answerAfterBlankLine(in text: String) -> String? {
+    let paragraphs = text
+      .components(separatedBy: "\n\n")
+      .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    guard paragraphs.count >= 2, looksLikePlanning(paragraphs[0]) else { return nil }
+    guard let start = paragraphs.indices.first(where: { !looksLikePlanning(paragraphs[$0]) }),
+      start > paragraphs.startIndex
+    else { return nil }
+    return paragraphs[start...].joined(separator: "\n\n")
   }
 
   private static func isLabelLine(_ trimmedLine: some StringProtocol) -> Bool {
