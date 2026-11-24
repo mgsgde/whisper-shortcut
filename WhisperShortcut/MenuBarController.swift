@@ -2748,61 +2748,13 @@ class MenuBarController: NSObject {
       // Includes model-preparation failures: the audio is kept and Retry offered, but nothing
       // retries them automatically (that stays `TranscriptionError.isRetryable`).
       let isRetryable = error.offersManualRetry
-      
+
       // Define retry action
       let isServerError = transcriptionError?.isServerOrUnavailable ?? false
       let retryAction: (() -> Void)? = isRetryable ? { [weak self] in
         guard let self = self else { return }
         Task { @MainActor in
-          // Brief delay before retrying server errors to give the API time to recover
-          if isServerError {
-            DebugLogger.log("RETRY: Waiting 3s before retrying after server error...")
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-          }
-          // The error popup can stay open for a long time. If the user has started a recording
-          // (or another run) since, a retry must not stomp on it: the state machine would be
-          // overwritten mid-recording. The audio stays on disk for a later attempt. The error
-          // state itself (`.feedback`) is not busy, so a plain Retry click still works.
-          guard !self.appState.isBusy else {
-            DebugLogger.logWarning("RETRY: Ignored — another run is in progress (\(self.appState))")
-            PopupNotificationWindow.showInfo(
-              "Finish the current recording first, then try again.", title: "Busy")
-            return
-          }
-          // `runAudioJob`'s catch tail drops the job after the popup is shown. A retry is a new
-          // job, the same way `transcribeCancelledRecording` starts one.
-          self.processedAudioURLs.insert(audioURL)
-          // The popup can outlive the recording it belongs to, and the recorded paste target may be
-          // another client's note by now. Like every re-run that skips `beginAudioCapture`, the
-          // result is copied only, never pasted.
-          self.clipboardOnlyForNextResult = true
-          DebugLogger.log("RETRY: Re-running \(mode) for \(audioURL.lastPathComponent)")
-          switch mode {
-          case .transcription:
-            self.appState = .processing(.transcribing)
-            self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
-              await self.performTranscription(audioURL: audioURL, job: job)
-            }
-          case .prompt:
-            self.appState = .processing(.prompting)
-            // Same selection as the first attempt; none on record means compose, never a fresh
-            // pasteboard read.
-            let inputs = self.finishedPromptInputs[audioURL]
-            self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
-              await self.performPrompting(
-                audioURL: audioURL, job: job, instruction: inputs?.quickActionInstruction,
-                isEditQuickAction: inputs?.isEditQuickAction ?? false,
-                templateInstruction: inputs?.templateInstruction,
-                templateName: inputs?.templateName,
-                templateID: inputs?.templateID,
-                recordingWasSilent: inputs?.recordingWasSilent ?? false,
-                selection: inputs?.selection,
-                speakResult: inputs?.speakResult ?? false)
-            }
-          case .liveMeeting:
-            // Live meeting chunks are handled separately, no retry needed here
-            break
-          }
+          await self.rerunFailedRecording(audioURL: audioURL, mode: mode, isServerError: isServerError)
         }
       } : nil
       
@@ -2821,7 +2773,100 @@ class MenuBarController: NSObject {
       }
     }
   }
-  
+
+  /// Re-runs a recording whose audio was kept after a failure. A live meeting owns `appState`, so
+  /// a dictation or Dictate Prompt retry re-enters as a segment (`job == nil`) and never touches
+  /// it. Once the meeting has ended, the original non-meeting path runs unchanged.
+  @MainActor
+  private func rerunFailedRecording(audioURL: URL, mode: AppState.RecordingMode, isServerError: Bool) async {
+    // Brief delay before retrying server errors to give the API time to recover
+    if isServerError {
+      DebugLogger.log("RETRY: Waiting 3s before retrying after server error...")
+      try? await Task.sleep(nanoseconds: 3_000_000_000)
+    }
+
+    if isLiveMeetingActive, mode == .transcription || mode == .prompt {
+      // The user is already dictating (or prompting) inside the meeting. The audio stays on disk.
+      if activeMeetingSegment != nil {
+        DebugLogger.logWarning("RETRY: Ignored — another run is in progress (\(self.appState))")
+        PopupNotificationWindow.showInfo(
+          "Finish the current recording first, then try again.", title: "Busy")
+        return
+      }
+      processedAudioURLs.insert(audioURL)
+      // Same as a non-meeting retry: the popup can outlive the paste target, so copy only.
+      clipboardOnlyForNextResult = true
+      DebugLogger.log("RETRY: Re-running \(mode) for \(audioURL.lastPathComponent)")
+      switch mode {
+      case .transcription:
+        beginMeetingSegment(.dictation)
+        markMeetingSegmentProcessing()
+        await performTranscription(audioURL: audioURL, job: nil)
+      case .prompt:
+        let inputs = finishedPromptInputs[audioURL]
+        beginMeetingSegment(.prompt)
+        markMeetingSegmentProcessing()
+        await performPrompting(
+          audioURL: audioURL, job: nil, instruction: inputs?.quickActionInstruction,
+          isEditQuickAction: inputs?.isEditQuickAction ?? false,
+          templateInstruction: inputs?.templateInstruction,
+          templateName: inputs?.templateName,
+          templateID: inputs?.templateID,
+          recordingWasSilent: inputs?.recordingWasSilent ?? false,
+          selection: inputs?.selection,
+          speakResult: inputs?.speakResult ?? false)
+      case .liveMeeting:
+        break
+      }
+      return
+    }
+
+    // The error popup can stay open for a long time. If the user has started a recording
+    // (or another run) since, a retry must not stomp on it: the state machine would be
+    // overwritten mid-recording. The audio stays on disk for a later attempt. The error
+    // state itself (`.feedback`) is not busy, so a plain Retry click still works.
+    guard !self.appState.isBusy else {
+      DebugLogger.logWarning("RETRY: Ignored — another run is in progress (\(self.appState))")
+      PopupNotificationWindow.showInfo(
+        "Finish the current recording first, then try again.", title: "Busy")
+      return
+    }
+    // `runAudioJob`'s catch tail drops the job after the popup is shown. A retry is a new
+    // job, the same way `transcribeCancelledRecording` starts one.
+    self.processedAudioURLs.insert(audioURL)
+    // The popup can outlive the recording it belongs to, and the recorded paste target may be
+    // another client's note by now. Like every re-run that skips `beginAudioCapture`, the
+    // result is copied only, never pasted.
+    self.clipboardOnlyForNextResult = true
+    DebugLogger.log("RETRY: Re-running \(mode) for \(audioURL.lastPathComponent)")
+    switch mode {
+    case .transcription:
+      self.appState = .processing(.transcribing)
+      self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
+        await self.performTranscription(audioURL: audioURL, job: job)
+      }
+    case .prompt:
+      self.appState = .processing(.prompting)
+      // Same selection as the first attempt; none on record means compose, never a fresh
+      // pasteboard read.
+      let inputs = self.finishedPromptInputs[audioURL]
+      self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
+        await self.performPrompting(
+          audioURL: audioURL, job: job, instruction: inputs?.quickActionInstruction,
+          isEditQuickAction: inputs?.isEditQuickAction ?? false,
+          templateInstruction: inputs?.templateInstruction,
+          templateName: inputs?.templateName,
+          templateID: inputs?.templateID,
+          recordingWasSilent: inputs?.recordingWasSilent ?? false,
+          selection: inputs?.selection,
+          speakResult: inputs?.speakResult ?? false)
+      }
+    case .liveMeeting:
+      // Live meeting chunks are handled separately, no retry needed here
+      break
+    }
+  }
+
   // MARK: - Shared audio-job envelope
 
   /// What an auto-paste did, handed back so `runAudioJob` logs `pasted` after the interaction.
@@ -3056,13 +3101,35 @@ class MenuBarController: NSObject {
 
       if duringMeeting {
         DebugLogger.logError("MEETING-SEGMENT: \(spec.logLabel) failed: \(error.logDescription)")
+        let keepAudioForRetry = error.offersManualRetry
+          && (spec.mode == .transcription || spec.mode == .prompt)
         await MainActor.run {
           self.clearMeetingSegment()
           self.processedAudioURLs.remove(audioURL)
-          PopupNotificationWindow.showError(
-            verbatim: SpeechErrorFormatter.formatForUser(error), title: .verbatim(spec.errorTitle))
+          if keepAudioForRetry {
+            DebugLogger.log("MEETING-SEGMENT: Keeping audio for manual retry")
+            let isServerError = (error as? TranscriptionError)?.isServerOrUnavailable ?? false
+            let mode = spec.mode
+            PopupNotificationWindow.showError(
+              verbatim: SpeechErrorFormatter.formatForUser(error),
+              title: .verbatim(spec.errorTitle),
+              retryAction: { [weak self] in
+                Task { @MainActor in
+                  await self?.rerunFailedRecording(
+                    audioURL: audioURL, mode: mode, isServerError: isServerError)
+                }
+              },
+              dismissAction: { [weak self] in
+                self?.cleanupAudioFile(at: audioURL)
+              })
+          } else {
+            PopupNotificationWindow.showError(
+              verbatim: SpeechErrorFormatter.formatForUser(error), title: .verbatim(spec.errorTitle))
+          }
         }
-        cleanupAudioFile(at: audioURL)
+        if !keepAudioForRetry {
+          cleanupAudioFile(at: audioURL)
+        }
       } else {
         await handleProcessingError(error: error, audioURL: audioURL, mode: spec.mode)
         await MainActor.run {
@@ -4797,13 +4864,22 @@ extension MenuBarController: AudioRecorderDelegate {
           case .dictation:
             await self.performTranscription(audioURL: audioURL, job: nil, traceJobID: traceJobID)
           case .prompt:
+            // Kept for Retry: a meeting-segment failure no longer deletes the audio, and the
+            // re-run reads these instead of a selection that may have moved on.
+            var inputs = FinishedPromptInputs()
+            inputs.quickActionInstruction = intent?.quickActionInstruction
+            inputs.isEditQuickAction = intent?.isEditQuickAction ?? false
+            inputs.selection = intent?.promptSelection
+            inputs.recordingWasSilent = self.audioRecorder.lastRecordingWasSilent
+            inputs.speakResult = intent?.speakResult ?? false
+            self.finishedPromptInputs[audioURL] = inputs
             await self.performPrompting(
               audioURL: audioURL, job: nil,
-              instruction: intent?.quickActionInstruction,
-              isEditQuickAction: intent?.isEditQuickAction ?? false,
-              recordingWasSilent: self.audioRecorder.lastRecordingWasSilent,
-              selection: intent?.promptSelection,
-              speakResult: intent?.speakResult ?? false,
+              instruction: inputs.quickActionInstruction,
+              isEditQuickAction: inputs.isEditQuickAction,
+              recordingWasSilent: inputs.recordingWasSilent,
+              selection: inputs.selection,
+              speakResult: inputs.speakResult,
               traceJobID: traceJobID)
           }
         }
