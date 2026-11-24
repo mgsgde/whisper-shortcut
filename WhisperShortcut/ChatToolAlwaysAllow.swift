@@ -6,8 +6,8 @@
 import Foundation
 
 /// Tools the user allowed for good ("Always allow" on the approval card). Persisted in
-/// UserDefaults; only names eligible for chat-wide approval are ever stored or honoured, so a
-/// stale entry for a tool that later became gated stops working on its own.
+/// UserDefaults; only names whose spec approval is `.persistent` are stored or honoured, so a
+/// stale entry for a tool that later became per-call stops working on its own.
 @MainActor
 final class ChatToolAlwaysAllow: ObservableObject {
   static let shared = ChatToolAlwaysAllow()
@@ -19,18 +19,18 @@ final class ChatToolAlwaysAllow: ObservableObject {
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
     let stored = defaults.stringArray(forKey: UserDefaultsKeys.chatAlwaysAllowedTools) ?? []
-    toolNames = Set(stored.filter(ChatToolRegistry.allowsChatWideApproval))
+    toolNames = Set(stored.filter(ChatToolRegistry.allowsPersistentApproval))
   }
 
-  /// True only when the name is stored and still eligible. A stale entry for a tool that later
-  /// became gated is ignored.
+  /// True only when the name is stored and still `.persistent`. A stale entry for a tool that
+  /// later became per-call is ignored.
   func contains(_ name: String) -> Bool {
-    toolNames.contains(name) && ChatToolRegistry.allowsChatWideApproval(name)
+    toolNames.contains(name) && ChatToolRegistry.allowsPersistentApproval(name)
   }
 
-  /// Remembers `name` for every future chat. No-op unless the tool may be approved chat-wide.
+  /// Remembers `name` for every future chat. No-op unless the tool's approval is `.persistent`.
   func allow(_ name: String) {
-    guard ChatToolRegistry.allowsChatWideApproval(name) else { return }
+    guard ChatToolRegistry.allowsPersistentApproval(name) else { return }
     toolNames.insert(name)
     persist()
   }
@@ -49,27 +49,9 @@ final class ChatToolAlwaysAllow: ObservableObject {
     defaults.set(toolNames.sorted(), forKey: UserDefaultsKeys.chatAlwaysAllowedTools)
   }
 
-  /// Short label for Settings. Unknown names stay as the raw tool id.
+  /// Short label for Settings. Unknown names, and tools with no phrase of their own, stay as the
+  /// raw tool id. The phrase comes from the spec, already localized.
   static func displayName(for toolName: String) -> String {
-    switch toolName {
-    case "google_calendar_create_event":
-      return String(localized: "Create calendar events")
-    case "google_calendar_update_event":
-      return String(localized: "Change calendar events")
-    case "google_tasks_create":
-      return String(localized: "Create tasks")
-    case "google_tasks_update":
-      return String(localized: "Change tasks")
-    case "google_tasks_complete":
-      return String(localized: "Complete tasks")
-    case "trello_create_card":
-      return String(localized: "Create Trello cards")
-    case "trello_move_card":
-      return String(localized: "Move Trello cards")
-    case "trello_update_card":
-      return String(localized: "Change Trello cards")
-    default:
-      return toolName
-    }
+    ChatToolSpec.named(toolName)?.displayName ?? toolName
   }
 }

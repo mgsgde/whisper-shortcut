@@ -8,20 +8,9 @@ import Foundation
 @Suite("Chat tool steps")
 struct ChatToolStepsTests {
 
-  /// Every declaration the chat can offer, composed directly: `allDeclarations` returns nothing
-  /// when the local MLX provider is selected, which would make these tests depend on the machine.
+  /// Every tool the spec names. `ChatToolSpecTests` checks this is exactly the declaration set.
   private var allToolNames: [String] {
-    let groups: [[[String: Any]]] = [
-      ChatToolRegistry.functionDeclarations, ChatToolRegistry.appDocsFunctionDeclarations,
-      ChatToolRegistry.memoryFunctionDeclarations, ChatToolRegistry.instructionsFunctionDeclarations,
-      ChatToolRegistry.usageLogFunctionDeclarations, [AppSettingsChatTool.declaration],
-      ChatToolRegistry.workspaceFunctionDeclarations, ChatToolRegistry.workspaceWriteFunctionDeclarations,
-      ChatToolRegistry.imageFunctionDeclarations, ChatToolRegistry.calendarFunctionDeclarations,
-      ChatToolRegistry.tasksFunctionDeclarations, ChatToolRegistry.gmailFunctionDeclarations,
-      ChatToolRegistry.mailConnectFunctionDeclarations, ChatToolRegistry.mailFunctionDeclarations,
-      ChatToolRegistry.trelloFunctionDeclarations, ChatToolRegistry.meetingFunctionDeclarations,
-    ]
-    return groups.flatMap { $0 }.compactMap { $0["name"] as? String }
+    ChatToolSpec.all.map(\.name)
   }
 
   @Test func everyDeclaredToolHasWording() {
@@ -182,10 +171,11 @@ struct ChatToolStepsTests {
     ChatToolRegistry.forgetAboutUserToolName: false, "forget_file_location": false,
     // Destructive: always ask.
     "google_calendar_delete_event": false, "google_tasks_delete": false, "trello_archive_card": false,
-    // Create/update/move: may be allowed for the chat.
+    // Own calendar and task list: reversible, so a yes may cover this chat.
     "google_calendar_create_event": true, "google_calendar_update_event": true,
     "google_tasks_create": true, "google_tasks_update": true, "google_tasks_complete": true,
-    "trello_create_card": true, "trello_move_card": true, "trello_update_card": true,
+    // Shared boards: other people can see the write, so each call asks.
+    "trello_create_card": false, "trello_move_card": false, "trello_update_card": false,
   ]
 
   @Test func everyApprovalGatedToolHasAnExplicitChatWideDecision() {

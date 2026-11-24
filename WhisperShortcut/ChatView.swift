@@ -1361,6 +1361,7 @@ class ChatViewModel: ObservableObject {
           summary: summary,
           preview: preview,
           offersAllowForChat: ChatToolRegistry.allowsChatWideApproval(name),
+          offersAlwaysAllow: ChatToolRegistry.allowsPersistentApproval(name),
           continuation: continuation)
       }
     } onCancel: {

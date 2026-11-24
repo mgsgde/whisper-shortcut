@@ -16,14 +16,12 @@ enum DictatePromptAgent {
   /// the chat allows 16.
   static let maxToolRounds = 3
 
-  /// Tools Dictate Prompt may call. None of them changes anything, so none needs approval — a
-  /// prompt in the middle of a paste would be the wrong place to ask.
-  static let readOnlyToolNames: Set<String> = [
-    "google_calendar_list_events", "google_tasks_list_tasklists", "google_tasks_list",
-    "gmail_search", "gmail_read",
-    "trello_list_boards", "trello_list_lists", "trello_list_cards",
-    "list_workspace_folders", "list_directory", "read_text_file", "search_files",
-  ]
+  /// Tools Dictate Prompt may call: the rows marked `dictateEligible`. None of them changes
+  /// anything, so none needs approval. A prompt in the middle of a paste would be the wrong
+  /// place to ask.
+  static var readOnlyToolNames: Set<String> {
+    Set(ChatToolSpec.all.filter(\.dictateEligible).map(\.name))
+  }
 
   /// Dictate Prompt paths that can run the agent: a streaming chat API with tool calling. Gemini
   /// and OpenAI GPT-Audio take the recording directly; a local server (Ollama / LM Studio) gets
