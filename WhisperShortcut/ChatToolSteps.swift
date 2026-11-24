@@ -99,6 +99,8 @@ struct ToolApprovalRequest: Identifiable {
   let summary: String
   let preview: ToolApprovalPreview?
   let offersAllowForChat: Bool
+  /// "Always allow" is a separate choice from "for this chat": only `.persistent` tools.
+  let offersAlwaysAllow: Bool
   let continuation: CheckedContinuation<ToolApprovalDecision, Never>
 }
 

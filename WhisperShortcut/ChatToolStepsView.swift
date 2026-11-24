@@ -272,7 +272,7 @@ struct ToolApprovalCardView: View {
             if request.offersAllowForChat { allowForChatButton }
           }
           HStack(spacing: 8) {
-            if request.offersAllowForChat { alwaysAllowButton }
+            if request.offersAlwaysAllow { alwaysAllowButton }
             allowButton
           }
         }
@@ -301,8 +301,8 @@ struct ToolApprovalCardView: View {
   }
 
   // Order: deny, then the allow scopes from this chat to always, with the one-time "Allow" last
-  // as the default (Return). "Always allow" and "for this chat" share one eligibility: never
-  // deletes, file writes, links or memory.
+  // as the default (Return). "For this chat" is `.chatWide` or `.persistent`. "Always allow"
+  // is `.persistent` only.
   private var denyButton: some View {
     Button("Deny") { onDecision(.deny) }
       .keyboardShortcut(.cancelAction)
@@ -319,10 +319,8 @@ struct ToolApprovalCardView: View {
 
   @ViewBuilder
   private var chatButtons: some View {
-    if request.offersAllowForChat {
-      allowForChatButton
-      alwaysAllowButton
-    }
+    if request.offersAllowForChat { allowForChatButton }
+    if request.offersAlwaysAllow { alwaysAllowButton }
   }
 
   private var allowButton: some View {

@@ -19,34 +19,14 @@ import Foundation
 @MainActor
 final class ChatToolTurnMemo {
 
-  /// Tools that only read state, so a second identical call inside one turn cannot produce a
-  /// different answer. Anything absent from this set is treated as a mutation — a new tool is
-  /// therefore safe by default, at the cost of dropping the cache when it runs.
+  /// Read-only tools, from `ChatToolSpec.cacheable`. A name that is absent is treated as a
+  /// mutation: a new tool drops the cache when it runs, which is the safe direction.
   ///
   /// `read_clipboard` counts as read-only here: within one turn the user has no chance to copy
   /// something else, and `copy_to_clipboard` is a mutation and clears the memory anyway.
-  private static let cacheableTools: Set<String> = [
-    "search_files",
-    "list_directory",
-    "read_text_file",
-    "list_workspace_folders",
-    "list_whisper_shortcut_docs",
-    "read_whisper_shortcut_doc",
-    "read_clipboard",
-    ChatToolRegistry.readConfigHistoryToolName,
-    ChatToolRegistry.readRecentInteractionsToolName,
-    "gmail_search",
-    "gmail_read",
-    "mail_search",
-    "mail_read",
-    "mail_list_accounts",
-    "google_calendar_list_events",
-    "google_tasks_list",
-    "google_tasks_list_tasklists",
-    "trello_list_boards",
-    "trello_list_lists",
-    "trello_list_cards",
-  ]
+  nonisolated static func isCacheableTool(_ name: String) -> Bool {
+    ChatToolSpec.named(name)?.cacheable == true
+  }
 
   private static let repeatNote =
     "You already made this exact call earlier in this turn — this is the stored result, not a fresh lookup. Repeating it cannot produce anything new: use what you already have, try a genuinely different approach, or tell the user what you could not find."
@@ -58,7 +38,7 @@ final class ChatToolTurnMemo {
 
   /// The stored result for an identical earlier call, or `nil` when the call has to run.
   func cachedResponse(name: String, args: [String: Any]) -> [String: Any]? {
-    guard Self.cacheableTools.contains(name),
+    guard Self.isCacheableTool(name),
           let stored = responses[Self.key(name: name, args: args)]
     else { return nil }
     return Self.adding(note: Self.repeatNote, to: stored)
@@ -68,7 +48,7 @@ final class ChatToolTurnMemo {
   /// annotated when it was a search whose words already came up empty this turn.
   @discardableResult
   func record(name: String, args: [String: Any], response: [String: Any]) -> [String: Any] {
-    guard Self.cacheableTools.contains(name) else {
+    guard Self.isCacheableTool(name) else {
       // A mutation may have invalidated anything read so far.
       responses.removeAll()
       emptyQueries.removeAll()

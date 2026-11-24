@@ -93,48 +93,32 @@ enum ChatToolRegistry {
   }
 
   /// Tools that mutate the user's data, open a URL, or write text that shapes future behavior.
-  /// Each call is confirmed in Chat before it runs; the choice is per-turn and is not remembered.
+  /// Each call is confirmed in Chat before it runs. How far that yes may extend (this call, this
+  /// chat, or every chat) is `ChatToolSpec.approval`, never "anything that needs a card".
   ///
   /// The memory, instructions and file-write tools are gated for prompt-injection reasons, not
   /// because they are destructive: a Gmail message, web page or shared file the model just read
   /// could otherwise tell it to plant a permanent instruction in memory or a system prompt,
   /// or to write into the user's files, with nothing visible to the user.
   static func requiresUserApproval(_ name: String, args: [String: Any] = [:]) -> Bool {
-    switch name {
-    case "open_url",
-         "google_calendar_create_event", "google_calendar_update_event", "google_calendar_delete_event",
-         "google_tasks_create", "google_tasks_update", "google_tasks_complete", "google_tasks_delete",
-         "trello_create_card", "trello_move_card", "trello_update_card", "trello_archive_card",
-         rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
-         forgetAboutUserToolName, "forget_file_location",
-         "write_text_file", "append_to_file", "edit_text_file":
-      return true
-    case updateInstructionsToolName:
-      // Reading the current rules is harmless and is what the model is told to do first.
-      return (args["action"] as? String) != "read"
-    case AppSettingsChatTool.name:
-      // Only a change needs the card; the review and a dismissal change nothing the user relies on.
-      return (args["action"] as? String) == "set"
-    default:
-      return false
+    guard let spec = ChatToolSpec.named(name) else { return false }
+    if let rule = spec.requiresApproval { return rule(args) }
+    return spec.approval != .none
+  }
+
+  /// Whether "Allow for this chat" may be offered. `.chatWide` and `.persistent` only.
+  static func allowsChatWideApproval(_ name: String) -> Bool {
+    guard let approval = ChatToolSpec.named(name)?.approval else { return false }
+    switch approval {
+    case .chatWide, .persistent: return true
+    case .none, .perCall: return false
     }
   }
 
-  /// Whether "Allow for this chat" may be offered. Never for the tools gated for prompt-injection
-  /// reasons (a page or mail the model just read must not be able to ride on an earlier blanket
-  /// yes — `open_url` included: a URL can carry private data out), and never for deletes/archives,
-  /// where each call destroys something different.
-  static func allowsChatWideApproval(_ name: String) -> Bool {
-    switch name {
-    case rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
-         forgetAboutUserToolName, "forget_file_location",
-         updateInstructionsToolName, AppSettingsChatTool.name, "open_url",
-         "write_text_file", "append_to_file", "edit_text_file",
-         "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card":
-      return false
-    default:
-      return requiresUserApproval(name, args: ["action": "write"])
-    }
+  /// Whether "Always allow" may be stored. `.persistent` only, so a yes for this chat
+  /// cannot outlive the conversation.
+  static func allowsPersistentApproval(_ name: String) -> Bool {
+    ChatToolSpec.named(name)?.approval == .persistent
   }
 
   /// Called where a tool call the user denied is recorded. Only `app_settings` `set` acts: the
