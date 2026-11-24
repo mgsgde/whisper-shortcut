@@ -1567,7 +1567,7 @@ class SpeechService {
     // Every other turn sends a front window only when the field is missing or short — and
     // never for a password field.
     let frontmostExcluded = FocusedFieldSnapshot.frontmostIsExcluded
-    let settingEnabled = screenshotInPromptModeEnabled()
+    let settingEnabled = DictationPreferences.screenshotInPromptModeEnabled
     // Field text is opt-in: with it off, the payload never sees the field, and the window
     // decision treats the field as missing.
     let fieldTextEnabled = promptSendsFocusedFieldTextEnabled()
@@ -4571,15 +4571,6 @@ class SpeechService {
   /// Reads the "Text around cursor" opt-in (off by default).
   private func promptSendsFocusedFieldTextEnabled() -> Bool {
     DictationPreferences.promptSendsFocusedFieldTextEnabled
-  }
-
-  /// Reads the "include screenshot in Dictate Prompt" toggle, falling back to the
-  /// default when the user hasn't explicitly set it.
-  private func screenshotInPromptModeEnabled() -> Bool {
-    if UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil {
-      return UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-    }
-    return SettingsDefaults.screenshotInPromptMode
   }
 
   // MARK: - Shared Infrastructure Helpers

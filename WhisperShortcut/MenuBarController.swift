@@ -4178,9 +4178,7 @@ class MenuBarController: NSObject {
     // bundle id only — the text itself is never logged.
     // Opt-in: field text and the window picture are both off by default. Read on the main actor.
     let sendsField = DictationPreferences.promptSendsFocusedFieldTextEnabled
-    let sendsWindow = UserDefaults.standard.object(forKey: UserDefaultsKeys.screenshotInPromptMode) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
-      : SettingsDefaults.screenshotInPromptMode
+    let sendsWindow = DictationPreferences.screenshotInPromptModeEnabled
     if !sendsField && !sendsWindow {
       DebugLogger.log("PROMPT-CONTEXT: field text and front window both off, field not read")
       selection.resolveField(nil)
