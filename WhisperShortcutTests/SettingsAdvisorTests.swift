@@ -79,6 +79,14 @@ struct SettingsAdvisorTests {
     let found = f.findings().first { $0.id == "clipboard.auto_paste" }
     #expect(found?.priority == .recommended)
     #expect(found?.fix == .set(id: "clipboard.auto_paste", value: .bool(true)))
+    f.defaults.set(false, forKey: UserDefaultsKeys.promptSendsFocusedFieldText)
+    f.defaults.set(false, forKey: UserDefaultsKeys.screenshotInPromptMode)
+    #expect(f.findings().first { $0.id == "dictate_prompt.field_text_context" }?.priority == .optional)
+    #expect(f.findings().first { $0.id == "dictate_prompt.screenshot_context" }?.priority == .optional)
+    #expect(f.catalog.first { $0.id == "dictate_prompt.field_text_context" }?.consentText
+      == MCPSettingsCatalog.consentText(for: "dictate_prompt.field_text_context"))
+    f.defaults.set(true, forKey: UserDefaultsKeys.promptSendsFocusedFieldText)
+    f.defaults.set(true, forKey: UserDefaultsKeys.screenshotInPromptMode)
     f.defaults.set(true, forKey: UserDefaultsKeys.autoPasteAfterDictation)
     #expect(f.ids().isEmpty)
   }

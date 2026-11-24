@@ -7,6 +7,8 @@ import SwiftUI
 struct MCPSettingsProposalReviewView: View {
   let items: [MCPSettingsChangeItem]
   let rationale: String
+  /// Disclosure for settings that send something off the Mac. Empty when none of the changes have one.
+  var consentTexts: [String] = []
   let onAccept: () -> Void
   let onCancel: () -> Void
 
@@ -39,6 +41,16 @@ struct MCPSettingsProposalReviewView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.accentColor.opacity(0.08))
         .cornerRadius(6)
+      }
+
+      if !consentTexts.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+          ForEach(consentTexts, id: \.self) { text in
+            Text(verbatim: text)
+              .font(.callout)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
       }
 
       ScrollView {

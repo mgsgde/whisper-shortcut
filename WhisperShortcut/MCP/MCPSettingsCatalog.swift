@@ -131,6 +131,9 @@ struct MCPSetting {
   /// replace `validate` for this entry — e.g. a voice that must match the model set in the same
   /// call. nil = use `validate`.
   let validateInBatch: ((Any, [String: Any]) -> String?)?
+  /// Shown before the setting can be turned on: the Settings alert and the AI-app proposal window
+  /// both read this, so the disclosure is not only in the Settings tab.
+  let consentText: String?
 
   init(
     id: String, title: String, category: String, kind: Kind, proposalOnly: Bool = false,
@@ -138,7 +141,8 @@ struct MCPSetting {
     unavailableReason: @escaping () -> String? = { nil }, read: @escaping () -> Any,
     validate: @escaping (Any) -> String?, apply: @escaping (Any) throws -> Void,
     normalizeForLabel: @escaping (Any) -> Any = { $0 },
-    validateInBatch: ((Any, [String: Any]) -> String?)? = nil
+    validateInBatch: ((Any, [String: Any]) -> String?)? = nil,
+    consentText: String? = nil
   ) {
     self.id = id
     self.title = title
@@ -152,6 +156,7 @@ struct MCPSetting {
     self.apply = apply
     self.normalizeForLabel = normalizeForLabel
     self.validateInBatch = validateInBatch
+    self.consentText = consentText
   }
 
   /// `validate`, or the batch-aware variant when the entry has one.
@@ -490,6 +495,19 @@ enum MCPSettingsCatalog {
 
   // MARK: - Catalog
 
+  /// Consent copy for settings that send something off the Mac. One wording: the Settings alert
+  /// and `MCPSetting.consentText` both use this, and the proposal window shows the setting's copy.
+  static func consentText(for id: String) -> String? {
+    switch id {
+    case "dictate_prompt.field_text_context":
+      return String(localized: "Each time you use Dictate Prompt with nothing selected, it reads up to 4,000 characters around the cursor in the app you are writing in and sends them, with that app's name, to your Dictate Prompt model. With a cloud model, that text goes to its provider.\n\nPassword fields and password managers are never read. You can turn this off here at any time.")
+    case "dictate_prompt.screenshot_context":
+      return String(localized: "When nothing is selected, Dictate Prompt can send a picture of the window you are writing in, never the whole screen, to your Dictate Prompt model. Everything visible in that window goes with it. With a cloud model, the picture goes to its provider.\n\nNever for password fields or password managers. You can turn this off here at any time.")
+    default:
+      return nil
+    }
+  }
+
   /// The settings an AI app can read/change. A representative subset of the app's settings
   /// surface, not every `UserDefaultsKeys` entry — see `plans/active/mcp-settings.md` and the
   /// implementation report for which were left out and why.
@@ -502,11 +520,12 @@ enum MCPSettingsCatalog {
       proposalOnly: Bool = false, unavailableReason: @escaping () -> String? = { nil },
       enablingRefused: @escaping () -> String? = { nil },
       afterApply: @escaping (Bool) -> Void = { _ in },
-      readValue: (() -> Bool)? = nil
+      readValue: (() -> Bool)? = nil,
+      consentText: String? = nil
     ) -> MCPSetting {
       MCPSetting(
         id: id, title: title, category: category, kind: .bool, proposalOnly: proposalOnly,
-        unavailableReason: unavailableReason,
+        unavailableReason: unavailableReason, consentText: consentText,
         // Re-read the default on every read. The catalog is built once and kept, and auto-paste's
         // unset value follows the Accessibility permission, which can change after that.
         // `readValue` is the shared accessor when one exists (still against `defaults`).
@@ -1277,7 +1296,8 @@ enum MCPSettingsCatalog {
       id: "dictate_prompt.field_text_context", title: "Send text around the cursor", category: "dictate_prompt",
       key: UserDefaultsKeys.promptSendsFocusedFieldText,
       defaultValue: SettingsDefaults.promptSendsFocusedFieldText,
-      proposalOnly: true))
+      proposalOnly: true,
+      consentText: consentText(for: "dictate_prompt.field_text_context")))
 
     // MARK: dictate_prompt.screenshot_context — on needs Screen Recording already granted.
     // The Settings toggle prompts via SCShareableContent; MCP only reads the injected check.
@@ -1285,6 +1305,7 @@ enum MCPSettingsCatalog {
       id: "dictate_prompt.screenshot_context", title: "Send picture of front window", category: "dictate_prompt",
       key: UserDefaultsKeys.screenshotInPromptMode, defaultValue: SettingsDefaults.screenshotInPromptMode,
       proposalOnly: true,
+      consentText: consentText(for: "dictate_prompt.screenshot_context"),
       enablingRefused: {
         deps.hasScreenRecordingPermission()
           ? nil

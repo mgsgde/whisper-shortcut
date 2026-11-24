@@ -175,7 +175,8 @@ enum SettingsAdvisor {
         mcpTitle: "Send text around the cursor",
         mcpBenefit: "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works.",
         permission: nil,
-        offHow: "Ask the user, then update_settings dictate_prompt.field_text_context = true."),
+        offHow:
+          "Propose update_settings dictate_prompt.field_text_context = true. WhisperShortcut shows the user the consent text before anything changes; do not turn it on any other way."),
       make(
         "dictate_prompt.screenshot_context", title: String(localized: "Send picture of front window"),
         benefit: String(localized: "When the field is empty or unreadable, Dictate Prompt also sees the front window (never the whole screen)."),
@@ -184,9 +185,9 @@ enum SettingsAdvisor {
           "When the focused field is empty, short or unreadable, Dictate Prompt also sees a picture of the front window (never the whole screen), so it understands what the user is replying to or editing.",
         permission: .screenRecording,
         offHow:
-          "Propose update_settings dictate_prompt.screenshot_context = true; the user accepts it in WhisperShortcut.",
+          "Propose update_settings dictate_prompt.screenshot_context = true. WhisperShortcut shows the user the consent text before anything changes; do not turn it on any other way.",
         offMissingHow:
-          "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in the Dictate Prompt settings.",
+          "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in Dictate Prompt settings. That switch shows the consent text first.",
         onMissingHow:
           "The setting is on but does nothing without Screen Recording. The user grants it in WhisperShortcut Settings → Permissions."),
       make(
@@ -275,9 +276,12 @@ enum SettingsAdvisor {
 
     // Recommended: features that are off. Skipped when turning them on would be refused right
     // now (e.g. no Accessibility permission yet: the blocker above covers that case).
+    // Settings with consent text are optional: an AI app must not recommend them the way it
+    // recommends Auto-paste. The proposal window shows the consent text before they change.
     for f in states where !f.isOn && f.setting.validate(true) == nil {
+      let priority: SettingsFinding.Priority = f.setting.consentText == nil ? .recommended : .optional
       out.append(SettingsFinding(
-        id: f.id, title: f.title, benefit: f.benefit, priority: .recommended,
+        id: f.id, title: f.title, benefit: f.benefit, priority: priority,
         current: "Off", recommended: "On", fix: .set(id: f.id, value: .bool(true))))
     }
 
