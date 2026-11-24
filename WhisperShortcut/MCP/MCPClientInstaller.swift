@@ -207,10 +207,23 @@ enum MCPClientInstaller {
   /// Rewrites a stale token or a previous loopback URL in configs of clients connected earlier
   /// (a stored folder bookmark). Silent: never shows UI, never adds an entry, errors are logged
   /// and skipped.
+  ///
+  /// `executablePath` defaults to this launch's stable path. Nil (missing, translocated, or a
+  /// disk image) skips the repair: Claude Desktop's entry stores that path as `command`, and an
+  /// empty string would replace a working one.
   @MainActor
-  static func repairStaleTokens(url: String, readToken: String, writeToken: String, serverName: String) {
+  static func repairStaleTokens(
+    url: String, readToken: String, writeToken: String, serverName: String,
+    executablePath: String? = nil
+  ) {
     let defaults = UserDefaults.standard
     guard (defaults.object(forKey: UserDefaultsKeys.mcpAutoRepairClientTokens) as? Bool ?? true) else { return }
+    // `executablePath` is a test seam. Production leaves it nil and this launch's path is checked.
+    // A translocated or disk-image path fails the check the same way a missing one does.
+    guard let path = try? stableExecutablePath(executablePath ?? Bundle.main.executablePath) else {
+      DebugLogger.logWarning("MCP-INSTALL: stale-token repair skipped, no stable executable path")
+      return
+    }
     for client in MCPClient.allCases {
       guard let bookmark = defaults.data(forKey: bookmarkKey(client)) else { continue }
       do {
@@ -230,7 +243,7 @@ enum MCPClientInstaller {
           client: client, existing: existing, serverName: serverName, url: url,
           ownURL: { $0 == url || isOwnLoopbackMCPURL($0) },
           readToken: readToken, writeToken: writeToken, tokenKind: kind,
-          executablePath: (try? stableExecutablePath(Bundle.main.executablePath)) ?? "")
+          executablePath: path)
         else { continue }
         try writeConfigAtomically(output, to: file)
         DebugLogger.logSuccess("MCP-INSTALL: repaired stale token or URL for \(client.displayName)")

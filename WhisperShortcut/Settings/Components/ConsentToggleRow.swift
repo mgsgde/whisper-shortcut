@@ -10,7 +10,8 @@ struct ConsentToggleRow: View {
   let defaultsKey: String
   @Binding var isOn: Bool
   let alertTitle: LocalizedStringKey
-  let alertMessage: LocalizedStringKey
+  /// Already localized. The Screen Context rows pass `MCPSetting.consentText`.
+  let alertMessage: String
   /// Extra work after consent, e.g. a permission request. Runs only behind Allow, never from
   /// `onChange`: `onChange` also fires when `data` is reloaded programmatically, which must
   /// never trigger a system prompt.
@@ -54,7 +55,7 @@ struct ConsentToggleRow: View {
         save()
       }
     } message: {
-      Text(alertMessage)
+      Text(verbatim: alertMessage)
     }
   }
 }

@@ -26,7 +26,7 @@ struct MCPMeetingTools {
   // MARK: - Definitions
 
   static let toolDefinitions: [[String: Any]] = [
-    [
+    MCPToolTraits.tag([
       "name": "get_live_transcript",
       "description":
         "Returns the transcript of the meeting that is being recorded right now in WhisperShortcut. "
@@ -43,8 +43,8 @@ struct MCPMeetingTools {
         ],
       ] as [String: Any],
       "annotations": ["title": "Get Live Transcript", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .liveTranscriptRead, runsOnMainThread: false),
+    MCPToolTraits.tag([
       "name": "list_meetings",
       "description":
         "Lists recorded meetings, newest first, with id, date, title, duration, whether notes and a summary exist, and whether the meeting is live.",
@@ -55,8 +55,8 @@ struct MCPMeetingTools {
         ],
       ] as [String: Any],
       "annotations": ["title": "List Meetings", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .meetingRead, runsOnMainThread: false),
+    MCPToolTraits.tag([
       "name": "get_meeting",
       "description":
         "Returns the transcript, notes and/or summary of one meeting by id (as returned by list_meetings).",
@@ -77,8 +77,8 @@ struct MCPMeetingTools {
         "required": ["id"],
       ] as [String: Any],
       "annotations": ["title": "Get Meeting", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .meetingRead, runsOnMainThread: false),
+    MCPToolTraits.tag([
       "name": "search_meetings",
       "description":
         "Case- and accent-insensitive text search across all meeting transcripts and notes. Returns meeting id, timestamp and the matching passage, newest meetings first.",
@@ -91,8 +91,18 @@ struct MCPMeetingTools {
         "required": ["query"],
       ] as [String: Any],
       "annotations": ["title": "Search Meetings", "readOnlyHint": true, "openWorldHint": false],
-    ],
+    ], telemetry: .meetingRead, runsOnMainThread: false),
   ]
+
+  /// Definitions a client sees: the `_telemetry` / `_runsOnMainThread` flags are not part of the protocol.
+  static var clientToolDefinitions: [[String: Any]] {
+    toolDefinitions.map(MCPToolTraits.clientFacing)
+  }
+
+  static func telemetry(for name: String) -> TelemetryCountName? {
+    guard let def = toolDefinitions.first(where: { ($0["name"] as? String) == name }) else { return nil }
+    return MCPToolTraits.telemetry(in: def)
+  }
 
   // MARK: - Dispatch
 

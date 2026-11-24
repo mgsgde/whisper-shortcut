@@ -2,6 +2,37 @@ import Foundation
 
 typealias MCPToolResult = (text: String, isError: Bool)
 
+/// Main-thread and telemetry flags carried on a tool definition and stripped before a client sees it.
+/// A new tool sets them here, next to its name. `MCPDispatcher` reads them instead of a second list.
+enum MCPToolTraits {
+  static let telemetryKey = "_telemetry"
+  static let mainThreadKey = "_runsOnMainThread"
+
+  static func tag(
+    _ definition: [String: Any], telemetry: TelemetryCountName?, runsOnMainThread: Bool
+  ) -> [String: Any] {
+    var copy = definition
+    if let telemetry { copy[telemetryKey] = telemetry.rawValue }
+    copy[mainThreadKey] = runsOnMainThread
+    return copy
+  }
+
+  static func clientFacing(_ definition: [String: Any]) -> [String: Any] {
+    var copy = definition
+    copy.removeValue(forKey: telemetryKey)
+    copy.removeValue(forKey: mainThreadKey)
+    return copy
+  }
+
+  static func telemetry(in definition: [String: Any]) -> TelemetryCountName? {
+    (definition[telemetryKey] as? String).flatMap(TelemetryCountName.init(rawValue:))
+  }
+
+  static func runsOnMainThread(_ definition: [String: Any]) -> Bool {
+    definition[mainThreadKey] as? Bool ?? true
+  }
+}
+
 /// Everything the configuration tools depend on, injected so tests use scratch directories and
 /// fake settings. `live` wires the real stores.
 struct MCPConfigEnvironment {
@@ -135,15 +166,12 @@ struct MCPConfigTools {
     "meeting_summary_model": UserDefaultsKeys.selectedMeetingSummaryModel,
   ]
 
-  static let readToolNames: Set<String> = [
-    "get_configuration", "get_recent_interactions", "get_config_history", "get_settings",
-    "get_proposal_status", "list_whisper_shortcut_docs", "read_whisper_shortcut_doc",
-  ]
-  static let writeToolNames: Set<String> = [
-    "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "create_template", "update_template", "delete_template", "report_problem",
-    "update_settings",
-  ]
+  static var readToolNames: Set<String> {
+    Set(readToolDefinitions.compactMap { $0["name"] as? String })
+  }
+  static var writeToolNames: Set<String> {
+    Set(writeToolDefinitions.compactMap { $0["name"] as? String })
+  }
 
   func handles(_ name: String) -> Bool {
     Self.readToolNames.contains(name) || Self.writeToolNames.contains(name)
@@ -158,7 +186,7 @@ struct MCPConfigTools {
   private static let sectionNames = sections.map(\.name)
 
   static let readToolDefinitions: [[String: Any]] = [
-    [
+    MCPToolTraits.tag([
       "name": "get_configuration",
       "description":
         "Overview of how WhisperShortcut is configured: version, models, every global shortcut (including Dictate Live and each template's own key, so check it before proposing a free key), templates (id, name, length, key), which system prompt sections are customized, writing style, commands, quick prompts with how often each was used in 30 days, the access level AI apps have, and the recipe for tuning WhisperShortcut to the user. Call this first when the user wants WhisperShortcut improved.",
@@ -172,20 +200,20 @@ struct MCPConfigTools {
         ],
       ] as [String: Any],
       "annotations": ["title": "Get Configuration", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .configRead, runsOnMainThread: true),
+    MCPToolTraits.tag([
       "name": "get_recent_interactions",
       "description": InteractionLogTool.description(subject: "The user's recent dictations, Dictate Prompt turns and chats"),
       "inputSchema": InteractionLogTool.parameters,
       "annotations": ["title": "Get Recent Interactions", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .configRead, runsOnMainThread: false),
+    MCPToolTraits.tag([
       "name": "get_config_history",
       "description": ConfigHistoryTool.description,
       "inputSchema": ConfigHistoryTool.parameters,
       "annotations": ["title": "Get Config History", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .configRead, runsOnMainThread: false),
+    MCPToolTraits.tag([
       "name": "list_whisper_shortcut_docs",
       "description":
         "Lists WhisperShortcut's own documentation (overview, full user guide, data folders, practice playbook) with live shortcut bindings. Read these before explaining how the app works or recommending settings.",
@@ -194,8 +222,8 @@ struct MCPConfigTools {
         "properties": [:] as [String: Any],
       ] as [String: Any],
       "annotations": ["title": "List WhisperShortcut Docs", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .configRead, runsOnMainThread: false),
+    MCPToolTraits.tag([
       "name": "read_whisper_shortcut_doc",
       "description": "Returns one WhisperShortcut doc by name from list_whisper_shortcut_docs.",
       "inputSchema": [
@@ -206,8 +234,8 @@ struct MCPConfigTools {
         "required": ["name"],
       ] as [String: Any],
       "annotations": ["title": "Read WhisperShortcut Doc", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .configRead, runsOnMainThread: true),
+    MCPToolTraits.tag([
       "name": "get_settings",
       "description":
         "Lists WhisperShortcut settings an AI app can read and, within the user's access level, change with update_settings: current value, type, and for enums the same options the user sees in the picker. Optionally filter by category (e.g. \"models\", \"shortcuts\").",
@@ -216,31 +244,31 @@ struct MCPConfigTools {
         "properties": ["category": ["type": "string", "description": "Only settings in this category."]],
       ] as [String: Any],
       "annotations": ["title": "Get Settings", "readOnlyHint": true, "openWorldHint": false],
-    ],
-    [
+    ], telemetry: .configRead, runsOnMainThread: true),
+    MCPToolTraits.tag([
       "name": "get_proposal_status",
       "description": "Reports whether a proposal made earlier is pending, accepted or declined.",
       "inputSchema": [
         "type": "object", "properties": ["id": ["type": "string"]], "required": ["id"],
       ] as [String: Any],
       "annotations": ["title": "Get Proposal Status", "readOnlyHint": true, "openWorldHint": false],
-    ],
+    ], telemetry: .configRead, runsOnMainThread: true),
   ]
 
   private static func write(
     _ name: String, _ title: String, _ description: String, _ properties: [String: Any], required: [String],
-    annotations: [String: Any]
+    annotations: [String: Any], telemetry: TelemetryCountName?
   ) -> [String: Any] {
     var props = properties
     props["rationale"] = rationaleProperty
     var ann = annotations
     ann["title"] = title
-    return [
+    return MCPToolTraits.tag([
       "name": name, "description": description,
       "inputSchema": ["type": "object", "properties": props, "required": required + ["rationale"]] as [String: Any],
       "_meta": ["anthropic/requiresUserInteraction": true],
       "annotations": ann,
-    ]
+    ], telemetry: telemetry, runsOnMainThread: true)
   }
 
   // Built apart from the definitions literal, which a concatenation inside would make much
@@ -258,7 +286,8 @@ struct MCPConfigTools {
       addGlossaryTermsDescription,
       ["terms": ["type": "array", "items": ["type": "string"], "description": "Terms to add."]],
       required: ["terms"],
-      annotations: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false]),
+      annotations: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false],
+      telemetry: .configChange),
     write(
       "update_system_prompt", "Update System Prompt",
       updateSystemPromptDescription,
@@ -270,12 +299,14 @@ struct MCPConfigTools {
             "The complete new text of the section. For dictation and dictate_prompt: only additional instructions (context, vocabulary, style) on top of the fixed built-in prompt; never restate the task or write a whole prompt. Empty content clears those two.",
         ],
       ], required: ["section", "content"],
-      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false],
+      telemetry: .configChange),
     write(
       "update_writing_style_profile", "Update Writing Style Profile",
       "Replaces the writing style profile with the full new text (max \(WritingStyleStore.maxChars) characters). Read it first. Always waits for the user to accept it in WhisperShortcut, at every access level.",
       ["content": ["type": "string", "description": "The complete new profile."]], required: ["content"],
-      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false],
+      telemetry: .configChange),
     write(
       "save_command", "Save Command",
       "Creates or overwrites a chat command (a saved instruction the user runs as /name).",
@@ -286,11 +317,13 @@ struct MCPConfigTools {
         "label": ["type": "string", "description": "Optional button text."],
         "description": ["type": "string", "description": "Optional one-line description."],
       ], required: ["name", "text", "scope"],
-      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false],
+      telemetry: .configChange),
     write(
       "delete_command", "Delete Command", "Moves a chat command to the Trash.",
       ["name": ["type": "string"]], required: ["name"],
-      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false],
+      telemetry: .configChange),
     write(
       "create_template", "Create Template",
       "Creates a dictation template: a fixed output format (a note layout, a report) with its own global shortcut that the user sets in Settings → Templates. A template does not run through Dictate Prompt; the user presses the template's own shortcut (or the generic Template shortcut), speaks, and the result comes back in this format. Put the whole format description in text (at most \(maxTemplateInstructionsCharacters) characters). Does not set a shortcut. Always waits for the user to accept it in WhisperShortcut, at every access level.",
@@ -298,7 +331,8 @@ struct MCPConfigTools {
         "name": ["type": "string", "description": "Short name, max \(maxTemplateNameCharacters) characters."],
         "text": ["type": "string", "description": "The format instructions, max \(maxTemplateInstructionsCharacters) characters."],
       ], required: ["name", "text"],
-      annotations: ["readOnlyHint": false, "destructiveHint": false, "openWorldHint": false]),
+      annotations: ["readOnlyHint": false, "destructiveHint": false, "openWorldHint": false],
+      telemetry: nil),
     write(
       "update_template", "Update Template",
       "Changes the name and/or the full text of an existing template (id from get_configuration). Read it first with get_configuration include [\"templates\"]; text replaces the whole format. The template's shortcut is not changed. Always waits for the user to accept it in WhisperShortcut, at every access level.",
@@ -307,12 +341,14 @@ struct MCPConfigTools {
         "name": ["type": "string", "description": "New name, max \(maxTemplateNameCharacters) characters. Optional."],
         "text": ["type": "string", "description": "The complete new format instructions, max \(maxTemplateInstructionsCharacters) characters. Optional."],
       ], required: ["id"],
-      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false],
+      telemetry: nil),
     write(
       "delete_template", "Delete Template", "Deletes a dictation template (id from get_configuration), including its own shortcut. Can be undone from the change history in WhisperShortcut.",
       ["id": ["type": "string", "description": "Template id from get_configuration."]], required: ["id"],
-      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
-    [
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false],
+      telemetry: nil),
+    MCPToolTraits.tag([
       "name": "report_problem",
       "description":
         "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Before calling, read get_configuration; if a section's warnings explain the problem, fix the configuration instead. The report opens in WhisperShortcut's \"Report a Problem\" window prefilled; the user reviews it and sends it by email with their configuration attached; nothing is sent automatically. Remove names, patient, customer and other private data from the examples. The user's prompt configuration is attached automatically; point out names of patients, clients or other personal data in it so the user removes them before sending.",
@@ -335,7 +371,7 @@ struct MCPConfigTools {
       ] as [String: Any],
       "_meta": ["anthropic/requiresUserInteraction": true],
       "annotations": ["title": "Report Problem", "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false],
-    ],
+    ], telemetry: .problemReport, runsOnMainThread: true),
     write(
       "update_settings", "Update Settings",
       "Changes one or more settings from get_settings. All changes are validated together against the state the whole call would leave (not just today's values) first; if any one is invalid, nothing is written. Settings that always wait for approval (e.g. Launch at login) turn the whole call into one proposal, even at access level \"apply\". A \"shortcut\"-type setting's value is {\"key\": <name, e.g. \"a\"/\"1\"/\"f5\"/\"space\"/\"return\">, \"modifiers\": [subset of \"command\",\"option\",\"control\",\"shift\"]}, or null to disable it.",
@@ -345,7 +381,8 @@ struct MCPConfigTools {
           "description": "Setting id (from get_settings) → new value. Max 20 per call.",
         ]
       ], required: ["changes"],
-      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false],
+      telemetry: .settingsChange),
   ]
 
   /// Tool definitions visible to a client: gated only by token type, not by the user's configured
@@ -353,7 +390,25 @@ struct MCPConfigTools {
   /// token sees must not change as the user flips Settings between read/propose/apply. Calling a
   /// write tool at access level "read" is still rejected in `call()`, which runs per request.
   func toolDefinitions(access: MCPAccess) -> [[String: Any]] {
-    access == .write ? Self.readToolDefinitions + Self.writeToolDefinitions : Self.readToolDefinitions
+    let raw = access == .write ? Self.readToolDefinitions + Self.writeToolDefinitions : Self.readToolDefinitions
+    return raw.map(MCPToolTraits.clientFacing)
+  }
+
+  /// File reads stay off the main thread. Everything else in this list hops there.
+  static func runsOnMainThread(_ name: String) -> Bool {
+    let lists = [readToolDefinitions, writeToolDefinitions]
+    guard let def = lists.lazy.compactMap({ $0.first { ($0["name"] as? String) == name } }).first else {
+      return true
+    }
+    return MCPToolTraits.runsOnMainThread(def)
+  }
+
+  static func telemetry(for name: String) -> TelemetryCountName? {
+    let lists = [readToolDefinitions, writeToolDefinitions]
+    guard let def = lists.lazy.compactMap({ $0.first { ($0["name"] as? String) == name } }).first else {
+      return nil
+    }
+    return MCPToolTraits.telemetry(in: def)
   }
 
   // MARK: - Dispatch

@@ -79,6 +79,14 @@ struct SettingsAdvisorTests {
     let found = f.findings().first { $0.id == "clipboard.auto_paste" }
     #expect(found?.priority == .recommended)
     #expect(found?.fix == .set(id: "clipboard.auto_paste", value: .bool(true)))
+    f.defaults.set(false, forKey: UserDefaultsKeys.promptSendsFocusedFieldText)
+    f.defaults.set(false, forKey: UserDefaultsKeys.screenshotInPromptMode)
+    #expect(f.findings().first { $0.id == "dictate_prompt.field_text_context" }?.priority == .optional)
+    #expect(f.findings().first { $0.id == "dictate_prompt.screenshot_context" }?.priority == .optional)
+    #expect(f.catalog.first { $0.id == "dictate_prompt.field_text_context" }?.consentText
+      == MCPSettingsCatalog.consentText(for: "dictate_prompt.field_text_context"))
+    f.defaults.set(true, forKey: UserDefaultsKeys.promptSendsFocusedFieldText)
+    f.defaults.set(true, forKey: UserDefaultsKeys.screenshotInPromptMode)
     f.defaults.set(true, forKey: UserDefaultsKeys.autoPasteAfterDictation)
     #expect(f.ids().isEmpty)
   }
@@ -134,6 +142,7 @@ struct SettingsAdvisorTests {
     let first = SettingsAdvisor.review(catalog: f.catalog, deps: f.deps, suppressions: f.suppressions)
     #expect(first.findings.map(\.id) == ["chat.model"])
     #expect(first.findings.first?.priority == .optional)
+    #expect(f.suppressions.storedLabel(for: "chat.model")?.contains("→") == true)
     let second = SettingsAdvisor.review(catalog: f.catalog, deps: f.deps, suppressions: f.suppressions)
     #expect(second.findings.isEmpty)
     #expect(second.suppressedCount == 1)
@@ -333,8 +342,8 @@ struct SettingsAdvisorTests {
   }
 
   /// Every id `SettingsAdvisor.candidates` can append. There is no static list on the type:
-  /// blockers (`privacy.save_usage_data`, the two permissions), recommended feature states
-  /// (`mcpFeatureOrder`'s five settings), the three `modelIDs`, and `writing_style.enabled`.
+  /// blockers (`privacy.save_usage_data`, the two permissions), the five feature rows
+  /// (`mcpFeatureOrder`), the three `modelIDs`, and `writing_style.enabled`.
   /// `recent_interactions` is MCP `not_yet_enabled` only and names two controls, so it stays nil.
   @Test("Every finding the advisor can emit points at the tab that shows that setting")
   func findingSettingsTabs() {

@@ -72,7 +72,7 @@ struct MCPDispatcher {
     case "ping":
       return ok([String: Any]())
     case "tools/list":
-      return ok(["tools": MCPMeetingTools.toolDefinitions + configTools.toolDefinitions(access: access)])
+      return ok(["tools": MCPMeetingTools.clientToolDefinitions + configTools.toolDefinitions(access: access)])
     case "tools/call":
       guard let params, let name = params["name"] as? String else { return fail(-32602, "Missing params.name") }
       recordToolUse(name)
@@ -80,9 +80,8 @@ struct MCPDispatcher {
       let start = Date()
       let result: MCPToolResult
       // File reads stay off the main thread. The rest of the config tools hop there.
-      if configTools.handles(name), name != "get_recent_interactions", name != "get_config_history",
-        name != "list_whisper_shortcut_docs", name != "read_whisper_shortcut_doc"
-      {
+      // Which is which is a flag on the tool definition (`MCPToolTraits`).
+      if configTools.handles(name), MCPConfigTools.runsOnMainThread(name) {
         let bounded = MCPMain.runBounded(timeout: MCPMain.mainWaitTimeout) {
           configTools.call(name: name, arguments: args, access: access)
         }
@@ -148,25 +147,7 @@ struct MCPDispatcher {
 
   /// One count per `tools/call`, keyed by the fixed tool name. Anything else counts nothing.
   private func recordToolUse(_ tool: String) {
-    let countName: TelemetryCountName?
-    switch tool {
-    case "get_meeting", "list_meetings", "search_meetings":
-      countName = .meetingRead
-    case "get_live_transcript":
-      countName = .liveTranscriptRead
-    case "get_configuration", "get_settings", "get_recent_interactions", "get_config_history",
-      "get_proposal_status", "list_whisper_shortcut_docs", "read_whisper_shortcut_doc":
-      countName = .configRead
-    case "add_glossary_terms", "save_command", "delete_command", "update_system_prompt",
-      "update_writing_style_profile":
-      countName = .configChange
-    case "update_settings":
-      countName = .settingsChange
-    case "report_problem":
-      countName = .problemReport
-    default:
-      countName = nil
-    }
+    let countName = MCPConfigTools.telemetry(for: tool) ?? MCPMeetingTools.telemetry(for: tool)
     if let countName {
       TelemetryService.shared.count(.mcp, countName)
     }

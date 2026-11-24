@@ -98,14 +98,14 @@ enum DictationOnlyFlow {
     DictationOnlyStep.steps(
       isAppStore: DictationOnlyDefaults.isAppStoreBuild,
       globeConflict: GlobeKeyUsage.current.conflictsWithFnDictation,
-      modelReady: ModelManager.shared.isModelAvailable(DictationOnlyDownloadStep.model))
+      modelReady: ModelManager.shared.isModelAvailable(DictationOnlyDefaults.offlineModel()))
   }
 
   /// Compiles the model (Core ML / ANE, ~25 s on the first load) while the person is still in the
   /// tour, so the first "Try dictation" does not wait for it. `warmOfflineModel` never downloads
   /// and joins a load that is already running (`LocalSpeechService.initializeModel`).
   static func warmModel(reason: String) {
-    let model = DictationOnlyDownloadStep.model
+    let model = DictationOnlyDefaults.offlineModel()
     DebugLogger.log("ONBOARDING: warming \(model.displayName) (\(reason))")
     ConnectionPrewarmer.warmOfflineModel(model)
   }
@@ -113,7 +113,7 @@ enum DictationOnlyFlow {
   /// Starts the one-time download as soon as the path is chosen, so it runs while the person
   /// picks a language and allows the microphone. The download step shows its progress.
   static func startDownloadEarly() {
-    let model = DictationOnlyDownloadStep.model
+    let model = DictationOnlyDefaults.offlineModel()
     let manager = ModelManager.shared
     guard !manager.isModelAvailable(model), !manager.downloadingModels.contains(model) else { return }
     Task {
@@ -357,7 +357,7 @@ struct WelcomeView: View {
     // Not started, failed or short of space: the screen's own button (Download, Check again)
     // is what to click next.
     case .download:
-      let model = DictationOnlyDownloadStep.model
+      let model = DictationOnlyDefaults.offlineModel()
       return !modelManager.isModelAvailable(model) && !modelManager.downloadingModels.contains(model)
     case .language, .done, .none: return false
     }

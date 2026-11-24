@@ -196,6 +196,16 @@ struct DictationOnlyDefaultsTests {
     #expect(notes.count == 1)
   }
 
+  @Test("Ready checks follow the selected offline model and fall back to the default")
+  func offlineModelFollowsSelection() {
+    let defaults = makeDefaults()
+    #expect(DictationOnlyDefaults.offlineModel(defaults: defaults) == DictationOnlyDefaults.model.offlineModelType)
+    defaults.set(TranscriptionModel.openAIGPTTranscribe.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    #expect(DictationOnlyDefaults.offlineModel(defaults: defaults) == DictationOnlyDefaults.model.offlineModelType)
+    defaults.set(TranscriptionModel.whisperTiny.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    #expect(DictationOnlyDefaults.offlineModel(defaults: defaults) == .whisperTiny)
+  }
+
   @Test("Applies Offline Mode, Parakeet, Mac language, Dictate Live and spoken punctuation")
   func appliesAll() {
     let defaults = makeDefaults()
@@ -257,10 +267,12 @@ struct DictationOnlyDefaultsTests {
 
   // MARK: - Snapshot and restore
 
-  /// A fake Offline switch that writes the key like `OfflineMode.switchTo` does on `.standard`.
+  /// A fake Offline switch. Turning it off restores the model snapshot, which is what
+  /// `OfflineMode.switchTo(false)` does through the reconciler. The transcription model lives there.
   private func offlineSwitch(_ defaults: UserDefaults, calls: Counter = Counter()) -> @MainActor (Bool) -> Void {
     { enabled in
       calls.count += 1
+      if !enabled { ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults) }
       defaults.set(enabled, forKey: UserDefaultsKeys.offlineModeEnabled)
     }
   }
@@ -269,7 +281,10 @@ struct DictationOnlyDefaultsTests {
     let toggle = offlineSwitch(defaults, calls: calls)
     _ = DictationOnlyDefaults.apply(
       defaults: defaults, preferredLanguages: ["de-DE"], isAppleSilicon: true, isAppStore: false,
-      switchOfflineOn: { toggle(true) }, notifySelectionsChanged: {})
+      switchOfflineOn: {
+        ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
+        toggle(true)
+      }, notifySelectionsChanged: {})
   }
 
   @Test("Apply then restore gives every key back, absent ones removed")
@@ -342,17 +357,20 @@ struct DictationOnlyDefaultsTests {
     #expect(defaults.bool(forKey: UserDefaultsKeys.dictationOnlyDefaultsApplied))
   }
 
-  @Test("A model changed after the tour is kept; keys still at the applied value are restored")
-  func restoreKeepsUserModel() {
+  @Test("The transcription model comes back from the Offline Mode snapshot, not the dictation one")
+  func restoreTranscriptionFromOfflineSnapshot() {
     let defaults = makeDefaults()
     defaults.set("gemini", forKey: UserDefaultsKeys.selectedTranscriptionModel)
     defaults.set(DictateMode.dictate.rawValue, forKey: UserDefaultsKeys.dictateMode)
     applyWithSwitch(defaults)
+    let stored = defaults.dictionary(forKey: UserDefaultsKeys.dictationOnlyDefaultsSnapshot)
+    let present = stored?["present"] as? [String: Any]
+    #expect(present?[UserDefaultsKeys.selectedTranscriptionModel] == nil)
     defaults.set("whisper-large", forKey: UserDefaultsKeys.selectedTranscriptionModel)
 
     let offline = Counter()
     #expect(DictationOnlyDefaults.restore(defaults: defaults, switchOffline: offlineSwitch(defaults, calls: offline)))
-    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "whisper-large")
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) == "gemini")
     #expect(defaults.string(forKey: UserDefaultsKeys.dictateMode) == DictateMode.dictate.rawValue)
     #expect(defaults.object(forKey: UserDefaultsKeys.whisperLanguage) == nil)
     #expect(defaults.object(forKey: UserDefaultsKeys.punctuationMode) == nil)

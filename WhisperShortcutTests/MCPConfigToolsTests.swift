@@ -183,13 +183,15 @@ struct MCPConfigToolsTests {
   func everyToolHasAnnotationsTitle() {
     let env = MCPTestEnv(level: .apply)
     let d = env.dispatcher()
-    let all = MCPMeetingTools.toolDefinitions + d.configTools.toolDefinitions(access: .write)
+    let all = MCPMeetingTools.clientToolDefinitions + d.configTools.toolDefinitions(access: .write)
     #expect(!all.isEmpty)
     for tool in all {
       let annotations = tool["annotations"] as? [String: Any]
       let name = tool["name"] as? String ?? "?"
       #expect(annotations != nil, "\(name) has no annotations")
       #expect(((annotations?["title"] as? String)?.isEmpty == false), "\(name) has no annotations.title")
+      #expect(tool["_telemetry"] == nil, "\(name) leaks its telemetry flag")
+      #expect(tool["_runsOnMainThread"] == nil, "\(name) leaks its main-thread flag")
     }
   }
 

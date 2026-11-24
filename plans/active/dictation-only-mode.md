@@ -24,7 +24,9 @@ first run that ends in a working offline dictation in about ten minutes without 
    Offline Mode on → Parakeet model selected → dictation language = Mac language if supported,
    else an explicit pick (never auto-detect) → Dictate Live on (direct build on Apple Silicon
    only, otherwise plain Dictate) → spoken punctuation on.
-   Offline Mode stays on if the mode is later switched off; the copy says so.
+   Switching the mode off restores that snapshot (`DictationOnlyDefaults.restore`), including
+   Offline Mode: it goes back to whatever it was before the card ran, and stays on only when
+   it was already on.
 5. **Hidden while on:** Chat, Meetings, AI apps/MCP, Accounts/API keys, model and provider
    pickers, Read Aloud, Screenshot, Dictate Prompt, Templates. Hidden means: not in the status
    menu, not in Settings, global shortcuts not registered (bindings are kept), MCP server not

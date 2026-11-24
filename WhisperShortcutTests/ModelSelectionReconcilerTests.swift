@@ -278,6 +278,22 @@ struct ModelSelectionReconcilerTests {
     #expect(defaults.string(forKey: promptKey) == PromptModel.gemini38Flash.rawValue)
   }
 
+  @Test("A stored __unset__ sentinel still removes the key")
+  func legacyUnsetSentinelRestores() {
+    let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let key = UserDefaultsKeys.selectedTranscriptionModel
+    defaults.set("parakeet-ultra", forKey: key)
+    defaults.set(
+      [key: "__unset__", UserDefaultsKeys.selectedChatModel: "gemini-3.8-flash"],
+      forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+    ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
+    #expect(defaults.object(forKey: key) == nil)
+    #expect(defaults.string(forKey: UserDefaultsKeys.selectedChatModel) == "gemini-3.8-flash")
+    #expect(defaults.object(forKey: UserDefaultsKeys.offlineModePreOfflineSelections) == nil)
+  }
+
   @Test("A key that was unset is removed on restore; toggling twice is stable")
   func unsetKeyRemovedOnRestoreAndToggleTwice() {
     let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"

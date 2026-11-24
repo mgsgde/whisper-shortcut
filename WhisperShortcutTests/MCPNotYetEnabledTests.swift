@@ -78,7 +78,7 @@ final class MCPNotYetEnabledTests: XCTestCase {
     assertOnly(
       f.hints(), id: "dictate_prompt.screenshot_context", state: "off",
       howToEnable:
-        "Propose update_settings dictate_prompt.screenshot_context = true; the user accepts it in WhisperShortcut.")
+        "Propose update_settings dictate_prompt.screenshot_context = true. WhisperShortcut shows the user the consent text before anything changes; do not turn it on any other way.")
   }
 
   func testFrontWindowOffWithoutScreenRecording() {
@@ -88,7 +88,7 @@ final class MCPNotYetEnabledTests: XCTestCase {
     assertOnly(
       f.hints(), id: "dictate_prompt.screenshot_context", state: "off_permission_missing",
       howToEnable:
-        "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in the Dictate Prompt settings.")
+        "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in Dictate Prompt settings. That switch shows the consent text first.")
   }
 
   func testFrontWindowOnWithoutScreenRecording() {
@@ -133,7 +133,8 @@ final class MCPNotYetEnabledTests: XCTestCase {
     f.set(UserDefaultsKeys.promptSendsFocusedFieldText, false)
     assertOnly(
       f.hints(), id: "dictate_prompt.field_text_context", state: "off",
-      howToEnable: "Ask the user, then update_settings dictate_prompt.field_text_context = true.")
+      howToEnable:
+        "Propose update_settings dictate_prompt.field_text_context = true. WhisperShortcut shows the user the consent text before anything changes; do not turn it on any other way.")
   }
 
   func testOffFeaturesStayInProjectionOrder() {

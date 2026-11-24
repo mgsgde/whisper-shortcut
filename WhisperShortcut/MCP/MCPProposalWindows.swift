@@ -68,6 +68,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       window.setContentSize(NSSize(width: 560, height: 420))
       window.contentView = NSHostingView(rootView: MCPSettingsProposalReviewView(
         items: proposal.settingsChanges ?? [], rationale: proposal.rationale,
+        consentTexts: Self.consentTexts(for: proposal.settingsChanges ?? []),
         onAccept: { [weak self] in self?.acceptSettings(id) },
         onCancel: { [weak self] in self?.decline(id) }))
     } else if proposal.isFromWritingStyle {
@@ -83,6 +84,20 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     window.center()
     windows[id] = window
     bringForward(window, activate: activate)
+  }
+
+  /// Consent paragraphs for settings in this proposal, in change order, each once.
+  static func consentTexts(for items: [MCPSettingsChangeItem]) -> [String] {
+    let catalog = MCPProposalStore.shared.settingsCatalog
+    var seen = Set<String>()
+    var texts: [String] = []
+    for item in items {
+      guard let text = catalog.first(where: { $0.id == item.id })?.consentText, !text.isEmpty,
+        seen.insert(text).inserted
+      else { continue }
+      texts.append(text)
+    }
+    return texts
   }
 
   private func reviewView(for proposal: MCPProposal) -> ProposalReviewView {

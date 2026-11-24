@@ -38,8 +38,6 @@ struct SettingsFinding: Equatable {
 /// setting had at that moment: a changed value clears the suppression, so a finding only comes
 /// back when something it is about has moved.
 struct ImproveSuppressions {
-  static let defaultsKey = "improveSuppressions"
-
   private let defaults: UserDefaults
 
   init(defaults: UserDefaults = .standard) {
@@ -47,13 +45,13 @@ struct ImproveSuppressions {
   }
 
   private var stored: [String: String] {
-    (defaults.dictionary(forKey: Self.defaultsKey) as? [String: String]) ?? [:]
+    (defaults.dictionary(forKey: UserDefaultsKeys.improveSuppressions) as? [String: String]) ?? [:]
   }
 
   func suppress(id: String, currentValue: String) {
     var all = stored
     all[id] = currentValue
-    defaults.set(all, forKey: Self.defaultsKey)
+    defaults.set(all, forKey: UserDefaultsKeys.improveSuppressions)
   }
 
   func isSuppressed(id: String, currentValue: String) -> Bool {
@@ -70,9 +68,9 @@ struct ImproveSuppressions {
     var all = stored
     guard all.removeValue(forKey: id) != nil else { return }
     if all.isEmpty {
-      defaults.removeObject(forKey: Self.defaultsKey)
+      defaults.removeObject(forKey: UserDefaultsKeys.improveSuppressions)
     } else {
-      defaults.set(all, forKey: Self.defaultsKey)
+      defaults.set(all, forKey: UserDefaultsKeys.improveSuppressions)
     }
   }
 }
@@ -115,51 +113,66 @@ enum SettingsAdvisor {
     var id: String { setting.id }
   }
 
-  /// Ids in MCP `not_yet_enabled` order (the Chat uses `featureStates` order).
-  static let mcpFeatureOrder = [
-    "clipboard.auto_paste", "dictate_prompt.screenshot_context", "dictation.fn_key",
-    "dictate_prompt.field_text_context", "general.launch_at_login",
-  ]
+  /// One feature, once: Chat order is this array's order, MCP order is `mcpRank`, and the
+  /// Settings tab comes from the row. Chat wording is localized; MCP wording is English and
+  /// equals the Chat wording unless the row sets its own.
+  private struct FeatureSpec {
+    let id: String
+    let mcpRank: Int
+    let settingsTab: SettingsTab
+    let title: String
+    let benefit: String
+    var mcpTitle: String
+    var mcpBenefit: String
+    let permission: FeatureState.Permission?
+    let offHow: String
+    var offMissingHow: String? = nil
+    var onMissingHow: String? = nil
 
-  /// Unsuppressed, uncapped, in Chat recommended order. Features the catalog hides (e.g. Fn key
-  /// in the App Store build) are left out.
-  static func featureStates(
-    catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies
-  ) -> [FeatureState] {
-    func make(
-      _ id: String, title: String, benefit: String, mcpTitle: String, mcpBenefit: String,
-      permission: FeatureState.Permission?, offHow: String, offMissingHow: String? = nil,
-      onMissingHow: String? = nil
-    ) -> FeatureState? {
-      guard let s = catalog.first(where: { $0.id == id }), s.unavailableReason() == nil,
-        let value = s.read() as? Bool
-      else { return nil }
-      let granted: Bool
-      switch permission {
-      case .accessibility: granted = deps.hasAccessibilityPermission()
-      case .screenRecording: granted = deps.hasScreenRecordingPermission()
-      case nil: granted = true
-      }
-      return FeatureState(
-        setting: s, title: title, benefit: benefit, mcpTitle: mcpTitle, mcpBenefit: mcpBenefit,
-        permission: permission, isOn: value, permissionGranted: granted, mcpOffHow: offHow,
-        mcpOffMissingHow: offMissingHow, mcpOnMissingHow: onMissingHow)
+    init(
+      id: String, mcpRank: Int, settingsTab: SettingsTab, title: String, benefit: String,
+      mcpTitle: String? = nil, mcpBenefit: String? = nil, permission: FeatureState.Permission?,
+      offHow: String, offMissingHow: String? = nil, onMissingHow: String? = nil
+    ) {
+      self.id = id
+      self.mcpRank = mcpRank
+      self.settingsTab = settingsTab
+      self.title = title
+      self.benefit = benefit
+      self.mcpTitle = mcpTitle ?? title
+      self.mcpBenefit = mcpBenefit ?? benefit
+      self.permission = permission
+      self.offHow = offHow
+      self.offMissingHow = offMissingHow
+      self.onMissingHow = onMissingHow
     }
+  }
+
+  /// Chat order. `mcpRank` is the `not_yet_enabled` order.
+  private static func featureSpecs() -> [FeatureSpec] {
     let grantAccessibility =
       "The user grants Accessibility in WhisperShortcut Settings → Permissions (only they can), then you or they turn on"
+    let fnTitle = "Dictate with the Fn key"
+    let fnBenefit = "Press Fn to dictate, with no shortcut to remember."
+    let fieldTitle = "Send text around the cursor"
+    let fieldBenefit = "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works."
+    let launchTitle = "Launch at login"
+    let launchBenefit = "Dictation is ready right after you start your Mac."
+    let consentHow = "WhisperShortcut shows the user the consent text before anything changes; do not turn it on any other way."
     return [
-      make(
-        "dictation.fn_key", title: String(localized: "Dictate with the Fn key"),
+      FeatureSpec(
+        id: "dictation.fn_key", mcpRank: 2, settingsTab: .general,
+        title: String(localized: "Dictate with the Fn key"),
         benefit: String(localized: "Press Fn to dictate, with no shortcut to remember."),
-        mcpTitle: "Dictate with the Fn key",
-        mcpBenefit: "Press Fn to dictate, with no shortcut to remember.",
+        mcpTitle: fnTitle, mcpBenefit: fnBenefit,
         permission: .accessibility,
         offHow: "Ask the user, then update_settings dictation.fn_key = true.",
         offMissingHow: "\(grantAccessibility) dictation.fn_key.",
         onMissingHow:
           "Fn dictation is on but cannot work without Accessibility. The user grants it in WhisperShortcut Settings → Permissions."),
-      make(
-        "clipboard.auto_paste", title: String(localized: "Auto-paste after dictation"),
+      FeatureSpec(
+        id: "clipboard.auto_paste", mcpRank: 0, settingsTab: .general,
+        title: String(localized: "Auto-paste after dictation"),
         benefit: String(localized: "Dictated text lands at the cursor by itself, no Cmd+V needed."),
         mcpTitle: "Auto-paste after dictation",
         mcpBenefit:
@@ -169,35 +182,61 @@ enum SettingsAdvisor {
         offMissingHow: "\(grantAccessibility) clipboard.auto_paste.",
         onMissingHow:
           "Auto-paste is on but cannot paste without Accessibility. The user grants it in WhisperShortcut Settings → Permissions."),
-      make(
-        "dictate_prompt.field_text_context", title: String(localized: "Send text around the cursor"),
+      FeatureSpec(
+        id: "dictate_prompt.field_text_context", mcpRank: 3, settingsTab: .speechToPrompt,
+        title: String(localized: "Send text around the cursor"),
         benefit: String(localized: "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works."),
-        mcpTitle: "Send text around the cursor",
-        mcpBenefit: "Dictate Prompt sees the text you are editing, so \"shorten this\" or \"reply to that\" just works.",
-        permission: nil,
-        offHow: "Ask the user, then update_settings dictate_prompt.field_text_context = true."),
-      make(
-        "dictate_prompt.screenshot_context", title: String(localized: "Send picture of front window"),
+        mcpTitle: fieldTitle, mcpBenefit: fieldBenefit, permission: nil,
+        offHow: "Propose update_settings dictate_prompt.field_text_context = true. \(consentHow)"),
+      FeatureSpec(
+        id: "dictate_prompt.screenshot_context", mcpRank: 1, settingsTab: .speechToPrompt,
+        title: String(localized: "Send picture of front window"),
         benefit: String(localized: "When the field is empty or unreadable, Dictate Prompt also sees the front window (never the whole screen)."),
         mcpTitle: "Front window picture",
         mcpBenefit:
           "When the focused field is empty, short or unreadable, Dictate Prompt also sees a picture of the front window (never the whole screen), so it understands what the user is replying to or editing.",
         permission: .screenRecording,
-        offHow:
-          "Propose update_settings dictate_prompt.screenshot_context = true; the user accepts it in WhisperShortcut.",
+        offHow: "Propose update_settings dictate_prompt.screenshot_context = true. \(consentHow)",
         offMissingHow:
-          "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in the Dictate Prompt settings.",
+          "The user grants Screen Recording in WhisperShortcut Settings → Permissions, then turns on Front window picture in Dictate Prompt settings. That switch shows the consent text first.",
         onMissingHow:
           "The setting is on but does nothing without Screen Recording. The user grants it in WhisperShortcut Settings → Permissions."),
-      make(
-        "general.launch_at_login", title: String(localized: "Launch at login"),
+      FeatureSpec(
+        id: "general.launch_at_login", mcpRank: 4, settingsTab: .general,
+        title: String(localized: "Launch at login"),
         benefit: String(localized: "Dictation is ready right after you start your Mac."),
-        mcpTitle: "Launch at login",
-        mcpBenefit: "Dictation is ready right after you start your Mac.",
-        permission: nil,
+        mcpTitle: launchTitle, mcpBenefit: launchBenefit, permission: nil,
         offHow:
           "Ask the user, then propose update_settings general.launch_at_login = true; the user accepts it in WhisperShortcut."),
-    ].compactMap { $0 }
+    ]
+  }
+
+  /// Ids in MCP `not_yet_enabled` order (the Chat uses `featureStates` order).
+  static var mcpFeatureOrder: [String] {
+    featureSpecs().sorted { $0.mcpRank < $1.mcpRank }.map(\.id)
+  }
+
+  /// Unsuppressed, uncapped, in Chat recommended order. Features the catalog hides (e.g. Fn key
+  /// in the App Store build) are left out.
+  static func featureStates(
+    catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies
+  ) -> [FeatureState] {
+    featureSpecs().compactMap { spec in
+      guard let s = catalog.first(where: { $0.id == spec.id }), s.unavailableReason() == nil,
+        let value = s.read() as? Bool
+      else { return nil }
+      let granted: Bool
+      switch spec.permission {
+      case .accessibility: granted = deps.hasAccessibilityPermission()
+      case .screenRecording: granted = deps.hasScreenRecordingPermission()
+      case nil: granted = true
+      }
+      return FeatureState(
+        setting: s, title: spec.title, benefit: spec.benefit, mcpTitle: spec.mcpTitle,
+        mcpBenefit: spec.mcpBenefit, permission: spec.permission, isOn: value,
+        permissionGranted: granted, mcpOffHow: spec.offHow, mcpOffMissingHow: spec.offMissingHow,
+        mcpOnMissingHow: spec.onMissingHow)
+    }
   }
 
   /// MCP `get_configuration` → `not_yet_enabled`: the same feature states, no suppressions (an
@@ -275,9 +314,12 @@ enum SettingsAdvisor {
 
     // Recommended: features that are off. Skipped when turning them on would be refused right
     // now (e.g. no Accessibility permission yet: the blocker above covers that case).
+    // Settings with consent text are optional: an AI app must not recommend them the way it
+    // recommends Auto-paste. The proposal window shows the consent text before they change.
     for f in states where !f.isOn && f.setting.validate(true) == nil {
+      let priority: SettingsFinding.Priority = f.setting.consentText == nil ? .recommended : .optional
       out.append(SettingsFinding(
-        id: f.id, title: f.title, benefit: f.benefit, priority: .recommended,
+        id: f.id, title: f.title, benefit: f.benefit, priority: priority,
         current: "Off", recommended: "On", fix: .set(id: f.id, value: .bool(true))))
     }
 
@@ -313,9 +355,14 @@ enum SettingsAdvisor {
   static func findings(
     catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies, suppressions: ImproveSuppressions
   ) -> [SettingsFinding] {
-    expirePermissionDismissals(suppressions, deps: deps)
-    let all = candidates(catalog: catalog, deps: deps)
-    return sorted(all.filter { !suppressions.isSuppressed(id: $0.id, currentValue: $0.current) })
+    review(catalog: catalog, deps: deps, suppressions: suppressions).findings
+  }
+
+  /// What a dismissal is stored against. Model nags use `current→recommended`, so a new
+  /// recommendation raises them again even when the current label has not moved.
+  private static func suppressionValue(for finding: SettingsFinding) -> String {
+    guard isNagOnce(finding.id) else { return finding.current }
+    return "\(finding.current)→\(finding.recommended)"
   }
 
   private static func sorted(_ list: [SettingsFinding]) -> [SettingsFinding] {
@@ -335,10 +382,14 @@ enum SettingsAdvisor {
   ) -> (findings: [SettingsFinding], suppressedCount: Int) {
     expirePermissionDismissals(suppressions, deps: deps)
     let all = candidates(catalog: catalog, deps: deps)
-    let suppressedCount = all.filter { suppressions.isSuppressed(id: $0.id, currentValue: $0.current) }.count
-    let shown = sorted(all.filter { !suppressions.isSuppressed(id: $0.id, currentValue: $0.current) })
+    let suppressedCount = all.filter {
+      suppressions.isSuppressed(id: $0.id, currentValue: suppressionValue(for: $0))
+    }.count
+    let shown = sorted(all.filter {
+      !suppressions.isSuppressed(id: $0.id, currentValue: suppressionValue(for: $0))
+    })
     for finding in shown where isNagOnce(finding.id) {
-      suppressions.suppress(id: finding.id, currentValue: finding.current)
+      suppressions.suppress(id: finding.id, currentValue: suppressionValue(for: finding))
     }
     return (shown, suppressedCount)
   }
@@ -396,21 +447,16 @@ enum SettingsAdvisor {
 
   /// The Settings tab that holds a finding's setting, when that is certain.
   ///
-  /// Prefixes whose settings all live on one tab map together. `dictation` does not: the Fn key
-  /// (`dictation.fn_key`) is on General, the transcription model (`dictation.transcription_model`)
-  /// is on Dictate. Any other `dictation.*` id, and anything that is not one setting on one tab
-  /// (for example MCP-only `recent_interactions`), stays nil.
+  /// Features come from `featureSpecs` (Fn and Auto-paste are on General). The other findings
+  /// are one setting each. Anything that is not one setting on one tab (MCP-only
+  /// `recent_interactions`) stays nil.
   static func settingsTab(forFindingID id: String) -> SettingsTab? {
+    if let tab = featureSpecs().first(where: { $0.id == id })?.settingsTab { return tab }
     switch id {
-    case "dictation.fn_key": return .general
     case "dictation.transcription_model": return .speechToText
-    default: break
-    }
-    switch id.split(separator: ".").first.map(String.init) {
-    case "privacy", "permission": return .permissions
-    case "dictate_prompt", "writing_style": return .speechToPrompt
-    case "general", "clipboard": return .general
-    case "chat": return .chat
+    case usageDataID, accessibilityID, screenRecordingID: return .permissions
+    case "chat.model": return .chat
+    case "dictate_prompt.model", "writing_style.enabled": return .speechToPrompt
     default: return nil
     }
   }

@@ -179,7 +179,7 @@ struct SpeechToPromptSettingsTab: View {
         defaultsKey: UserDefaultsKeys.promptSendsFocusedFieldText,
         isOn: $viewModel.data.promptSendsFocusedFieldText,
         alertTitle: "Send the text around the cursor?",
-        alertMessage: "Each time you use Dictate Prompt with nothing selected, it reads up to 4,000 characters around the cursor in the app you are writing in and sends them, with that app's name, to your Dictate Prompt model. With a cloud model, that text goes to its provider.\n\nPassword fields and password managers are never read. You can turn this off here at any time.",
+        alertMessage: MCPSettingsCatalog.consentText(for: "dictate_prompt.field_text_context") ?? "",
         save: { Task { await viewModel.saveSettings() } }
       )
 
@@ -197,7 +197,7 @@ struct SpeechToPromptSettingsTab: View {
         defaultsKey: UserDefaultsKeys.screenshotInPromptMode,
         isOn: $viewModel.data.screenshotInPromptMode,
         alertTitle: "Send a picture of the front window?",
-        alertMessage: "When nothing is selected, Dictate Prompt can send a picture of the window you are writing in, never the whole screen, to your Dictate Prompt model. Everything visible in that window goes with it. With a cloud model, the picture goes to its provider.\n\nNever for password fields or password managers. You can turn this off here at any time.",
+        alertMessage: MCPSettingsCatalog.consentText(for: "dictate_prompt.screenshot_context") ?? "",
         onAllow: {
           Task {
             do {
