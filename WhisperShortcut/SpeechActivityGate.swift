@@ -38,9 +38,19 @@ actor SpeechActivityGate {
 
   private var loadState: LoadState = .notStarted
 
+  /// True only when a cloud dictation may load Silero. The kill switch and Offline Mode
+  /// both refuse the download: FluidAudio fetches the model from huggingface.co.
+  nonisolated static func shouldPrepare(gateEnabled: Bool, offlineMode: Bool) -> Bool {
+    gateEnabled && !offlineMode
+  }
+
   /// Loads `silero-vad-coreml` once. A failure is logged once and the gate stays off
-  /// for this launch. Never throws.
+  /// for this launch. Never throws. Does nothing while the kill switch is off or Offline
+  /// Mode is on, and leaves the load unstarted so a later cloud dictation can try again.
   func prepare() async {
+    guard Self.shouldPrepare(gateEnabled: Self.isEnabled, offlineMode: OfflineMode.isEnabled) else {
+      return
+    }
     guard case .notStarted = loadState else { return }
     loadState = .loading
     let started = CFAbsoluteTimeGetCurrent()
@@ -68,8 +78,15 @@ actor SpeechActivityGate {
   /// nil means the gate is off, not loaded yet, or could not read this file. The caller
   /// then does what it did before this gate existed.
   func decide(for url: URL) async -> Decision? {
-    guard Self.isEnabled else { return nil }
-    // Do not wait on an in-flight download. A chunk recorded during first launch uploads.
+    // Offline Mode and the kill switch never download. The first cloud dictation starts
+    // the load and still uploads this chunk: `decide` does not wait on huggingface.co.
+    guard Self.shouldPrepare(gateEnabled: Self.isEnabled, offlineMode: OfflineMode.isEnabled) else {
+      return nil
+    }
+    if case .notStarted = loadState {
+      Task { await self.prepare() }
+    }
+    // Do not wait on an in-flight download. A chunk recorded before the model is ready uploads.
     guard case .ready(let vad) = loadState else { return nil }
     let started = CFAbsoluteTimeGetCurrent()
     do {

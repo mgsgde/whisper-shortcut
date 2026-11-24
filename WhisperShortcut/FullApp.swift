@@ -97,12 +97,6 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Test profile only: the start state `scripts/ui-catalogue.sh` asks for (TestProfileOverrides).
     TestProfileOverrides.applyAtLaunch()
 
-    // Silero VAD for the cloud speech gate. Both targets launch through this delegate.
-    // Utility priority, and `decide` does not wait: until the model is loaded, chunks upload as before.
-    Task.detached(priority: .utility) {
-      await SpeechActivityGate.shared.prepare()
-    }
-
     // Catch silent main-thread freezes: this samples our own process when the main thread
     // stops responding, so the next hang leaves a stack in the Logs dir instead of nothing.
     MainThreadWatchdog.shared.start()

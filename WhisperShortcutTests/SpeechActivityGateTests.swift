@@ -30,6 +30,14 @@ struct SpeechActivityGateTests {
       SpeechActivityGate.decision(segments: [(start: 0.3, end: 10.8)], duration: 11))
   }
 
+  @Test("Prepare stays off while the kill switch is off or Offline Mode is on")
+  func prepareGuard() {
+    #expect(SpeechActivityGate.shouldPrepare(gateEnabled: true, offlineMode: false))
+    #expect(!SpeechActivityGate.shouldPrepare(gateEnabled: false, offlineMode: false))
+    #expect(!SpeechActivityGate.shouldPrepare(gateEnabled: true, offlineMode: true))
+    #expect(!SpeechActivityGate.shouldPrepare(gateEnabled: false, offlineMode: true))
+  }
+
   @Test("Two segments use the first start and the last end")
   func trimsAroundTheOuterSegments() {
     expect(
