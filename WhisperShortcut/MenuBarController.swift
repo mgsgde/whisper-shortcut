@@ -2019,8 +2019,12 @@ class MenuBarController: NSObject {
     case .blocked(let reason):
       presentDictatePromptBlocked(reason)
     case .start:
-      startDictatePromptCapture(
-        logPrefix: isMeeting ? "MEETING-SEGMENT" : "PROMPT-MODE", isMeeting: isMeeting,
+      let promptModel = Self.selectedPromptModel()
+      let preparation = prepareDictatePromptSelection(
+        logPrefix: isMeeting ? "MEETING-SEGMENT" : "PROMPT-MODE", model: promptModel)
+      guard preparation.ready else { return }
+      startDictatePrompt(
+        feature: "Dictate Prompt", selection: preparation.selection,
         template: template, choices: choices)
     case .ignored:
       break
@@ -2036,17 +2040,20 @@ class MenuBarController: NSObject {
     presentBlocked(reason)
   }
 
-  /// The one Dictate Prompt start sequence: prepare the selection, prewarm, drop any streaming
-  /// session, begin capture. Returns false when the preparation was not ready (nothing started).
-  /// `template`/`choices` apply only outside a meeting; `speakResult` is Read Aloud Prompt's.
+  /// The one Dictate Prompt start: the dictation-only block, the meeting branch, prewarm, and
+  /// dropping any streaming session. Callers differ in the selection they already captured,
+  /// whether the result is spoken, and the template. Returns false when dictation-only blocks it.
   @discardableResult
-  private func startDictatePromptCapture(
-    logPrefix: String, isMeeting: Bool, template: DictationTemplate? = nil,
-    choices: [DictationTemplate] = [], speakResult: Bool = false
+  private func startDictatePrompt(
+    feature: String,
+    selection: DictatePromptSelectionCapture?,
+    speak: Bool = false,
+    template: DictationTemplate? = nil,
+    choices: [DictationTemplate] = []
   ) -> Bool {
+    if DictationOnlyMode.blocks(feature) { return false }
+    let isMeeting = isLiveMeetingActive
     let promptModel = Self.selectedPromptModel()
-    let preparation = prepareDictatePromptSelection(logPrefix: logPrefix, model: promptModel)
-    guard preparation.ready else { return false }
     if isMeeting { DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting") }
     ConnectionPrewarmer.prewarm(for: promptModel)
     discardStreamingSession()  // prompt recordings never stream
@@ -2055,11 +2062,11 @@ class MenuBarController: NSObject {
         DebugLogger.log("DICTATION-TEMPLATE: ignored during a meeting")
       }
       beginAudioCapture(
-        mode: .prompt, meetingSegment: .prompt, promptSelection: preparation.selection)
+        mode: .prompt, meetingSegment: .prompt, promptSelection: selection)
     } else {
       beginAudioCapture(
-        mode: .prompt, promptSelection: preparation.selection,
-        template: template, templateChoices: choices, speakResult: speakResult)
+        mode: .prompt, promptSelection: selection,
+        template: template, templateChoices: choices, speakResult: speak)
     }
     return true
   }
@@ -2071,19 +2078,10 @@ class MenuBarController: NSObject {
     if DictationOnlyMode.blocks("Dictate Prompt (service)") { return }
     switch availability(.dictatePrompt) {
     case .start:
-      let isMeeting = isLiveMeetingActive
-      let promptModel = Self.selectedPromptModel()
       DebugLogger.log("PROMPT-MODE: Selection from Services (\(text.count) chars)")
-      let selection = DictatePromptSelectionCapture.fromService(text)
-      if isMeeting { DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting") }
-      ConnectionPrewarmer.prewarm(for: promptModel)
-      discardStreamingSession()
-      if isMeeting {
-        beginAudioCapture(
-          mode: .prompt, meetingSegment: .prompt, promptSelection: selection)
-      } else {
-        beginAudioCapture(mode: .prompt, promptSelection: selection)
-      }
+      startDictatePrompt(
+        feature: "Dictate Prompt (service)",
+        selection: DictatePromptSelectionCapture.fromService(text))
     default:
       togglePrompting()
     }
@@ -5451,8 +5449,11 @@ extension MenuBarController: ShortcutDelegate {
     default:
       return
     }
-    guard startDictatePromptCapture(
-      logPrefix: "READ-ALOUD-PROMPT", isMeeting: false, speakResult: true)
+    let promptModel = Self.selectedPromptModel()
+    let preparation = prepareDictatePromptSelection(logPrefix: "READ-ALOUD-PROMPT", model: promptModel)
+    guard preparation.ready else { return }
+    guard startDictatePrompt(
+      feature: "Read Aloud Prompt", selection: preparation.selection, speak: true)
     else { return }
     DebugLogger.log("READ-ALOUD-PROMPT: started")
   }
