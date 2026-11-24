@@ -44,15 +44,19 @@ enum ModelSelectionReconciler {
   nonisolated static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok, .openRouter]
 
   /// Keys whose values Offline Mode rewrites. Snapshotted on enable, restored on disable.
-  private static let snapshotKeys: [String] = [
-    UserDefaultsKeys.selectedTranscriptionModel,
-    UserDefaultsKeys.selectedTranscriptionModelForMeetings,
-    UserDefaultsKeys.selectedPromptModel,
-    UserDefaultsKeys.selectedChatModel,
-    UserDefaultsKeys.selectedReadAloudModel,
-    UserDefaultsKeys.selectedMeetingSummaryModel,
-    UserDefaultsKeys.selectedImprovementModel,
-  ]
+  /// The transcription model lives only here. Restore order: `DefaultsSnapshot`.
+  private static let modelSnapshot = DefaultsSnapshot(
+    keys: [
+      UserDefaultsKeys.selectedTranscriptionModel,
+      UserDefaultsKeys.selectedTranscriptionModelForMeetings,
+      UserDefaultsKeys.selectedPromptModel,
+      UserDefaultsKeys.selectedChatModel,
+      UserDefaultsKeys.selectedReadAloudModel,
+      UserDefaultsKeys.selectedMeetingSummaryModel,
+      UserDefaultsKeys.selectedImprovementModel,
+    ],
+    storageKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+  private static var snapshotKeys: [String] { modelSnapshot.keys }
 
   // MARK: - Entry point
 
@@ -137,11 +141,10 @@ enum ModelSelectionReconciler {
   /// must not overwrite that snapshot with the already-rewritten offline values.
   /// Marks a key that held no value when Offline Mode was turned on; restore removes the key so
   /// the factory default applies again instead of leaving the on-device value behind.
-  static let unsetSnapshotSentinel = "__unset__"
+  static let unsetSnapshotSentinel = DefaultsSnapshot.unsetSentinel
 
   static func snapshotPreOfflineSelectionsIfNeeded(defaults: UserDefaults = .standard) {
-    var snapshot = defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
-      as? [String: String]
+    var snapshot = modelSnapshot.stringMap(in: defaults)
     let existing = snapshot != nil
     var added = 0
     for key in snapshotKeys where snapshot?[key] == nil {
@@ -159,23 +162,18 @@ enum ModelSelectionReconciler {
       added += 1
     }
     guard existing ? added > 0 : true else { return }
-    defaults.set(snapshot ?? [:], forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+    modelSnapshot.setStringMap(snapshot ?? [:], defaults: defaults)
     DebugLogger.log("MODEL-RECONCILE: snapshotted \(added) pre-offline selection(s)")
   }
 
   static func restorePreOfflineSelectionsIfNeeded(defaults: UserDefaults = .standard) {
-    guard let snapshot = defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
-            as? [String: String] else { return }
-    for (key, value) in snapshot {
+    modelSnapshot.restoreUnsetSentinel(defaults: defaults) { key, value in
       if value == unsetSnapshotSentinel {
-        defaults.removeObject(forKey: key)
         DebugLogger.log("MODEL-RECONCILE: \(key): removed, was unset (Offline Mode off)")
       } else {
-        defaults.set(value, forKey: key)
         DebugLogger.log("MODEL-RECONCILE: \(key): restored \(value) (Offline Mode off)")
       }
     }
-    defaults.removeObject(forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
   }
 
   // MARK: - Offline Mode
