@@ -912,8 +912,9 @@ struct MCPConfigTools {
       }
       if env.accessLevel() == .propose {
         do {
+          let previous = existing.map { MCPTemplateSnapshot.encode($0, includeShortcut: false) }
           let p = try env.proposals.create(
-            kind: .saveTemplate, previousContent: existing?.instructions, proposedContent: text,
+            kind: .saveTemplate, previousContent: previous, proposedContent: text,
             rationale: r.value!, templateID: id.uuidString, templateName: name)
           log(tool, "proposed", len: text.count)
           return pendingResult(p.id)
@@ -945,7 +946,9 @@ struct MCPConfigTools {
       if env.accessLevel() == .propose {
         do {
           let p = try env.proposals.create(
-            kind: .deleteTemplate, previousContent: existing.instructions, proposedContent: nil,
+            kind: .deleteTemplate,
+            previousContent: MCPTemplateSnapshot.encode(existing, includeShortcut: false),
+            proposedContent: nil,
             rationale: r.value!, templateID: id.uuidString, templateName: existing.displayName)
           log(tool, "proposed")
           return pendingResult(p.id)

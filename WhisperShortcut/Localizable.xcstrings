@@ -581,6 +581,16 @@
         }
       }
     },
+    "Name: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name: %@"
+          }
+        }
+      }
+    },
     "Press Fn to dictate, with no shortcut to remember." : {
       "localizations" : {
         "de" : {

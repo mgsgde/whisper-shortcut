@@ -464,6 +464,69 @@ struct MCPConfigToolsTests {
     #expect(env.box.templates[0].shortcut != nil)
   }
 
+  @Test("A template proposal stores the name and instructions, and the review shows the name line")
+  func templateProposalSnapshot() throws {
+    let env = MCPTestEnv(level: .propose)
+    let t = env.tools()
+    env.box.templates = [DictationTemplate(name: "Befund", instructions: "old text")]
+    let id = env.box.templates[0].id.uuidString
+    let proposed = t.call(name: "update_template",
+      arguments: ["id": id, "name": "Neu", "rationale": "r"], access: .write)
+    #expect(obj(proposed)["status"] as? String == "pending_review")
+    let proposal = try #require(env.proposals.pending.first { $0.templateID == id })
+    let stored = try #require(MCPTemplateSnapshot.decode(proposal.previousContent))
+    #expect(stored.name == "Befund")
+    #expect(stored.instructions == "old text")
+    #expect(proposal.proposedContent == "old text")
+    #expect(MCPProposalWindows.baseline(for: proposal) == MCPTemplateSnapshot.reviewText(name: "Befund", instructions: "old text"))
+    #expect(MCPProposalWindows.suggestedText(for: proposal) == MCPTemplateSnapshot.reviewText(name: "Neu", instructions: "old text"))
+
+    // The name changed after the proposal: accept must not overwrite it.
+    env.box.templates[0].name = "User renamed"
+    if case .success = env.proposals.accept(proposal.id) {
+      Issue.record("accept should fail after the name changed")
+    }
+    #expect(env.box.templates[0].name == "User renamed")
+    #expect(env.box.templates[0].instructions == "old text")
+
+    // Unchanged template: accept applies the new name and keeps the instructions.
+    let again = t.call(name: "update_template",
+      arguments: ["id": id, "name": "Neu", "rationale": "r"], access: .write)
+    let fresh = try #require(env.proposals.pending.first { $0.id == obj(again)["id"] as? String })
+    guard case .success = env.proposals.accept(fresh.id) else {
+      Issue.record("accept failed")
+      return
+    }
+    #expect(env.box.templates[0].name == "Neu")
+    #expect(env.box.templates[0].instructions == "old text")
+
+    let deleted = t.call(name: "delete_template", arguments: ["id": id, "rationale": "r"], access: .write)
+    let deletion = try #require(env.proposals.pending.first { $0.id == obj(deleted)["id"] as? String })
+    #expect(MCPTemplateSnapshot.decode(deletion.previousContent)?.name == "Neu")
+    #expect(
+      MCPProposalWindows.baseline(for: deletion)
+        == MCPTemplateSnapshot.reviewText(name: "Neu", instructions: "old text"))
+  }
+
+  @Test("An older template proposal that stored plain instructions still accepts")
+  func legacyTemplateProposal() throws {
+    let env = MCPTestEnv(level: .propose)
+    let template = DictationTemplate(name: "Befund", instructions: "old text")
+    env.box.templates = [template]
+    let proposal = try env.proposals.create(
+      kind: .saveTemplate, previousContent: "old text", proposedContent: "new text",
+      rationale: "r", templateID: template.id.uuidString, templateName: "Befund")
+    #expect(MCPTemplateSnapshot.decode(proposal.previousContent) == nil)
+    #expect(MCPProposalWindows.baseline(for: proposal) == "old text")
+    #expect(MCPProposalWindows.suggestedText(for: proposal) == "new text")
+    guard case .success = env.proposals.accept(proposal.id) else {
+      Issue.record("legacy accept failed")
+      return
+    }
+    #expect(env.box.templates[0].instructions == "new text")
+    #expect(env.box.templates[0].name == "Befund")
+  }
+
   @Test("update_settings refuses a shortcut a template already holds")
   func settingsShortcutConflictsWithTemplate() {
     let env = MCPTestEnv(level: .apply)

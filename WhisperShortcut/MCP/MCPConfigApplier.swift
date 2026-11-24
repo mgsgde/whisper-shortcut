@@ -260,4 +260,21 @@ struct MCPTemplateSnapshot: Codable {
   static func decode(_ json: String?) -> MCPTemplateSnapshot? {
     json.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONDecoder().decode(MCPTemplateSnapshot.self, from: $0) }
   }
+
+  /// What the proposal review shows: a name line, then the instructions. The stored snapshot
+  /// stays JSON; this is display only.
+  static func reviewText(name: String, instructions: String) -> String {
+    let line = String(localized: "Name: \(name)")
+    if instructions.isEmpty { return line }
+    return line + "\n" + instructions
+  }
+
+  /// Drops the name line `reviewText` added, so an accepted edit is instructions only.
+  static func instructions(fromReview text: String, name: String) -> String {
+    let line = String(localized: "Name: \(name)")
+    if text == line { return "" }
+    let prefix = line + "\n"
+    guard text.hasPrefix(prefix) else { return text }
+    return String(text.dropFirst(prefix.count))
+  }
 }
