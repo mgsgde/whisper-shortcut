@@ -48,6 +48,9 @@ class MenuBarController: NSObject {
     case aiAppProposalsSeparator = 137
     case chatSeparator = 135
     case quit = 136
+    /// "Check for Updates…". Absent from the App Store build; the row is still named so
+    /// dictation-only can show it with Settings and Quit.
+    case updates = 138
   }
 
   /// Rows that stay in the status menu until onboarding is finished. Everything else would only
@@ -626,7 +629,7 @@ class MenuBarController: NSObject {
     // The macOS convention is an app-menu "Check for Updates…"; a menu bar app's status menu is
     // its app menu. The switch and channel picker stay in Settings → General → Updates.
     menu.addItem(
-      createMenuItem("Check for Updates…", action: #selector(checkForUpdates)))
+      createMenuItem("Check for Updates…", action: #selector(checkForUpdates), tag: .updates))
     #endif
 
     // One report window for every kind of feedback. Always visible: with no recent result it
@@ -1535,14 +1538,9 @@ class MenuBarController: NSObject {
         }
       }
     }
-    apply(.dictatePrompt, tags: [.dictatePrompt])
-    apply(.readAloud, tags: [.readAloud])
-    apply(.readAloudPrompt, tags: [.readAloudPrompt])
-    apply(.screenshot, tags: [.screenshot])
-    apply(.liveMeeting, tags: [.liveMeeting])
-    apply(.chat, tags: [.chat, .chatSeparator])
-    apply(.meetingBacklog, ownsVisibility: true, tags: [.retryMeetingTranscription, .showMeetingAudio])
-    apply(.aiAppProposals, ownsVisibility: true, tags: [.aiAppProposals, .aiAppProposalsSeparator])
+    for row in StatusMenuRow.allCases {
+      apply(row, ownsVisibility: row.ownsVisibility, tags: row.tags)
+    }
   }
 
   /// While onboarding is unfinished, hides every row `visibleDuringSetup` does not name, then
@@ -1575,7 +1573,7 @@ class MenuBarController: NSObject {
   /// between groups, Check for Updates, and the daily-build switcher.
   private static func restoredWhenSetupFinishes(_ tag: MenuTag?) -> Bool {
     switch tag {
-    case .status, .dictate, .addToGlossary, .liveDictate, .settings, .sendFeedback, .rate, .quit, nil:
+    case .status, .dictate, .addToGlossary, .liveDictate, .settings, .updates, .sendFeedback, .rate, .quit, nil:
       return true
     default:
       return false
