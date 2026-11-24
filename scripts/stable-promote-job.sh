@@ -30,6 +30,10 @@
 # weekly. Installed via ~/Library/LaunchAgents/com.whispershortcut.stable-promote.plist
 # (template: scripts/com.whispershortcut.stable-promote.plist).
 #
+# The test gate runs under caffeinate. If the Mac still slept during a failed run
+# (lid closed), the run counts as inconclusive: nothing is mailed, and the next
+# hourly fire retries.
+#
 # Usage: stable-promote-job.sh [--force] [--dry-run]
 #   --force    ignore the Tuesday gate and the once-a-day gate
 #   --dry-run  print what would happen; no worktree, no tests, no promotion, no mail
@@ -89,6 +93,11 @@ finish() {
   # A completed run, including "nothing to do", counts for the once-a-day gate.
   [ "$DRY" -eq 1 ] && return 0
   echo "$STAMP" > "$STATE_DIR/last-run"
+}
+
+# 0 when the system entered sleep at or after "YYYY-MM-DD HH:MM:SS".
+slept_since() {
+  pmset -g log 2>/dev/null | awk -v s="$1" 'substr($0,1,19) >= s && /Entering Sleep/ {found=1} END {exit !found}'
 }
 
 # ------------------------------------------------------------------ 1. hold
@@ -227,6 +236,7 @@ CAND_AGE=""
 PROMOTED=""
 WOULD_PROMOTE=""
 FAILURE=""
+DEFERRED=0
 FAIL_DETAIL=""
 
 if [ -f "$STATE_DIR/candidate" ]; then
@@ -283,27 +293,34 @@ if [ -n "$CAND_TAG" ] && [ "$CAND_AGE" -ge 6 ]; then
       remove_worktree "$WT" || true
     else
       set +e
+      test_start="$(date '+%Y-%m-%d %H:%M:%S')"
       (
         # Hermetic: a gate must not depend on live API keys (an expired Gemini key would block
         # every promotion). The Parakeet env still runs the local offline-dictation tests.
         export TEST_RUNNER_WHISPERSHORTCUT_BENCH_PARAKEET=1
-        bash "$WT/scripts/run-tests.sh" --hermetic
+        caffeinate -i -m -s bash "$WT/scripts/run-tests.sh" --hermetic
       ) >"$LOG" 2>&1
       test_rc=$?
       set +e
       remove_worktree "$WT" || echo "WARN: left worktree at $WT"
       summary="$(grep -E "Test run with|TEST SUCCEEDED|TEST FAILED" "$LOG" || true)"
       if [ "$test_rc" -ne 0 ]; then
-        FAILURE="tests"
-        FAIL_DETAIL="$(printf '%s\n' \
-          "Tests for $CAND_TAG failed (exit $test_rc). Nothing was promoted. The candidate is unchanged." \
-          "Log: build/stable-channel/tests-${CAND_TAG}.log" \
-          "" \
-          "$summary")"
-        if [ -z "$summary" ]; then
-          FAIL_DETAIL="$FAIL_DETAIL
+        if slept_since "$test_start"; then
+          echo "Tests for $CAND_TAG failed but the Mac slept during the run; treating as inconclusive and retrying on the next hourly fire."
+          echo "Tests for $CAND_TAG failed but the Mac slept during the run; treating as inconclusive and retrying on the next hourly fire." >> "$LOG"
+          DEFERRED=1
+        else
+          FAILURE="tests"
+          FAIL_DETAIL="$(printf '%s\n' \
+            "Tests for $CAND_TAG failed (exit $test_rc). Nothing was promoted. The candidate is unchanged." \
+            "Log: build/stable-channel/tests-${CAND_TAG}.log" \
+            "" \
+            "$summary")"
+          if [ -z "$summary" ]; then
+            FAIL_DETAIL="$FAIL_DETAIL
 
 $(tail -n 40 "$LOG")"
+          fi
         fi
       else
         promote_out="$(mktemp)"
@@ -337,6 +354,11 @@ $(tail -n 40 "$LOG")"
 elif [ -n "$CAND_TAG" ]; then
   echo "Candidate $CAND_TAG is $CAND_AGE days old; waiting until 6."
   [ "$DRY" -eq 1 ] && echo "dry-run: would not test or promote $CAND_TAG yet."
+fi
+
+# Sleep during the run: do not stamp last-run, so the next hourly fire retries.
+if [ "$DEFERRED" -eq 1 ]; then
+  exit 0
 fi
 
 if [ -n "$FAILURE" ]; then
