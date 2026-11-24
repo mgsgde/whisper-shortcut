@@ -142,6 +142,7 @@ struct SettingsAdvisorTests {
     let first = SettingsAdvisor.review(catalog: f.catalog, deps: f.deps, suppressions: f.suppressions)
     #expect(first.findings.map(\.id) == ["chat.model"])
     #expect(first.findings.first?.priority == .optional)
+    #expect(f.suppressions.storedLabel(for: "chat.model")?.contains("→") == true)
     let second = SettingsAdvisor.review(catalog: f.catalog, deps: f.deps, suppressions: f.suppressions)
     #expect(second.findings.isEmpty)
     #expect(second.suppressedCount == 1)

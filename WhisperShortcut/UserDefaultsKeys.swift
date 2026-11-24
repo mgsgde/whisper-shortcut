@@ -19,6 +19,9 @@ enum UserDefaultsKeys {
   /// Tool names the user chose "Always allow" for, stored as `[String]`. Later calls skip the
   /// approval card in every chat. See `ChatToolAlwaysAllow`.
   static let chatAlwaysAllowedTools = "chatAlwaysAllowedTools"
+  /// Finding ids dismissed from `/improve`, each stored with the value it had then.
+  /// Model nags store `current→recommended` so either side changing brings the nag back.
+  static let improveSuppressions = "improveSuppressions"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"

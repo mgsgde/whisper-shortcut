@@ -38,8 +38,6 @@ struct SettingsFinding: Equatable {
 /// setting had at that moment: a changed value clears the suppression, so a finding only comes
 /// back when something it is about has moved.
 struct ImproveSuppressions {
-  static let defaultsKey = "improveSuppressions"
-
   private let defaults: UserDefaults
 
   init(defaults: UserDefaults = .standard) {
@@ -47,13 +45,13 @@ struct ImproveSuppressions {
   }
 
   private var stored: [String: String] {
-    (defaults.dictionary(forKey: Self.defaultsKey) as? [String: String]) ?? [:]
+    (defaults.dictionary(forKey: UserDefaultsKeys.improveSuppressions) as? [String: String]) ?? [:]
   }
 
   func suppress(id: String, currentValue: String) {
     var all = stored
     all[id] = currentValue
-    defaults.set(all, forKey: Self.defaultsKey)
+    defaults.set(all, forKey: UserDefaultsKeys.improveSuppressions)
   }
 
   func isSuppressed(id: String, currentValue: String) -> Bool {
@@ -70,9 +68,9 @@ struct ImproveSuppressions {
     var all = stored
     guard all.removeValue(forKey: id) != nil else { return }
     if all.isEmpty {
-      defaults.removeObject(forKey: Self.defaultsKey)
+      defaults.removeObject(forKey: UserDefaultsKeys.improveSuppressions)
     } else {
-      defaults.set(all, forKey: Self.defaultsKey)
+      defaults.set(all, forKey: UserDefaultsKeys.improveSuppressions)
     }
   }
 }
@@ -357,9 +355,14 @@ enum SettingsAdvisor {
   static func findings(
     catalog: [MCPSetting], deps: MCPSettingsCatalog.Dependencies, suppressions: ImproveSuppressions
   ) -> [SettingsFinding] {
-    expirePermissionDismissals(suppressions, deps: deps)
-    let all = candidates(catalog: catalog, deps: deps)
-    return sorted(all.filter { !suppressions.isSuppressed(id: $0.id, currentValue: $0.current) })
+    review(catalog: catalog, deps: deps, suppressions: suppressions).findings
+  }
+
+  /// What a dismissal is stored against. Model nags use `current→recommended`, so a new
+  /// recommendation raises them again even when the current label has not moved.
+  private static func suppressionValue(for finding: SettingsFinding) -> String {
+    guard isNagOnce(finding.id) else { return finding.current }
+    return "\(finding.current)→\(finding.recommended)"
   }
 
   private static func sorted(_ list: [SettingsFinding]) -> [SettingsFinding] {
@@ -379,10 +382,14 @@ enum SettingsAdvisor {
   ) -> (findings: [SettingsFinding], suppressedCount: Int) {
     expirePermissionDismissals(suppressions, deps: deps)
     let all = candidates(catalog: catalog, deps: deps)
-    let suppressedCount = all.filter { suppressions.isSuppressed(id: $0.id, currentValue: $0.current) }.count
-    let shown = sorted(all.filter { !suppressions.isSuppressed(id: $0.id, currentValue: $0.current) })
+    let suppressedCount = all.filter {
+      suppressions.isSuppressed(id: $0.id, currentValue: suppressionValue(for: $0))
+    }.count
+    let shown = sorted(all.filter {
+      !suppressions.isSuppressed(id: $0.id, currentValue: suppressionValue(for: $0))
+    })
     for finding in shown where isNagOnce(finding.id) {
-      suppressions.suppress(id: finding.id, currentValue: finding.current)
+      suppressions.suppress(id: finding.id, currentValue: suppressionValue(for: finding))
     }
     return (shown, suppressedCount)
   }
