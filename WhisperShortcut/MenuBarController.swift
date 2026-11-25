@@ -78,6 +78,9 @@ class MenuBarController: NSObject {
   private var appState: AppState = .idle {
     didSet {
       DebugLogger.logDebug("APPSTATE: \(oldValue) -> \(appState) (mainThread=\(Thread.isMainThread))")
+      #if !APP_STORE && canImport(Sparkle)
+      UpdaterService.setAppBusy(appState != .idle)
+      #endif
       // Edges only: chunk-pipeline states move processing → processing and must not restart
       // the clock that `processingMs` on cancel/deadline signals reads (queue #8).
       let wasProcessing = oldValue.isNonTTSProcessing

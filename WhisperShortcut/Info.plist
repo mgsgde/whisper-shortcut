@@ -108,7 +108,7 @@
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
 	<key>SUAllowsAutomaticUpdates</key>
-	<false/>
+	<true/>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUEnableInstallerLauncherService</key>

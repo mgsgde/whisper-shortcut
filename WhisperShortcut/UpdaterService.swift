@@ -5,8 +5,9 @@ import Foundation
 import os
 import Sparkle
 
-/// Wraps Sparkle 2 for the direct (GitHub) build. Never installs silently: Sparkle shows a notice
-/// with the release notes and the user decides. Not compiled into the App Store build.
+/// Wraps Sparkle 2 for the direct (GitHub) build. Stable shows a notice and the user decides.
+/// Latest downloads in the background and installs and relaunches by itself when the Mac is idle
+/// and nothing records. Not compiled into the App Store build.
 @MainActor
 final class UpdaterService: NSObject, ObservableObject {
   static let shared = UpdaterService()
@@ -33,11 +34,27 @@ final class UpdaterService: NSObject, ObservableObject {
   /// True from the start of a Dictate Live recording until its last piece is inserted. A lock, not
   /// MainActor state, because Sparkle's delegate callbacks are nonisolated.
   nonisolated private static let dictateLiveActive = OSAllocatedUnfairLock(initialState: false)
+  /// True whenever `appState` is not idle. Same reason as `dictateLiveActive`: Sparkle calls back
+  /// off the main actor.
+  nonisolated private static let appBusy = OSAllocatedUnfairLock(initialState: false)
 
   /// Set by `MenuBarController` when Dictate Live starts and clears.
   nonisolated static func setDictateLiveActive(_ active: Bool) {
     dictateLiveActive.withLock { $0 = active }
   }
+
+  /// Set by `MenuBarController` on every `appState` change.
+  nonisolated static func setAppBusy(_ busy: Bool) {
+    appBusy.withLock { $0 = busy }
+  }
+
+  /// Latest only: an update already downloaded, installed by calling this once the Mac is idle.
+  /// Calling it quits and relaunches the app.
+  private var pendingSilentInstall: (() -> Void)?
+  private var pendingSilentInstallVersion: String?
+  private var silentInstallTimer: Timer?
+  /// The waiting line is logged once per downloaded version, not on every timer tick.
+  private var silentInstallWaitLoggedForVersion: String?
   private var started = false
   private var observations: [NSKeyValueObservation] = []
 
@@ -57,7 +74,7 @@ final class UpdaterService: NSObject, ObservableObject {
     } catch {
       DebugLogger.log("UPDATER: failed to start Sparkle: \(error.logDescription)")
     }
-    updater.automaticallyDownloadsUpdates = false
+    applyChannelPolicy(channel)
 
     canCheckForUpdates = updater.canCheckForUpdates
     lastUpdateCheckDate = updater.lastUpdateCheckDate
@@ -81,8 +98,59 @@ final class UpdaterService: NSObject, ObservableObject {
     channel = newValue
     DebugLogger.log("UPDATER: channel \(newValue.rawValue)")
     if started {
+      applyChannelPolicy(newValue)
       controller.updater.resetUpdateCycleAfterShortDelay()
     }
+  }
+
+  /// Latest downloads and may install with no click. Stable keeps the notice and waits for Install.
+  private func applyChannelPolicy(_ channel: UpdateChannel) {
+    let automatic = channel == .latest
+    controller.updater.automaticallyDownloadsUpdates = automatic
+    DebugLogger.log(
+      "UPDATER: automatic install \(automatic ? "on" : "off") for channel \(channel.rawValue)")
+  }
+
+  /// Stores Sparkle's install block and retries once a minute until the Mac is idle and this
+  /// process is not recording or otherwise busy. The block quits and relaunches the app.
+  private func beginSilentInstall(version: String, handler: @escaping () -> Void) {
+    silentInstallTimer?.invalidate()
+    pendingSilentInstall = handler
+    pendingSilentInstallVersion = version
+    silentInstallWaitLoggedForVersion = nil
+    DebugLogger.log("UPDATER: \(version) downloaded, installing when idle")
+    silentInstallTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+      Task { @MainActor in
+        self?.trySilentInstall()
+      }
+    }
+    trySilentInstall()
+  }
+
+  private func trySilentInstall() {
+    guard let handler = pendingSilentInstall, let version = pendingSilentInstallVersion else {
+      silentInstallTimer?.invalidate()
+      silentInstallTimer = nil
+      return
+    }
+    let idleSeconds = CGEventSource.secondsSinceLastEventType(
+      .combinedSessionState,
+      eventType: CGEventType(rawValue: ~0)!
+    )
+    let ready = !Self.thisProcessIsBusyWithLiveWork() && idleSeconds >= 120
+    guard ready else {
+      if silentInstallWaitLoggedForVersion != version {
+        silentInstallWaitLoggedForVersion = version
+        DebugLogger.log("UPDATER: silent install waiting (busy or user active)")
+      }
+      return
+    }
+    silentInstallTimer?.invalidate()
+    silentInstallTimer = nil
+    pendingSilentInstall = nil
+    pendingSilentInstallVersion = nil
+    DebugLogger.log("UPDATER: installing \(version) silently and relaunching")
+    handler()
   }
 
   /// Called when a live meeting or Dictate Live has finished. A held-back scheduled update is brought up now;
@@ -115,6 +183,23 @@ extension UpdaterService: SPUUpdaterDelegate {
   /// Stable allows no extra channel (untagged items only). Latest also allows `latest`.
   nonisolated func allowedChannels(for updater: SPUUpdater) -> Set<String> {
     UpdateChannel.current().allowedSparkleChannels
+  }
+
+  /// Latest takes the downloaded update and installs it later, with no window, once the Mac is idle.
+  /// Stable returns false so Sparkle keeps today's notice. Returning true stalls later cycles until
+  /// the stored block runs; that block quits and relaunches the app.
+  nonisolated func updater(
+    _ updater: SPUUpdater,
+    willInstallUpdateOnQuit item: SUAppcastItem,
+    immediateInstallationBlock immediateInstallHandler: @escaping () -> Void
+  ) -> Bool {
+    guard UpdateChannel.current() == .latest else { return false }
+    let version = item.displayVersionString
+    let handler = immediateInstallHandler
+    Task { @MainActor in
+      UpdaterService.shared.beginSilentInstall(version: version, handler: handler)
+    }
+    return true
   }
 
   nonisolated func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
@@ -157,7 +242,7 @@ extension UpdaterService: SPUStandardUserDriverDelegate {
   }
 
   nonisolated private static func thisProcessIsBusyWithLiveWork() -> Bool {
-    thisProcessIsRecordingMeeting() || dictateLiveActive.withLock { $0 }
+    thisProcessIsRecordingMeeting() || dictateLiveActive.withLock { $0 } || appBusy.withLock { $0 }
   }
 
   /// True when the live-meeting marker belongs to this process (written at session start, cleared
