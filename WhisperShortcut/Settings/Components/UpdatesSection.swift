@@ -4,8 +4,7 @@ import SwiftUI
 
 /// Settings → General section for the direct build's Sparkle updater: manual check, the automatic-check
 /// switch, and — because the pilot practice runs in Offline Mode — a plain statement of what the
-/// check sends. Never offers to install silently; Sparkle's own window carries the release notes
-/// and the Install button.
+/// check sends. Stable shows Sparkle's window with release notes and an Install button; Latest installs silently when idle.
 struct UpdatesSection: View {
   @ObservedObject private var updater = UpdaterService.shared
   @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
@@ -47,9 +46,7 @@ struct UpdatesSection: View {
           .toggleStyle(.switch)
           .font(.callout)
 
-        Text(
-          "When a new version is out, you see a notice with its release notes. Nothing is downloaded or installed until you click Install Update."
-        )
+        Text(automaticChecksCaption)
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -87,6 +84,22 @@ struct UpdatesSection: View {
     }
   }
 
+  /// Stable keeps the notice. Latest says the download and the idle install in the same caption.
+  private var automaticChecksCaption: String {
+    switch updater.channel {
+    case .stable:
+      return String(
+        localized:
+          "When a new version is out, you see a notice with its release notes. Nothing is downloaded or installed until you click Install Update."
+      )
+    case .latest:
+      return String(
+        localized:
+          "New versions download in the background and install by themselves when you are away from the Mac for a couple of minutes and nothing is recording. The app restarts for a moment; your settings stay."
+      )
+    }
+  }
+
   private var channelExplanation: String {
     switch updater.channel {
     case .stable:
@@ -97,7 +110,7 @@ struct UpdatesSection: View {
     case .latest:
       return String(
         localized:
-          "Every release on the day it ships, with the newest features and fixes. Switching back to Stable keeps your version; the next update comes once Stable is newer."
+          "Every release on the day it ships, installed automatically. Switching back to Stable keeps your version; the next update comes once Stable is newer and asks first."
       )
     }
   }
