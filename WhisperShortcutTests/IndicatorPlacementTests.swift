@@ -27,12 +27,24 @@ struct IndicatorPlacementTests {
   }
 
   private func place(
-    pid: Int32? = 100, windows: [IndicatorPlacement.WindowInfo] = [], mouse: CGPoint = CGPoint(x: 400, y: 400),
-    screenFrames: [CGRect]? = nil
+    pid: Int32? = 100, ownPID: pid_t? = nil, windows: [IndicatorPlacement.WindowInfo] = [],
+    mouse: CGPoint = CGPoint(x: 400, y: 400), screenFrames: [CGRect]? = nil
   ) -> Int? {
     IndicatorPlacement.screenIndex(
-      frontmostPID: pid, windows: windows, screenFrames: screenFrames ?? screens, mouse: mouse)
+      frontmostPID: pid, ownPID: ownPID, windows: windows, screenFrames: screenFrames ?? screens,
+      mouse: mouse)
   }
+
+  /// Side-by-side displays: screen 0 is the primary, screen 1 sits to its right.
+  /// Window-server y still grows down from the primary's top edge (height 800).
+  private let sideBySide = [
+    CGRect(x: 0, y: 0, width: 1000, height: 800),
+    CGRect(x: 1000, y: 0, width: 1000, height: 800),
+  ]
+  private let mouseOnScreen1 = CGPoint(x: 1500, y: 400)
+  private let ownOnScreen0 = CGRect(x: 200, y: 200, width: 400, height: 400)
+  private let foreignOnScreen0 = CGRect(x: 100, y: 100, width: 600, height: 500)
+  private let foreignOnScreen1 = CGRect(x: 1200, y: 100, width: 400, height: 400)
 
   @Test("The frontmost window on the external screen wins, even when the mouse is on the built-in")
   func externalWindowBeatsMouseOnBuiltIn() {
@@ -106,6 +118,64 @@ struct IndicatorPlacementTests {
     #expect(IndicatorPlacement.level(coveringLayers: [1000], base: 25, cap: 1000) == 1000)
     #expect(IndicatorPlacement.level(coveringLayers: [101, 26], base: 25, cap: 1000) == 102)
     #expect(IndicatorPlacement.level(coveringLayers: [25], base: 25, cap: 1000) == 26)
+  }
+
+  @Test("Our own floating window decides the screen when we are frontmost")
+  func ownFloatingWindowOnScreen0Wins() {
+    #expect(
+      place(
+        pid: 42, ownPID: 42, windows: [window(ownOnScreen0, pid: 42, layer: 3, name: "Chat")],
+        mouse: mouseOnScreen1, screenFrames: sideBySide) == 0)
+  }
+
+  @Test("Without ownPID, our floating window is ignored and the mouse's screen wins")
+  func ownFloatingWindowIgnoredWhenOwnPIDMissing() {
+    #expect(
+      place(
+        pid: 42, windows: [window(ownOnScreen0, pid: 42, layer: 3, name: "Chat")],
+        mouse: mouseOnScreen1, screenFrames: sideBySide) == 1)
+  }
+
+  @Test("Another app's floating palette is skipped; its normal window decides")
+  func otherAppFloatingLayerDoesNotCount() {
+    #expect(
+      place(
+        pid: 7, ownPID: 42,
+        windows: [
+          window(foreignOnScreen1, pid: 7, layer: 3, name: "Palette"),
+          window(foreignOnScreen0, pid: 7, layer: 0, name: "Document"),
+        ],
+        mouse: mouseOnScreen1, screenFrames: sideBySide) == 0)
+  }
+
+  @Test("When we are frontmost, a status-bar layer is skipped and our floating window decides")
+  func ownStatusBarLayerSkippedForFloatingWindow() {
+    #expect(
+      place(
+        pid: 42, ownPID: 42,
+        windows: [
+          window(foreignOnScreen1, pid: 42, layer: 25, name: "Overlay"),
+          window(ownOnScreen0, pid: 42, layer: 3, name: "Chat"),
+        ],
+        mouse: mouseOnScreen1, screenFrames: sideBySide) == 0)
+  }
+
+  @Test("When we are frontmost with only a status-bar window, the mouse's screen wins")
+  func ownStatusBarWindowAloneFallsBackToMouse() {
+    #expect(
+      place(
+        pid: 42, ownPID: 42,
+        windows: [window(foreignOnScreen1, pid: 42, layer: 25, name: "Overlay")],
+        mouse: mouseOnScreen1, screenFrames: sideBySide) == 1)
+  }
+
+  @Test("Our floating window under 50 pt is skipped and the mouse's screen wins")
+  func ownTinyFloatingWindowFallsBackToMouse() {
+    let tiny = CGRect(x: 200, y: 200, width: 40, height: 40)
+    #expect(
+      place(
+        pid: 42, ownPID: 42, windows: [window(tiny, pid: 42, layer: 3, name: "Chat")],
+        mouse: mouseOnScreen1, screenFrames: sideBySide) == 1)
   }
 
   @Test("Covering windows are other apps at or above the level whose frame overlaps the pill")

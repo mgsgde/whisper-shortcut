@@ -22,15 +22,20 @@ enum IndicatorPlacement {
   /// Index into `screenFrames` (AppKit coordinates, bottom-left origin) for the pill, or nil to
   /// fall back. `windows` is front-to-back, as the window list returns it. The frontmost app's
   /// first normal-layer window decides; the screen sharing the largest area with it wins.
+  /// When that app is our own process, floating windows count too (Chat, Settings, report, onboarding).
   /// Without such a window (an app with only a menu bar up, a fullscreen game), the screen under
   /// the mouse decides, which is where the shortcut was pressed in practice.
   static func screenIndex(
-    frontmostPID: pid_t?, windows: [WindowInfo], screenFrames: [CGRect], mouse: CGPoint
+    frontmostPID: pid_t?, ownPID: pid_t? = nil, windows: [WindowInfo], screenFrames: [CGRect],
+    mouse: CGPoint
   ) -> Int? {
     guard let primary = screenFrames.first else { return nil }
+    // Our own windows (Chat, Settings, report, onboarding) are all .floating (layer 3), so a
+    // layer-0-only filter never matches them and the pill fell back to the mouse's screen.
+    let maxLayer = (ownPID != nil && frontmostPID == ownPID) ? ownWindowMaxLayer : 0
     if let pid = frontmostPID,
       let window = windows.first(where: {
-        $0.ownerPID == pid && $0.layer == 0 && $0.bounds.width >= minimumWindowSide
+        $0.ownerPID == pid && (0...maxLayer).contains($0.layer) && $0.bounds.width >= minimumWindowSide
           && $0.bounds.height >= minimumWindowSide
       })
     {
@@ -74,6 +79,8 @@ enum IndicatorPlacement {
 
   /// Toolbars and tiny helper windows are not where the user is typing.
   static let minimumWindowSide: CGFloat = 50
+
+  static let ownWindowMaxLayer = 3  // NSWindow.Level.floating
 
   /// Reads the on-screen window list. Main thread; cheap (a few hundred entries).
   static func onScreenWindows() -> [WindowInfo] {

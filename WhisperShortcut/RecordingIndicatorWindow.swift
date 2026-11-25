@@ -1656,6 +1656,7 @@ final class RecordingIndicatorManager {
     let screens = NSScreen.screens
     let index = IndicatorPlacement.screenIndex(
       frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+      ownPID: ProcessInfo.processInfo.processIdentifier,
       windows: IndicatorPlacement.onScreenWindows(),
       screenFrames: screens.map(\.frame),
       mouse: NSEvent.mouseLocation)
