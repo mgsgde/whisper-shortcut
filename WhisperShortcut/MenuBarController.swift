@@ -3418,7 +3418,14 @@ class MenuBarController: NSObject {
     traceJob: UUID,
     glossaryEchoRemoved: [String]? = nil,
     templateName: String? = nil,
-    templateID: UUID? = nil
+    templateID: UUID? = nil,
+    selectedText: String? = nil,
+    selectionCaptured: Bool? = nil,
+    userInstruction: String? = nil,
+    frontAppBundleId: String? = nil,
+    styleExamples: Int? = nil,
+    styleContext: String? = nil,
+    memoryStyleRules: Int? = nil
   ) {
     let trace = speechService.recordedTrace(job: traceJob)
     TranscriptionHistoryStore.shared.record(
@@ -3427,7 +3434,11 @@ class MenuBarController: NSObject {
       rawOutput: trace.rawOutput, audioDurationSeconds: trace.audioDurationSeconds,
       templateName: templateName, templateID: templateID,
       promptChars: trace.promptChars, promptHash: trace.promptHash,
-      configHash: ReportConfigFingerprint.current(), appVersion: AppConstants.appVersion)
+      configHash: ReportConfigFingerprint.current(), appVersion: AppConstants.appVersion,
+      selectedText: selectedText, selectionCaptured: selectionCaptured,
+      userInstruction: userInstruction, frontAppBundleId: frontAppBundleId,
+      styleExamples: styleExamples, styleContext: styleContext,
+      memoryStyleRules: memoryStyleRules)
   }
 
   /// After Stop: insert the rest, then finish the dictation like Dictate does — history, usage
@@ -3806,7 +3817,14 @@ class MenuBarController: NSObject {
           modelName: identity.displayName,
           since: promptStartedAt, traceJob: traceJob,
           templateName: isTemplate ? templateName : nil,
-          templateID: isTemplate ? templateID : nil)
+          templateID: isTemplate ? templateID : nil,
+          selectedText: isTemplate ? nil : self.speechService.lastPromptSelectedText,
+          selectionCaptured: isTemplate ? nil : self.speechService.lastPromptSelectionCaptured,
+          userInstruction: isTemplate ? nil : self.speechService.lastPromptUserInstruction,
+          frontAppBundleId: isTemplate ? nil : self.pasteTargetAtRecordStart?.bundleId,
+          styleExamples: isTemplate ? nil : self.speechService.lastPromptStyleExamples,
+          styleContext: isTemplate ? nil : self.speechService.lastPromptStyleContext,
+          memoryStyleRules: isTemplate ? nil : self.speechService.lastPromptMemoryStyleRules)
         // A spoken result is not a writing sample and is not kept as a template recording.
         guard !speakResult else { return }
         // Keep the audio when this run was a template turn. A meeting segment has no job.

@@ -27,7 +27,12 @@ enum DictationReport {
     let dictated = formatter.string(from: entry.ts)
     lines.append(String(localized: "Dictated: \(dictated)"))
 
-    if let mode = entry.mode { lines.append(String(localized: "Mode: \(mode)")) }
+    if let mode = entry.mode {
+      lines.append(String(localized: "Mode: \(mode)"))
+      if mode == "Dictate Prompt" {
+        lines.append(contentsOf: promptContextLines(entry))
+      }
+    }
 
     let modelDescription: String?
     switch (entry.transcriptionModelName, entry.transcriptionModel) {
@@ -64,6 +69,54 @@ enum DictationReport {
       lines.append(raw)
     }
     return lines.joined(separator: "\n")
+  }
+
+  /// Selection, spoken instruction, front app and the writing-style block for a Dictate Prompt
+  /// entry. A missing field is unknown (an entry written before it was stored) and the line is
+  /// left out. `selectionCaptured == false` is known: nothing was sent, which is a different fact
+  /// from unknown. A style example count of 0 is known: the block was off. Counts only, never
+  /// the example texts.
+  private static func promptContextLines(_ entry: TranscriptionHistoryStore.Entry) -> [String] {
+    var lines: [String] = []
+    if let captured = entry.selectionCaptured {
+      let text = entry.selectedText?.trimmingCharacters(in: .whitespacesAndNewlines)
+      if captured, let text, !text.isEmpty {
+        lines.append(String(localized: "Selected text sent to the model:"))
+        lines.append(text)
+      } else {
+        // One string, not the shared "none" key ("keins", for glossary echo). "Text" is masculine.
+        lines.append(String(localized: "Selected text sent to the model: none"))
+      }
+    }
+    if let instruction = entry.userInstruction?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !instruction.isEmpty
+    {
+      lines.append(String(localized: "Spoken instruction:"))
+      lines.append(instruction)
+    }
+    if let bundleId = entry.frontAppBundleId?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !bundleId.isEmpty
+    {
+      lines.append(String(localized: "Front app:"))
+      lines.append(bundleId)
+    }
+    if let examples = entry.styleExamples {
+      if examples == 0 {
+        lines.append(String(localized: "Writing style: off"))
+      } else if let context = entry.styleContext?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !context.isEmpty
+      {
+        lines.append(String(
+          localized: "Writing style: \(examples) examples (\(context))",
+          comment: "Plural variation on the number of examples"))
+      }
+    }
+    if let rules = entry.memoryStyleRules, rules > 0 {
+      lines.append(String(
+        localized: "Memory style rules: \(rules)",
+        comment: "Plural variation on the number of rules"))
+    }
+    return lines
   }
 
   /// Glossary-echo and prompt-hash lines. They go in the settings file, not the editable details.

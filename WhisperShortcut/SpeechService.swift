@@ -182,6 +182,20 @@ class SpeechService {
   /// True when the last on-device Dictate Prompt reply stopped at the output-token cap, so its end
   /// may be missing. The reply is still delivered; the UI adds a notice.
   private(set) var lastPromptReplyTruncated = false
+  /// Selection text the last completed Dictate Prompt turn sent to the model, and whether a
+  /// selection was sent at all. `MenuBarController` copies both onto the history row. Nil until
+  /// a turn completes; false means the turn ran and sent no selection.
+  private(set) var lastPromptSelectedText: String?
+  private(set) var lastPromptSelectionCaptured: Bool?
+  /// Spoken (or typed quick-action) instruction of that same turn. Nil when there was none.
+  private(set) var lastPromptUserInstruction: String?
+  /// Example count of the writing-style block on that turn. 0 when the block was off or empty.
+  /// Nil until the turn decides. The example texts themselves are never stored.
+  private(set) var lastPromptStyleExamples: Int?
+  /// `WritingContext.rawValue` of that block. Nil when no block was sent.
+  private(set) var lastPromptStyleContext: String?
+  /// How many style rules from memory.md that turn sent. 0 when none. Nil until the turn decides.
+  private(set) var lastPromptMemoryStyleRules: Int?
   /// Kind of the turn inside `performPrompt`. Set at the start of every turn so a recording never
   /// inherits the previous one's template. MenuBarController reads `lastPromptAppliedTemplate`.
   private var promptTurnKind: PromptTurnKind = .compose
@@ -1288,6 +1302,12 @@ class SpeechService {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
     lastPromptReplyTruncated = false
+    lastPromptSelectedText = nil
+    lastPromptSelectionCaptured = nil
+    lastPromptUserInstruction = nil
+    lastPromptStyleExamples = nil
+    lastPromptStyleContext = nil
+    lastPromptMemoryStyleRules = nil
     promptTurnKind = .compose
     promptOutputIsSpoken = outputIsSpoken
     promptRecordingWasSilent = recordingWasSilent
@@ -1704,13 +1724,20 @@ class SpeechService {
   ) -> String {
     let base: String
     if case .template(let turn) = promptTurnKind {
+      // A template turn never calls the style blocks. Record 0, same as a spoken turn.
+      recordNoStyleBlock()
       base = Self.templateTurnSystemPrompt(instructions: turn.instructions)
     } else {
       // A spoken turn is not a writing sample and must not pull the paste-oriented style block
       // in ahead of the spoken-output rule.
-      let styleBlock = promptOutputIsSpoken
-        ? ""
-        : writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock()
+      let styleBlock: String
+      if promptOutputIsSpoken {
+        // Spoken output skips the style blocks. Record 0 so the report says "off".
+        recordNoStyleBlock()
+        styleBlock = ""
+      } else {
+        styleBlock = writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock()
+      }
       base = Self.buildDictatePromptSystemPrompt(
         logPrefix: logPrefix, usesScreenshotSelection: usesScreenshotSelection,
         styleBlock: styleBlock,
@@ -1739,17 +1766,37 @@ class SpeechService {
   /// correct instructions). Previews call `buildDictatePromptSystemPrompt` without it.
   private func writingStyleBlock(incoming: String?) -> String {
     let provider = getPromptModel().provider
-    guard !provider.isLocal else { return "" }
+    guard !provider.isLocal else {
+      recordEmptyWritingStyle()
+      return ""
+    }
     let requested = WritingContextResolver.current()
     guard let block = WritingStyleStore.shared.promptBlock(
       for: requested, incoming: incoming, maxChars: WritingStyleStore.maxChars),
       !block.text.isEmpty
-    else { return "" }
+    else {
+      recordEmptyWritingStyle()
+      return ""
+    }
+    lastPromptStyleExamples = block.exampleCount
+    lastPromptStyleContext = block.context.rawValue
     TelemetryService.shared.count(.writingStyle, .used)
     DebugLogger.log(
       "WRITING-STYLE: requested=\(requested.rawValue) used=\(block.context.rawValue) "
         + "examples=\(block.exampleCount) blockChars=\(block.text.count)")
     return "\n\n" + block.text
+  }
+
+  /// The style block was off or empty. Counts only: the example texts are never stored.
+  private func recordEmptyWritingStyle() {
+    lastPromptStyleExamples = 0
+    lastPromptStyleContext = nil
+  }
+
+  /// Template and spoken-output turns skip both style blocks. 0 is "off", not unknown.
+  private func recordNoStyleBlock() {
+    recordEmptyWritingStyle()
+    lastPromptMemoryStyleRules = 0
   }
 
   /// The user's style rules from memory.md. Empty for local models (same rule as
@@ -1762,6 +1809,7 @@ class SpeechService {
 
   private func memoryStyleBlock() -> String {
     let facts = memoryStyleFacts()
+    lastPromptMemoryStyleRules = facts.count
     if !facts.isEmpty { DebugLogger.log("PROMPT-MODE: memory style rules=\(facts.count)") }
     return MemoryStyleRules.promptBlock(styleFacts: facts)
   }
@@ -2022,6 +2070,14 @@ class SpeechService {
     }
 
     let latencyMs = Self.milliseconds(since: promptStarted)
+    // What the model was given, for the problem report. A timeout leaves the placeholder, which
+    // is not an instruction the user spoke, so the report omits that line.
+    let spoken = userInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+    lastPromptSelectedText = clipboardContext
+    lastPromptSelectionCaptured = clipboardContext != nil
+    lastPromptUserInstruction = (spoken.isEmpty || spoken == Self.voiceInstructionPlaceholder)
+      ? nil
+      : spoken
     // Offline Mode never replays earlier turns (see the history guard above), so recording them
     // would only keep a patient's selection and reply in memory for no purpose. A template turn
     // is not recorded either: its history would be another patient's note in the same format.

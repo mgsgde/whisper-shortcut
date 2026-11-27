@@ -30294,6 +30294,138 @@
         }
       }
     },
+    "Selected text sent to the model:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markierter Text an das Modell:"
+          }
+        }
+      }
+    },
+    "Spoken instruction:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesprochene Anweisung:"
+          }
+        }
+      }
+    },
+    "Front app:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderste App:"
+          }
+        }
+      }
+    },
+    "Writing style: off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schreibstil: aus"
+          }
+        }
+      }
+    },
+    "Writing style: %lld examples (%@)" : {
+      "comment" : "Plural variation on the number of examples",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Schreibstil: %1$lld Beispiel (%2$@)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Schreibstil: %1$lld Beispiele (%2$@)"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Writing style: %lld example (%@)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Writing style: %lld examples (%@)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Memory style rules: %lld" : {
+      "comment" : "Plural variation on the number of rules",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Stilregel aus dem Gedächtnis: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Stilregeln aus dem Gedächtnis: %lld"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Memory style rule: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Memory style rules: %lld"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Selected text sent to the model: none" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markierter Text an das Modell: keiner"
+          }
+        }
+      }
+    },
     "Transcription model: %@" : {
       "localizations" : {
         "de" : {

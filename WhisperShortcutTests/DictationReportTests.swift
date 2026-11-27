@@ -40,6 +40,76 @@ struct DictationReportTests {
     #expect(!body.contains("Glossary echo removed"))
   }
 
+  @Test("Dictate Prompt lists the selection, the instruction and the front app")
+  func promptContextLines() throws {
+    let ts = Self.date("2026-10-27T16:27:41Z")
+    let captured = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt",
+      transcriptionModel: "gemini-3.5-flash", transcriptionModelName: "Gemini",
+      selectedText: "Hallo GU Anmeldung",
+      selectionCaptured: true,
+      userInstruction: "Korrigiere den ersten Satz",
+      frontAppBundleId: "com.citrix.receiver")
+    let body = DictationReport.body(entry: captured, glossaryTerms: [], offlineMode: false)
+    let modeEnd = try #require(body.range(of: "Mode: Dictate Prompt"))
+    let modelStart = try #require(body.range(of: "Transcription model:"))
+    #expect(String(body[modeEnd.upperBound..<modelStart.lowerBound]) == """
+
+      Selected text sent to the model:
+      Hallo GU Anmeldung
+      Spoken instruction:
+      Korrigiere den ersten Satz
+      Front app:
+      com.citrix.receiver
+
+      """)
+
+    let noneCaptured = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt", selectionCaptured: false)
+    let noneBody = DictationReport.body(entry: noneCaptured, glossaryTerms: [], offlineMode: false)
+    #expect(noneBody.contains("Selected text sent to the model: none"))
+    #expect(!noneBody.contains("Spoken instruction:"))
+    #expect(!noneBody.contains("Front app:"))
+
+    let old = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt")
+    let oldBody = DictationReport.body(entry: old, glossaryTerms: [], offlineMode: false)
+    #expect(!oldBody.contains("Selected text sent to the model:"))
+    #expect(!oldBody.contains("Spoken instruction:"))
+    #expect(!oldBody.contains("Front app:"))
+    #expect(!oldBody.contains("Writing style:"))
+    #expect(!oldBody.contains("Memory style rules:"))
+    #expect(!oldBody.contains("none"))
+  }
+
+  @Test("Dictate Prompt names the writing-style block when it was recorded")
+  func writingStyleLines() throws {
+    let ts = Self.date("2026-10-27T16:27:41Z")
+    let on = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt",
+      frontAppBundleId: "com.apple.mail",
+      styleExamples: 3, styleContext: "email", memoryStyleRules: 2)
+    let onBody = DictationReport.body(entry: on, glossaryTerms: [], offlineMode: false)
+    let front = try #require(onBody.range(of: "Front app:\ncom.apple.mail"))
+    let style = try #require(onBody.range(of: "Writing style: 3 examples (email)"))
+    #expect(front.upperBound <= style.lowerBound)
+    #expect(onBody.contains("Memory style rules: 2"))
+
+    let off = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt",
+      styleExamples: 0, memoryStyleRules: 0)
+    let offBody = DictationReport.body(entry: off, glossaryTerms: [], offlineMode: false)
+    #expect(offBody.contains("Writing style: off"))
+    #expect(!offBody.contains("examples"))
+    #expect(!offBody.contains("Memory style rules:"))
+
+    let unknown = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt")
+    let unknownBody = DictationReport.body(entry: unknown, glossaryTerms: [], offlineMode: false)
+    #expect(!unknownBody.contains("Writing style:"))
+    #expect(!unknownBody.contains("Memory style rules:"))
+  }
+
   @Test("Old entry omits mode, model and echo lines")
   func oldEntry() {
     let entry = TranscriptionHistoryStore.Entry(ts: Date(), text: "Hallo")
