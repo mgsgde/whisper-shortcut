@@ -40,6 +40,46 @@ struct DictationReportTests {
     #expect(!body.contains("Glossary echo removed"))
   }
 
+  @Test("Dictate Prompt lists the selection, the instruction and the front app")
+  func promptContextLines() throws {
+    let ts = Self.date("2026-10-27T16:27:41Z")
+    let captured = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt",
+      transcriptionModel: "gemini-3.5-flash", transcriptionModelName: "Gemini",
+      selectedText: "Hallo GU Anmeldung",
+      selectionCaptured: true,
+      userInstruction: "Korrigiere den ersten Satz",
+      frontAppBundleId: "com.citrix.receiver")
+    let body = DictationReport.body(entry: captured, glossaryTerms: [], offlineMode: false)
+    let modeEnd = try #require(body.range(of: "Mode: Dictate Prompt"))
+    let modelStart = try #require(body.range(of: "Transcription model:"))
+    #expect(String(body[modeEnd.upperBound..<modelStart.lowerBound]) == """
+
+      Selected text sent to the model:
+      Hallo GU Anmeldung
+      Spoken instruction:
+      Korrigiere den ersten Satz
+      Front app:
+      com.citrix.receiver
+
+      """)
+
+    let noneCaptured = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt", selectionCaptured: false)
+    let noneBody = DictationReport.body(entry: noneCaptured, glossaryTerms: [], offlineMode: false)
+    #expect(noneBody.contains("Selected text sent to the model: none"))
+    #expect(!noneBody.contains("Spoken instruction:"))
+    #expect(!noneBody.contains("Front app:"))
+
+    let old = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt")
+    let oldBody = DictationReport.body(entry: old, glossaryTerms: [], offlineMode: false)
+    #expect(!oldBody.contains("Selected text sent to the model:"))
+    #expect(!oldBody.contains("Spoken instruction:"))
+    #expect(!oldBody.contains("Front app:"))
+    #expect(!oldBody.contains("none"))
+  }
+
   @Test("Old entry omits mode, model and echo lines")
   func oldEntry() {
     let entry = TranscriptionHistoryStore.Entry(ts: Date(), text: "Hallo")

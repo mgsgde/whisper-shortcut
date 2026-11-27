@@ -27,7 +27,12 @@ enum DictationReport {
     let dictated = formatter.string(from: entry.ts)
     lines.append(String(localized: "Dictated: \(dictated)"))
 
-    if let mode = entry.mode { lines.append(String(localized: "Mode: \(mode)")) }
+    if let mode = entry.mode {
+      lines.append(String(localized: "Mode: \(mode)"))
+      if mode == "Dictate Prompt" {
+        lines.append(contentsOf: promptContextLines(entry))
+      }
+    }
 
     let modelDescription: String?
     switch (entry.transcriptionModelName, entry.transcriptionModel) {
@@ -64,6 +69,36 @@ enum DictationReport {
       lines.append(raw)
     }
     return lines.joined(separator: "\n")
+  }
+
+  /// Selection, spoken instruction and front app for a Dictate Prompt entry. A missing field is
+  /// unknown (an entry written before it was stored) and the line is left out. `selectionCaptured
+  /// == false` is known: nothing was sent, which is a different fact from unknown.
+  private static func promptContextLines(_ entry: TranscriptionHistoryStore.Entry) -> [String] {
+    var lines: [String] = []
+    if let captured = entry.selectionCaptured {
+      let text = entry.selectedText?.trimmingCharacters(in: .whitespacesAndNewlines)
+      if captured, let text, !text.isEmpty {
+        lines.append(String(localized: "Selected text sent to the model:"))
+        lines.append(text)
+      } else {
+        // One string, not the shared "none" key ("keins", for glossary echo). "Text" is masculine.
+        lines.append(String(localized: "Selected text sent to the model: none"))
+      }
+    }
+    if let instruction = entry.userInstruction?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !instruction.isEmpty
+    {
+      lines.append(String(localized: "Spoken instruction:"))
+      lines.append(instruction)
+    }
+    if let bundleId = entry.frontAppBundleId?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !bundleId.isEmpty
+    {
+      lines.append(String(localized: "Front app:"))
+      lines.append(bundleId)
+    }
+    return lines
   }
 
   /// Glossary-echo and prompt-hash lines. They go in the settings file, not the editable details.

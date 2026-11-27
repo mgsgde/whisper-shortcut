@@ -30294,6 +30294,46 @@
         }
       }
     },
+    "Selected text sent to the model:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markierter Text an das Modell:"
+          }
+        }
+      }
+    },
+    "Spoken instruction:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesprochene Anweisung:"
+          }
+        }
+      }
+    },
+    "Front app:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderste App:"
+          }
+        }
+      }
+    },
+    "Selected text sent to the model: none" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markierter Text an das Modell: keiner"
+          }
+        }
+      }
+    },
     "Transcription model: %@" : {
       "localizations" : {
         "de" : {

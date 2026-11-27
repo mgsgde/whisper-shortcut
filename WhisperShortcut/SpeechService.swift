@@ -182,6 +182,13 @@ class SpeechService {
   /// True when the last on-device Dictate Prompt reply stopped at the output-token cap, so its end
   /// may be missing. The reply is still delivered; the UI adds a notice.
   private(set) var lastPromptReplyTruncated = false
+  /// Selection text the last completed Dictate Prompt turn sent to the model, and whether a
+  /// selection was sent at all. `MenuBarController` copies both onto the history row. Nil until
+  /// a turn completes; false means the turn ran and sent no selection.
+  private(set) var lastPromptSelectedText: String?
+  private(set) var lastPromptSelectionCaptured: Bool?
+  /// Spoken (or typed quick-action) instruction of that same turn. Nil when there was none.
+  private(set) var lastPromptUserInstruction: String?
   /// Kind of the turn inside `performPrompt`. Set at the start of every turn so a recording never
   /// inherits the previous one's template. MenuBarController reads `lastPromptAppliedTemplate`.
   private var promptTurnKind: PromptTurnKind = .compose
@@ -1288,6 +1295,9 @@ class SpeechService {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
     lastPromptReplyTruncated = false
+    lastPromptSelectedText = nil
+    lastPromptSelectionCaptured = nil
+    lastPromptUserInstruction = nil
     promptTurnKind = .compose
     promptOutputIsSpoken = outputIsSpoken
     promptRecordingWasSilent = recordingWasSilent
@@ -2022,6 +2032,14 @@ class SpeechService {
     }
 
     let latencyMs = Self.milliseconds(since: promptStarted)
+    // What the model was given, for the problem report. A timeout leaves the placeholder, which
+    // is not an instruction the user spoke, so the report omits that line.
+    let spoken = userInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
+    lastPromptSelectedText = clipboardContext
+    lastPromptSelectionCaptured = clipboardContext != nil
+    lastPromptUserInstruction = (spoken.isEmpty || spoken == Self.voiceInstructionPlaceholder)
+      ? nil
+      : spoken
     // Offline Mode never replays earlier turns (see the history guard above), so recording them
     // would only keep a patient's selection and reply in memory for no purpose. A template turn
     // is not recorded either: its history would be another patient's note in the same format.
