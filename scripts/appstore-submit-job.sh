@@ -20,7 +20,7 @@
 #                  that failed, and when. A failure mails once; the same tag
 #                  is not retried again unless --force.
 #
-# Usage: appstore-submit-job.sh <tag> [--dry-run] [--force]
+# Usage: appstore-submit-job.sh <tag> [--dry-run] [--force] [--notes-file=<path>]
 #   <tag>       the git tag to submit, e.g. v8.95 (must already be a
 #               published GitHub release — /release or the Stable promotion
 #               already cut it)
@@ -30,6 +30,10 @@
 #               no build, no writes to App Store Connect, no state-file
 #               writes, no mail.
 #   --force     ignore a stored failed-tag for this tag and retry it anyway.
+#   --notes-file=<path>  read the English What's New from this plain-text
+#               file instead of the tag's GitHub release (and skip the
+#               fold-in). For a manual submission that jumps several
+#               versions past the live one.
 #   APPSTORE_ASC_DIR  dir holding export-options-app-store.plist (default: $REPO/.asc)
 #
 # Mails on success ("App Store: <tag> submitted for review") and on any
@@ -51,17 +55,19 @@ PLATFORM=MAC_OS
 TAG=""
 DRY=0
 FORCE=0
+NOTES_FILE=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY=1 ;;
     --force) FORCE=1 ;;
+    --notes-file=*) NOTES_FILE="${arg#--notes-file=}" ;;
     v[0-9]*) TAG="$arg" ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
 
 if [ -z "$TAG" ]; then
-  echo "usage: appstore-submit-job.sh <tag> [--dry-run] [--force]" >&2
+  echo "usage: appstore-submit-job.sh <tag> [--dry-run] [--force] [--notes-file=<path>]" >&2
   exit 2
 fi
 if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
@@ -69,6 +75,14 @@ if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
   exit 2
 fi
 TAG_VER="${TAG#v}"
+
+if [ -n "$NOTES_FILE" ]; then
+  if [ ! -s "$NOTES_FILE" ]; then
+    echo "notes file not found or empty: $NOTES_FILE" >&2
+    exit 2
+  fi
+  NOTES_FILE="$(cd "$(dirname "$NOTES_FILE")" && pwd)/$(basename "$NOTES_FILE")"
+fi
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO" || exit 1
@@ -265,13 +279,18 @@ fetch_release_notes_cut() {
   printf '%s\n' "$body" | sed '/^## Installation/,$d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
 }
 
-ENGLISH_NOTES="$(fetch_release_notes_cut "$TAG")" || \
-  fail_job "release-notes" "gh release view $TAG --json body failed. Nothing was submitted."
+if [ -n "$NOTES_FILE" ]; then
+  ENGLISH_NOTES="$(cat "$NOTES_FILE")"
+  echo "What's New from $NOTES_FILE (not from the GitHub release)."
+else
+  ENGLISH_NOTES="$(fetch_release_notes_cut "$TAG")" || \
+    fail_job "release-notes" "gh release view $TAG --json body failed. Nothing was submitted."
+fi
 if [ -z "$ENGLISH_NOTES" ]; then
   fail_job "release-notes" "$TAG's GitHub release body has no user-facing part (empty after cutting the Installation section)."
 fi
 
-if [ -n "$FOLD_IN_VERSION_ID" ]; then
+if [ -n "$FOLD_IN_VERSION_ID" ] && [ -z "$NOTES_FILE" ]; then
   # Cumulative What's New: the folded-in version never shipped, so the notes
   # for every tag between it (exclusive) and $TAG (inclusive) must appear.
   FOLD_FROM_VER="$TOP_VER"
