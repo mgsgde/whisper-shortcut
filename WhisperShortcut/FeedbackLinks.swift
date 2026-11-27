@@ -15,9 +15,9 @@ enum FeedbackLinks {
     case email
   }
 
-  /// Support email — the address already published in SECURITY.md and PRIVACY.md, so it is the
-  /// one users may have seen elsewhere.
-  static let supportEmail = "mgsgde@gmail.com"
+  /// Support email — the address published in SECURITY.md, PRIVACY.md and on the website, so it
+  /// is the one users may have seen elsewhere.
+  static let supportEmail = "mail@magnus-goedde.de"
 
   /// Subject line for a report email. Shared by the `mailto:` URL and Mail's compose service so
   /// both drafts are titled the same way.
