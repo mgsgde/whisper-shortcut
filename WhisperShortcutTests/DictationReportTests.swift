@@ -77,7 +77,37 @@ struct DictationReportTests {
     #expect(!oldBody.contains("Selected text sent to the model:"))
     #expect(!oldBody.contains("Spoken instruction:"))
     #expect(!oldBody.contains("Front app:"))
+    #expect(!oldBody.contains("Writing style:"))
+    #expect(!oldBody.contains("Memory style rules:"))
     #expect(!oldBody.contains("none"))
+  }
+
+  @Test("Dictate Prompt names the writing-style block when it was recorded")
+  func writingStyleLines() throws {
+    let ts = Self.date("2026-10-27T16:27:41Z")
+    let on = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt",
+      frontAppBundleId: "com.apple.mail",
+      styleExamples: 3, styleContext: "email", memoryStyleRules: 2)
+    let onBody = DictationReport.body(entry: on, glossaryTerms: [], offlineMode: false)
+    let front = try #require(onBody.range(of: "Front app:\ncom.apple.mail"))
+    let style = try #require(onBody.range(of: "Writing style: 3 examples (email)"))
+    #expect(front.upperBound <= style.lowerBound)
+    #expect(onBody.contains("Memory style rules: 2"))
+
+    let off = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt",
+      styleExamples: 0, memoryStyleRules: 0)
+    let offBody = DictationReport.body(entry: off, glossaryTerms: [], offlineMode: false)
+    #expect(offBody.contains("Writing style: off"))
+    #expect(!offBody.contains("examples"))
+    #expect(!offBody.contains("Memory style rules:"))
+
+    let unknown = TranscriptionHistoryStore.Entry(
+      ts: ts, text: "Pasted answer", mode: "Dictate Prompt")
+    let unknownBody = DictationReport.body(entry: unknown, glossaryTerms: [], offlineMode: false)
+    #expect(!unknownBody.contains("Writing style:"))
+    #expect(!unknownBody.contains("Memory style rules:"))
   }
 
   @Test("Old entry omits mode, model and echo lines")

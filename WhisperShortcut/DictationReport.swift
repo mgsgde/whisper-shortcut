@@ -71,9 +71,11 @@ enum DictationReport {
     return lines.joined(separator: "\n")
   }
 
-  /// Selection, spoken instruction and front app for a Dictate Prompt entry. A missing field is
-  /// unknown (an entry written before it was stored) and the line is left out. `selectionCaptured
-  /// == false` is known: nothing was sent, which is a different fact from unknown.
+  /// Selection, spoken instruction, front app and the writing-style block for a Dictate Prompt
+  /// entry. A missing field is unknown (an entry written before it was stored) and the line is
+  /// left out. `selectionCaptured == false` is known: nothing was sent, which is a different fact
+  /// from unknown. A style example count of 0 is known: the block was off. Counts only, never
+  /// the example texts.
   private static func promptContextLines(_ entry: TranscriptionHistoryStore.Entry) -> [String] {
     var lines: [String] = []
     if let captured = entry.selectionCaptured {
@@ -97,6 +99,22 @@ enum DictationReport {
     {
       lines.append(String(localized: "Front app:"))
       lines.append(bundleId)
+    }
+    if let examples = entry.styleExamples {
+      if examples == 0 {
+        lines.append(String(localized: "Writing style: off"))
+      } else if let context = entry.styleContext?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !context.isEmpty
+      {
+        lines.append(String(
+          localized: "Writing style: \(examples) examples (\(context))",
+          comment: "Plural variation on the number of examples"))
+      }
+    }
+    if let rules = entry.memoryStyleRules, rules > 0 {
+      lines.append(String(
+        localized: "Memory style rules: \(rules)",
+        comment: "Plural variation on the number of rules"))
     }
     return lines
   }

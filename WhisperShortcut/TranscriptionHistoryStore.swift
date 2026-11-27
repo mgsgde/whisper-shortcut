@@ -58,6 +58,13 @@ final class TranscriptionHistoryStore {
     var userInstruction: String? = nil
     /// Bundle id of the app in front when the recording started. Nil when it was not recorded.
     var frontAppBundleId: String? = nil
+    /// Example count of the writing-style block. 0 when the block was off. Nil when unknown.
+    /// The example texts themselves are never stored.
+    var styleExamples: Int? = nil
+    /// `WritingContext.rawValue` of that block. Nil when no block was sent, or when unknown.
+    var styleContext: String? = nil
+    /// Style rules from memory.md sent with this turn. 0 when none. Nil when unknown.
+    var memoryStyleRules: Int? = nil
   }
 
   /// How many results are kept for the problem report. The status menu shows only `menuEntries`.
@@ -126,7 +133,9 @@ final class TranscriptionHistoryStore {
     promptChars: Int? = nil, promptHash: String? = nil,
     configHash: String? = nil, appVersion: String? = nil,
     selectedText: String? = nil, selectionCaptured: Bool? = nil,
-    userInstruction: String? = nil, frontAppBundleId: String? = nil
+    userInstruction: String? = nil, frontAppBundleId: String? = nil,
+    styleExamples: Int? = nil, styleContext: String? = nil,
+    memoryStyleRules: Int? = nil
   ) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
@@ -141,7 +150,9 @@ final class TranscriptionHistoryStore {
         promptChars: promptChars, promptHash: promptHash,
         configHash: configHash, appVersion: appVersion,
         selectedText: cappedSelection, selectionCaptured: selectionCaptured,
-        userInstruction: userInstruction, frontAppBundleId: frontAppBundleId), at: 0)
+        userInstruction: userInstruction, frontAppBundleId: frontAppBundleId,
+        styleExamples: styleExamples, styleContext: styleContext,
+        memoryStyleRules: memoryStyleRules), at: 0)
       if self.storage.count > Self.maxEntries {
         self.storage.removeLast(self.storage.count - Self.maxEntries)
       }
