@@ -19,7 +19,7 @@ Report privately using one of these channels:
    [Create a private security advisory](https://github.com/mgsgde/whisper-shortcut/security/advisories/new)
 
 2. **Email:**  
-   [mgsgde@gmail.com](mailto:mgsgde@gmail.com?subject=WhisperShortcut%20Security%20Report)  
+   [mail@magnus-goedde.de](mailto:mail@magnus-goedde.de?subject=WhisperShortcut%20Security%20Report)  
    Use subject line: `WhisperShortcut Security Report`
 
 Include:

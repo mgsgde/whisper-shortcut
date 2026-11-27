@@ -44,4 +44,4 @@ The app is open source so you can audit how data is handled.
 
 ## Contact
 
-Questions or concerns: mgsgde@gmail.com
+Questions or concerns: mail@magnus-goedde.de
