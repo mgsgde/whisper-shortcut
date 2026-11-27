@@ -856,6 +856,7 @@ private struct QuickActionCardView: View {
 
   private var footer: some View {
     HStack(spacing: 8) {
+      DragGripView()
       PillCircleButton(
         symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
         accessibilityLabel: "Discard recording", action: onCancel)
@@ -1136,7 +1137,7 @@ private final class RecordingIndicatorPanel: NSPanel {
   var onSpeakingKey: ((NSEvent) -> Bool)?
   /// A click landed on the pill. The event is still delivered afterwards.
   var onMouseDown: (() -> Void)?
-  /// Whether a drag may move the pill right now (not while a scrubber or text field needs it).
+  /// Whether a drag may move the pill right now (not while the Read Aloud scrubber needs it).
   var canDrag: (() -> Bool)?
   /// The user let go after moving the pill.
   var onDragEnded: (() -> Void)?
@@ -1151,7 +1152,8 @@ private final class RecordingIndicatorPanel: NSPanel {
   private func handleDrag(_ event: NSEvent) -> Bool {
     switch event.type {
     case .leftMouseDown:
-      dragStart = (event, NSEvent.mouseLocation, frame.origin)
+      // A press in the card's instruction field selects text; it never moves the window.
+      dragStart = hitsTextInput(event) ? nil : (event, NSEvent.mouseLocation, frame.origin)
       isDragging = false
       return false
     case .leftMouseDragged:
@@ -1183,6 +1185,19 @@ private final class RecordingIndicatorPanel: NSPanel {
     default:
       return false
     }
+  }
+
+  /// Whether the press lands in an editable text view (the Dictate Prompt card's field, or its
+  /// field editor while it has focus). Walks up from the hit view because SwiftUI wraps it.
+  private func hitsTextInput(_ event: NSEvent) -> Bool {
+    guard let contentView else { return false }
+    let point = contentView.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
+    var view = contentView.hitTest(point)
+    while let current = view, current !== contentView {
+      if current is NSTextField || current is NSText { return true }
+      view = current.superview
+    }
+    return false
   }
 
   /// Drops a drag that never got a mouse-up, and pops the closed-hand cursor if this drag pushed it.
@@ -1834,7 +1849,9 @@ final class RecordingIndicatorManager {
     }
     panel.canDrag = { [weak self] in
       guard let self else { return false }
-      return self.model.phase != .speaking && !self.model.quickActionsVisible
+      // The Read Aloud scrubber needs the drag; the card moves like the pill (its field is
+      // excluded in `handleDrag`).
+      return self.model.phase != .speaking
     }
     panel.onDragEnded = { [weak self] in
       guard let self, let panel = self.panel else { return }
