@@ -28,6 +28,7 @@ struct ModelStoreTests {
     var loadBehaviour: (FakeModel) async throws -> Void = { _ in }
     var heals = false
     var canRedownload = true
+    var diskCheck: (FakeModel) throws -> Void = { _ in }
 
     init(root: URL) {
       self.root = root
@@ -41,6 +42,7 @@ struct ModelStoreTests {
     }
     override var healsCorruptDownloadOnLoadFailure: Bool { heals }
     override var canRedownloadNow: Bool { canRedownload }
+    override func checkDiskSpace(for model: FakeModel) throws { try diskCheck(model) }
     override func fetch(_ model: FakeModel, onProgress: @escaping (Double) -> Void) async throws {
       fetchCalls += 1
       try await fetchBehaviour(model)
@@ -77,6 +79,17 @@ struct ModelStoreTests {
     }
     #expect(!store.isModelAvailable(.small))
     #expect(store.downloadingModels.isEmpty, "progress state must be cleared on failure")
+  }
+
+  @Test("A disk-space failure stops the download before fetching")
+  func diskSpaceFailureStopsDownload() async {
+    let store = makeStore()
+    store.diskCheck = { _ in throw DiskSpaceError.insufficient(neededMB: 2, availableMB: 1) }
+    await #expect(throws: DiskSpaceError.self) {
+      try await store.downloadModel(.small)
+    }
+    #expect(store.fetchCalls == 0)
+    #expect(!store.downloadingModels.contains(.small))
   }
 
   @Test("Two callers of the same download join one fetch")

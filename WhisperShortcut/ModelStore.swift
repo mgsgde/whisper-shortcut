@@ -301,6 +301,12 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// pretend download for them (`TestProfileOverrides.runStubDownload`).
   nonisolated var usesTestProfileDownloadStub: Bool { false }
 
+  /// Pre-download free-space check. Overridden by tests so they never read the
+  /// machine's real disk.
+  func checkDiskSpace(for model: Model) throws {
+    try DiskSpace.require(estimatedSizeMB: model.estimatedSizeMB, at: rootDirectory)
+  }
+
   private func performDownload(_ model: Model, onProgress: ((Double) -> Void)?) async throws {
     if usesTestProfileDownloadStub, TestProfileOverrides.current.download != nil {
       try await performStubDownload(model, onProgress: onProgress)
@@ -308,7 +314,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     }
     // Test profiles (`TestProfile`) never download unless launched with --allow-model-downloads.
     try TestProfile.checkModelDownloadAllowed(model.displayName)
-    try DiskSpace.require(estimatedSizeMB: model.estimatedSizeMB, at: rootDirectory)
+    try checkDiskSpace(for: model)
 
     downloadingModels.insert(model)
     downloadProgress[model] = 0
@@ -356,7 +362,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
 
   /// The test-profile stand-in for `performDownload`: same published state, no network, no files.
   private func performStubDownload(_ model: Model, onProgress: ((Double) -> Void)?) async throws {
-    try DiskSpace.require(estimatedSizeMB: model.estimatedSizeMB, at: rootDirectory)
+    try checkDiskSpace(for: model)
     downloadingModels.insert(model)
     downloadProgress[model] = 0
     defer {
