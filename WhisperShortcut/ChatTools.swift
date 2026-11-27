@@ -1808,7 +1808,15 @@ enum ChatToolRegistry {
       }
 
     case AppSettingsChatTool.name:
-      return AppSettingsChatTool.execute(args: args)
+      // The candidate scan reads the whole usage log; run it off the main actor, then hand the
+      // result to the synchronous tool.
+      var precomputed: [[String: Any]] = []
+      if args["action"] as? String == "review",
+        AppSettingsChatTool.usageState(deps: .live) == "on"
+      {
+        precomputed = await DictationCandidates.liveAsync()
+      }
+      return AppSettingsChatTool.execute(args: args, candidates: { precomputed })
 
     case readRecentInteractionsToolName:
       // Re-checked at call time: the declaration list was built when the turn started.

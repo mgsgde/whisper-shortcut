@@ -8,9 +8,19 @@ What it measures
   of the chat tools (`app_settings`, `read_recent_interactions`, `read_config_history`,
   `update_app_instructions`, `remember_dictation_term`) with mocked results built from the case
   file. The first write (append/replace/remove, or remember_dictation_term) is recorded as the
-  PROPOSAL and ends the case, as the approval card ends the turn in the app. Positive cases score
-  HIT / MENT(ion) / MISS against the accepted change; negative cases PASS unless the model
-  re-proposes something the user removed on purpose.
+  PROPOSAL and ends the case, as the approval card ends the turn in the app.
+
+  Outcomes. Positives: CARD_OK (proposal matches gold.accept or the judge says same), CARD_WRONG (any
+  other card), ASK (no card; the answer names a gold.forms regex (fallback gold.accept) AND contains
+  "?"), SILENT (otherwise; note "mentioned" when a form appears without "?"). Negatives: PASS (no
+  card), FAIL (card matching a gold.forbid regex, or any card when gold.forbid_any_card), CARD_OTHER
+  (any other card; counts as wrong, adjudicate by hand). correct = CARD_OK on positives + ASK on
+  positives whose gold.outcome == "card_or_ask". wrong = CARD_WRONG + FAIL + CARD_OTHER.
+  score = correct - 2*wrong. A CARD_WRONG/CARD_OTHER whose term or misheard form equals a
+  gold.later_accepted head (glossary entries the user added after the cutoff and kept; alphanumerics
+  only, case-insensitive) is also flagged LATER_OK (strict label unchanged; FAIL never is). The
+  "incl. later-accepted" columns: correct + later_ok on positives (the column's denominator is the
+  positives), and the score (correct + later_ok) - 2*(wrong - later_ok) with later_ok over all cards. Card precision = CARD_OK / all cards.
 
   This is a simulation of the app's /improve turn with a subset of the chat tools and mocked tool
   results, not the app itself. The system prompt blocks are read from `WhisperShortcut/ChatView.swift`
@@ -19,7 +29,17 @@ What it measures
 
 Run
     python3 scripts/eval-improve.py --cases <dir> --models gemini-3.8-flash,gemini-4-hydrogen \\
-        [--only id,id] [--max-cost 3.0] [--out results.md] [--json results.json] [--dry-run]
+        [--only id,id] [--max-cost 3.0] [--out results.md] [--json results.json] [--dry-run] \\
+        [--candidates on|off] [--log seeded|window] [--runs N]
+
+  --candidates on : app_settings review also returns case["review_candidates"] as
+                    dictation_candidates (default off: review returns no candidates).
+  --log window    : read_recent_interactions reads case["window"] (fallback case["interactions"]).
+  --runs N        : repeat every (model, case) N times; records carry `run`.
+  Offline self-test models (no API): fake-gold proposes the gold change, fake-wrong proposes "Xyzzy",
+  fake-later proposes a later-accepted head that is not gold (expected: CARD_WRONG/FAIL flagged later-accepted); fake-ask asks "Ist <gold form> richtig geschrieben?" without writing. Expected: fake-gold = all
+  positives CARD_OK, negatives FAIL or CARD_OTHER; fake-wrong = positives CARD_WRONG, negatives
+  CARD_OTHER (FAIL when forbid_any_card); fake-ask = ASK on positives, PASS on negatives.
 
   To try a new model: add it to PRICES (USD per 1M tokens) and, for Gemini, THINKING; then pass it
   to --models. `claude-*` models need ANTHROPIC_API_KEY in the environment; `gemini-*` need
@@ -31,7 +51,8 @@ Cases
   kind (positive|negative), gold {accept[], forbid[], note}, config {whisper_glossary, dictation,
   dictate_prompt, chat}, history [{ts, source, section, added, removed, previousLength, newLength}],
   interactions [{ts, mode, appName, language, durationMs, result, userInstruction, modelResponse,
-  selectedText, toolCalls}].
+  selectedText, toolCalls}]. Optional: review_candidates [..], window [rows like interactions, newest
+  first], leak_cut, gold.forms [regex], gold.outcome (card|card_or_ask|none), gold.forbid_any_card.
 
 Cost: real API calls. --max-cost stops before the next case once the running total is exceeded.
 """
@@ -43,6 +64,7 @@ CHATVIEW = os.path.join(REPO, "WhisperShortcut", "ChatView.swift")
 
 IMPROVE_REQUEST = "Prüf meine Einstellungen und wie ich die App nutze, und schlag mir die besten Verbesserungen vor."
 MAX_MODEL_CALLS = 8
+OPTS = {"candidates": False, "log": "seeded"}  # set from the CLI in main()
 
 # USD per 1M tokens (input, output). Thinking tokens are billed as output; cached input at full price.
 PRICES = {
@@ -94,12 +116,12 @@ TOOLS = {
     # ChatAppSettingsTool.swift: AppSettingsChatTool.description / parameters
     "app_settings": {
         "name": "app_settings",
-        "description": "Reviews WhisperShortcut's settings and changes them with the user's approval. Call action='review' first when the user asks to improve or check their setup.",
+        "description": "Reviews WhisperShortcut's settings and changes them with the user's approval. Call action='review' first when the user asks to improve or check their setup; its dictation_candidates list words the app probably gets wrong in dictation, found by scanning the whole usage log.",
         "parameters": {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["review", "set", "dismiss"],
-                           "description": "'review' returns the findings worth raising. 'set' changes settings (the user approves on a card). 'dismiss' records that the user does not want a finding raised again."},
+                           "description": "'review' returns the findings worth raising and, when usage data is on, dictation_candidates (heard, suggested, source, count, row_ids). 'set' changes settings (the user approves on a card). 'dismiss' records that the user does not want a finding raised again."},
                 "category": {"type": "string",
                              "description": "For 'review' only: also return the raw settings of this category (e.g. models, dictation, clipboard, dictate_prompt)."},
                 "changes": {"type": "array", "description": "For 'set': at most 5 changes.",
@@ -304,7 +326,8 @@ def mock_read_interactions(case, args):
     start = max(start, now - timedelta(days=90))
     needle = fold(str(args["query"]).strip()[:200]) if args.get("query") else None
     rows = []
-    for r in sorted(case["interactions"], key=lambda r: r["ts"], reverse=True):
+    source = (case.get("window") or case["interactions"]) if OPTS["log"] == "window" else case["interactions"]
+    for r in sorted(source, key=lambda r: r["ts"], reverse=True):
         if parse_ts(r["ts"]) < start or r["ts"] >= case["cutoff"]:
             continue
         if mode and r.get("mode") != mode:
@@ -346,7 +369,10 @@ def execute_tool(case, name, args):
     if name == "app_settings":
         a = args.get("action")
         if a == "review":
-            return {"findings": [], "usage_data": "on"}, None
+            out = {"findings": [], "usage_data": "on"}
+            if OPTS["candidates"] and case.get("review_candidates"):
+                out["dictation_candidates"] = case["review_candidates"]
+            return out, None
         if a in ("set", "dismiss"):
             return {"ok": True}, None
         return {"error": "action must be review, set or dismiss."}, None
@@ -478,10 +504,35 @@ def fake_term(case):
     return gold["accept"][0].replace(".?", "").replace(" ?", " ")
 
 
+def fake_form(case):
+    """Readable word from gold.forms[0] (fallback accept[0]) with regex syntax stripped."""
+    gold = case["gold"]
+    rx = (gold.get("forms") or gold.get("accept") or ["x"])[0]
+    rx = re.sub(r"\[ -\]\??", " ", rx)  # optional space/hyphen class -> a space
+    rx = re.sub(r"\\([.\-/])", r"\1", rx)  # escaped literal punctuation
+    rx = re.sub(r"\\[bBwWsSdD]", "", rx)
+    rx = re.sub(r"\([^()|]*\|", "(", rx)  # keep first alternative
+    rx = re.sub(r"\[[^\]]*\]", "", rx)
+    rx = re.sub(r"[?*+]", "", rx)
+    rx = re.sub(r"[\^$()\\|]", "", rx)
+    return rx.strip() or "x"
+
+
 def run_fake(model, case, system, key):
     """Offline pseudo-model (no API, zero cost) that drives the same mocks and scoring as a real one.
-    fake-gold proposes the accepted change, fake-wrong a nonsense term."""
-    term = fake_term(case) if model == "fake-gold" else "Xyzzy"
+    fake-gold proposes the accepted change, fake-wrong a nonsense term, fake-ask asks without writing."""
+    if model == "fake-ask":
+        rec = {"calls": 2, "tools": [], "api_s": 0.0, "tin": 0, "tout": 0, "proposal": None, "answer": ""}
+        for name, args in [("app_settings", {"action": "review"}), ("read_recent_interactions", {}), ("read_config_history", {})]:
+            rec["tools"].append(name)
+            execute_tool(case, name, args)
+        rec["answer"] = (f"Ist {fake_form(case)} richtig geschrieben?" if case["kind"] == "positive"
+                         else "Dein Setup sieht gut aus, ich schlage nichts vor.")
+        return rec
+    if model == "fake-later":  # a wrong-but-later-accepted card (needs gold.later_accepted); else nonsense
+        term = next((h for h in case["gold"].get("later_accepted", []) if not any(re.search(rx, h, re.I) for rx in case["gold"].get("accept", []))), "Xyzzy")
+    else:
+        term = fake_term(case) if model == "fake-gold" else "Xyzzy"
     script = [
         [("app_settings", {"action": "review"}), ("read_recent_interactions", {})],
         [("read_config_history", {}), ("update_app_instructions", {"section": "whisper_glossary", "action": "read"})],
@@ -570,6 +621,25 @@ def proposal_entries(case, prop):
     return [e for e in new if e not in old] if act == "replace" else new
 
 
+def _alnum(s):
+    return re.sub(r"[\W_]+", "", (s or "").casefold())
+
+
+def later_ok(case, prop):
+    """True if the card's term or misheard form equals a gold.later_accepted head (alphanumerics only, case-insensitive)."""
+    later = {_alnum(h) for h in case["gold"].get("later_accepted", [])} - {""}
+    if not prop or not later:
+        return False
+    a, forms = prop["args"], []
+    if prop["tool"] == "remember_dictation_term":
+        forms = [a.get("term"), a.get("misheard_as")]
+    else:
+        for e in proposal_entries(case, prop):
+            forms.append(e.split(" (not ", 1)[0])
+            forms += re.findall(r'"([^"]*)"', e)
+    return any(_alnum(f) in later for f in forms)
+
+
 def describe_proposal(prop):
     if not prop:
         return ""
@@ -593,39 +663,44 @@ def judge(case, prop, key):
 
 
 def score(case, rec, gkey):
-    """Returns (label, judge_cost, judge_note)."""
+    """Returns (label, judge_cost, judge_note). Labels: CARD_OK/CARD_WRONG/ASK/SILENT (positives),
+    PASS/FAIL/CARD_OTHER (negatives)."""
     gold, prop = case["gold"], rec["proposal"]
     flags = re.I
     if case["kind"] == "negative":
         if not prop:
             return "PASS", 0.0, ""
         text = "\n".join(proposal_entries(case, prop))
-        bad = any(re.search(rx, text, flags) for rx in gold.get("forbid", []))
-        return ("FAIL" if bad else "PASS"), 0.0, ""
+        bad = gold.get("forbid_any_card") or any(re.search(rx, text, flags) for rx in gold.get("forbid", []))
+        return ("FAIL" if bad else "CARD_OTHER"), 0.0, ""
     glossary_now = set(split_terms((case["config"] or {}).get("whisper_glossary", "")))
     if prop:
         for e in proposal_entries(case, prop):
             if any(re.search(rx, e, flags) for rx in gold["accept"]) and e not in glossary_now:
-                return "HIT", 0.0, ""
+                return "CARD_OK", 0.0, ""
         if gkey:
             try:
                 same, why, cost = judge(case, prop, gkey)
-                return ("HIT" if same else "MISS"), cost, ("judge: " + why)
+                return ("CARD_OK" if same else "CARD_WRONG"), cost, ("judge: " + why)
             except Exception as e:
-                return "MISS", 0.0, f"judge failed: {e}"
-        return "MISS", 0.0, "no judge key"
-    if any(re.search(rx, rec["answer"] or "", flags) for rx in gold["accept"]):
-        return "MENT", 0.0, ""
-    return "MISS", 0.0, ""
+                return "CARD_WRONG", 0.0, f"judge failed: {e}"
+        return "CARD_WRONG", 0.0, "no judge key"
+    ans = rec["answer"] or ""
+    forms = gold.get("forms") or gold["accept"]
+    if any(re.search(rx, ans, flags) for rx in forms):
+        if "?" in ans:
+            return "ASK", 0.0, ""
+        return "SILENT", 0.0, "mentioned"
+    return "SILENT", 0.0, ""
 
 
 # ---------------------------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------------------------
-def run_case(model, case, blocks, gkey, akey):
+def run_case(model, case, blocks, gkey, akey, run=1):
     system = build_system_prompt(case, blocks)
     t0 = time.time()
-    rec = {"case": case["id"], "model": model, "kind": case["kind"], "cost": 0.0, "judge_cost": 0.0}
+    rec = {"case": case["id"], "model": model, "kind": case["kind"], "run": run, "cost": 0.0, "judge_cost": 0.0}
     try:
         if model.startswith("fake-"):
             raw = run_fake(model, case, system, None)
@@ -642,44 +717,70 @@ def run_case(model, case, blocks, gkey, akey):
     rec["history_checked"] = ("read_config_history" in (raw["proposal"]["tools_before"] if raw["proposal"] else raw["tools"]))
     label, jc, note = score(case, raw, None if model.startswith("fake-") else gkey)
     rec.update(label=label, judge_cost=jc, judge_note=note, proposal_text=describe_proposal(raw["proposal"]))
+    rec["later_ok"] = label in ("CARD_WRONG", "CARD_OTHER") and later_ok(case, raw["proposal"])
     return rec
 
 
-def build_report(models, cases, records):
-    L = []
-    hdr = ("| Model | Positives hit (mention) | Negatives passed | config_history checked | Mean calls | Total cost | Cost/case | Judge cost | Median latency/case |")
-    L += ["## Summary", "", hdr, "|" + "---|" * 9]
+def summary_row(label, rs, gold_outcome):
+    pos = [r for r in rs if r["kind"] == "positive"]
+    neg = [r for r in rs if r["kind"] == "negative"]
+    ok = [r for r in rs if r["label"] != "ERR"]
+    n = lambda lab, group: sum(r["label"] == lab for r in group)
+    card_ok = n("CARD_OK", pos)
+    ask = n("ASK", pos)
+    correct = card_ok + sum(r["label"] == "ASK" and gold_outcome.get(r["case"]) == "card_or_ask" for r in pos)
+    wrong = n("CARD_WRONG", pos) + n("FAIL", neg) + n("CARD_OTHER", neg)
+    later = sum(bool(r.get("later_ok")) for r in rs if r["label"] in ("CARD_WRONG", "CARD_OTHER"))
+    later_pos = sum(bool(r.get("later_ok")) for r in pos if r["label"] == "CARD_WRONG")
+    cards = card_ok + wrong
+    prec = f"{round(100 * card_ok / cards)}% ({card_ok}/{cards})" if cards else "-"
+    hc = f"{round(100 * sum(r.get('history_checked', False) for r in ok) / len(ok))}%" if ok else "-"
+    calls = f"{statistics.mean(r['calls'] for r in ok):.1f}" if ok else "-"
+    cost = sum(r["cost"] for r in rs)
+    jc = sum(r["judge_cost"] for r in rs)
+    lat = f"{statistics.median(r['wall_s'] for r in rs):.1f}s"
+    errs = sum(r["label"] == "ERR" for r in rs)
+    return (f"| {label} | {correct}/{len(pos)} | {ask} | {wrong} | {n('SILENT', pos)} | {n('PASS', neg)}/{len(neg)} | "
+            f"{correct - 2 * wrong} | {correct + later_pos}/{len(pos)} | {correct + later - 2 * (wrong - later)} | {prec} | {hc} | {calls} | ${cost:.3f} | ${jc:.3f} | {lat} |" + (f" ({errs} ERR)" if errs else ""))
+
+
+def build_report(models, cases, records, runs=1, flags=""):
+    gold_outcome = {c["id"]: c["gold"].get("outcome") for c in cases}
+    L = [flags, "", "## Summary", ""]
+    L += ["| Model / run | Correct/positives | ASK | Wrong cards | SILENT | Negatives passed | Score | Correct incl. later-accepted | Score incl. later-accepted | Card precision | config_history checked | Mean calls | Cost | Judge cost | Median latency |",
+          "|" + "---|" * 15]
     for m in models:
-        rs = [r for r in records if r["model"] == m and r["label"] not in ("SKIP",)]
-        if not rs:
+        mine = [r for r in records if r["model"] == m and r["label"] != "SKIP"]
+        if not mine:
             continue
-        pos = [r for r in rs if r["kind"] == "positive"]
-        neg = [r for r in rs if r["kind"] == "negative"]
-        ok = [r for r in rs if r["label"] != "ERR"]
-        hits = sum(r["label"] == "HIT" for r in pos)
-        ments = sum(r["label"] == "MENT" for r in pos)
-        passed = sum(r["label"] == "PASS" for r in neg)
-        hc = f"{round(100 * sum(r.get('history_checked', False) for r in ok) / len(ok))}%" if ok else "-"
-        calls = f"{statistics.mean(r['calls'] for r in ok):.1f}" if ok else "-"
-        cost = sum(r["cost"] for r in rs)
-        jc = sum(r["judge_cost"] for r in rs)
-        lat = f"{statistics.median(r['wall_s'] for r in rs):.1f}s"
-        errs = sum(r["label"] == "ERR" for r in rs)
-        L.append(f"| {m} | {hits}/{len(pos)} ({ments}) | {passed}/{len(neg)} | {hc} | {calls} | ${cost:.3f} | ${cost / len(rs):.3f} | ${jc:.3f} | {lat} |"
-                 + (f" ({errs} ERR)" if errs else ""))
+        for run in range(1, runs + 1):
+            rs = [r for r in mine if r.get("run", 1) == run]
+            if rs:
+                L.append(summary_row(f"{m} run {run}" if runs > 1 else m, rs, gold_outcome))
+        if runs > 1:
+            L.append(summary_row(f"{m} all runs", mine, gold_outcome))
     L += ["", "## Per case", "", "| Case | " + " | ".join(models) + " |", "|" + "---|" * (len(models) + 1)]
+    other = []
     for c in cases:
         cells = []
         for m in models:
-            r = next((r for r in records if r["model"] == m and r["case"] == c["id"]), None)
-            if not r:
+            rs = [r for r in records if r["model"] == m and r["case"] == c["id"]]
+            if not rs:
                 cells.append("-")
-            elif r["label"] in ("ERR", "SKIP"):
-                cells.append(r["label"] + (": " + r.get("error", "")[:60] if r.get("error") else ""))
-            else:
-                p = (r.get("proposal_text") or "").replace("|", "/")[:80]
-                cells.append(f"{r['label']}" + (f" `{p}`" if p else ""))
+                continue
+            parts = []
+            for r in sorted(rs, key=lambda r: r.get("run", 1)):
+                if r["label"] in ("ERR", "SKIP"):
+                    parts.append(r["label"] + (": " + r.get("error", "")[:60] if r.get("error") else ""))
+                else:
+                    p = (r.get("proposal_text") or "").replace("|", "/")[:80]
+                    parts.append(r["label"] + (" (later-accepted)" if r.get("later_ok") else "") + (f" `{p}`" if p else ""))
+                    if r["label"] == "CARD_OTHER":
+                        other.append(f"{c['id']} ({m}, run {r.get('run', 1)}): {(r.get('proposal_text') or '')[:100]}")
+            cells.append(" / ".join(parts))
         L.append(f"| {c['id']} | " + " | ".join(cells) + " |")
+    if other:
+        L += ["", "CARD_OTHER, adjudicate by hand: " + "; ".join(other)]
     return "\n".join(L) + "\n"
 
 
@@ -692,7 +793,18 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--json", dest="json_out")
     ap.add_argument("--dry-run", action="store_true", help="build prompts/tools only, no API call")
+    ap.add_argument("--candidates", choices=["on", "off"], default="off")
+    ap.add_argument("--log", choices=["seeded", "window"], default="seeded")
+    ap.add_argument("--runs", type=int, default=1)
     a = ap.parse_args()
+    OPTS["candidates"] = a.candidates == "on"
+    if not OPTS["candidates"]:  # the app's current strings (ChatAppSettingsTool.swift)
+        _t = TOOLS["app_settings"]
+        _t["description"] = "Reviews WhisperShortcut's settings and changes them with the user's approval. Call action='review' first when the user asks to improve or check their setup."
+        _t["parameters"]["properties"]["action"]["description"] = "'review' returns the findings worth raising. 'set' changes settings (the user approves on a card). 'dismiss' records that the user does not want a finding raised again."
+    OPTS["log"] = a.log
+    runs = max(a.runs, 1)
+    flags = f"Flags: --candidates {a.candidates} --log {a.log} --runs {runs}"
 
     blocks = load_static_blocks()
     cases = [json.load(open(p, encoding="utf-8")) for p in sorted(glob.glob(os.path.join(a.cases, "*.json")))]
@@ -708,7 +820,8 @@ def main():
         print("tools:", ", ".join(TOOLS))
         for c in cases:
             print(f"  {c['id']:<12} system prompt {len(build_system_prompt(c, blocks))} chars, "
-                  f"{len(c['interactions'])} interactions, {len(c['history'])} history rows")
+                  f"{len(c['interactions'])} interactions, {len(c['history'])} history rows, "
+                  f"{len(c.get('review_candidates') or [])} review_candidates, {len(c.get('window') or [])} window rows")
         first = mock_read_interactions(cases[0], {})
         print(f"first case ({cases[0]['id']}) default read_recent_interactions: "
               f"{len(json.dumps(first, ensure_ascii=False))} bytes, {len(first['rows'])} rows, total_available={first['total_available']}")
@@ -727,19 +840,19 @@ def main():
             continue
         if m not in PRICES:
             print(f"warning: no price for {m}, cost shown as $0")
-        for c in cases:
+        for run, c in [(run, c) for run in range(1, runs + 1) for c in cases]:
             if stop or total > a.max_cost:
                 stop = True
-                records.append({"case": c["id"], "model": m, "kind": c["kind"], "label": "SKIP", "cost": 0.0, "judge_cost": 0.0})
+                records.append({"case": c["id"], "model": m, "kind": c["kind"], "run": run, "label": "SKIP", "cost": 0.0, "judge_cost": 0.0})
                 continue
-            r = run_case(m, c, blocks, gkey, akey)
+            r = run_case(m, c, blocks, gkey, akey, run)
             total += r["cost"] + r["judge_cost"]
             records.append(r)
-            print(f"{m:<24} {c['id']:<12} {r['label']:<5} calls={r.get('calls', '-')} ${r['cost']:.4f} {r['wall_s']:.1f}s "
+            print(f"{m:<24} {c['id']:<12} r{run} {r['label']:<10} calls={r.get('calls', '-')} ${r['cost']:.4f} {r['wall_s']:.1f}s "
                   f"{(r.get('proposal_text') or r.get('error') or '')[:90]}", flush=True)
     if stop:
         print(f"--max-cost {a.max_cost} exceeded; remaining cases skipped")
-    report = build_report(models, cases, records)
+    report = build_report(models, cases, records, runs, flags)
     print("\n" + report)
     if a.out:
         open(a.out, "w", encoding="utf-8").write(report)
